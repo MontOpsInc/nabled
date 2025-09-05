@@ -1,6 +1,6 @@
 [package]
 name = "rust-linalg"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Advanced linear algebra functions built on top of nalgebra and ndarray"
 authors = ["Niklaus Parcell <niklaus.parcell@example.com>"]

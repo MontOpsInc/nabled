@@ -5,6 +5,7 @@ Advanced linear algebra functions built on top of `nalgebra` and `ndarray` crate
 ## Features
 
 - **Singular Value Decomposition (SVD)** implementations using both `nalgebra` and `ndarray`
+- **Matrix Functions** - Matrix exponential, logarithm, and power operations
 - **Truncated SVD** for dimensionality reduction
 - **Matrix reconstruction** from SVD components
 - **Condition number** and **matrix rank** computation
@@ -18,7 +19,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-linalg = "0.1.0"
+rust-linalg = "0.2.0"
 ```
 
 ## Quick Start
@@ -68,6 +69,26 @@ let reconstructed = nalgebra_svd::reconstruct_matrix(&svd);
 // reconstructed should be approximately equal to the original matrix
 ```
 
+### Matrix Functions
+
+```rust
+use rust_linalg::matrix_functions::nalgebra_matrix_functions;
+use nalgebra::DMatrix;
+
+// Matrix exponential
+let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 2.0]);
+let exp_matrix = nalgebra_matrix_functions::matrix_exp_eigen(&matrix)?;
+println!("exp(A): {}", exp_matrix);
+
+// Matrix logarithm
+let log_matrix = nalgebra_matrix_functions::matrix_log_eigen(&matrix)?;
+println!("log(A): {}", log_matrix);
+
+// Matrix power (e.g., square root)
+let sqrt_matrix = nalgebra_matrix_functions::matrix_power(&matrix, 0.5)?;
+println!("A^0.5: {}", sqrt_matrix);
+```
+
 ## API Reference
 
 ### Nalgebra SVD
@@ -86,12 +107,34 @@ let reconstructed = nalgebra_svd::reconstruct_matrix(&svd);
 - `condition_number(svd)` - Compute condition number from singular values
 - `matrix_rank(svd, tolerance)` - Compute matrix rank from singular values
 
+### Matrix Functions
+
+#### Nalgebra Matrix Functions
+- `matrix_exp(matrix, max_iterations, tolerance)` - Compute matrix exponential using Taylor series
+- `matrix_exp_eigen(matrix)` - Compute matrix exponential using eigenvalue decomposition
+- `matrix_log_taylor(matrix, max_iterations, tolerance)` - Compute matrix logarithm using Taylor series
+- `matrix_log_eigen(matrix)` - Compute matrix logarithm using eigenvalue decomposition
+- `matrix_log_svd(matrix)` - Compute matrix logarithm using SVD decomposition
+- `matrix_power(matrix, power)` - Compute matrix power using eigenvalue decomposition
+
+#### Ndarray Matrix Functions
+- `matrix_exp(matrix, max_iterations, tolerance)` - Compute matrix exponential
+- `matrix_exp_eigen(matrix)` - Compute matrix exponential using eigenvalue decomposition
+- `matrix_log_taylor(matrix, max_iterations, tolerance)` - Compute matrix logarithm using Taylor series
+- `matrix_log_eigen(matrix)` - Compute matrix logarithm using eigenvalue decomposition
+- `matrix_log_svd(matrix)` - Compute matrix logarithm using SVD decomposition
+- `matrix_power(matrix, power)` - Compute matrix power
+
 ## Examples
 
-Run the example:
+Run the examples:
 
 ```bash
+# SVD example
 cargo run --example svd_example
+
+# Matrix functions example
+cargo run --example matrix_functions_example
 ```
 
 ## Testing
@@ -123,14 +166,27 @@ The benchmarks compare:
 
 ## Error Handling
 
-The library provides comprehensive error handling through the `SVDError` enum:
+The library provides comprehensive error handling through custom error enums:
 
+### SVD Errors
 ```rust
 pub enum SVDError {
     NotSquare,
     EmptyMatrix,
     ConvergenceFailed,
     InvalidInput(String),
+}
+```
+
+### Matrix Function Errors
+```rust
+pub enum MatrixFunctionError {
+    NotSquare,
+    EmptyMatrix,
+    SingularMatrix,
+    ConvergenceFailed,
+    InvalidInput(String),
+    NegativeEigenvalues,
 }
 ```
 

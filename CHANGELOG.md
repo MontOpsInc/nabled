@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- QR decomposition implementations
+- LU decomposition implementations
+- Eigenvalue decomposition
+- GPU acceleration support
+
+## [0.2.0] - 2024-12-19
+
+### Added
 - **Matrix Functions** - Matrix exponential, logarithm, and power operations
   - Matrix exponential using Taylor series and eigenvalue decomposition
   - Matrix logarithm using Taylor series, eigenvalue decomposition, and SVD
@@ -16,10 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Comprehensive error handling for edge cases (non-square, singular, negative eigenvalues)
   - Extensive test suite with 7 new tests covering all matrix functions
   - Working example demonstrating all matrix function capabilities
-- QR decomposition implementations
-- LU decomposition implementations
-- Eigenvalue decomposition
-- GPU acceleration support
+- **Enhanced Documentation**
+  - Updated library documentation with matrix function examples
+  - Added comprehensive usage examples for matrix exponential, logarithm, and power
+  - Improved API documentation with inline code examples
 
 ## [0.1.0] - 2024-12-19
 
@@ -64,5 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Large matrices (100x100)**: Nalgebra ~2.24ms, Ndarray ~2.37ms
 - **Very large matrices (200x200)**: Nalgebra ~15.4ms, Ndarray ~16.0ms
 
-[Unreleased]: https://github.com/NiklausParcell/rust-linearalgebra-better/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/NiklausParcell/rust-linearalgebra-better/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/NiklausParcell/rust-linearalgebra-better/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/NiklausParcell/rust-linearalgebra-better/releases/tag/v0.1.0
