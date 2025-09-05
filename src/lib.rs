@@ -82,9 +82,44 @@
 //! println!("Reconstructed: {}", reconstructed);
 //! # Ok::<(), rust_linalg::svd::SVDError>(())
 //! ```
+//!
+//! ### Matrix Exponential
+//! ```rust
+//! use rust_linalg::matrix_functions::nalgebra_matrix_functions;
+//! use nalgebra::DMatrix;
+//!
+//! let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
+//! let exp_matrix = nalgebra_matrix_functions::matrix_exp_eigen(&matrix)?;
+//! println!("exp(A): {}", exp_matrix);
+//! # Ok::<(), rust_linalg::matrix_functions::MatrixFunctionError>(())
+//! ```
+//!
+//! ### Matrix Logarithm
+//! ```rust
+//! use rust_linalg::matrix_functions::nalgebra_matrix_functions;
+//! use nalgebra::DMatrix;
+//!
+//! let matrix = DMatrix::from_row_slice(2, 2, &[2.0, 1.0, 1.0, 2.0]);
+//! let log_matrix = nalgebra_matrix_functions::matrix_log_eigen(&matrix)?;
+//! println!("log(A): {}", log_matrix);
+//! # Ok::<(), rust_linalg::matrix_functions::MatrixFunctionError>(())
+//! ```
+//!
+//! ### Matrix Power
+//! ```rust
+//! use rust_linalg::matrix_functions::nalgebra_matrix_functions;
+//! use nalgebra::DMatrix;
+//!
+//! let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 4.0]);
+//! let power_matrix = nalgebra_matrix_functions::matrix_power(&matrix, 0.5)?;
+//! println!("A^0.5: {}", power_matrix);
+//! # Ok::<(), rust_linalg::matrix_functions::MatrixFunctionError>(())
+//! ```
 
 pub mod svd;
+pub mod matrix_functions;
 pub mod utils;
 
 /// Re-exports for convenience
 pub use svd::*;
+pub use matrix_functions::*;
