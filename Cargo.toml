@@ -3,11 +3,14 @@ name = "rust-linalg"
 version = "0.1.0"
 edition = "2021"
 description = "Advanced linear algebra functions built on top of nalgebra and ndarray"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Niklaus Parcell <niklaus.parcell@example.com>"]
 license = "MIT"
-repository = "https://github.com/yourusername/rust-linalg"
-keywords = ["linear-algebra", "svd", "nalgebra", "ndarray", "rust"]
-categories = ["mathematics", "science"]
+repository = "https://github.com/NiklausParcell/rust-linearalgebra-better"
+homepage = "https://github.com/NiklausParcell/rust-linearalgebra-better"
+documentation = "https://docs.rs/rust-linalg"
+readme = "README.md"
+keywords = ["linear-algebra", "svd", "nalgebra", "ndarray", "rust", "mathematics", "decomposition"]
+categories = ["mathematics", "science", "algorithms"]
 
 [dependencies]
 nalgebra = { version = "0.32", features = ["serde-serialize"] }

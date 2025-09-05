@@ -3,6 +3,85 @@
 //! Advanced linear algebra functions built on top of nalgebra and ndarray.
 //! This library provides enhanced implementations of common linear algebra operations
 //! with focus on performance and numerical stability.
+//!
+//! ## Quick Start
+//!
+//! Add this to your `Cargo.toml`:
+//! ```toml
+//! [dependencies]
+//! rust-linalg = "0.1.0"
+//! nalgebra = "0.32"
+//! ndarray = "0.15"
+//! ```
+//!
+//! ## Basic Usage
+//!
+//! ### SVD with Nalgebra
+//! ```rust
+//! use rust_linalg::svd::nalgebra_svd;
+//! use nalgebra::DMatrix;
+//!
+//! let matrix = DMatrix::from_row_slice(3, 3, &[
+//!     1.0, 2.0, 3.0,
+//!     4.0, 5.0, 6.0,
+//!     7.0, 8.0, 9.0
+//! ]);
+//!
+//! let svd = nalgebra_svd::compute_svd(&matrix)?;
+//! println!("Singular values: {:?}", svd.singular_values);
+//! println!("Condition number: {}", nalgebra_svd::condition_number(&svd));
+//! println!("Matrix rank: {}", nalgebra_svd::matrix_rank(&svd, None));
+//! # Ok::<(), rust_linalg::svd::SVDError>(())
+//! ```
+//!
+//! ### SVD with Ndarray
+//! ```rust
+//! use rust_linalg::svd::ndarray_svd;
+//! use ndarray::Array2;
+//!
+//! let matrix = Array2::from_shape_vec((3, 3), vec![
+//!     1.0, 2.0, 3.0,
+//!     4.0, 5.0, 6.0,
+//!     7.0, 8.0, 9.0
+//! ])?;
+//!
+//! let svd = ndarray_svd::compute_svd(&matrix)?;
+//! println!("Singular values: {:?}", svd.singular_values);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! ### Truncated SVD for Dimensionality Reduction
+//! ```rust
+//! use rust_linalg::svd::nalgebra_svd;
+//! use nalgebra::DMatrix;
+//!
+//! let matrix = DMatrix::from_row_slice(4, 4, &[
+//!     1.0, 0.0, 0.0, 0.0,
+//!     0.0, 2.0, 0.0, 0.0,
+//!     0.0, 0.0, 3.0, 0.0,
+//!     0.0, 0.0, 0.0, 4.0
+//! ]);
+//!
+//! // Keep only the 2 largest singular values
+//! let truncated_svd = nalgebra_svd::compute_truncated_svd(&matrix, 2)?;
+//! println!("Truncated singular values: {:?}", truncated_svd.singular_values);
+//! # Ok::<(), rust_linalg::svd::SVDError>(())
+//! ```
+//!
+//! ### Matrix Reconstruction
+//! ```rust
+//! use rust_linalg::svd::nalgebra_svd;
+//! use nalgebra::DMatrix;
+//!
+//! let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+//! let svd = nalgebra_svd::compute_svd(&matrix)?;
+//! let reconstructed = nalgebra_svd::reconstruct_matrix(&svd);
+//! 
+//! // reconstructed should be approximately equal to the original matrix
+//! println!("Original: {}", matrix);
+//! println!("Reconstructed: {}", reconstructed);
+//! # Ok::<(), rust_linalg::svd::SVDError>(())
+//! ```
 
 pub mod svd;
 pub mod utils;
