@@ -6,6 +6,7 @@ Advanced linear algebra functions built on top of `nalgebra` and `ndarray` crate
 
 - **Singular Value Decomposition (SVD)** implementations using both `nalgebra` and `ndarray`
 - **Matrix Functions** - Matrix exponential, logarithm, and power operations
+- **Jacobian Computation** - Numerical differentiation and gradient computation
 - **Truncated SVD** for dimensionality reduction
 - **Matrix reconstruction** from SVD components
 - **Condition number** and **matrix rank** computation
@@ -89,6 +90,54 @@ let sqrt_matrix = nalgebra_matrix_functions::matrix_power(&matrix, 0.5)?;
 println!("A^0.5: {}", sqrt_matrix);
 ```
 
+### Jacobian Computation
+
+```rust
+use rust_linalg::jacobian::nalgebra_jacobian;
+use nalgebra::DVector;
+
+// Jacobian of vector-valued function
+let f = |x: &DVector<f64>| -> Result<DVector<f64>, String> {
+    Ok(DVector::from_vec(vec![x[0] * x[0], x[1] * x[1]]))
+};
+
+let x = DVector::from_vec(vec![2.0, 3.0]);
+let jacobian = nalgebra_jacobian::numerical_jacobian(&f, &x, &Default::default())?;
+println!("Jacobian: {}", jacobian);
+```
+
+### Gradient Computation
+
+```rust
+use rust_linalg::jacobian::nalgebra_jacobian;
+use nalgebra::DVector;
+
+// Gradient of scalar function
+let f = |x: &DVector<f64>| -> Result<f64, String> {
+    Ok(x[0] * x[0] + x[1] * x[1])
+};
+
+let x = DVector::from_vec(vec![3.0, 4.0]);
+let gradient = nalgebra_jacobian::numerical_gradient(&f, &x, &Default::default())?;
+println!("Gradient: {}", gradient);
+```
+
+### Hessian Matrix
+
+```rust
+use rust_linalg::jacobian::nalgebra_jacobian;
+use nalgebra::DVector;
+
+// Hessian of scalar function
+let f = |x: &DVector<f64>| -> Result<f64, String> {
+    Ok(x[0] * x[0] * x[0] + x[1] * x[1] * x[1])
+};
+
+let x = DVector::from_vec(vec![2.0, 3.0]);
+let hessian = nalgebra_jacobian::numerical_hessian(&f, &x, &Default::default())?;
+println!("Hessian: {}", hessian);
+```
+
 ## API Reference
 
 ### Nalgebra SVD
@@ -125,6 +174,20 @@ println!("A^0.5: {}", sqrt_matrix);
 - `matrix_log_svd(matrix)` - Compute matrix logarithm using SVD decomposition
 - `matrix_power(matrix, power)` - Compute matrix power
 
+### Jacobian Computation
+
+#### Nalgebra Jacobian Functions
+- `numerical_jacobian(f, x, config)` - Compute Jacobian using forward finite differences
+- `numerical_jacobian_central(f, x, config)` - Compute Jacobian using central finite differences (more accurate)
+- `numerical_gradient(f, x, config)` - Compute gradient for scalar functions
+- `numerical_hessian(f, x, config)` - Compute Hessian matrix (second-order derivatives)
+
+#### Ndarray Jacobian Functions
+- `numerical_jacobian(f, x, config)` - Compute Jacobian using forward finite differences
+- `numerical_jacobian_central(f, x, config)` - Compute Jacobian using central finite differences
+- `numerical_gradient(f, x, config)` - Compute gradient for scalar functions
+- `numerical_hessian(f, x, config)` - Compute Hessian matrix (second-order derivatives)
+
 ## Examples
 
 Run the examples:
@@ -135,6 +198,9 @@ cargo run --example svd_example
 
 # Matrix functions example
 cargo run --example matrix_functions_example
+
+# Jacobian computation example
+cargo run --example jacobian_example
 ```
 
 ## Testing
@@ -187,6 +253,18 @@ pub enum MatrixFunctionError {
     ConvergenceFailed,
     InvalidInput(String),
     NegativeEigenvalues,
+}
+```
+
+### Jacobian Errors
+```rust
+pub enum JacobianError {
+    FunctionError(String),
+    InvalidDimensions(String),
+    InvalidStepSize,
+    ConvergenceFailed,
+    EmptyInput,
+    DimensionMismatch,
 }
 ```
 
