@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **QR Decomposition** - Full and reduced QR decomposition with least squares solving
+  - Full QR decomposition using nalgebra's built-in QR algorithm
+  - Reduced QR decomposition (economy size) for rectangular matrices
+  - QR decomposition with column pivoting for numerical stability
+  - Least squares problem solving using QR decomposition
+  - Matrix reconstruction from QR components
+  - Condition number computation from QR decomposition
+  - Support for both nalgebra and ndarray matrices
+  - Comprehensive error handling with QRError enum
+  - Configurable rank tolerance and parameters via QRConfig
+  - **Enhanced Edge Case Handling** - Robust handling of numerical edge cases
+    - Empty matrix detection and proper error reporting
+    - Zero matrix handling with rank 0 detection
+    - Single element matrix optimization
+    - NaN and infinity value detection with numerical instability errors
+    - Rank-deficient matrix detection and graceful handling
+    - Dimension mismatch validation for least squares problems
+    - Underdetermined system detection
+    - Singular matrix detection in least squares solving
+    - Numerical overflow/underflow protection
+    - Very small rank tolerance validation
+  - Extensive test suite with 10 new tests covering all functionality and edge cases
+  - Working example demonstrating all QR features
+  - Integration with existing library structure
 - **Jacobian Computation** - Numerical differentiation and gradient computation
   - Numerical Jacobian computation using finite differences for both nalgebra and ndarray
   - Forward and central difference methods for higher accuracy
@@ -23,10 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Extensive test suite with 12 new tests covering all functionality (including complex derivatives)
   - Working examples demonstrating all Jacobian features (real and complex)
   - Support for both vector-valued and scalar functions (real and complex)
-- QR decomposition implementations
-- LU decomposition implementations
-- Eigenvalue decomposition
-- GPU acceleration support
 
 ## [0.2.0] - 2024-12-19
 
