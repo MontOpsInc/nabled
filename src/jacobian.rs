@@ -70,6 +70,41 @@ impl<T: Float> Default for JacobianConfig<T> {
     }
 }
 
+impl<T: Float> JacobianConfig<T> {
+    /// Create a new JacobianConfig with validation
+    pub fn new(step_size: T, tolerance: T, max_iterations: usize) -> Result<Self, JacobianError> {
+        if step_size <= T::zero() {
+            return Err(JacobianError::InvalidStepSize);
+        }
+        if tolerance <= T::zero() {
+            return Err(JacobianError::InvalidDimensions("Tolerance must be positive".to_string()));
+        }
+        if max_iterations == 0 {
+            return Err(JacobianError::InvalidDimensions("Max iterations must be positive".to_string()));
+        }
+        
+        Ok(Self {
+            step_size,
+            tolerance,
+            max_iterations,
+        })
+    }
+    
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<(), JacobianError> {
+        if self.step_size <= T::zero() {
+            return Err(JacobianError::InvalidStepSize);
+        }
+        if self.tolerance <= T::zero() {
+            return Err(JacobianError::InvalidDimensions("Tolerance must be positive".to_string()));
+        }
+        if self.max_iterations == 0 {
+            return Err(JacobianError::InvalidDimensions("Max iterations must be positive".to_string()));
+        }
+        Ok(())
+    }
+}
+
 /// Nalgebra Jacobian computation functions
 pub mod nalgebra_jacobian {
     use super::*;
@@ -105,12 +140,25 @@ pub mod nalgebra_jacobian {
         config: &JacobianConfig<T>,
     ) -> Result<DMatrix<T>, JacobianError>
     where
-        T: RealField + FloatCore,
+        T: RealField + FloatCore + Float,
         F: Fn(&DVector<T>) -> Result<DVector<T>, String>,
     {
+        // Validate inputs
         if x.is_empty() {
             return Err(JacobianError::EmptyInput);
         }
+        
+        // Check for NaN or infinite values in input
+        for i in 0..x.len() {
+            if !num_traits::Float::is_finite(x[i]) {
+                return Err(JacobianError::InvalidDimensions(
+                    format!("Input contains non-finite value at index {}", i)
+                ));
+            }
+        }
+        
+        // Validate configuration
+        config.validate()?;
 
         // Evaluate function at the point
         let fx = f(x).map_err(JacobianError::FunctionError)?;
@@ -121,12 +169,28 @@ pub mod nalgebra_jacobian {
             return Err(JacobianError::EmptyInput);
         }
 
+        // Check for non-finite values in function output
+        for i in 0..m {
+            if !num_traits::Float::is_finite(x[i]) {
+                return Err(JacobianError::FunctionError(
+                    format!("Function returned non-finite value at index {}", i)
+                ));
+            }
+        }
+
         let mut jacobian = DMatrix::zeros(m, n);
 
         // Compute partial derivatives using finite differences
         for j in 0..n {
             let mut x_plus = x.clone();
-            x_plus[j] = x_plus[j] + config.step_size;
+            
+            // Check for overflow when adding step size
+            let step = config.step_size;
+            if num_traits::Float::is_finite(x_plus[j]) && num_traits::Float::is_finite(step) {
+                x_plus[j] = x_plus[j] + step;
+            } else {
+                return Err(JacobianError::InvalidStepSize);
+            }
 
             let fx_plus = f(&x_plus).map_err(JacobianError::FunctionError)?;
 
@@ -134,9 +198,23 @@ pub mod nalgebra_jacobian {
                 return Err(JacobianError::DimensionMismatch);
             }
 
+            // Check for non-finite values in perturbed function output
+            for i in 0..m {
+                if !num_traits::Float::is_finite(fx_plus[i]) {
+                    return Err(JacobianError::FunctionError(
+                        format!("Function returned non-finite value at index {} when perturbing variable {}", i, j)
+                    ));
+                }
+            }
+
             // Compute finite difference
             for i in 0..m {
-                jacobian[(i, j)] = (fx_plus[i] - fx[i]) / config.step_size;
+                let diff = fx_plus[i] - fx[i];
+                if num_traits::Float::is_finite(diff) && num_traits::Float::is_finite(step) && step != T::zero() {
+                    jacobian[(i, j)] = diff / step;
+                } else {
+                    return Err(JacobianError::ConvergenceFailed);
+                }
             }
         }
 
@@ -158,12 +236,25 @@ pub mod nalgebra_jacobian {
         config: &JacobianConfig<T>,
     ) -> Result<DMatrix<T>, JacobianError>
     where
-        T: RealField + FloatCore,
+        T: RealField + FloatCore + Float,
         F: Fn(&DVector<T>) -> Result<DVector<T>, String>,
     {
+        // Validate inputs
         if x.is_empty() {
             return Err(JacobianError::EmptyInput);
         }
+        
+        // Check for NaN or infinite values in input
+        for i in 0..x.len() {
+            if !num_traits::Float::is_finite(x[i]) {
+                return Err(JacobianError::InvalidDimensions(
+                    format!("Input contains non-finite value at index {}", i)
+                ));
+            }
+        }
+        
+        // Validate configuration
+        config.validate()?;
 
         let m = f(x).map_err(JacobianError::FunctionError)?.len();
         let n = x.len();
@@ -645,5 +736,87 @@ mod tests {
         } else {
             panic!("Expected EmptyInput error");
         }
+    }
+
+    #[test]
+    fn test_invalid_config() {
+        let f = |x: &DVector<f64>| -> Result<DVector<f64>, String> {
+            Ok(x.clone())
+        };
+
+        let x = DVector::from_vec(vec![1.0, 2.0]);
+        
+        // Test negative step size
+        let config = JacobianConfig {
+            step_size: -1e-6,
+            tolerance: 1e-8,
+            max_iterations: 100,
+        };
+        
+        let result = nalgebra_jacobian::numerical_jacobian(&f, &x, &config);
+        assert!(result.is_err());
+        
+        if let Err(JacobianError::InvalidStepSize) = result {
+            // Expected
+        } else {
+            panic!("Expected InvalidStepSize error");
+        }
+    }
+
+    #[test]
+    fn test_nan_input() {
+        let f = |x: &DVector<f64>| -> Result<DVector<f64>, String> {
+            Ok(x.clone())
+        };
+
+        let x = DVector::from_vec(vec![1.0, f64::NAN]);
+        let config = JacobianConfig::default();
+        
+        let result = nalgebra_jacobian::numerical_jacobian(&f, &x, &config);
+        assert!(result.is_err());
+        
+        if let Err(JacobianError::InvalidDimensions(_)) = result {
+            // Expected
+        } else {
+            panic!("Expected InvalidDimensions error");
+        }
+    }
+
+    #[test]
+    fn test_infinite_input() {
+        let f = |x: &DVector<f64>| -> Result<DVector<f64>, String> {
+            Ok(x.clone())
+        };
+
+        let x = DVector::from_vec(vec![1.0, f64::INFINITY]);
+        let config = JacobianConfig::default();
+        
+        let result = nalgebra_jacobian::numerical_jacobian(&f, &x, &config);
+        assert!(result.is_err());
+        
+        if let Err(JacobianError::InvalidDimensions(_)) = result {
+            // Expected
+        } else {
+            panic!("Expected InvalidDimensions error");
+        }
+    }
+
+    #[test]
+    fn test_config_validation() {
+        // Test valid config
+        let config = JacobianConfig::new(1e-6, 1e-8, 100).unwrap();
+        assert!(config.validate().is_ok());
+        
+        // Test invalid step size
+        let result = JacobianConfig::new(-1e-6, 1e-8, 100);
+        assert!(result.is_err());
+        
+        // Test invalid tolerance
+        let result = JacobianConfig::new(1e-6, -1e-8, 100);
+        assert!(result.is_err());
+        
+        // Test invalid max iterations
+        let result = JacobianConfig::new(1e-6, 1e-8, 0);
+        assert!(result.is_err());
     }
 }
