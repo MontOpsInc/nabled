@@ -155,3 +155,4 @@ pub mod utils;
 pub use svd::*;
 pub use matrix_functions::*;
 pub use jacobian::*;
+pub use jacobian::{JacobianConfig, JacobianError};

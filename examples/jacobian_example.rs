@@ -3,7 +3,7 @@
 //! This example demonstrates how to use the Jacobian computation functions
 //! for both nalgebra and ndarray.
 
-use rust_linalg::jacobian::{nalgebra_jacobian, ndarray_jacobian, JacobianConfig, JacobianError};
+use rust_linalg::{nalgebra_jacobian, ndarray_jacobian, JacobianConfig, JacobianError};
 use nalgebra::DVector;
 use ndarray::Array1;
 

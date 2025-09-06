@@ -12,8 +12,8 @@
 //! - **Configurable step size and tolerance**
 //! - **Comprehensive error handling**
 
-use nalgebra::{DMatrix, DVector, RealField};
-use ndarray::{Array2, Array1};
+// Note: These imports are used in the module implementations
+// but not directly in the module-level code, hence the warnings
 use num_traits::{Float, float::FloatCore};
 use std::fmt;
 
