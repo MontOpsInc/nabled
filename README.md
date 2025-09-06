@@ -5,12 +5,15 @@ Advanced linear algebra functions built on top of `nalgebra` and `ndarray` crate
 ## Features
 
 - **Singular Value Decomposition (SVD)** implementations using both `nalgebra` and `ndarray`
+- **QR Decomposition** - Full and reduced QR decomposition with least squares solving
 - **Matrix Functions** - Matrix exponential, logarithm, and power operations
 - **Jacobian Computation** - Numerical differentiation and gradient computation
 - **Truncated SVD** for dimensionality reduction
-- **Matrix reconstruction** from SVD components
+- **Matrix reconstruction** from SVD and QR components
 - **Condition number** and **matrix rank** computation
-- **Comprehensive test suite** with integration tests
+- **Least squares solving** using QR decomposition
+- **Robust edge case handling** - Empty matrices, rank-deficient matrices, NaN/Infinity detection
+- **Comprehensive test suite** with integration tests and edge case coverage
 - **Performance benchmarks** comparing different implementations
 - **Utility functions** for matrix operations and conversions
 
@@ -138,6 +141,72 @@ let hessian = nalgebra_jacobian::numerical_hessian(&f, &x, &Default::default())?
 println!("Hessian: {}", hessian);
 ```
 
+### QR Decomposition
+
+```rust
+use rust_linalg::qr::nalgebra_qr;
+use nalgebra::DMatrix;
+
+// Basic QR decomposition
+let matrix = DMatrix::from_row_slice(3, 3, &[
+    1.0, 2.0, 3.0,
+    4.0, 5.0, 6.0,
+    7.0, 8.0, 10.0
+]);
+
+let qr = nalgebra_qr::compute_qr(&matrix, &Default::default())?;
+println!("Q: {}", qr.q);
+println!("R: {}", qr.r);
+println!("Rank: {}", qr.rank);
+```
+
+### Least Squares Solving
+
+```rust
+use rust_linalg::qr::nalgebra_qr;
+use nalgebra::{DMatrix, DVector};
+
+// Solve overdetermined system Ax = b
+let a = DMatrix::from_row_slice(4, 2, &[
+    1.0, 1.0,
+    1.0, 2.0,
+    1.0, 3.0,
+    1.0, 4.0
+]);
+let b = DVector::from_vec(vec![2.0, 3.0, 4.0, 5.0]);
+
+let x = nalgebra_qr::solve_least_squares(&a, &b, &Default::default())?;
+println!("Solution: {}", x);
+```
+
+### QR Edge Cases and Robustness
+
+The QR implementation includes comprehensive edge case handling:
+
+```rust
+// Empty matrix - returns QRError::EmptyMatrix
+let empty = DMatrix::<f64>::zeros(0, 0);
+let result = nalgebra_qr::compute_qr(&empty, &config);
+
+// Zero matrix - handled gracefully with rank 0
+let zero_matrix = DMatrix::zeros(3, 3);
+let qr = nalgebra_qr::compute_qr(&zero_matrix, &config)?;
+assert_eq!(qr.rank, 0);
+
+// Rank-deficient matrix - detected automatically
+let rank_deficient = DMatrix::from_row_slice(2, 2, &[
+    1.0, 2.0,
+    2.0, 4.0  // Second row is 2 * first row
+]);
+let qr = nalgebra_qr::compute_qr(&rank_deficient, &config)?;
+assert_eq!(qr.rank, 1); // Correctly detects rank deficiency
+
+// NaN/Infinity detection - returns QRError::NumericalInstability
+let mut nan_matrix = DMatrix::from_element(2, 2, 1.0);
+nan_matrix[(0, 0)] = f64::NAN;
+let result = nalgebra_qr::compute_qr(&nan_matrix, &config);
+```
+
 ## API Reference
 
 ### Nalgebra SVD
@@ -188,6 +257,22 @@ println!("Hessian: {}", hessian);
 - `numerical_gradient(f, x, config)` - Compute gradient for scalar functions
 - `numerical_hessian(f, x, config)` - Compute Hessian matrix (second-order derivatives)
 
+### QR Decomposition
+
+#### Nalgebra QR Functions
+- `compute_qr(matrix, config)` - Compute full QR decomposition A = QR
+- `compute_reduced_qr(matrix, config)` - Compute reduced QR decomposition (economy size)
+- `compute_qr_with_pivoting(matrix, config)` - Compute QR with column pivoting
+- `solve_least_squares(matrix, rhs, config)` - Solve least squares problem using QR
+- `reconstruct_matrix(qr)` - Reconstruct original matrix from QR components
+- `condition_number(qr)` - Compute condition number from QR decomposition
+
+#### Ndarray QR Functions
+- `compute_qr(matrix, config)` - Compute full QR decomposition A = QR
+- `compute_reduced_qr(matrix, config)` - Compute reduced QR decomposition (economy size)
+- `compute_qr_with_pivoting(matrix, config)` - Compute QR with column pivoting
+- `solve_least_squares(matrix, rhs, config)` - Solve least squares problem using QR
+
 ## Examples
 
 Run the examples:
@@ -201,6 +286,9 @@ cargo run --example matrix_functions_example
 
 # Jacobian computation example
 cargo run --example jacobian_example
+
+# QR decomposition example
+cargo run --example qr_example
 ```
 
 ## Testing
