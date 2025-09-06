@@ -115,11 +115,43 @@
 //! println!("A^0.5: {}", power_matrix);
 //! # Ok::<(), rust_linalg::matrix_functions::MatrixFunctionError>(())
 //! ```
+//!
+//! ### Jacobian Computation
+//! ```rust
+//! use rust_linalg::jacobian::nalgebra_jacobian;
+//! use nalgebra::DVector;
+//!
+//! let f = |x: &DVector<f64>| -> Result<DVector<f64>, String> {
+//!     Ok(DVector::from_vec(vec![x[0] * x[0], x[1] * x[1]]))
+//! };
+//!
+//! let x = DVector::from_vec(vec![2.0, 3.0]);
+//! let jacobian = nalgebra_jacobian::numerical_jacobian(&f, &x, &Default::default())?;
+//! println!("Jacobian: {}", jacobian);
+//! # Ok::<(), rust_linalg::jacobian::JacobianError>(())
+//! ```
+//!
+//! ### Gradient Computation
+//! ```rust
+//! use rust_linalg::jacobian::nalgebra_jacobian;
+//! use nalgebra::DVector;
+//!
+//! let f = |x: &DVector<f64>| -> Result<f64, String> {
+//!     Ok(x[0] * x[0] + x[1] * x[1])
+//! };
+//!
+//! let x = DVector::from_vec(vec![3.0, 4.0]);
+//! let gradient = nalgebra_jacobian::numerical_gradient(&f, &x, &Default::default())?;
+//! println!("Gradient: {}", gradient);
+//! # Ok::<(), rust_linalg::jacobian::JacobianError>(())
+//! ```
 
 pub mod svd;
 pub mod matrix_functions;
+pub mod jacobian;
 pub mod utils;
 
 /// Re-exports for convenience
 pub use svd::*;
 pub use matrix_functions::*;
+pub use jacobian::*;

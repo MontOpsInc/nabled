@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Jacobian Computation** - Numerical differentiation and gradient computation
+  - Numerical Jacobian computation using finite differences for both nalgebra and ndarray
+  - Forward and central difference methods for higher accuracy
+  - Gradient computation for scalar functions
+  - Hessian matrix computation (second-order partial derivatives)
+  - Configurable step size and tolerance via JacobianConfig
+  - Comprehensive error handling with JacobianError enum
+  - Extensive test suite with 8 new tests covering all functionality
+  - Working example demonstrating all Jacobian features
+  - Support for both vector-valued and scalar functions
 - QR decomposition implementations
 - LU decomposition implementations
 - Eigenvalue decomposition
@@ -45,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Spectral norm computation
   - Matrix comparison utilities
 - **Comprehensive testing**
-  - Unit tests for both implementations (12 tests total: 5 SVD + 7 matrix functions)
+  - Unit tests for all implementations (20 tests total: 5 SVD + 7 matrix functions + 8 Jacobian)
   - Integration tests covering edge cases (12 tests)
   - Test coverage for error handling
   - Matrix reconstruction accuracy verification
@@ -61,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Details
 - **Dependencies**: nalgebra 0.32, ndarray 0.15, ndarray-linalg 0.16
-- **Error Handling**: Robust error handling with custom `SVDError` and `MatrixFunctionError` enums
+- **Error Handling**: Robust error handling with custom `SVDError`, `MatrixFunctionError`, and `JacobianError` enums
 - **Generic Programming**: Flexible type system supporting different numeric types
 - **Memory Safety**: All operations are memory-safe with proper ownership handling
 - **Cross-compatibility**: Seamless conversion between nalgebra and ndarray ecosystems
