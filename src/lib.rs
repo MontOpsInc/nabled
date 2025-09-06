@@ -145,10 +145,47 @@
 //! println!("Gradient: {}", gradient);
 //! # Ok::<(), rust_linalg::jacobian::JacobianError>(())
 //! ```
+//!
+//! ### QR Decomposition
+//! ```rust
+//! use rust_linalg::qr::nalgebra_qr;
+//! use nalgebra::DMatrix;
+//!
+//! let matrix = DMatrix::from_row_slice(3, 3, &[
+//!     1.0, 2.0, 3.0,
+//!     4.0, 5.0, 6.0,
+//!     7.0, 8.0, 10.0
+//! ]);
+//!
+//! let qr = nalgebra_qr::compute_qr(&matrix, &Default::default())?;
+//! println!("Q: {}", qr.q);
+//! println!("R: {}", qr.r);
+//! println!("Rank: {}", qr.rank);
+//! # Ok::<(), rust_linalg::qr::QRError>(())
+//! ```
+//!
+//! ### Least Squares Solving
+//! ```rust
+//! use rust_linalg::qr::nalgebra_qr;
+//! use nalgebra::{DMatrix, DVector};
+//!
+//! let a = DMatrix::from_row_slice(4, 2, &[
+//!     1.0, 1.0,
+//!     1.0, 2.0,
+//!     1.0, 3.0,
+//!     1.0, 4.0
+//! ]);
+//! let b = DVector::from_vec(vec![2.0, 3.0, 4.0, 5.0]);
+//!
+//! let x = nalgebra_qr::solve_least_squares(&a, &b, &Default::default())?;
+//! println!("Solution: {}", x);
+//! # Ok::<(), rust_linalg::qr::QRError>(())
+//! ```
 
 pub mod svd;
 pub mod matrix_functions;
 pub mod jacobian;
+pub mod qr;
 pub mod utils;
 
 /// Re-exports for convenience
@@ -156,3 +193,5 @@ pub use svd::*;
 pub use matrix_functions::*;
 pub use jacobian::*;
 pub use jacobian::{JacobianConfig, JacobianError};
+pub use qr::*;
+pub use qr::{QRConfig, QRError, QRResult};

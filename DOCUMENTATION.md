@@ -7,7 +7,8 @@ This document provides detailed documentation for all modules in the rust-linalg
 1. [SVD (Singular Value Decomposition)](#svd-singular-value-decomposition)
 2. [Matrix Functions](#matrix-functions)
 3. [Jacobian Computation](#jacobian-computation)
-4. [Utility Functions](#utility-functions)
+4. [QR Decomposition](#qr-decomposition)
+5. [Utility Functions](#utility-functions)
 
 ---
 
@@ -502,11 +503,278 @@ pub enum JacobianError {
 
 ---
 
+## QR Decomposition
+
+The QR decomposition module provides implementations for both `nalgebra` and `ndarray` that compute the QR decomposition of matrices using Householder reflections.
+
+### Nalgebra QR Functions
+
+#### `compute_qr(matrix: &DMatrix<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>`
+
+Computes the full QR decomposition of a matrix using nalgebra's built-in QR algorithm.
+
+**Parameters:**
+- `matrix: &DMatrix<T>` - Input matrix to decompose (can be square or rectangular)
+- `config: &QRConfig<T>` - Configuration for the decomposition
+
+**Returns:**
+- `Result<QRResult<T>, QRError>` - QR result containing Q, R, and rank information
+
+**Example:**
+```rust
+use rust_linalg::qr::nalgebra_qr;
+use nalgebra::DMatrix;
+
+let matrix = DMatrix::from_row_slice(3, 3, &[
+    1.0, 2.0, 3.0,
+    4.0, 5.0, 6.0,
+    7.0, 8.0, 10.0
+]);
+
+let qr = nalgebra_qr::compute_qr(&matrix, &Default::default())?;
+println!("Q: {}", qr.q);
+println!("R: {}", qr.r);
+println!("Rank: {}", qr.rank);
+```
+
+#### `compute_reduced_qr(matrix: &DMatrix<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>`
+
+Computes the reduced QR decomposition (economy size) for rectangular matrices.
+
+**Parameters:**
+- `matrix: &DMatrix<T>` - Input matrix to decompose
+- `config: &QRConfig<T>` - Configuration for the decomposition
+
+**Returns:**
+- `Result<QRResult<T>, QRError>` - Reduced QR result with Q as m×min(m,n) and R as min(m,n)×n
+
+**Example:**
+```rust
+use rust_linalg::qr::nalgebra_qr;
+use nalgebra::DMatrix;
+
+let matrix = DMatrix::from_row_slice(4, 3, &[
+    1.0, 2.0, 3.0,
+    4.0, 5.0, 6.0,
+    7.0, 8.0, 9.0,
+    10.0, 11.0, 12.0
+]);
+
+let qr = nalgebra_qr::compute_reduced_qr(&matrix, &Default::default())?;
+// Q is 4×3, R is 3×3
+```
+
+#### `compute_qr_with_pivoting(matrix: &DMatrix<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>`
+
+Computes QR decomposition with column pivoting for numerical stability.
+
+**Parameters:**
+- `matrix: &DMatrix<T>` - Input matrix to decompose
+- `config: &QRConfig<T>` - Configuration for the decomposition
+
+**Returns:**
+- `Result<QRResult<T>, QRError>` - QR result with pivoting information
+
+#### `solve_least_squares(matrix: &DMatrix<T>, rhs: &DVector<T>, config: &QRConfig<T>) -> Result<DVector<T>, QRError>`
+
+Solves least squares problem min ||Ax - b||₂ using QR decomposition.
+
+**Parameters:**
+- `matrix: &DMatrix<T>` - Coefficient matrix A
+- `rhs: &DVector<T>` - Right-hand side vector b
+- `config: &QRConfig<T>` - Configuration for the decomposition
+
+**Returns:**
+- `Result<DVector<T>, QRError>` - Solution vector x
+
+**Example:**
+```rust
+use rust_linalg::qr::nalgebra_qr;
+use nalgebra::{DMatrix, DVector};
+
+let a = DMatrix::from_row_slice(4, 2, &[
+    1.0, 1.0,
+    1.0, 2.0,
+    1.0, 3.0,
+    1.0, 4.0
+]);
+let b = DVector::from_vec(vec![2.0, 3.0, 4.0, 5.0]);
+
+let x = nalgebra_qr::solve_least_squares(&a, &b, &Default::default())?;
+println!("Solution: {}", x);
+```
+
+### Edge Cases and Robustness
+
+The QR decomposition implementation includes comprehensive edge case handling for numerical robustness:
+
+#### **Empty and Zero Matrices**
+```rust
+// Empty matrix - returns QRError::EmptyMatrix
+let empty = DMatrix::<f64>::zeros(0, 0);
+let result = nalgebra_qr::compute_qr(&empty, &config);
+
+// Zero matrix - handled gracefully with rank 0
+let zero_matrix = DMatrix::zeros(3, 3);
+let qr = nalgebra_qr::compute_qr(&zero_matrix, &config)?;
+assert_eq!(qr.rank, 0);
+```
+
+#### **Single Element Matrices**
+```rust
+// Single element matrix - optimized path
+let single = DMatrix::from_element(1, 1, 5.0);
+let qr = nalgebra_qr::compute_qr(&single, &config)?;
+// Q = [[1]], R = [[5]], rank = 1
+```
+
+#### **Numerical Stability Checks**
+```rust
+// NaN/Infinity detection - returns QRError::NumericalInstability
+let mut nan_matrix = DMatrix::from_element(2, 2, 1.0);
+nan_matrix[(0, 0)] = f64::NAN;
+let result = nalgebra_qr::compute_qr(&nan_matrix, &config);
+
+// Very small rank tolerance - returns QRError::InvalidInput
+let bad_config = QRConfig { 
+    rank_tolerance: 1e-20,
+    max_iterations: 100,
+    use_pivoting: false
+};
+```
+
+#### **Rank-Deficient Matrices**
+```rust
+// Rank-deficient matrix - detected and handled
+let rank_deficient = DMatrix::from_row_slice(2, 2, &[
+    1.0, 2.0,
+    2.0, 4.0  // Second row is 2 * first row
+]);
+let qr = nalgebra_qr::compute_qr(&rank_deficient, &config)?;
+assert_eq!(qr.rank, 1); // Correctly detects rank deficiency
+```
+
+#### **Least Squares Edge Cases**
+```rust
+// Dimension mismatch - returns QRError::InvalidDimensions
+let matrix = DMatrix::from_element(2, 2, 1.0);
+let vector = DVector::from_vec(vec![1.0, 2.0, 3.0]); // Wrong size
+let result = nalgebra_qr::solve_least_squares(&matrix, &vector, &config);
+
+// Underdetermined system - returns QRError::InvalidDimensions
+let matrix = DMatrix::from_element(2, 3, 1.0); // 2 equations, 3 unknowns
+let vector = DVector::from_vec(vec![1.0, 2.0]);
+let result = nalgebra_qr::solve_least_squares(&matrix, &vector, &config);
+
+// Singular matrix - returns QRError::SingularMatrix
+let singular = DMatrix::from_row_slice(2, 2, &[
+    1.0, 2.0,
+    2.0, 4.0
+]);
+let vector = DVector::from_vec(vec![1.0, 2.0]);
+let result = nalgebra_qr::solve_least_squares(&singular, &vector, &config);
+```
+
+#### `reconstruct_matrix(qr: &QRResult<T>) -> DMatrix<T>`
+
+Reconstructs the original matrix from QR decomposition components.
+
+**Parameters:**
+- `qr: &QRResult<T>` - QR decomposition result
+
+**Returns:**
+- `DMatrix<T>` - Reconstructed matrix A = QR
+
+#### `condition_number(qr: &QRResult<T>) -> T`
+
+Computes the condition number from QR decomposition.
+
+**Parameters:**
+- `qr: &QRResult<T>` - QR decomposition result
+
+**Returns:**
+- `T` - Condition number (ratio of largest to smallest diagonal element of R)
+
+### Ndarray QR Functions
+
+#### `compute_qr(matrix: &Array2<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>`
+
+Computes QR decomposition for ndarray matrices by converting to nalgebra.
+
+**Parameters:**
+- `matrix: &Array2<T>` - Input ndarray matrix
+- `config: &QRConfig<T>` - Configuration for the decomposition
+
+**Returns:**
+- `Result<QRResult<T>, QRError>` - QR result (nalgebra matrices)
+
+#### `compute_reduced_qr(matrix: &Array2<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>`
+
+Computes reduced QR decomposition for ndarray matrices.
+
+#### `compute_qr_with_pivoting(matrix: &Array2<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>`
+
+Computes QR decomposition with pivoting for ndarray matrices.
+
+#### `solve_least_squares(matrix: &Array2<T>, rhs: &Array1<T>, config: &QRConfig<T>) -> Result<Array1<T>, QRError>`
+
+Solves least squares problem for ndarray matrices.
+
+### QR Configuration
+
+#### `QRConfig<T>`
+
+Configuration structure for QR decomposition parameters.
+
+**Fields:**
+- `rank_tolerance: T` - Tolerance for rank determination (default: 1e-12)
+- `max_iterations: usize` - Maximum iterations for iterative methods (default: 100)
+- `use_pivoting: bool` - Enable column pivoting (default: false)
+
+### QR Result
+
+#### `QRResult<T>`
+
+Result structure containing QR decomposition components.
+
+**Fields:**
+- `q: DMatrix<T>` - Orthogonal matrix Q
+- `r: DMatrix<T>` - Upper triangular matrix R
+- `p: Option<DMatrix<T>>` - Column permutation matrix (if pivoting was used)
+- `rank: usize` - Matrix rank
+
+### QR Error Handling
+
+#### `QRError`
+
+Error types for QR decomposition operations.
+
+**Variants:**
+- `EmptyMatrix` - Matrix is empty
+- `SingularMatrix` - Matrix is singular or rank-deficient
+- `ConvergenceFailed` - Convergence failed for iterative methods
+- `InvalidDimensions(String)` - Invalid input dimensions
+- `NumericalInstability` - Numerical instability detected
+- `InvalidInput(String)` - Invalid input parameters
+
+### Performance Considerations
+
+- QR decomposition is O(mn²) for m×n matrices
+- Reduced QR is more memory efficient for rectangular matrices
+- Column pivoting improves numerical stability but adds overhead
+- Least squares solving is O(mn²) using QR decomposition
+- Condition number computation is O(min(m,n))
+
+---
+
 ## Best Practices
 
 1. **Use appropriate step sizes** for Jacobian computation (typically 1e-6 to 1e-8)
 2. **Prefer central differences** for higher accuracy when function evaluation is cheap
 3. **Use eigenvalue decomposition** for matrix functions when matrices are symmetric
 4. **Check condition numbers** before using SVD for matrix functions
-5. **Handle errors appropriately** - all functions return Results for robust error handling
-6. **Consider matrix size** when choosing between nalgebra and ndarray implementations
+5. **Use QR decomposition** for least squares problems and overdetermined systems
+6. **Prefer reduced QR** for rectangular matrices to save memory
+7. **Enable column pivoting** for numerically challenging matrices
+8. **Handle errors appropriately** - all functions return Results for robust error handling
+9. **Consider matrix size** when choosing between nalgebra and ndarray implementations
