@@ -6,7 +6,7 @@ Advanced linear algebra functions built on top of `nalgebra` and `ndarray` crate
 
 - **Singular Value Decomposition (SVD)** implementations using both `nalgebra` and `ndarray`
 - **Matrix Functions** - Matrix exponential, logarithm, and power operations
-- **Jacobian Computation** - Numerical differentiation and gradient computation
+- **Jacobian Computation** - Numerical differentiation and gradient computation (real and complex)
 - **Truncated SVD** for dimensionality reduction
 - **Matrix reconstruction** from SVD components
 - **Condition number** and **matrix rank** computation
@@ -120,6 +120,27 @@ let f = |x: &DVector<f64>| -> Result<f64, String> {
 let x = DVector::from_vec(vec![3.0, 4.0]);
 let gradient = nalgebra_jacobian::numerical_gradient(&f, &x, &Default::default())?;
 println!("Gradient: {}", gradient);
+```
+
+### Complex Derivatives
+
+```rust
+use rust_linalg::jacobian::complex_jacobian;
+use nalgebra::DVector;
+use num_complex::Complex;
+
+// Complex function f(z) = z²
+let f = |x: &DVector<Complex<f64>>| -> Result<DVector<Complex<f64>>, String> {
+    let mut result = DVector::zeros(x.len());
+    for i in 0..x.len() {
+        result[i] = x[i] * x[i];
+    }
+    Ok(result)
+};
+
+let x = DVector::from_vec(vec![Complex::new(1.0, 0.0), Complex::new(2.0, 0.0)]);
+let jacobian = complex_jacobian::numerical_jacobian(&f, &x, &Default::default())?;
+println!("Complex Jacobian: {}", jacobian);
 ```
 
 ### Hessian Matrix
