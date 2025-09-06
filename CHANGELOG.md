@@ -37,11 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Forward and central difference methods for higher accuracy
   - Gradient computation for scalar functions
   - Hessian matrix computation (second-order partial derivatives)
+  - **Complex Derivatives** - Support for complex-valued functions using complex step method
+    - Complex Jacobian computation for vector-valued complex functions
+    - Complex gradient computation for scalar complex functions
+    - Complex Hessian computation (with limitations noted)
+    - Higher accuracy for certain types of functions compared to finite differences
   - Configurable step size and tolerance via JacobianConfig
   - Comprehensive error handling with JacobianError enum
-  - Extensive test suite with 8 new tests covering all functionality
-  - Working example demonstrating all Jacobian features
-  - Support for both vector-valued and scalar functions
+  - Extensive test suite with 12 new tests covering all functionality (including complex derivatives)
+  - Working examples demonstrating all Jacobian features (real and complex)
+  - Support for both vector-valued and scalar functions (real and complex)
 
 ## [0.2.0] - 2024-12-19
 

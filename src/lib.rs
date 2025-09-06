@@ -146,6 +146,26 @@
 //! # Ok::<(), rust_linalg::jacobian::JacobianError>(())
 //! ```
 //!
+//! ### Complex Derivatives
+//! ```rust
+//! use rust_linalg::jacobian::complex_jacobian;
+//! use nalgebra::DVector;
+//! use num_complex::Complex;
+//! 
+//! let f = |x: &DVector<Complex<f64>>| -> Result<DVector<Complex<f64>>, String> {
+//!     let mut result = DVector::zeros(x.len());
+//!     for i in 0..x.len() {
+//!         result[i] = x[i] * x[i]; // f(z) = z²
+//!     }
+//!     Ok(result)
+//! };
+//! 
+//! let x = DVector::from_vec(vec![Complex::new(1.0, 2.0), Complex::new(3.0, 4.0)]);
+//! let jacobian = complex_jacobian::numerical_jacobian(&f, &x, &Default::default())?;
+//! println!("Complex Jacobian: {}", jacobian);
+//! # Ok::<(), rust_linalg::jacobian::JacobianError>(())
+//! ```
+//!
 //! ### QR Decomposition
 //! ```rust
 //! use rust_linalg::qr::nalgebra_qr;

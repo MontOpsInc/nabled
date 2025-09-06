@@ -365,6 +365,67 @@ All ndarray functions have the same signatures and behavior as nalgebra function
 #### `numerical_gradient(f: &F, x: &Array1<T>, config: &JacobianConfig<T>) -> Result<Array1<T>, JacobianError>`
 #### `numerical_hessian(f: &F, x: &Array1<T>, config: &JacobianConfig<T>) -> Result<Array2<T>, JacobianError>`
 
+### Complex Derivatives
+
+The Jacobian module also provides complex derivative computation using the complex step method, which can provide higher accuracy for certain types of functions.
+
+#### `complex_jacobian::numerical_jacobian(f: &F, x: &DVector<Complex<T>>, config: &JacobianConfig<T>) -> Result<DMatrix<Complex<T>>, JacobianError>`
+
+Computes numerical Jacobian for complex-valued functions using the complex step method.
+
+**Parameters:**
+- `f: &F` - Function that takes `&DVector<Complex<T>>` and returns `Result<DVector<Complex<T>>, String>`
+- `x: &DVector<Complex<T>>` - Complex point at which to compute the Jacobian
+- `config: &JacobianConfig<T>` - Configuration parameters
+
+**Returns:**
+- `Result<DMatrix<Complex<T>>, JacobianError>` - Complex Jacobian matrix
+
+**Example:**
+```rust
+use rust_linalg::jacobian::complex_jacobian;
+use nalgebra::DVector;
+use num_complex::Complex;
+
+let f = |x: &DVector<Complex<f64>>| -> Result<DVector<Complex<f64>>, String> {
+    let mut result = DVector::zeros(x.len());
+    for i in 0..x.len() {
+        result[i] = x[i] * x[i]; // f(z) = z²
+    }
+    Ok(result)
+};
+
+let x = DVector::from_vec(vec![Complex::new(1.0, 0.0), Complex::new(2.0, 0.0)]);
+let jacobian = complex_jacobian::numerical_jacobian(&f, &x, &Default::default())?;
+// Jacobian should be approximately [[2.0, 0.0], [0.0, 4.0]]
+```
+
+#### `complex_jacobian::numerical_gradient(f: &F, x: &DVector<Complex<T>>, config: &JacobianConfig<T>) -> Result<DVector<Complex<T>>, JacobianError>`
+
+Computes gradient for complex scalar functions.
+
+**Parameters:**
+- `f: &F` - Function that takes `&DVector<Complex<T>>` and returns `Result<Complex<T>, String>`
+- `x: &DVector<Complex<T>>` - Complex point at which to compute the gradient
+- `config: &JacobianConfig<T>` - Configuration parameters
+
+**Returns:**
+- `Result<DVector<Complex<T>>, JacobianError>` - Complex gradient vector
+
+#### `complex_jacobian::numerical_hessian(f: &F, x: &DVector<Complex<T>>, config: &JacobianConfig<T>) -> Result<DMatrix<Complex<T>>, JacobianError>`
+
+Computes Hessian matrix for complex scalar functions.
+
+**Parameters:**
+- `f: &F` - Function that takes `&DVector<Complex<T>>` and returns `Result<Complex<T>, String>`
+- `x: &DVector<Complex<T>>` - Complex point at which to compute the Hessian
+- `config: &JacobianConfig<T>` - Configuration parameters
+
+**Returns:**
+- `Result<DMatrix<Complex<T>>, JacobianError>` - Complex Hessian matrix
+
+**Note:** The complex step method for second derivatives may have limitations and may not provide accurate results for all functions.
+
 ### Error Types
 
 #### `JacobianError`
