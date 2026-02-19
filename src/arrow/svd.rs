@@ -27,7 +27,10 @@ pub fn compute_svd(batch: &RecordBatch) -> Result<ArrowSVDResult, ArrowLinalgErr
 }
 
 /// Compute truncated SVD
-pub fn compute_truncated_svd(batch: &RecordBatch, k: usize) -> Result<ArrowSVDResult, ArrowLinalgError> {
+pub fn compute_truncated_svd(
+    batch: &RecordBatch,
+    k: usize,
+) -> Result<ArrowSVDResult, ArrowLinalgError> {
     let array = record_batch_to_ndarray(batch)?;
     let svd = ndarray_svd::compute_truncated_svd(&array, k)?;
     Ok(svd_to_arrow(svd))
@@ -56,11 +59,7 @@ pub fn reconstruct_matrix(svd: &ArrowSVDResult) -> Result<RecordBatch, ArrowLina
 
 /// Compute condition number from SVD result
 pub fn condition_number(svd: &ArrowSVDResult) -> f64 {
-    let values: Vec<f64> = svd
-        .singular_values
-        .iter()
-        .filter_map(|v| v)
-        .collect();
+    let values: Vec<f64> = svd.singular_values.iter().flatten().collect();
     if values.is_empty() {
         return 0.0;
     }
@@ -75,11 +74,7 @@ pub fn condition_number(svd: &ArrowSVDResult) -> f64 {
 
 /// Compute matrix rank from SVD result
 pub fn matrix_rank(svd: &ArrowSVDResult, tolerance: Option<f64>) -> usize {
-    let values: Vec<f64> = svd
-        .singular_values
-        .iter()
-        .filter_map(|v| v)
-        .collect();
+    let values: Vec<f64> = svd.singular_values.iter().flatten().collect();
     let tol = tolerance.unwrap_or_else(|| {
         let max_sv = values.iter().fold(0.0f64, |a, &b| a.max(b));
         1e-10 * max_sv

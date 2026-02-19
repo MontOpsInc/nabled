@@ -124,7 +124,7 @@ pub mod nalgebra_lu {
 /// Ndarray LU decomposition (via nalgebra)
 pub mod ndarray_lu {
     use super::*;
-    use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute LU decomposition
     pub fn compute_lu<T: Float + RealField>(

@@ -31,7 +31,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let projected = pca::nalgebra_pca::transform(&data, &pca_result);
-    println!("\nProjected data (scores): {} x {}", projected.nrows(), projected.ncols());
+    println!(
+        "\nProjected data (scores): {} x {}",
+        projected.nrows(),
+        projected.ncols()
+    );
 
     Ok(())
 }

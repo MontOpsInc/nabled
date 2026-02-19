@@ -21,13 +21,9 @@ pub fn record_batch_to_nalgebra(batch: &RecordBatch) -> Result<DMatrix<f64>, Arr
     let mut matrix = DMatrix::zeros(num_rows, num_cols);
 
     for (col_idx, column) in batch.columns().iter().enumerate() {
-        let float_array = column
-            .as_primitive_opt::<Float64Type>()
-            .ok_or_else(|| {
-                ArrowConversionError::UnsupportedType(
-                    "All columns must be Float64 type".to_string(),
-                )
-            })?;
+        let float_array = column.as_primitive_opt::<Float64Type>().ok_or_else(|| {
+            ArrowConversionError::UnsupportedType("All columns must be Float64 type".to_string())
+        })?;
 
         if float_array.len() != num_rows {
             return Err(ArrowConversionError::DimensionMismatch(format!(
@@ -59,13 +55,9 @@ pub fn record_batch_to_ndarray(batch: &RecordBatch) -> Result<Array2<f64>, Arrow
     let mut data = Vec::with_capacity(num_rows * num_cols);
 
     for column in batch.columns() {
-        let float_array = column
-            .as_primitive_opt::<Float64Type>()
-            .ok_or_else(|| {
-                ArrowConversionError::UnsupportedType(
-                    "All columns must be Float64 type".to_string(),
-                )
-            })?;
+        let float_array = column.as_primitive_opt::<Float64Type>().ok_or_else(|| {
+            ArrowConversionError::UnsupportedType("All columns must be Float64 type".to_string())
+        })?;
 
         if float_array.len() != num_rows {
             return Err(ArrowConversionError::DimensionMismatch(
@@ -92,7 +84,9 @@ pub fn record_batch_to_ndarray(batch: &RecordBatch) -> Result<Array2<f64>, Arrow
 }
 
 /// Convert nalgebra DMatrix to RecordBatch
-pub fn nalgebra_to_record_batch(matrix: &DMatrix<f64>) -> Result<RecordBatch, ArrowConversionError> {
+pub fn nalgebra_to_record_batch(
+    matrix: &DMatrix<f64>,
+) -> Result<RecordBatch, ArrowConversionError> {
     let (rows, cols) = matrix.shape();
 
     if rows == 0 || cols == 0 {
@@ -141,7 +135,7 @@ pub fn ndarray_to_record_batch(array: &Array2<f64>) -> Result<RecordBatch, Arrow
 pub fn float64_array_to_dvector(
     array: &PrimitiveArray<Float64Type>,
 ) -> Result<DVector<f64>, ArrowConversionError> {
-    if array.len() == 0 {
+    if array.is_empty() {
         return Err(ArrowConversionError::EmptyArray);
     }
 
@@ -164,7 +158,7 @@ pub fn dvector_to_float64_array(vector: &DVector<f64>) -> Float64Array {
 pub fn float64_array_to_array1(
     array: &PrimitiveArray<Float64Type>,
 ) -> Result<Array1<f64>, ArrowConversionError> {
-    if array.len() == 0 {
+    if array.is_empty() {
         return Err(ArrowConversionError::EmptyArray);
     }
 

@@ -35,7 +35,9 @@ pub mod nalgebra_stats {
     use super::*;
 
     /// Compute column means
-    pub fn column_means<T: RealField + Copy + num_traits::NumCast>(matrix: &DMatrix<T>) -> DVector<T> {
+    pub fn column_means<T: RealField + Copy + num_traits::NumCast>(
+        matrix: &DMatrix<T>,
+    ) -> DVector<T> {
         let (rows, cols) = matrix.shape();
         let n: T = num_traits::NumCast::from(rows).expect("rows must fit in T");
         let mut means = DVector::zeros(cols);
@@ -50,7 +52,9 @@ pub mod nalgebra_stats {
     }
 
     /// Center columns (subtract mean from each column)
-    pub fn center_columns<T: RealField + Copy + num_traits::NumCast>(matrix: &DMatrix<T>) -> DMatrix<T> {
+    pub fn center_columns<T: RealField + Copy + num_traits::NumCast>(
+        matrix: &DMatrix<T>,
+    ) -> DMatrix<T> {
         let means = column_means(matrix);
         let mut centered = matrix.clone();
         let (rows, cols) = matrix.shape();
@@ -105,7 +109,7 @@ pub mod nalgebra_stats {
 /// Ndarray stats functions
 pub mod ndarray_stats {
     use super::*;
-    use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute column means
     pub fn column_means<T: Float + RealField>(matrix: &Array2<T>) -> Array1<T> {

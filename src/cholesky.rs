@@ -117,7 +117,7 @@ pub mod nalgebra_cholesky {
 /// Ndarray Cholesky decomposition (via nalgebra)
 pub mod ndarray_cholesky {
     use super::*;
-    use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute Cholesky decomposition
     pub fn compute_cholesky<T: Float + RealField>(

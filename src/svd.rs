@@ -1,11 +1,11 @@
 //! # Singular Value Decomposition (SVD)
-//! 
+//!
 //! This module provides SVD implementations using both nalgebra and ndarray.
 //! It includes enhanced algorithms and utilities for SVD computation.
 
 use nalgebra::{DMatrix, DVector, RealField};
-use ndarray::{Array2, Array1, s};
-use num_traits::{Float, float::FloatCore};
+use ndarray::{s, Array1, Array2};
+use num_traits::{float::FloatCore, Float};
 use std::fmt;
 
 /// SVD result structure for nalgebra
@@ -69,7 +69,7 @@ pub mod nalgebra_svd {
 
         // Use nalgebra's SVD implementation
         let svd = matrix.clone().svd(true, true);
-        
+
         // Check if U and V^T were computed successfully
         if svd.u.is_some() && svd.v_t.is_some() {
             Ok(NalgebraSVD {
@@ -93,9 +93,16 @@ pub mod nalgebra_svd {
         }
 
         let mut svd = compute_svd(matrix)?;
-        let sv_values: Vec<T> = svd.singular_values
+        let sv_values: Vec<T> = svd
+            .singular_values
             .iter()
-            .map(|sv| if *sv < tolerance { T::zero() } else { sv.clone() })
+            .map(|sv| {
+                if *sv < tolerance {
+                    T::zero()
+                } else {
+                    sv.clone()
+                }
+            })
             .collect();
         svd.singular_values = DVector::from_vec(sv_values);
         Ok(svd)
@@ -107,13 +114,15 @@ pub mod nalgebra_svd {
         k: usize,
     ) -> Result<NalgebraSVD<T>, SVDError> {
         let full_svd = compute_svd(matrix)?;
-        
+
         let _m = full_svd.u.nrows();
         let _n = full_svd.vt.ncols();
         let k = k.min(full_svd.singular_values.len());
-        
+
         if k == 0 {
-            return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
+            return Err(SVDError::InvalidInput(
+                "k must be greater than 0".to_string(),
+            ));
         }
 
         // Truncate the matrices
@@ -140,10 +149,10 @@ pub mod nalgebra_svd {
         if singular_values.is_empty() {
             return T::zero();
         }
-        
+
         let max_sv = singular_values.max();
         let min_sv = singular_values.min();
-        
+
         if min_sv.is_zero() {
             T::infinity()
         } else {
@@ -157,10 +166,8 @@ pub mod nalgebra_svd {
             let max_sv = svd.singular_values.max();
             T::from_f64(1e-10).unwrap() * max_sv
         });
-        
-        svd.singular_values.iter()
-            .filter(|&sv| *sv > tol)
-            .count()
+
+        svd.singular_values.iter().filter(|&sv| *sv > tol).count()
     }
 }
 
@@ -171,7 +178,9 @@ pub mod ndarray_svd {
 
     /// Compute SVD using conversion to nalgebra and back
     /// Note: This is a simplified implementation that converts to nalgebra for computation
-    pub fn compute_svd<T: Float + RealField>(matrix: &Array2<T>) -> Result<NdarraySVD<T>, SVDError> {
+    pub fn compute_svd<T: Float + RealField>(
+        matrix: &Array2<T>,
+    ) -> Result<NdarraySVD<T>, SVDError> {
         if matrix.is_empty() {
             return Err(SVDError::EmptyMatrix);
         }
@@ -179,16 +188,16 @@ pub mod ndarray_svd {
         // Convert ndarray to nalgebra
         use crate::utils::ndarray_to_nalgebra;
         let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        
+
         // Compute SVD using nalgebra
         let nalgebra_svd = crate::svd::nalgebra_svd::compute_svd(&nalgebra_matrix)?;
-        
+
         // Convert results back to ndarray
         use crate::utils::nalgebra_to_ndarray;
         let u = nalgebra_to_ndarray(&nalgebra_svd.u);
         let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
         let singular_values = Array1::from_vec(nalgebra_svd.singular_values.as_slice().to_vec());
-        
+
         Ok(NdarraySVD {
             u,
             singular_values,
@@ -206,9 +215,10 @@ pub mod ndarray_svd {
             return Err(SVDError::EmptyMatrix);
         }
 
-        use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+        use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
         let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let nalgebra_svd = crate::svd::nalgebra_svd::compute_svd_with_tolerance(&nalgebra_matrix, tolerance)?;
+        let nalgebra_svd =
+            crate::svd::nalgebra_svd::compute_svd_with_tolerance(&nalgebra_matrix, tolerance)?;
 
         let u = nalgebra_to_ndarray(&nalgebra_svd.u);
         let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
@@ -227,11 +237,13 @@ pub mod ndarray_svd {
         k: usize,
     ) -> Result<NdarraySVD<T>, SVDError> {
         let full_svd = compute_svd(matrix)?;
-        
+
         let k = k.min(full_svd.singular_values.len());
-        
+
         if k == 0 {
-            return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
+            return Err(SVDError::InvalidInput(
+                "k must be greater than 0".to_string(),
+            ));
         }
 
         // Truncate the matrices
@@ -249,12 +261,12 @@ pub mod ndarray_svd {
     /// Reconstruct the original matrix from SVD components
     pub fn reconstruct_matrix<T: Float>(svd: &NdarraySVD<T>) -> Array2<T> {
         let mut result = Array2::zeros((svd.u.nrows(), svd.vt.ncols()));
-        
+
         for i in 0..svd.singular_values.len() {
             let sigma = svd.singular_values[i];
             let u_col = svd.u.column(i);
             let vt_row = svd.vt.row(i);
-            
+
             // Add sigma * u_col * vt_row to result
             for (j, &u_val) in u_col.iter().enumerate() {
                 for (k, &vt_val) in vt_row.iter().enumerate() {
@@ -262,7 +274,7 @@ pub mod ndarray_svd {
                 }
             }
         }
-        
+
         result
     }
 
@@ -271,10 +283,13 @@ pub mod ndarray_svd {
         if svd.singular_values.is_empty() {
             return T::zero();
         }
-        
+
         let max_sv = svd.singular_values.iter().fold(T::zero(), |a, &b| a.max(b));
-        let min_sv = svd.singular_values.iter().fold(T::infinity(), |a, &b| a.min(b));
-        
+        let min_sv = svd
+            .singular_values
+            .iter()
+            .fold(T::infinity(), |a, &b| a.min(b));
+
         if min_sv.is_zero() {
             T::infinity()
         } else {
@@ -288,10 +303,8 @@ pub mod ndarray_svd {
             let max_sv = svd.singular_values.iter().fold(T::zero(), |a, &b| a.max(b));
             T::from(1e-10).unwrap() * max_sv
         });
-        
-        svd.singular_values.iter()
-            .filter(|&sv| *sv > tol)
-            .count()
+
+        svd.singular_values.iter().filter(|&sv| *sv > tol).count()
     }
 }
 
@@ -305,12 +318,16 @@ mod tests {
     fn test_nalgebra_svd_basic() {
         let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
         let svd = nalgebra_svd::compute_svd(&matrix).unwrap();
-        
+
         // Reconstruct and check
         let reconstructed = nalgebra_svd::reconstruct_matrix(&svd);
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
-                assert!(approx::relative_eq!(matrix[(i, j)], reconstructed[(i, j)], epsilon = 1e-10));
+                assert!(approx::relative_eq!(
+                    matrix[(i, j)],
+                    reconstructed[(i, j)],
+                    epsilon = 1e-10
+                ));
             }
         }
     }
@@ -319,27 +336,27 @@ mod tests {
     fn test_ndarray_svd_basic() {
         let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
         let svd = ndarray_svd::compute_svd(&matrix).unwrap();
-        
+
         // Reconstruct and check
         let reconstructed = ndarray_svd::reconstruct_matrix(&svd);
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
-                assert!(approx::relative_eq!(matrix[[i, j]], reconstructed[[i, j]], epsilon = 1e-10));
+                assert!(approx::relative_eq!(
+                    matrix[[i, j]],
+                    reconstructed[[i, j]],
+                    epsilon = 1e-10
+                ));
             }
         }
     }
 
     #[test]
     fn test_truncated_svd() {
-        let matrix = DMatrix::from_row_slice(3, 3, &[
-            1.0, 2.0, 3.0,
-            4.0, 5.0, 6.0,
-            7.0, 8.0, 9.0
-        ]);
-        
+        let matrix = DMatrix::from_row_slice(3, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
+
         let _full_svd = nalgebra_svd::compute_svd(&matrix).unwrap();
         let truncated_svd = nalgebra_svd::compute_truncated_svd(&matrix, 2).unwrap();
-        
+
         assert_eq!(truncated_svd.singular_values.len(), 2);
         assert_eq!(truncated_svd.u.ncols(), 2);
         assert_eq!(truncated_svd.vt.nrows(), 2);
@@ -354,7 +371,11 @@ mod tests {
         let reconstructed = nalgebra_svd::reconstruct_matrix(&svd);
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
-                assert!(approx::relative_eq!(matrix[(i, j)], reconstructed[(i, j)], epsilon = 1e-10));
+                assert!(approx::relative_eq!(
+                    matrix[(i, j)],
+                    reconstructed[(i, j)],
+                    epsilon = 1e-10
+                ));
             }
         }
     }

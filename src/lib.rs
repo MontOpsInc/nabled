@@ -1,5 +1,5 @@
 //! # Rust Linear Algebra Library
-//! 
+//!
 //! Advanced linear algebra functions built on top of nalgebra and ndarray.
 //! This library provides enhanced implementations of common linear algebra operations
 //! with focus on performance and numerical stability.
@@ -76,7 +76,7 @@
 //! let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
 //! let svd = nalgebra_svd::compute_svd(&matrix)?;
 //! let reconstructed = nalgebra_svd::reconstruct_matrix(&svd);
-//! 
+//!
 //! // reconstructed should be approximately equal to the original matrix
 //! println!("Original: {}", matrix);
 //! println!("Reconstructed: {}", reconstructed);
@@ -151,7 +151,7 @@
 //! use rust_linalg::jacobian::complex_jacobian;
 //! use nalgebra::DVector;
 //! use num_complex::Complex;
-//! 
+//!
 //! let f = |x: &DVector<Complex<f64>>| -> Result<DVector<Complex<f64>>, String> {
 //!     let mut result = DVector::zeros(x.len());
 //!     for i in 0..x.len() {
@@ -159,7 +159,7 @@
 //!     }
 //!     Ok(result)
 //! };
-//! 
+//!
 //! let x = DVector::from_vec(vec![Complex::new(1.0, 2.0), Complex::new(3.0, 4.0)]);
 //! let jacobian = complex_jacobian::numerical_jacobian(&f, &x, &Default::default())?;
 //! println!("Complex Jacobian: {}", jacobian);
@@ -206,26 +206,26 @@
 pub mod arrow;
 pub mod cholesky;
 pub mod eigen;
+pub mod jacobian;
 pub mod lu;
+pub mod matrix_functions;
 pub mod pca;
+pub mod qr;
 pub mod regression;
 pub mod stats;
 pub mod svd;
-pub mod matrix_functions;
-pub mod jacobian;
-pub mod qr;
 pub mod utils;
 
-/// Re-exports for convenience
-pub use svd::*;
-pub use matrix_functions::*;
-pub use jacobian::*;
-pub use jacobian::{JacobianConfig, JacobianError};
-pub use qr::*;
-pub use qr::{QRConfig, QRError, QRResult};
-pub use lu::{LUError, NalgebraLUResult, NdarrayLUResult};
 pub use cholesky::{CholeskyError, NalgebraCholeskyResult, NdarrayCholeskyResult};
 pub use eigen::{EigenError, NalgebraEigenResult, NdarrayEigenResult};
+pub use jacobian::*;
+pub use jacobian::{JacobianConfig, JacobianError};
+pub use lu::{LUError, NalgebraLUResult, NdarrayLUResult};
+pub use matrix_functions::*;
+pub use pca::{NalgebraPCAResult, NdarrayPCAResult, PCAError};
+pub use qr::*;
+pub use qr::{QRConfig, QRError, QRResult};
+pub use regression::{NalgebraRegressionResult, NdarrayRegressionResult, RegressionError};
 pub use stats::StatsError;
-pub use pca::{PCAError, NalgebraPCAResult, NdarrayPCAResult};
-pub use regression::{RegressionError, NalgebraRegressionResult, NdarrayRegressionResult};
+/// Re-exports for convenience
+pub use svd::*;
