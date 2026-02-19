@@ -3,7 +3,7 @@ name = "rust-linalg"
 version = "0.2.0"
 edition = "2021"
 description = "Advanced linear algebra functions built on top of nalgebra and ndarray"
-authors = ["Niklaus Parcell <niklaus.parcell@example.com>"]
+authors = ["Niklaus Parcell <nik.parcell@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/NiklausParcell/rust-linearalgebra-better"
 homepage = "https://github.com/NiklausParcell/rust-linearalgebra-better"
@@ -22,6 +22,9 @@ serde = { version = "1.0", features = ["derive"] }
 num-traits = "0.2"
 num-complex = "0.4"
 approx = "0.5"
+arrow = "55"
+arrow-array = "55"
+arrow-schema = "55"
 
 [dev-dependencies]
 criterion = "0.5"
