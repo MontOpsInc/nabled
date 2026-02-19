@@ -845,4 +845,98 @@ mod tests {
         let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
         assert_relative_eq!(reconstructed, rank_deficient, epsilon = 1e-10);
     }
+
+    #[test]
+    fn test_nalgebra_qr_with_pivoting() {
+        let matrix = DMatrix::from_row_slice(3, 3, &[
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 10.0
+        ]);
+
+        let config = QRConfig::default();
+        let qr = nalgebra_qr::compute_qr_with_pivoting(&matrix, &config).unwrap();
+
+        // Check that Q is orthogonal (Q^T * Q = I)
+        let qt_q = qr.q.transpose() * &qr.q;
+        let identity = DMatrix::identity(3, 3);
+        assert_relative_eq!(qt_q, identity, epsilon = 1e-10);
+
+        // Check that R is upper triangular
+        for i in 1..3 {
+            for j in 0..i {
+                assert_relative_eq!(qr.r[(i, j)], 0.0, epsilon = 1e-10);
+            }
+        }
+
+        // Check reconstruction
+        let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
+        assert_relative_eq!(reconstructed, matrix, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_ndarray_qr_with_pivoting() {
+        let matrix = Array2::from_shape_vec((3, 3), vec![
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 10.0
+        ]).unwrap();
+
+        let config = QRConfig::default();
+        let qr = ndarray_qr::compute_qr_with_pivoting(&matrix, &config).unwrap();
+
+        // Check that Q is orthogonal
+        let qt_q = qr.q.transpose() * &qr.q;
+        let identity = DMatrix::identity(3, 3);
+        assert_relative_eq!(qt_q, identity, epsilon = 1e-10);
+
+        // Check reconstruction
+        let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
+        let expected = ndarray_to_nalgebra(&matrix).unwrap();
+        assert_relative_eq!(reconstructed, expected, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_ndarray_reduced_qr() {
+        let matrix = Array2::from_shape_vec((4, 3), vec![
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 9.0,
+            10.0, 11.0, 12.0
+        ]).unwrap();
+
+        let config = QRConfig::default();
+        let qr = ndarray_qr::compute_reduced_qr(&matrix, &config).unwrap();
+
+        // Check dimensions for reduced QR
+        assert_eq!(qr.q.nrows(), 4);
+        assert_eq!(qr.q.ncols(), 3);
+        assert_eq!(qr.r.nrows(), 3);
+        assert_eq!(qr.r.ncols(), 3);
+
+        // Check that Q^T * Q = I (for reduced Q)
+        let qt_q = qr.q.transpose() * &qr.q;
+        let identity = DMatrix::identity(3, 3);
+        assert_relative_eq!(qt_q, identity, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_ndarray_least_squares() {
+        use ndarray::Array1;
+
+        let a = Array2::from_shape_vec((4, 2), vec![
+            1.0, 1.0,
+            1.0, 2.0,
+            1.0, 3.0,
+            1.0, 4.0
+        ]).unwrap();
+        let b = Array1::from_vec(vec![2.0, 3.0, 4.0, 5.0]);
+
+        let config = QRConfig::default();
+        let x = ndarray_qr::solve_least_squares(&a, &b, &config).unwrap();
+
+        // Expected solution: [1, 1] for this consistent system
+        assert_relative_eq!(x[0], 1.0, epsilon = 1e-10);
+        assert_relative_eq!(x[1], 1.0, epsilon = 1e-10);
+    }
 }

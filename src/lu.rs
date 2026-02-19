@@ -197,4 +197,22 @@ mod tests {
             assert_relative_eq!(ax[i], b[i], epsilon = 1e-10);
         }
     }
+
+    #[test]
+    fn test_ndarray_lu_inverse() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let inv = ndarray_lu::inverse(&a).unwrap();
+        let mut identity: Array2<f64> = Array2::zeros((2, 2));
+        for i in 0..2 {
+            for j in 0..2 {
+                for k in 0..2 {
+                    identity[[i, j]] += a[[i, k]] * inv[[k, j]];
+                }
+            }
+        }
+        assert_relative_eq!(identity[[0, 0]], 1.0, epsilon = 1e-10);
+        assert_relative_eq!(identity[[1, 1]], 1.0, epsilon = 1e-10);
+        assert_relative_eq!(identity[[0, 1]], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(identity[[1, 0]], 0.0, epsilon = 1e-10);
+    }
 }
