@@ -95,4 +95,33 @@ mod tests {
         let norm = frobenius_norm(&matrix);
         assert!((norm - 5.0).abs() < 1e-10);
     }
+
+    #[test]
+    fn test_spectral_norm() {
+        let identity = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
+        assert!(approx::relative_eq!(spectral_norm(&identity), 1.0, epsilon = 1e-10));
+
+        let diagonal = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 3.0]).unwrap();
+        assert!(approx::relative_eq!(spectral_norm(&diagonal), 3.0, epsilon = 1e-10));
+    }
+
+    #[test]
+    fn test_matrix_approx_eq() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        assert!(matrix_approx_eq(&a, &b, 1e-10));
+
+        let c = Array2::from_shape_vec((2, 2), vec![1.0 + 1e-5, 2.0, 3.0, 4.0]).unwrap();
+        assert!(!matrix_approx_eq(&a, &c, 1e-10));
+        assert!(matrix_approx_eq(&a, &c, 1e-4));
+
+        let d = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        assert!(!matrix_approx_eq(&a, &d, 1e-10));
+    }
+
+    #[test]
+    fn test_random_matrix() {
+        let m = random_matrix::<f64>(3, 4);
+        assert_eq!(m.shape(), &[3, 4]);
+    }
 }

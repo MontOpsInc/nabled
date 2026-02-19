@@ -314,4 +314,25 @@ mod tests {
         assert_eq!(truncated_svd.u.ncols(), 2);
         assert_eq!(truncated_svd.vt.nrows(), 2);
     }
+
+    #[test]
+    fn test_nalgebra_svd_with_tolerance() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+        let svd = nalgebra_svd::compute_svd_with_tolerance(&matrix, 1e-10_f64).unwrap();
+
+        // Reconstruct and check
+        let reconstructed = nalgebra_svd::reconstruct_matrix(&svd);
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!(approx::relative_eq!(matrix[(i, j)], reconstructed[(i, j)], epsilon = 1e-10));
+            }
+        }
+    }
+
+    #[test]
+    fn test_nalgebra_svd_with_tolerance_empty_matrix() {
+        let empty_matrix = DMatrix::<f64>::zeros(0, 0);
+        let result = nalgebra_svd::compute_svd_with_tolerance(&empty_matrix, 1e-10_f64);
+        assert!(matches!(result, Err(SVDError::EmptyMatrix)));
+    }
 }
