@@ -367,7 +367,7 @@ pub mod nalgebra_qr {
             
             let mut sum = qt_b[i];
             for j in (i + 1)..n {
-                sum = sum - qr.r[(i, j)] * x[j];
+                sum -= qr.r[(i, j)] * x[j];
             }
             
             // Edge case: Check for singular or near-singular R
@@ -571,7 +571,7 @@ where
     let mut array = Array1::zeros(len);
     
     for i in 0..len {
-        array[i] = vector[i].clone();
+        array[i] = vector[i];
     }
     
     array

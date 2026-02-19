@@ -188,7 +188,7 @@ pub mod nalgebra_jacobian {
             // Check for overflow when adding step size
             let step = config.step_size;
             if num_traits::Float::is_finite(x_plus[j]) && num_traits::Float::is_finite(step) {
-                x_plus[j] = x_plus[j] + step;
+                x_plus[j] += step;
             } else {
                 return Err(JacobianError::InvalidStepSize);
             }
@@ -271,8 +271,8 @@ pub mod nalgebra_jacobian {
             let mut x_plus = x.clone();
             let mut x_minus = x.clone();
             
-            x_plus[j] = x_plus[j] + config.step_size;
-            x_minus[j] = x_minus[j] - config.step_size;
+            x_plus[j] += config.step_size;
+            x_minus[j] -= config.step_size;
 
             let fx_plus = f(&x_plus).map_err(JacobianError::FunctionError)?;
             let fx_minus = f(&x_minus).map_err(JacobianError::FunctionError)?;
@@ -319,7 +319,7 @@ pub mod nalgebra_jacobian {
         // Compute partial derivatives using finite differences
         for j in 0..n {
             let mut x_plus = x.clone();
-            x_plus[j] = x_plus[j] + config.step_size;
+            x_plus[j] += config.step_size;
 
             let fx = f(x).map_err(JacobianError::FunctionError)?;
             let fx_plus = f(&x_plus).map_err(JacobianError::FunctionError)?;
@@ -362,10 +362,10 @@ pub mod nalgebra_jacobian {
                 let mut x_plus_j = x.clone();
                 let mut x_plus_ij = x.clone();
                 
-                x_plus_i[i] = x_plus_i[i] + config.step_size;
-                x_plus_j[j] = x_plus_j[j] + config.step_size;
-                x_plus_ij[i] = x_plus_ij[i] + config.step_size;
-                x_plus_ij[j] = x_plus_ij[j] + config.step_size;
+                x_plus_i[i] += config.step_size;
+                x_plus_j[j] += config.step_size;
+                x_plus_ij[i] += config.step_size;
+                x_plus_ij[j] += config.step_size;
 
                 let f00 = f(x).map_err(JacobianError::FunctionError)?;
                 let f10 = f(&x_plus_i).map_err(JacobianError::FunctionError)?;
@@ -718,7 +718,7 @@ pub mod complex_jacobian {
                 gradient[j] = Complex::new(f_x_plus.im / config.step_size, T::zero());
             } else {
                 return Err(JacobianError::FunctionError(
-                    format!("Function returned non-finite value")
+                    "Function returned non-finite value".to_string()
                 ));
             }
         }

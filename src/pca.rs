@@ -100,13 +100,13 @@ pub mod nalgebra_pca {
         let components = svd.vt.rows(0, k_actual).transpose().clone();
         let u = svd.u.columns(0, k_actual);
         let s = svd.singular_values.rows(0, k_actual);
-        let scores = &u * DMatrix::from_diagonal(&s);
+        let scores = u * DMatrix::from_diagonal(&s);
 
         let mut total_var = T::zero();
         for i in 0..n_sv {
-            total_var = total_var + svd.singular_values[i] * svd.singular_values[i];
+            total_var += svd.singular_values[i] * svd.singular_values[i];
         }
-        total_var = total_var / num_traits::NumCast::from(n_samples - 1).unwrap();
+        total_var /= num_traits::NumCast::from(n_samples - 1).unwrap();
 
         let mut explained_variance = DVector::zeros(k_actual);
         for i in 0..k_actual {
@@ -138,7 +138,7 @@ pub mod nalgebra_pca {
         let (rows, cols) = matrix.shape();
         for j in 0..cols {
             for i in 0..rows {
-                centered[(i, j)] = centered[(i, j)] - pca_result.mean[j];
+                centered[(i, j)] -= pca_result.mean[j];
             }
         }
         &centered * &pca_result.components
@@ -153,7 +153,7 @@ pub mod nalgebra_pca {
         let (rows, cols) = out.shape();
         for j in 0..cols {
             for i in 0..rows {
-                out[(i, j)] = out[(i, j)] + pca_result.mean[j];
+                out[(i, j)] += pca_result.mean[j];
             }
         }
         out

@@ -107,15 +107,15 @@ pub mod nalgebra_regression {
 
         let mut y_sum = T::zero();
         for i in 0..n_samples {
-            y_sum = y_sum + y[i];
+            y_sum += y[i];
         }
         let y_mean = y_sum / num_traits::NumCast::from(n_samples).unwrap();
         let mut ss_tot = T::zero();
         let mut ss_res = T::zero();
         for i in 0..n_samples {
             let diff = y[i] - y_mean;
-            ss_tot = ss_tot + diff * diff;
-            ss_res = ss_res + residuals[i] * residuals[i];
+            ss_tot += diff * diff;
+            ss_res += residuals[i] * residuals[i];
         }
         let r_squared = if ss_tot > T::zero() {
             T::one() - ss_res / ss_tot

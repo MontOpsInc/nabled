@@ -42,7 +42,7 @@ pub mod nalgebra_stats {
         for j in 0..cols {
             let mut sum = T::zero();
             for i in 0..rows {
-                sum = sum + matrix[(i, j)];
+                sum += matrix[(i, j)];
             }
             means[j] = sum / n;
         }
@@ -56,7 +56,7 @@ pub mod nalgebra_stats {
         let (rows, cols) = matrix.shape();
         for j in 0..cols {
             for i in 0..rows {
-                centered[(i, j)] = centered[(i, j)] - means[j];
+                centered[(i, j)] -= means[j];
             }
         }
         centered
