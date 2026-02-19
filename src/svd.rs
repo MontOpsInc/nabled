@@ -71,14 +71,13 @@ pub mod nalgebra_svd {
         let svd = matrix.clone().svd(true, true);
 
         // Check if U and V^T were computed successfully
-        if svd.u.is_some() && svd.v_t.is_some() {
-            Ok(NalgebraSVD {
-                u: svd.u.unwrap(),
+        match (svd.u, svd.v_t) {
+            (Some(u), Some(vt)) => Ok(NalgebraSVD {
+                u,
                 singular_values: svd.singular_values,
-                vt: svd.v_t.unwrap(),
-            })
-        } else {
-            Err(SVDError::ConvergenceFailed)
+                vt,
+            }),
+            _ => Err(SVDError::ConvergenceFailed),
         }
     }
 

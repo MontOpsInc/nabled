@@ -225,12 +225,10 @@ pub mod nalgebra_matrix_functions {
 
         let svd = matrix.clone().svd(true, true);
 
-        if svd.u.is_none() || svd.v_t.is_none() {
-            return Err(MatrixFunctionError::ConvergenceFailed);
-        }
-
-        let u = svd.u.unwrap();
-        let vt = svd.v_t.unwrap();
+        let (u, vt) = match (&svd.u, &svd.v_t) {
+            (Some(u), Some(vt)) => (u.clone(), vt.clone()),
+            _ => return Err(MatrixFunctionError::ConvergenceFailed),
+        };
         let singular_values = svd.singular_values;
 
         // Check for zero or negative singular values
