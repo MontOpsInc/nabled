@@ -23,7 +23,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-linalg = "0.2.0"
+rust-linalg = "0.3.0"
 ```
 
 ## Quick Start

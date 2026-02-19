@@ -9,7 +9,7 @@
 //! Add this to your `Cargo.toml`:
 //! ```toml
 //! [dependencies]
-//! rust-linalg = "0.1.0"
+//! rust-linalg = "0.3.0"
 //! nalgebra = "0.32"
 //! ndarray = "0.15"
 //! ```

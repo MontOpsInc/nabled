@@ -82,18 +82,23 @@ pub mod nalgebra_svd {
         }
     }
 
-    /// Compute SVD with custom tolerance
+    /// Compute SVD with custom tolerance.
+    /// Singular values below the tolerance are set to zero (useful for rank determination and low-rank approximation).
     pub fn compute_svd_with_tolerance<T: RealField>(
         matrix: &DMatrix<T>,
-        _tolerance: T,
+        tolerance: T,
     ) -> Result<NalgebraSVD<T>, SVDError> {
         if matrix.is_empty() {
             return Err(SVDError::EmptyMatrix);
         }
 
-        // For now, use the standard SVD - in a full implementation,
-        // we would implement a custom algorithm with tolerance control
-        compute_svd(matrix)
+        let mut svd = compute_svd(matrix)?;
+        let sv_values: Vec<T> = svd.singular_values
+            .iter()
+            .map(|sv| if *sv < tolerance { T::zero() } else { sv.clone() })
+            .collect();
+        svd.singular_values = DVector::from_vec(sv_values);
+        Ok(svd)
     }
 
     /// Compute truncated SVD (keeping only the k largest singular values)
@@ -184,6 +189,31 @@ pub mod ndarray_svd {
         let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
         let singular_values = Array1::from_vec(nalgebra_svd.singular_values.as_slice().to_vec());
         
+        Ok(NdarraySVD {
+            u,
+            singular_values,
+            vt,
+        })
+    }
+
+    /// Compute SVD with custom tolerance.
+    /// Singular values below the tolerance are set to zero.
+    pub fn compute_svd_with_tolerance<T: Float + RealField>(
+        matrix: &Array2<T>,
+        tolerance: T,
+    ) -> Result<NdarraySVD<T>, SVDError> {
+        if matrix.is_empty() {
+            return Err(SVDError::EmptyMatrix);
+        }
+
+        use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
+        let nalgebra_svd = crate::svd::nalgebra_svd::compute_svd_with_tolerance(&nalgebra_matrix, tolerance)?;
+
+        let u = nalgebra_to_ndarray(&nalgebra_svd.u);
+        let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
+        let singular_values = Array1::from_vec(nalgebra_svd.singular_values.as_slice().to_vec());
+
         Ok(NdarraySVD {
             u,
             singular_values,

@@ -3,7 +3,10 @@
 //! Common utility functions for linear algebra operations.
 
 use nalgebra::{DMatrix, RealField};
+use ndarray::Array;
 use ndarray::Array2;
+use ndarray_rand::rand_distr::Uniform;
+use ndarray_rand::RandomExt;
 use num_traits::Float;
 
 /// Convert nalgebra DMatrix to ndarray Array2
@@ -36,13 +39,13 @@ pub fn ndarray_to_nalgebra<T: RealField>(array: &Array2<T>) -> DMatrix<T> {
     matrix
 }
 
-/// Generate a random matrix with specified dimensions
-/// Note: This function is simplified for now. In a full implementation,
-/// you would use ndarray-rand with proper trait bounds.
-pub fn random_matrix<T: Float>(rows: usize, cols: usize) -> Array2<T> {
-    // For now, return a matrix of zeros
-    // In a full implementation, you would use ndarray-rand
-    Array2::zeros((rows, cols))
+/// Generate a random matrix with specified dimensions.
+/// Elements are drawn from a uniform distribution in [0, 1).
+pub fn random_matrix<T>(rows: usize, cols: usize) -> Array2<T>
+where
+    T: Float + rand::distributions::uniform::SampleUniform + Copy,
+{
+    Array::random((rows, cols), Uniform::new(T::zero(), T::one()))
 }
 
 /// Check if a matrix is approximately equal to another

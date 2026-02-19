@@ -257,20 +257,24 @@ pub mod nalgebra_qr {
             return Err(QRError::EmptyMatrix);
         }
 
-        // Use nalgebra's built-in QR decomposition for now
-        // TODO: Replace with our custom Householder implementation with pivoting once debugged
-        let qr = matrix.clone().qr();
-        let q = qr.q();
-        let r = qr.r();
-        
-        // For now, we don't have pivoting information from nalgebra's QR
-        // This is a simplified implementation
+        use nalgebra::linalg::ColPivQR;
+
+        let col_piv_qr = ColPivQR::new(matrix.clone());
+        let q = col_piv_qr.q().clone();
+        let r = col_piv_qr.r().clone();
+        let p_seq = col_piv_qr.p();
+
+        // Build permutation matrix P: A*P = Q*R
+        let n_cols = matrix.ncols();
+        let mut p_matrix = DMatrix::identity(n_cols, n_cols);
+        p_seq.permute_columns(&mut p_matrix);
+
         let rank = determine_rank(&r, config.rank_tolerance);
-        
+
         Ok(QRResult {
-            q: q.clone(),
-            r: r.clone(),
-            p: None, // TODO: Implement proper pivoting
+            q,
+            r,
+            p: Some(p_matrix),
             rank,
         })
     }

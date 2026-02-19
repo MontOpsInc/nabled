@@ -11,6 +11,7 @@ documentation = "https://docs.rs/rust-linalg"
 readme = "README.md"
 keywords = ["linear-algebra", "svd", "nalgebra", "ndarray", "rust", "mathematics", "decomposition", "pca", "regression"]
 categories = ["mathematics", "science", "algorithms"]
+publish = false  # change when ready
 
 [features]
 default = []
@@ -19,7 +20,7 @@ arrow = ["dep:arrow", "dep:arrow-array", "dep:arrow-schema"]
 [dependencies]
 nalgebra = { version = "0.32", features = ["serde-serialize"] }
 ndarray = { version = "0.15", features = ["serde"] }
-ndarray-rand = "0.15"
+ndarray-rand = "0.14"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 num-traits = "0.2"
@@ -31,7 +32,6 @@ arrow-schema = { version = "55", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
-proptest = "1.0"
 
 [[test]]
 name = "arrow_integration_tests"
