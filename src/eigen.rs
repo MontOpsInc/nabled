@@ -106,7 +106,7 @@ pub mod nalgebra_eigen {
 /// Ndarray symmetric eigenvalue decomposition (via nalgebra)
 pub mod ndarray_eigen {
     use super::*;
-    use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute symmetric eigenvalue decomposition
     pub fn compute_symmetric_eigen<T: Float + RealField>(

@@ -97,25 +97,23 @@ pub mod nalgebra_regression {
         };
 
         let config = QRConfig::default();
-        let coefficients =
-            nalgebra_qr::solve_least_squares(&x_design, y, &config).map_err(|e| {
-                RegressionError::QRError(e.to_string())
-            })?;
+        let coefficients = nalgebra_qr::solve_least_squares(&x_design, y, &config)
+            .map_err(|e| RegressionError::QRError(e.to_string()))?;
 
         let fitted_values = &x_design * &coefficients;
         let residuals = y - &fitted_values;
 
         let mut y_sum = T::zero();
         for i in 0..n_samples {
-            y_sum = y_sum + y[i];
+            y_sum += y[i];
         }
         let y_mean = y_sum / num_traits::NumCast::from(n_samples).unwrap();
         let mut ss_tot = T::zero();
         let mut ss_res = T::zero();
         for i in 0..n_samples {
             let diff = y[i] - y_mean;
-            ss_tot = ss_tot + diff * diff;
-            ss_res = ss_res + residuals[i] * residuals[i];
+            ss_tot += diff * diff;
+            ss_res += residuals[i] * residuals[i];
         }
         let r_squared = if ss_tot > T::zero() {
             T::one() - ss_res / ss_tot
@@ -146,11 +144,8 @@ pub mod ndarray_regression {
     ) -> Result<NdarrayRegressionResult<T>, RegressionError> {
         let nalg_x = ndarray_to_nalgebra(x);
         let nalg_y = DVector::from_vec(y.to_vec());
-        let result = super::nalgebra_regression::linear_regression(
-            &nalg_x,
-            &nalg_y,
-            add_intercept,
-        )?;
+        let result =
+            super::nalgebra_regression::linear_regression(&nalg_x, &nalg_y, add_intercept)?;
         Ok(NdarrayRegressionResult {
             coefficients: Array1::from_vec(result.coefficients.as_slice().to_vec()),
             fitted_values: Array1::from_vec(result.fitted_values.as_slice().to_vec()),

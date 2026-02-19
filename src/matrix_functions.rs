@@ -1,12 +1,12 @@
 //! # Matrix Functions
-//! 
+//!
 //! This module provides matrix functions such as matrix exponential and logarithm.
 //! These functions are essential for many applications in differential equations,
 //! optimization, and machine learning.
 
 use nalgebra::{DMatrix, RealField};
 use ndarray::Array2;
-use num_traits::{Float, float::FloatCore};
+use num_traits::{float::FloatCore, Float};
 use std::fmt;
 
 /// Error types for matrix function computation
@@ -32,9 +32,13 @@ impl fmt::Display for MatrixFunctionError {
             MatrixFunctionError::NotSquare => write!(f, "Matrix must be square"),
             MatrixFunctionError::EmptyMatrix => write!(f, "Matrix cannot be empty"),
             MatrixFunctionError::SingularMatrix => write!(f, "Matrix is singular (non-invertible)"),
-            MatrixFunctionError::ConvergenceFailed => write!(f, "Matrix function algorithm failed to converge"),
+            MatrixFunctionError::ConvergenceFailed => {
+                write!(f, "Matrix function algorithm failed to converge")
+            }
             MatrixFunctionError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
-            MatrixFunctionError::NegativeEigenvalues => write!(f, "Matrix has negative eigenvalues, logarithm not defined"),
+            MatrixFunctionError::NegativeEigenvalues => {
+                write!(f, "Matrix has negative eigenvalues, logarithm not defined")
+            }
         }
     }
 }
@@ -56,7 +60,7 @@ pub mod nalgebra_matrix_functions {
         if matrix.is_empty() {
             return Err(MatrixFunctionError::EmptyMatrix);
         }
-        
+
         if !matrix.is_square() {
             return Err(MatrixFunctionError::NotSquare);
         }
@@ -65,20 +69,20 @@ pub mod nalgebra_matrix_functions {
         let identity = DMatrix::<T>::identity(n, n);
         let mut result = identity.clone();
         let mut term = identity.clone();
-        
+
         for k in 1..=max_iterations {
             term = &term * matrix / T::from(k).unwrap();
             let new_result = &result + &term;
-            
+
             // Check for convergence
             let diff_norm = (&new_result - &result).norm();
             if diff_norm < tolerance {
                 return Ok(new_result);
             }
-            
+
             result = new_result;
         }
-        
+
         Err(MatrixFunctionError::ConvergenceFailed)
     }
 
@@ -90,7 +94,7 @@ pub mod nalgebra_matrix_functions {
         if matrix.is_empty() {
             return Err(MatrixFunctionError::EmptyMatrix);
         }
-        
+
         if !matrix.is_square() {
             return Err(MatrixFunctionError::NotSquare);
         }
@@ -98,15 +102,16 @@ pub mod nalgebra_matrix_functions {
         // For symmetric matrices, use eigenvalue decomposition
         // Note: We'll assume the matrix is symmetric for now
         // In a full implementation, you would check symmetry properly
-        if true { // Simplified for now
+        if true {
+            // Simplified for now
             let eigen = matrix.clone().symmetric_eigen();
             let eigenvalues = eigen.eigenvalues;
             let eigenvectors = eigen.eigenvectors;
-            
+
             // Compute exp(D) where D is diagonal matrix of eigenvalues
             let exp_eigenvalues = eigenvalues.map(|lambda| lambda.exp());
             let exp_diagonal = DMatrix::from_diagonal(&exp_eigenvalues);
-            
+
             // Reconstruct: exp(A) = P * exp(D) * P^T
             Ok(&eigenvectors * &exp_diagonal * eigenvectors.transpose())
         } else {
@@ -126,42 +131,42 @@ pub mod nalgebra_matrix_functions {
         if matrix.is_empty() {
             return Err(MatrixFunctionError::EmptyMatrix);
         }
-        
+
         if !matrix.is_square() {
             return Err(MatrixFunctionError::NotSquare);
         }
 
         let n = matrix.nrows();
         let identity = DMatrix::<T>::identity(n, n);
-        
+
         // Check if matrix is close to identity (||A - I|| < 1)
         let diff = matrix - &identity;
         if diff.norm() >= T::one() {
             return Err(MatrixFunctionError::InvalidInput(
-                "Matrix must be close to identity (||A - I|| < 1) for Taylor series".to_string()
+                "Matrix must be close to identity (||A - I|| < 1) for Taylor series".to_string(),
             ));
         }
 
         let mut result = DMatrix::<T>::zeros(n, n);
         let mut term = diff.clone();
-        
+
         for k in 1..=max_iterations {
             let sign = if k % 2 == 1 { T::one() } else { -T::one() };
             let coeff = sign / T::from(k).unwrap();
-            
+
             let new_term = &term * coeff;
             let new_result = &result + &new_term;
-            
+
             // Check for convergence
             let diff_norm = (&new_result - &result).norm();
             if diff_norm < tolerance {
                 return Ok(new_result);
             }
-            
+
             result = new_result;
             term = &term * &diff;
         }
-        
+
         Err(MatrixFunctionError::ConvergenceFailed)
     }
 
@@ -173,29 +178,30 @@ pub mod nalgebra_matrix_functions {
         if matrix.is_empty() {
             return Err(MatrixFunctionError::EmptyMatrix);
         }
-        
+
         if !matrix.is_square() {
             return Err(MatrixFunctionError::NotSquare);
         }
 
         // For symmetric matrices, use eigenvalue decomposition
         // Note: We'll assume the matrix is symmetric for now
-        if true { // Simplified for now
+        if true {
+            // Simplified for now
             let eigen = matrix.clone().symmetric_eigen();
             let eigenvalues = eigen.eigenvalues;
             let eigenvectors = eigen.eigenvectors;
-            
+
             // Check for negative eigenvalues
             for &lambda in eigenvalues.iter() {
                 if lambda <= T::zero() {
                     return Err(MatrixFunctionError::NegativeEigenvalues);
                 }
             }
-            
+
             // Compute log(D) where D is diagonal matrix of eigenvalues
             let log_eigenvalues = eigenvalues.map(|lambda| lambda.ln());
             let log_diagonal = DMatrix::from_diagonal(&log_eigenvalues);
-            
+
             // Reconstruct: log(A) = P * log(D) * P^T
             Ok(&eigenvectors * &log_diagonal * eigenvectors.transpose())
         } else {
@@ -212,32 +218,30 @@ pub mod nalgebra_matrix_functions {
         if matrix.is_empty() {
             return Err(MatrixFunctionError::EmptyMatrix);
         }
-        
+
         if !matrix.is_square() {
             return Err(MatrixFunctionError::NotSquare);
         }
 
         let svd = matrix.clone().svd(true, true);
-        
-        if svd.u.is_none() || svd.v_t.is_none() {
-            return Err(MatrixFunctionError::ConvergenceFailed);
-        }
-        
-        let u = svd.u.unwrap();
-        let vt = svd.v_t.unwrap();
+
+        let (u, vt) = match (&svd.u, &svd.v_t) {
+            (Some(u), Some(vt)) => (u.clone(), vt.clone()),
+            _ => return Err(MatrixFunctionError::ConvergenceFailed),
+        };
         let singular_values = svd.singular_values;
-        
+
         // Check for zero or negative singular values
         for &sigma in singular_values.iter() {
             if sigma <= T::zero() {
                 return Err(MatrixFunctionError::SingularMatrix);
             }
         }
-        
+
         // Compute log(S) where S is diagonal matrix of singular values
         let log_singular_values = singular_values.map(|sigma| sigma.ln());
         let log_diagonal = DMatrix::from_diagonal(&log_singular_values);
-        
+
         // Reconstruct: log(A) = U * log(S) * V^T
         Ok(&u * &log_diagonal * &vt)
     }
@@ -251,18 +255,19 @@ pub mod nalgebra_matrix_functions {
         if matrix.is_empty() {
             return Err(MatrixFunctionError::EmptyMatrix);
         }
-        
+
         if !matrix.is_square() {
             return Err(MatrixFunctionError::NotSquare);
         }
 
         // For symmetric matrices, use eigenvalue decomposition
         // Note: We'll assume the matrix is symmetric for now
-        if true { // Simplified for now
+        if true {
+            // Simplified for now
             let eigen = matrix.clone().symmetric_eigen();
             let eigenvalues = eigen.eigenvalues;
             let eigenvectors = eigen.eigenvectors;
-            
+
             // Check for negative eigenvalues when power is not an integer
             if num_traits::float::FloatCore::fract(power) != T::zero() {
                 for &lambda in eigenvalues.iter() {
@@ -271,11 +276,11 @@ pub mod nalgebra_matrix_functions {
                     }
                 }
             }
-            
+
             // Compute D^p where D is diagonal matrix of eigenvalues
             let powered_eigenvalues = eigenvalues.map(|lambda| lambda.powf(power));
             let powered_diagonal = DMatrix::from_diagonal(&powered_eigenvalues);
-            
+
             // Reconstruct: A^p = P * D^p * P^T
             Ok(&eigenvectors * &powered_diagonal * eigenvectors.transpose())
         } else {
@@ -290,7 +295,7 @@ pub mod nalgebra_matrix_functions {
 /// Matrix exponential and logarithm functions using ndarray
 pub mod ndarray_matrix_functions {
     use super::*;
-    use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute matrix exponential using conversion to nalgebra
     pub fn matrix_exp<T: Float + RealField + FloatCore>(
@@ -299,7 +304,8 @@ pub mod ndarray_matrix_functions {
         tolerance: T,
     ) -> Result<Array2<T>, MatrixFunctionError> {
         let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_matrix_functions::matrix_exp(&nalgebra_matrix, max_iterations, tolerance)?;
+        let result =
+            nalgebra_matrix_functions::matrix_exp(&nalgebra_matrix, max_iterations, tolerance)?;
         Ok(nalgebra_to_ndarray(&result))
     }
 
@@ -319,7 +325,11 @@ pub mod ndarray_matrix_functions {
         tolerance: T,
     ) -> Result<Array2<T>, MatrixFunctionError> {
         let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_matrix_functions::matrix_log_taylor(&nalgebra_matrix, max_iterations, tolerance)?;
+        let result = nalgebra_matrix_functions::matrix_log_taylor(
+            &nalgebra_matrix,
+            max_iterations,
+            tolerance,
+        )?;
         Ok(nalgebra_to_ndarray(&result))
     }
 
@@ -355,19 +365,19 @@ pub mod ndarray_matrix_functions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
     use nalgebra::DMatrix;
     use ndarray::Array2;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_nalgebra_matrix_exp_identity() {
         let identity = DMatrix::<f64>::identity(3, 3);
         let exp_identity = nalgebra_matrix_functions::matrix_exp_eigen(&identity).unwrap();
-        
+
         // exp(I) should be e * I
         let e = std::f64::consts::E;
         let expected = identity * e;
-        
+
         for i in 0..3 {
             for j in 0..3 {
                 assert_relative_eq!(exp_identity[(i, j)], expected[(i, j)], epsilon = 1e-10);
@@ -380,7 +390,7 @@ mod tests {
         let zero = DMatrix::<f64>::zeros(2, 2);
         let exp_zero = nalgebra_matrix_functions::matrix_exp_eigen(&zero).unwrap();
         let identity = DMatrix::<f64>::identity(2, 2);
-        
+
         // exp(0) should be I
         for i in 0..2 {
             for j in 0..2 {
@@ -394,7 +404,7 @@ mod tests {
         let identity = DMatrix::<f64>::identity(3, 3);
         let log_identity = nalgebra_matrix_functions::matrix_log_eigen(&identity).unwrap();
         let zero = DMatrix::<f64>::zeros(3, 3);
-        
+
         // log(I) should be 0
         for i in 0..3 {
             for j in 0..3 {
@@ -407,7 +417,7 @@ mod tests {
     fn test_nalgebra_matrix_power_identity() {
         let identity = DMatrix::<f64>::identity(2, 2);
         let power_result = nalgebra_matrix_functions::matrix_power(&identity, 3.0).unwrap();
-        
+
         // I^3 should be I
         for i in 0..2 {
             for j in 0..2 {
@@ -420,11 +430,11 @@ mod tests {
     fn test_ndarray_matrix_exp_identity() {
         let identity = Array2::<f64>::eye(3);
         let exp_identity = ndarray_matrix_functions::matrix_exp_eigen(&identity).unwrap();
-        
+
         // exp(I) should be e * I
         let e = std::f64::consts::E;
         let expected = &identity * e;
-        
+
         for i in 0..3 {
             for j in 0..3 {
                 assert_relative_eq!(exp_identity[[i, j]], expected[[i, j]], epsilon = 1e-10);
@@ -438,7 +448,7 @@ mod tests {
         let matrix = DMatrix::from_row_slice(2, 2, &[2.0, 1.0, 1.0, 2.0]);
         let log_matrix = nalgebra_matrix_functions::matrix_log_eigen(&matrix).unwrap();
         let exp_log_matrix = nalgebra_matrix_functions::matrix_exp_eigen(&log_matrix).unwrap();
-        
+
         for i in 0..2 {
             for j in 0..2 {
                 assert_relative_eq!(exp_log_matrix[(i, j)], matrix[(i, j)], epsilon = 1e-8);
@@ -452,7 +462,7 @@ mod tests {
         let non_square = DMatrix::from_row_slice(2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let result = nalgebra_matrix_functions::matrix_exp_eigen(&non_square);
         assert!(matches!(result, Err(MatrixFunctionError::NotSquare)));
-        
+
         // Test empty matrix
         let empty = DMatrix::<f64>::zeros(0, 0);
         let result = nalgebra_matrix_functions::matrix_exp_eigen(&empty);

@@ -8,10 +8,8 @@ use rust_linalg::arrow::conversions::{ndarray_to_record_batch, record_batch_to_n
 use rust_linalg::arrow::{matrix_functions, qr, svd};
 
 fn make_3x3_batch() -> RecordBatch {
-    let matrix = Array2::from_shape_vec((3, 3), vec![
-        1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
-    ])
-    .unwrap();
+    let matrix =
+        Array2::from_shape_vec((3, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]).unwrap();
     ndarray_to_record_batch(&matrix).unwrap()
 }
 
@@ -58,10 +56,7 @@ fn test_arrow_truncated_svd() {
 
 #[test]
 fn test_arrow_qr_least_squares() {
-    let a = Array2::from_shape_vec((4, 2), vec![
-        1.0, 1.0, 1.0, 2.0, 1.0, 3.0, 1.0, 4.0,
-    ])
-    .unwrap();
+    let a = Array2::from_shape_vec((4, 2), vec![1.0, 1.0, 1.0, 2.0, 1.0, 3.0, 1.0, 4.0]).unwrap();
     let a_batch = ndarray_to_record_batch(&a).unwrap();
     let b = Float64Array::from(vec![2.0, 3.0, 4.0, 5.0]);
 

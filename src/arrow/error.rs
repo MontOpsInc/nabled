@@ -28,7 +28,9 @@ impl fmt::Display for ArrowConversionError {
             ArrowConversionError::UnsupportedType(msg) => write!(f, "Unsupported type: {}", msg),
             ArrowConversionError::EmptyArray => write!(f, "Array is empty"),
             ArrowConversionError::NullValues => write!(f, "Null values not supported"),
-            ArrowConversionError::DimensionMismatch(msg) => write!(f, "Dimension mismatch: {}", msg),
+            ArrowConversionError::DimensionMismatch(msg) => {
+                write!(f, "Dimension mismatch: {}", msg)
+            }
         }
     }
 }

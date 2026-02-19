@@ -100,13 +100,13 @@ pub mod nalgebra_pca {
         let components = svd.vt.rows(0, k_actual).transpose().clone();
         let u = svd.u.columns(0, k_actual);
         let s = svd.singular_values.rows(0, k_actual);
-        let scores = &u * DMatrix::from_diagonal(&s);
+        let scores = u * DMatrix::from_diagonal(&s);
 
         let mut total_var = T::zero();
         for i in 0..n_sv {
-            total_var = total_var + svd.singular_values[i] * svd.singular_values[i];
+            total_var += svd.singular_values[i] * svd.singular_values[i];
         }
-        total_var = total_var / num_traits::NumCast::from(n_samples - 1).unwrap();
+        total_var /= num_traits::NumCast::from(n_samples - 1).unwrap();
 
         let mut explained_variance = DVector::zeros(k_actual);
         for i in 0..k_actual {
@@ -138,7 +138,7 @@ pub mod nalgebra_pca {
         let (rows, cols) = matrix.shape();
         for j in 0..cols {
             for i in 0..rows {
-                centered[(i, j)] = centered[(i, j)] - pca_result.mean[j];
+                centered[(i, j)] -= pca_result.mean[j];
             }
         }
         &centered * &pca_result.components
@@ -153,7 +153,7 @@ pub mod nalgebra_pca {
         let (rows, cols) = out.shape();
         for j in 0..cols {
             for i in 0..rows {
-                out[(i, j)] = out[(i, j)] + pca_result.mean[j];
+                out[(i, j)] += pca_result.mean[j];
             }
         }
         out
@@ -163,7 +163,7 @@ pub mod nalgebra_pca {
 /// Ndarray PCA
 pub mod ndarray_pca {
     use super::*;
-    use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute PCA
     pub fn compute_pca<T: Float + RealField + num_traits::NumCast>(
@@ -237,8 +237,7 @@ mod tests {
             ],
         );
         let pca = nalgebra_pca::compute_pca(&m, Some(3)).unwrap();
-        let reconstructed =
-            nalgebra_pca::inverse_transform(&pca.scores, &pca);
+        let reconstructed = nalgebra_pca::inverse_transform(&pca.scores, &pca);
         for i in 0..4 {
             for j in 0..3 {
                 assert_relative_eq!(reconstructed[(i, j)], m[(i, j)], epsilon = 1e-8);
@@ -248,9 +247,13 @@ mod tests {
 
     #[test]
     fn test_explained_variance_ratio_sums_to_one() {
-        let m = DMatrix::from_row_slice(5, 3, &[
-            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
-        ]);
+        let m = DMatrix::from_row_slice(
+            5,
+            3,
+            &[
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+            ],
+        );
         let pca = nalgebra_pca::compute_pca(&m, Some(3)).unwrap();
         let sum: f64 = pca.explained_variance_ratio.iter().sum();
         assert_relative_eq!(sum, 1.0, epsilon = 0.01);

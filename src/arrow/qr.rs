@@ -93,7 +93,7 @@ pub fn condition_number(qr: &ArrowQRResult) -> f64 {
 fn qr_to_arrow(qr: crate::QRResult<f64>) -> ArrowQRResult {
     let q = matrix_to_arrow_columns(&qr.q);
     let r = matrix_to_arrow_columns(&qr.r);
-    let p = qr.p.as_ref().map(|m| matrix_to_arrow_columns(m));
+    let p = qr.p.as_ref().map(matrix_to_arrow_columns);
 
     ArrowQRResult {
         q,
@@ -124,11 +124,9 @@ fn arrow_columns_to_ndarray(
     let mut data = Vec::with_capacity(rows * cols);
     for col in columns {
         if col.len() != rows {
-            return Err(super::error::ArrowConversionError::DimensionMismatch(format!(
-                "Column length {} != expected {}",
-                col.len(),
-                rows
-            )));
+            return Err(super::error::ArrowConversionError::DimensionMismatch(
+                format!("Column length {} != expected {}", col.len(), rows),
+            ));
         }
         for v in col.iter() {
             data.push(v.ok_or(super::error::ArrowConversionError::NullValues)?);
