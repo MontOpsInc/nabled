@@ -1,34 +1,42 @@
 [package]
 name = "rust-linalg"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Advanced linear algebra functions built on top of nalgebra and ndarray"
 authors = ["Niklaus Parcell <nik.parcell@gmail.com>"]
-license = "MIT"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/NiklausParcell/rust-linearalgebra-better"
 homepage = "https://github.com/NiklausParcell/rust-linearalgebra-better"
 documentation = "https://docs.rs/rust-linalg"
 readme = "README.md"
-keywords = ["linear-algebra", "svd", "nalgebra", "ndarray", "rust", "mathematics", "decomposition"]
+keywords = ["linear-algebra", "svd", "nalgebra", "ndarray", "rust", "mathematics", "decomposition", "pca", "regression"]
 categories = ["mathematics", "science", "algorithms"]
+
+[features]
+default = []
+arrow = ["dep:arrow", "dep:arrow-array", "dep:arrow-schema"]
 
 [dependencies]
 nalgebra = { version = "0.32", features = ["serde-serialize"] }
 ndarray = { version = "0.15", features = ["serde"] }
-ndarray-linalg = "0.16"
 ndarray-rand = "0.15"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 num-traits = "0.2"
 num-complex = "0.4"
 approx = "0.5"
-arrow = "55"
-arrow-array = "55"
-arrow-schema = "55"
+arrow = { version = "55", optional = true }
+arrow-array = { version = "55", optional = true }
+arrow-schema = { version = "55", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
 proptest = "1.0"
+
+[[test]]
+name = "arrow_integration_tests"
+path = "tests/arrow_integration_tests.rs"
+required-features = ["arrow"]
 
 [[bench]]
 name = "svd_benchmarks"

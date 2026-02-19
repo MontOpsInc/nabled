@@ -202,7 +202,14 @@
 //! # Ok::<(), rust_linalg::qr::QRError>(())
 //! ```
 
+#[cfg(feature = "arrow")]
 pub mod arrow;
+pub mod cholesky;
+pub mod eigen;
+pub mod lu;
+pub mod pca;
+pub mod regression;
+pub mod stats;
 pub mod svd;
 pub mod matrix_functions;
 pub mod jacobian;
@@ -216,3 +223,9 @@ pub use jacobian::*;
 pub use jacobian::{JacobianConfig, JacobianError};
 pub use qr::*;
 pub use qr::{QRConfig, QRError, QRResult};
+pub use lu::{LUError, NalgebraLUResult, NdarrayLUResult};
+pub use cholesky::{CholeskyError, NalgebraCholeskyResult, NdarrayCholeskyResult};
+pub use eigen::{EigenError, NalgebraEigenResult, NdarrayEigenResult};
+pub use stats::StatsError;
+pub use pca::{PCAError, NalgebraPCAResult, NdarrayPCAResult};
+pub use regression::{RegressionError, NalgebraRegressionResult, NdarrayRegressionResult};

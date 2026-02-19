@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-02-19
+
 ### Added
+- **LU Decomposition** - Solve Ax = b and compute matrix inverse
+  - Nalgebra and ndarray implementations (ndarray via nalgebra conversion)
+  - `compute_lu`, `solve`, `inverse` functions
+- **Cholesky Decomposition** - For symmetric positive-definite matrices
+  - `compute_cholesky`, `solve`, `inverse`
+- **Eigenvalue Decomposition** - Symmetric matrices only
+  - `compute_symmetric_eigen` returning eigenvalues and eigenvectors
+- **Statistics** - Covariance and correlation
+  - `column_means`, `center_columns`, `covariance_matrix`, `correlation_matrix`
+  - Bessel correction (n-1) for sample covariance
+- **PCA** - Principal Component Analysis
+  - `compute_pca`, `transform`, `inverse_transform`
+  - Explained variance and explained variance ratio
+- **Linear Regression** - Ordinary least squares via QR
+  - `linear_regression` with optional intercept, R-squared, residuals
+- **Optional Arrow feature** - Arrow integration behind `--features arrow`
+- **Dual license** - MIT OR Apache-2.0
+- Examples: lu_example, cholesky_example, pca_example, regression_example
+
+### Changed
+- Removed ndarray-linalg dependency (avoids LAPACK)
+- Bumped version to 0.3.0
+
+### Added (previous)
 - **QR Decomposition** - Full and reduced QR decomposition with least squares solving
   - Full QR decomposition using nalgebra's built-in QR algorithm
   - Reduced QR decomposition (economy size) for rectangular matrices

@@ -1,0 +1,170 @@
+//! # Statistical Functions
+//!
+//! Covariance and correlation matrices for numerical data.
+
+use nalgebra::{DMatrix, DVector, RealField};
+use ndarray::{Array1, Array2};
+use num_traits::Float;
+use std::fmt;
+
+/// Error types for stats operations
+#[derive(Debug, Clone, PartialEq)]
+pub enum StatsError {
+    /// Matrix is empty
+    EmptyMatrix,
+    /// Not enough samples (need at least 2 for covariance)
+    InsufficientSamples,
+    /// Invalid input
+    InvalidInput(String),
+}
+
+impl fmt::Display for StatsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StatsError::EmptyMatrix => write!(f, "Matrix is empty"),
+            StatsError::InsufficientSamples => write!(f, "Need at least 2 samples for covariance"),
+            StatsError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for StatsError {}
+
+/// Nalgebra stats functions
+pub mod nalgebra_stats {
+    use super::*;
+
+    /// Compute column means
+    pub fn column_means<T: RealField + Copy + num_traits::NumCast>(matrix: &DMatrix<T>) -> DVector<T> {
+        let (rows, cols) = matrix.shape();
+        let n: T = num_traits::NumCast::from(rows).expect("rows must fit in T");
+        let mut means = DVector::zeros(cols);
+        for j in 0..cols {
+            let mut sum = T::zero();
+            for i in 0..rows {
+                sum = sum + matrix[(i, j)];
+            }
+            means[j] = sum / n;
+        }
+        means
+    }
+
+    /// Center columns (subtract mean from each column)
+    pub fn center_columns<T: RealField + Copy + num_traits::NumCast>(matrix: &DMatrix<T>) -> DMatrix<T> {
+        let means = column_means(matrix);
+        let mut centered = matrix.clone();
+        let (rows, cols) = matrix.shape();
+        for j in 0..cols {
+            for i in 0..rows {
+                centered[(i, j)] = centered[(i, j)] - means[j];
+            }
+        }
+        centered
+    }
+
+    /// Compute sample covariance matrix (Bessel correction, n-1)
+    pub fn covariance_matrix<T: RealField + Copy + num_traits::Float + num_traits::NumCast>(
+        matrix: &DMatrix<T>,
+    ) -> Result<DMatrix<T>, StatsError> {
+        if matrix.is_empty() {
+            return Err(StatsError::EmptyMatrix);
+        }
+        let (rows, _cols) = matrix.shape();
+        if rows < 2 {
+            return Err(StatsError::InsufficientSamples);
+        }
+
+        let centered = center_columns(matrix);
+        let n_minus_1: T = num_traits::NumCast::from(rows - 1).expect("n-1 must fit in T");
+        let cov = centered.transpose() * &centered / n_minus_1;
+        Ok(cov)
+    }
+
+    /// Compute correlation matrix
+    pub fn correlation_matrix<T: RealField + Copy + num_traits::Float + num_traits::NumCast>(
+        matrix: &DMatrix<T>,
+    ) -> Result<DMatrix<T>, StatsError> {
+        let cov = covariance_matrix(matrix)?;
+        let (rows, cols) = cov.shape();
+        let mut corr = cov.clone();
+        for i in 0..rows {
+            for j in 0..cols {
+                let si = nalgebra::ComplexField::sqrt(cov[(i, i)]);
+                let sj = nalgebra::ComplexField::sqrt(cov[(j, j)]);
+                if si > T::zero() && sj > T::zero() {
+                    corr[(i, j)] = cov[(i, j)] / (si * sj);
+                } else {
+                    corr[(i, j)] = T::nan();
+                }
+            }
+        }
+        Ok(corr)
+    }
+}
+
+/// Ndarray stats functions
+pub mod ndarray_stats {
+    use super::*;
+    use crate::utils::{ndarray_to_nalgebra, nalgebra_to_ndarray};
+
+    /// Compute column means
+    pub fn column_means<T: Float + RealField>(matrix: &Array2<T>) -> Array1<T> {
+        let nalg = ndarray_to_nalgebra(matrix);
+        let means = super::nalgebra_stats::column_means(&nalg);
+        Array1::from_vec(means.as_slice().to_vec())
+    }
+
+    /// Center columns
+    pub fn center_columns<T: Float + RealField>(matrix: &Array2<T>) -> Array2<T> {
+        let nalg = ndarray_to_nalgebra(matrix);
+        let centered = super::nalgebra_stats::center_columns(&nalg);
+        nalgebra_to_ndarray(&centered)
+    }
+
+    /// Compute sample covariance matrix (Bessel correction)
+    pub fn covariance_matrix<T: Float + RealField>(
+        matrix: &Array2<T>,
+    ) -> Result<Array2<T>, StatsError> {
+        let nalg = ndarray_to_nalgebra(matrix);
+        let cov = super::nalgebra_stats::covariance_matrix(&nalg)?;
+        Ok(nalgebra_to_ndarray(&cov))
+    }
+
+    /// Compute correlation matrix
+    pub fn correlation_matrix<T: Float + RealField>(
+        matrix: &Array2<T>,
+    ) -> Result<Array2<T>, StatsError> {
+        let nalg = ndarray_to_nalgebra(matrix);
+        let corr = super::nalgebra_stats::correlation_matrix(&nalg)?;
+        Ok(nalgebra_to_ndarray(&corr))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_relative_eq;
+
+    #[test]
+    fn test_covariance_bessel() {
+        let m = DMatrix::from_row_slice(3, 2, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let cov = nalgebra_stats::covariance_matrix(&m).unwrap();
+        assert_relative_eq!(cov[(0, 0)], 4.0, epsilon = 1e-10);
+        assert_relative_eq!(cov[(1, 1)], 4.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_correlation_bounds() {
+        let m = DMatrix::from_row_slice(
+            10,
+            2,
+            &[
+                1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0,
+                9.0, 9.0, 10.0, 10.0,
+            ],
+        );
+        let corr = nalgebra_stats::correlation_matrix(&m).unwrap();
+        assert_relative_eq!(corr[(0, 1)], 1.0, epsilon = 1e-10);
+        assert_relative_eq!(corr[(0, 0)], 1.0, epsilon = 1e-10);
+    }
+}
