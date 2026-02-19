@@ -202,6 +202,7 @@
 //! # Ok::<(), rust_linalg::qr::QRError>(())
 //! ```
 
+pub mod arrow;
 pub mod svd;
 pub mod matrix_functions;
 pub mod jacobian;
