@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- Arrow integration (extracted to separate repo). This repo is a linear algebra library written in Rust.
+
 ## [0.3.0] - 2025-02-19
 
 ### Added
@@ -25,7 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Explained variance and explained variance ratio
 - **Linear Regression** - Ordinary least squares via QR
   - `linear_regression` with optional intercept, R-squared, residuals
-- **Optional Arrow feature** - Arrow integration behind `--features arrow`
+- **Polar Decomposition** - A = UP via SVD
+- **Schur Decomposition** - Upper quasi-triangular form
+- **Sylvester Equation Solver** - AX + XB = C
+- **Orthogonalization** - Gram-Schmidt and related functions
+- **Iterative solvers** - IterativeConfig infrastructure
+- **Triangular** - Triangular solve operations
 - **Dual license** - MIT OR Apache-2.0
 - Examples: lu_example, cholesky_example, pca_example, regression_example
 
