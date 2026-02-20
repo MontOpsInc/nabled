@@ -16,6 +16,10 @@ pub enum EigenError {
     NotSquare,
     /// Matrix is not symmetric
     NonSymmetric,
+    /// Matrix B is not positive definite (for generalized eigen)
+    NotPositiveDefinite,
+    /// Dimension mismatch between A and B
+    DimensionMismatch,
     /// Convergence failed
     ConvergenceFailed,
     /// Numerical instability
@@ -30,6 +34,10 @@ impl fmt::Display for EigenError {
             EigenError::EmptyMatrix => write!(f, "Matrix is empty"),
             EigenError::NotSquare => write!(f, "Matrix must be square"),
             EigenError::NonSymmetric => write!(f, "Matrix must be symmetric"),
+            EigenError::NotPositiveDefinite => {
+                write!(f, "Matrix B must be positive definite")
+            }
+            EigenError::DimensionMismatch => write!(f, "Matrix dimensions must match"),
             EigenError::ConvergenceFailed => write!(f, "Eigenvalue algorithm failed to converge"),
             EigenError::NumericalInstability => write!(f, "Numerical instability detected"),
             EigenError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
@@ -101,6 +109,74 @@ pub mod nalgebra_eigen {
             eigenvectors: eigen.eigenvectors,
         })
     }
+
+    /// Compute generalized eigenvalue decomposition Av = λBv for symmetric A and SPD B
+    /// Reduces to standard eigen via Cholesky on B: C = L^{-1} A L^{-T}, then v = L^{-T} w
+    pub fn compute_generalized_eigen<T: RealField + Copy + num_traits::Float>(
+        a: &DMatrix<T>,
+        b: &DMatrix<T>,
+    ) -> Result<NalgebraGeneralizedEigenResult<T>, EigenError> {
+        if a.is_empty() || b.is_empty() {
+            return Err(EigenError::EmptyMatrix);
+        }
+        let (ar, ac) = a.shape();
+        let (br, bc) = b.shape();
+        if ar != ac || br != bc || ar != br {
+            return Err(EigenError::DimensionMismatch);
+        }
+        let tol = T::from(1e-10).unwrap_or_else(T::nan);
+        if !is_symmetric(a, tol) {
+            return Err(EigenError::NonSymmetric);
+        }
+        if !is_symmetric(b, tol) {
+            return Err(EigenError::NonSymmetric);
+        }
+
+        let cholesky =
+            nalgebra::linalg::Cholesky::new(b.clone()).ok_or(EigenError::NotPositiveDefinite)?;
+        let l = cholesky.l();
+
+        // C = L^{-1} A L^{-T}
+        let linv_a = l
+            .solve_lower_triangular(a)
+            .ok_or(EigenError::NumericalInstability)?;
+        let c = l
+            .transpose()
+            .solve_upper_triangular(&linv_a)
+            .ok_or(EigenError::NumericalInstability)?;
+
+        let eigen = c.symmetric_eigen();
+
+        // v = L^{-T} w (eigenvectors of generalized problem)
+        let w = eigen.eigenvectors;
+        let eigenvectors = l
+            .transpose()
+            .solve_lower_triangular(&w)
+            .ok_or(EigenError::NumericalInstability)?;
+
+        Ok(NalgebraGeneralizedEigenResult {
+            eigenvalues: eigen.eigenvalues,
+            eigenvectors,
+        })
+    }
+}
+
+/// Generalized eigenvalue result for nalgebra
+#[derive(Debug, Clone)]
+pub struct NalgebraGeneralizedEigenResult<T: RealField> {
+    /// Generalized eigenvalues
+    pub eigenvalues: DVector<T>,
+    /// Generalized eigenvectors (columns)
+    pub eigenvectors: DMatrix<T>,
+}
+
+/// Generalized eigenvalue result for ndarray
+#[derive(Debug, Clone)]
+pub struct NdarrayGeneralizedEigenResult<T: Float> {
+    /// Generalized eigenvalues
+    pub eigenvalues: Array1<T>,
+    /// Generalized eigenvectors (columns)
+    pub eigenvectors: Array2<T>,
 }
 
 /// Ndarray symmetric eigenvalue decomposition (via nalgebra)
@@ -115,6 +191,20 @@ pub mod ndarray_eigen {
         let nalg = ndarray_to_nalgebra(matrix);
         let result = super::nalgebra_eigen::compute_symmetric_eigen(&nalg)?;
         Ok(NdarrayEigenResult {
+            eigenvalues: Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
+            eigenvectors: nalgebra_to_ndarray(&result.eigenvectors),
+        })
+    }
+
+    /// Compute generalized eigenvalue decomposition Av = λBv
+    pub fn compute_generalized_eigen<T: Float + RealField>(
+        a: &Array2<T>,
+        b: &Array2<T>,
+    ) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError> {
+        let nalg_a = ndarray_to_nalgebra(a);
+        let nalg_b = ndarray_to_nalgebra(b);
+        let result = super::nalgebra_eigen::compute_generalized_eigen(&nalg_a, &nalg_b)?;
+        Ok(NdarrayGeneralizedEigenResult {
             eigenvalues: Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
             eigenvectors: nalgebra_to_ndarray(&result.eigenvectors),
         })
@@ -136,6 +226,22 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert_relative_eq!(reconstructed[(i, j)], a[(i, j)], epsilon = 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn test_generalized_eigen() {
+        let a = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+        let b = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
+        let result = nalgebra_eigen::compute_generalized_eigen(&a, &b).unwrap();
+        // For B=I, generalized eigen reduces to standard eigen
+        for i in 0..2 {
+            let av = &a * result.eigenvectors.column(i);
+            let bv = &b * result.eigenvectors.column(i);
+            let lam = result.eigenvalues[i];
+            for j in 0..2 {
+                assert_relative_eq!(av[j], lam * bv[j], epsilon = 1e-8);
             }
         }
     }

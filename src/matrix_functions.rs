@@ -24,6 +24,8 @@ pub enum MatrixFunctionError {
     InvalidInput(String),
     /// Matrix has negative eigenvalues (for log)
     NegativeEigenvalues,
+    /// Matrix has zero eigenvalues (sign not defined)
+    ZeroEigenvalue,
 }
 
 impl fmt::Display for MatrixFunctionError {
@@ -38,6 +40,9 @@ impl fmt::Display for MatrixFunctionError {
             MatrixFunctionError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
             MatrixFunctionError::NegativeEigenvalues => {
                 write!(f, "Matrix has negative eigenvalues, logarithm not defined")
+            }
+            MatrixFunctionError::ZeroEigenvalue => {
+                write!(f, "Matrix has zero eigenvalue, sign function not defined")
             }
         }
     }
@@ -290,6 +295,40 @@ pub mod nalgebra_matrix_functions {
             matrix_exp_eigen(&p_log_a)
         }
     }
+
+    /// Compute matrix sign function: sign(A) for symmetric diagonalizable A
+    /// sign(λ) = 1 if λ>0, -1 if λ<0; requires no zero eigenvalues
+    pub fn matrix_sign<T: RealField + FloatCore>(
+        matrix: &DMatrix<T>,
+    ) -> Result<DMatrix<T>, MatrixFunctionError> {
+        if matrix.is_empty() {
+            return Err(MatrixFunctionError::EmptyMatrix);
+        }
+        if !matrix.is_square() {
+            return Err(MatrixFunctionError::NotSquare);
+        }
+
+        let eigen = matrix.clone().symmetric_eigen();
+        let eigenvalues = eigen.eigenvalues;
+        let eigenvectors = eigen.eigenvectors;
+
+        let sign_eigenvalues: Vec<T> = eigenvalues
+            .iter()
+            .map(|&lambda| {
+                if lambda > T::zero() {
+                    Ok(T::one())
+                } else if lambda < T::zero() {
+                    Ok(-T::one())
+                } else {
+                    Err(MatrixFunctionError::ZeroEigenvalue)
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let sign_diagonal = DMatrix::from_diagonal(&nalgebra::DVector::from_vec(sign_eigenvalues));
+
+        Ok(&eigenvectors * &sign_diagonal * eigenvectors.transpose())
+    }
 }
 
 /// Matrix exponential and logarithm functions using ndarray
@@ -358,6 +397,15 @@ pub mod ndarray_matrix_functions {
     ) -> Result<Array2<T>, MatrixFunctionError> {
         let nalgebra_matrix = ndarray_to_nalgebra(matrix);
         let result = nalgebra_matrix_functions::matrix_power(&nalgebra_matrix, power)?;
+        Ok(nalgebra_to_ndarray(&result))
+    }
+
+    /// Compute matrix sign function
+    pub fn matrix_sign<T: Float + RealField + FloatCore>(
+        matrix: &Array2<T>,
+    ) -> Result<Array2<T>, MatrixFunctionError> {
+        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
+        let result = nalgebra_matrix_functions::matrix_sign(&nalgebra_matrix)?;
         Ok(nalgebra_to_ndarray(&result))
     }
 }
@@ -566,6 +614,19 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert_relative_eq!(exp_log_matrix[[i, j]], matrix[[i, j]], epsilon = 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn test_matrix_sign() {
+        // Positive definite: sign = I
+        let a = DMatrix::from_row_slice(2, 2, &[2.0, 1.0, 1.0, 2.0]);
+        let sign_a = nalgebra_matrix_functions::matrix_sign(&a).unwrap();
+        let identity = DMatrix::<f64>::identity(2, 2);
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_relative_eq!(sign_a[(i, j)], identity[(i, j)], epsilon = 1e-10);
             }
         }
     }
