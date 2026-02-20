@@ -36,6 +36,15 @@ impl fmt::Display for LUError {
 
 impl std::error::Error for LUError {}
 
+/// Result of log-determinant computation (handles sign for general matrices)
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogDetResult<T> {
+    /// Sign of determinant: 1 (positive), -1 (negative)
+    pub sign: i8,
+    /// Natural log of absolute value of determinant
+    pub ln_abs_det: T,
+}
+
 /// LU decomposition result for nalgebra
 #[derive(Debug, Clone)]
 pub struct NalgebraLUResult<T: RealField> {
@@ -119,6 +128,39 @@ pub mod nalgebra_lu {
         let lu = LU::new(matrix.clone());
         lu.try_inverse().ok_or(LUError::SingularMatrix)
     }
+
+    /// Compute the determinant (det = sign(permutation) * prod(diag(U)))
+    pub fn determinant<T: RealField + Copy + num_traits::Float>(
+        matrix: &DMatrix<T>,
+    ) -> Result<T, LUError> {
+        if matrix.is_empty() {
+            return Err(LUError::EmptyMatrix);
+        }
+        let (rows, cols) = matrix.shape();
+        if rows != cols {
+            return Err(LUError::NotSquare);
+        }
+        if matrix.iter().any(|&x| !num_traits::Float::is_finite(x)) {
+            return Err(LUError::NumericalInstability);
+        }
+
+        let lu = LU::new(matrix.clone());
+        Ok(lu.determinant())
+    }
+
+    /// Compute log-determinant for general matrices (handles sign)
+    pub fn log_determinant<T: RealField + Copy + num_traits::Float>(
+        matrix: &DMatrix<T>,
+    ) -> Result<LogDetResult<T>, LUError> {
+        let det = determinant(matrix)?;
+        if det == T::zero() {
+            return Err(LUError::SingularMatrix);
+        }
+        let sign = if det > T::zero() { 1_i8 } else { -1_i8 };
+        let abs_det = num_traits::Float::abs(det);
+        let ln_abs_det = num_traits::Float::ln(abs_det);
+        Ok(LogDetResult { sign, ln_abs_det })
+    }
 }
 
 /// Ndarray LU decomposition (via nalgebra)
@@ -154,6 +196,20 @@ pub mod ndarray_lu {
         let nalg = ndarray_to_nalgebra(matrix);
         let inv = super::nalgebra_lu::inverse(&nalg)?;
         Ok(nalgebra_to_ndarray(&inv))
+    }
+
+    /// Compute the determinant
+    pub fn determinant<T: Float + RealField>(matrix: &Array2<T>) -> Result<T, LUError> {
+        let nalg = ndarray_to_nalgebra(matrix);
+        super::nalgebra_lu::determinant(&nalg)
+    }
+
+    /// Compute log-determinant (handles sign for general matrices)
+    pub fn log_determinant<T: Float + RealField>(
+        matrix: &Array2<T>,
+    ) -> Result<LogDetResult<T>, LUError> {
+        let nalg = ndarray_to_nalgebra(matrix);
+        super::nalgebra_lu::log_determinant(&nalg)
     }
 }
 
@@ -214,5 +270,27 @@ mod tests {
         assert_relative_eq!(identity[[1, 1]], 1.0, epsilon = 1e-10);
         assert_relative_eq!(identity[[0, 1]], 0.0, epsilon = 1e-10);
         assert_relative_eq!(identity[[1, 0]], 0.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_nalgebra_determinant() {
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+        let det = nalgebra_lu::determinant(&a).unwrap();
+        assert_relative_eq!(det, -2.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_nalgebra_log_determinant() {
+        let a = DMatrix::from_row_slice(2, 2, &[2.0, 0.0, 0.0, 3.0]);
+        let log_det = nalgebra_lu::log_determinant(&a).unwrap();
+        assert_eq!(log_det.sign, 1);
+        assert_relative_eq!(log_det.ln_abs_det, 6.0_f64.ln(), epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_ndarray_determinant() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let det = ndarray_lu::determinant(&a).unwrap();
+        assert_relative_eq!(det, -2.0, epsilon = 1e-10);
     }
 }

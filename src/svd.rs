@@ -56,6 +56,13 @@ impl fmt::Display for SVDError {
 
 impl std::error::Error for SVDError {}
 
+/// Configuration for pseudo-inverse computation
+#[derive(Debug, Clone, Default)]
+pub struct PseudoInverseConfig<T> {
+    /// Tolerance for truncating tiny singular values (default: eps * max(s) * max(m,n))
+    pub tolerance: Option<T>,
+}
+
 /// Enhanced SVD computation using nalgebra
 pub mod nalgebra_svd {
     use super::*;
@@ -167,6 +174,76 @@ pub mod nalgebra_svd {
         });
 
         svd.singular_values.iter().filter(|&sv| *sv > tol).count()
+    }
+
+    /// Compute Moore-Penrose pseudo-inverse pinv(A) = V Σ⁻¹ U^T
+    pub fn pseudo_inverse<T: RealField + Copy + num_traits::Float>(
+        matrix: &DMatrix<T>,
+        config: &PseudoInverseConfig<T>,
+    ) -> Result<DMatrix<T>, SVDError> {
+        if matrix.is_empty() {
+            return Err(SVDError::EmptyMatrix);
+        }
+        let svd = compute_svd(matrix)?;
+        let (m, n) = matrix.shape();
+        let max_dim = T::from(m.max(n)).unwrap_or_else(|| T::from_f64(f64::NAN).unwrap());
+        let max_sv = svd.singular_values.max();
+        let tol = config
+            .tolerance
+            .unwrap_or_else(|| max_sv * max_dim * T::epsilon());
+
+        let r = svd.singular_values.len();
+        let ncols_v = svd.vt.ncols();
+        let nrows_u = svd.u.nrows();
+
+        let mut result = DMatrix::zeros(ncols_v, nrows_u);
+        for i in 0..r {
+            let s = svd.singular_values[i];
+            if s > tol {
+                let inv_s = T::one() / s;
+                for j in 0..ncols_v {
+                    for k in 0..nrows_u {
+                        result[(j, k)] += svd.vt[(i, j)] * inv_s * svd.u[(k, i)];
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Compute null space (kernel) - columns of V for singular values below tolerance
+    pub fn null_space<T: RealField + Copy + num_traits::Float>(
+        matrix: &DMatrix<T>,
+        tolerance: Option<T>,
+    ) -> Result<DMatrix<T>, SVDError> {
+        if matrix.is_empty() {
+            return Err(SVDError::EmptyMatrix);
+        }
+        let svd = compute_svd(matrix)?;
+        let max_sv = svd.singular_values.max();
+        let tol = tolerance.unwrap_or_else(|| T::from_f64(1e-10).unwrap_or_else(T::nan) * max_sv);
+
+        let null_indices: Vec<usize> = svd
+            .singular_values
+            .iter()
+            .enumerate()
+            .filter(|(_, &s)| s <= tol)
+            .map(|(i, _)| i)
+            .collect();
+
+        if null_indices.is_empty() {
+            return Ok(DMatrix::zeros(svd.vt.ncols(), 0));
+        }
+
+        let k = null_indices.len();
+        let n = svd.vt.ncols();
+        let mut result = DMatrix::zeros(n, k);
+        for (col_j, &idx) in null_indices.iter().enumerate() {
+            for i in 0..n {
+                result[(i, col_j)] = svd.vt[(idx, i)];
+            }
+        }
+        Ok(result)
     }
 }
 
@@ -305,6 +382,28 @@ pub mod ndarray_svd {
 
         svd.singular_values.iter().filter(|&sv| *sv > tol).count()
     }
+
+    /// Compute Moore-Penrose pseudo-inverse
+    pub fn pseudo_inverse<T: Float + RealField>(
+        matrix: &Array2<T>,
+        config: &PseudoInverseConfig<T>,
+    ) -> Result<Array2<T>, SVDError> {
+        use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+        let nalg = ndarray_to_nalgebra(matrix);
+        let pinv = crate::svd::nalgebra_svd::pseudo_inverse(&nalg, config)?;
+        Ok(nalgebra_to_ndarray(&pinv))
+    }
+
+    /// Compute null space (kernel)
+    pub fn null_space<T: Float + RealField>(
+        matrix: &Array2<T>,
+        tolerance: Option<T>,
+    ) -> Result<Array2<T>, SVDError> {
+        use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+        let nalg = ndarray_to_nalgebra(matrix);
+        let nulls = crate::svd::nalgebra_svd::null_space(&nalg, tolerance)?;
+        Ok(nalgebra_to_ndarray(&nulls))
+    }
 }
 
 #[cfg(test)]
@@ -384,5 +483,26 @@ mod tests {
         let empty_matrix = DMatrix::<f64>::zeros(0, 0);
         let result = nalgebra_svd::compute_svd_with_tolerance(&empty_matrix, 1e-10_f64);
         assert!(matches!(result, Err(SVDError::EmptyMatrix)));
+    }
+
+    #[test]
+    fn test_pseudo_inverse() {
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 2.0]);
+        let pinv = nalgebra_svd::pseudo_inverse(&a, &PseudoInverseConfig::default()).unwrap();
+        let product = &a * &pinv;
+        assert!(approx::relative_eq!(product[(0, 0)], 1.0, epsilon = 1e-10));
+        assert!(approx::relative_eq!(product[(1, 1)], 1.0, epsilon = 1e-10));
+    }
+
+    #[test]
+    fn test_null_space_rank_deficient() {
+        // Matrix with second column = 2 * first column, so rank 1, null space dim 1
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 2.0, 4.0]);
+        let nulls = nalgebra_svd::null_space(&a, Some(1e-10)).unwrap();
+        assert_eq!(nulls.ncols(), 1);
+        // Verify A * null_col ≈ 0
+        let col = nulls.column(0);
+        let ax = &a * col;
+        assert!(ax.norm() < 1e-8);
     }
 }

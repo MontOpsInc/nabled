@@ -206,26 +206,41 @@
 pub mod arrow;
 pub mod cholesky;
 pub mod eigen;
+pub mod iterative;
 pub mod jacobian;
 pub mod lu;
 pub mod matrix_functions;
+pub mod orthogonalization;
 pub mod pca;
+pub mod polar;
 pub mod qr;
 pub mod regression;
+pub mod schur;
 pub mod stats;
 pub mod svd;
+pub mod sylvester;
+pub mod triangular;
 pub mod utils;
 
 pub use cholesky::{CholeskyError, NalgebraCholeskyResult, NdarrayCholeskyResult};
-pub use eigen::{EigenError, NalgebraEigenResult, NdarrayEigenResult};
+pub use eigen::{
+    EigenError, NalgebraEigenResult, NalgebraGeneralizedEigenResult, NdarrayEigenResult,
+    NdarrayGeneralizedEigenResult,
+};
+pub use iterative::{IterativeConfig, IterativeError};
 pub use jacobian::*;
 pub use jacobian::{JacobianConfig, JacobianError};
-pub use lu::{LUError, NalgebraLUResult, NdarrayLUResult};
+pub use lu::{LUError, LogDetResult, NalgebraLUResult, NdarrayLUResult};
 pub use matrix_functions::*;
+pub use orthogonalization::OrthogonalizationError;
 pub use pca::{NalgebraPCAResult, NdarrayPCAResult, PCAError};
+pub use polar::{NalgebraPolarResult, NdarrayPolarResult, PolarError};
 pub use qr::*;
 pub use qr::{QRConfig, QRError, QRResult};
 pub use regression::{NalgebraRegressionResult, NdarrayRegressionResult, RegressionError};
+pub use schur::{NalgebraSchurResult, NdarraySchurResult, SchurError};
 pub use stats::StatsError;
 /// Re-exports for convenience
 pub use svd::*;
+pub use sylvester::SylvesterError;
+pub use triangular::TriangularError;
