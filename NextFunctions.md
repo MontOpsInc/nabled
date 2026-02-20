@@ -2,38 +2,7 @@
 
 This document outlines potential next functions to implement in the rust-linalg library, organized by category and priority.
 
-## 🎯 High Priority - Core Linear Algebra
-
-### Matrix Decompositions
-- **QR Decomposition** ⭐ **RECOMMENDED NEXT**
-  - Full QR decomposition
-  - Reduced QR (economy size)
-  - QR with column pivoting
-  - QR for least squares problems
-  - Both nalgebra and ndarray versions
-  - **Why**: Essential for least squares, eigenvalue algorithms, builds on existing SVD infrastructure
-
-- **LU Decomposition**
-  - Full LU decomposition
-  - LU with partial pivoting
-  - LU with complete pivoting
-  - LU for solving linear systems
-  - **Why**: Critical for solving linear systems efficiently
-
-- **Cholesky Decomposition**
-  - Standard Cholesky decomposition
-  - Cholesky with pivoting
-  - LDL decomposition variant
-  - **Why**: For positive definite matrices (very common in ML/optimization)
-
-- **Eigenvalue/Eigenvector Decomposition**
-  - Power iteration method
-  - QR algorithm for eigenvalues
-  - Inverse iteration for eigenvectors
-  - Generalized eigenvalue problems
-  - **Why**: Core linear algebra operation, fundamental building block
-
-## 🚀 Medium Priority - Optimization & Numerical Methods
+## 🎯 High Priority - Optimization & Numerical Methods
 
 ### Root Finding & Optimization
 - **Newton's Method**
@@ -92,36 +61,11 @@ This document outlines potential next functions to implement in the rust-linalg 
   - **Why**: Mathematical completeness
 
 ### Specialized Decompositions
-- **Schur Decomposition**
-  - Upper triangular form
-  - **Why**: Important for eigenvalue problems
-
 - **Jordan Canonical Form**
   - Block diagonal form
   - **Why**: Advanced linear algebra
 
-- **Polar Decomposition**
-  - A = UP (unitary × positive definite)
-  - **Why**: Useful in various applications
-
 ## 📊 Lower Priority - Statistical & ML Functions
-
-### Principal Component Analysis
-- **PCA Implementation**
-  - Using existing SVD
-  - Centered and non-centered variants
-  - **Why**: High demand in data science
-
-### Linear Regression
-- **Least Squares Regression**
-  - Using QR decomposition
-  - Ridge regression
-  - **Why**: Fundamental ML operation
-
-### Covariance Operations
-- **Covariance Matrix Operations**
-  - Building on existing functions
-  - **Why**: Statistical applications
 
 ### Clustering & Dimensionality
 - **K-means Clustering**
@@ -165,28 +109,22 @@ This document outlines potential next functions to implement in the rust-linalg 
 
 | Function | Impact | Effort | Dependencies | Priority |
 |----------|--------|--------|--------------|----------|
-| QR Decomposition | High | Medium | SVD | ⭐⭐⭐ |
-| LU Decomposition | High | Medium | None | ⭐⭐⭐ |
 | Newton's Method | High | Low | Jacobian | ⭐⭐⭐ |
-| Cholesky Decomposition | Medium | Medium | None | ⭐⭐ |
-| Eigenvalue Decomposition | High | High | QR | ⭐⭐ |
 | Matrix Square Root | Medium | Low | Matrix Power | ⭐⭐ |
 | Gradient Descent | Medium | Low | Gradient | ⭐⭐ |
-| PCA | Medium | Low | SVD | ⭐ |
 | Levenberg-Marquardt | Medium | Medium | Jacobian + Matrix Functions | ⭐ |
+| Ridge Regression | Medium | Low | QR | ⭐ |
+| Conjugate Gradient | High | Medium | None | ⭐ |
 
 ## 🎯 Recommended Implementation Order
 
-1. **QR Decomposition** - Natural next step, high impact
-2. **Newton's Method** - Leverages existing Jacobian
-3. **LU Decomposition** - Core linear algebra
-4. **Matrix Square Root** - Easy extension of existing
-5. **Gradient Descent** - Uses existing gradient
-6. **Cholesky Decomposition** - Important for optimization
-7. **Eigenvalue Decomposition** - Advanced but fundamental
-8. **PCA** - High demand, uses existing SVD
-9. **Levenberg-Marquardt** - Combines multiple features
-10. **Advanced Matrix Functions** - Mathematical completeness
+1. **Newton's Method** - Leverages existing Jacobian
+2. **Matrix Square Root** - Easy extension of existing matrix power
+3. **Gradient Descent** - Uses existing gradient
+4. **Levenberg-Marquardt** - Combines Jacobian and matrix functions
+5. **Ridge Regression** - Extension of linear regression
+6. **Conjugate Gradient** - Important for large sparse systems
+7. **Advanced Matrix Functions** - Trigonometric, hyperbolic, sign function
 
 ## 💡 Implementation Notes
 

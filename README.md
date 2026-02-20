@@ -1,13 +1,23 @@
 # Rust Linear Algebra Library
 
-Advanced linear algebra functions built on top of `nalgebra` and `ndarray` crates in Rust. This library provides enhanced implementations of common linear algebra operations with focus on performance and numerical stability.
+This is a linear algebra library written in Rust. Advanced linear algebra functions built on top of `nalgebra` and `ndarray` crates, with focus on performance and numerical stability.
 
 ## Features
 
 - **Singular Value Decomposition (SVD)** implementations using both `nalgebra` and `ndarray`
 - **QR Decomposition** - Full and reduced QR decomposition with least squares solving
+- **Cholesky Decomposition** - For symmetric positive-definite matrices
+- **LU Decomposition** - Solve Ax = b and compute matrix inverse
+- **Eigenvalue Decomposition** - Symmetric matrices, generalized eigen
 - **Matrix Functions** - Matrix exponential, logarithm, and power operations
 - **Jacobian Computation** - Numerical differentiation and gradient computation (real and complex)
+- **PCA** - Principal Component Analysis
+- **Linear Regression** - OLS via QR decomposition
+- **Polar Decomposition** - A = UP (unitary × positive definite)
+- **Schur Decomposition** - Upper quasi-triangular form
+- **Sylvester Equation Solver** - AX + XB = C
+- **Orthogonalization** - Gram-Schmidt and related
+- **Statistical functions** - Covariance and correlation
 - **Truncated SVD** for dimensionality reduction
 - **Matrix reconstruction** from SVD and QR components
 - **Condition number** and **matrix rank** computation
@@ -294,6 +304,35 @@ let result = nalgebra_qr::compute_qr(&nan_matrix, &config);
 - `compute_qr_with_pivoting(matrix, config)` - Compute QR with column pivoting
 - `solve_least_squares(matrix, rhs, config)` - Solve least squares problem using QR
 
+### Cholesky Decomposition
+
+- `compute_cholesky(matrix)` - Compute Cholesky decomposition L where A = LL^T
+- `solve(matrix, rhs)` - Solve Ax = b using Cholesky
+- `inverse(matrix)` - Compute matrix inverse
+
+### LU Decomposition
+
+- `compute_lu(matrix)` - Compute LU decomposition
+- `solve(matrix, rhs)` - Solve Ax = b
+- `inverse(matrix)` - Compute matrix inverse
+- `log_det(matrix)` - Compute log determinant
+
+### Eigenvalue Decomposition
+
+- `compute_symmetric_eigen(matrix)` - Eigenvalues and eigenvectors of symmetric matrix
+- `compute_generalized_eigen(a, b)` - Generalized eigenvalue problem
+
+### PCA
+
+- `compute_pca(matrix, n_components)` - Principal Component Analysis
+- `transform(pca_result, data)` - Project data onto components
+- `inverse_transform(pca_result, scores)` - Reconstruct from scores
+
+### Linear Regression
+
+- `linear_regression(x, y, intercept)` - OLS regression
+- Returns coefficients, fitted values, residuals, R-squared
+
 ## Examples
 
 Run the examples:
@@ -308,8 +347,23 @@ cargo run --example matrix_functions_example
 # Jacobian computation example
 cargo run --example jacobian_example
 
+# Complex Jacobian example
+cargo run --example complex_jacobian_example
+
 # QR decomposition example
 cargo run --example qr_example
+
+# Cholesky decomposition example
+cargo run --example cholesky_example
+
+# LU decomposition example
+cargo run --example lu_example
+
+# Linear regression example
+cargo run --example regression_example
+
+# PCA example
+cargo run --example pca_example
 ```
 
 ## Testing
@@ -383,13 +437,12 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT or Apache-2.0 license, at your option - see the LICENSE files for details.
 
 ## Roadmap
 
-- [ ] QR decomposition implementations
-- [ ] LU decomposition implementations
-- [ ] Eigenvalue decomposition
-- [ ] Matrix factorization algorithms
+- [x] QR decomposition implementations
+- [x] LU decomposition implementations
+- [x] Eigenvalue decomposition
 - [ ] GPU acceleration support
-- [ ] More advanced numerical algorithms
+- [ ] More advanced numerical algorithms (Newton's method, gradient descent, sparse matrices)

@@ -2,7 +2,7 @@
 name = "rust-linalg"
 version = "0.3.0"
 edition = "2021"
-description = "Advanced linear algebra functions built on top of nalgebra and ndarray"
+description = "A linear algebra library written in Rust. SVD, QR, LU, Cholesky, eigen, PCA, regression, matrix functions, Jacobians, and more."
 authors = ["Niklaus Parcell <nik.parcell@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/NiklausParcell/rust-linearalgebra-better"
@@ -15,7 +15,6 @@ publish = false  # change when ready
 
 [features]
 default = []
-arrow = ["dep:arrow", "dep:arrow-array", "dep:arrow-schema"]
 
 [dependencies]
 nalgebra = { version = "0.32", features = ["serde-serialize"] }
@@ -26,17 +25,9 @@ serde = { version = "1.0", features = ["derive"] }
 num-traits = "0.2"
 num-complex = "0.4"
 approx = "0.5"
-arrow = { version = "55", optional = true }
-arrow-array = { version = "55", optional = true }
-arrow-schema = { version = "55", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
-
-[[test]]
-name = "arrow_integration_tests"
-path = "tests/arrow_integration_tests.rs"
-required-features = ["arrow"]
 
 [[bench]]
 name = "svd_benchmarks"

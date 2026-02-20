@@ -29,17 +29,11 @@ jobs:
       - name: Check format
         run: cargo fmt -- --check
 
-      - name: Clippy (default features)
+      - name: Clippy
         run: cargo clippy -- -D warnings
 
-      - name: Clippy (with arrow)
-        run: cargo clippy --features arrow -- -D warnings
-
-      - name: Test (default)
+      - name: Test
         run: cargo test
-
-      - name: Test (with arrow)
-        run: cargo test --features arrow
 
       - name: Build docs
         run: cargo doc --no-deps

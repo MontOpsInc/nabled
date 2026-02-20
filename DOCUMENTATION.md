@@ -8,7 +8,19 @@ This document provides detailed documentation for all modules in the rust-linalg
 2. [Matrix Functions](#matrix-functions)
 3. [Jacobian Computation](#jacobian-computation)
 4. [QR Decomposition](#qr-decomposition)
-5. [Utility Functions](#utility-functions)
+5. [Cholesky Decomposition](#cholesky-decomposition)
+6. [LU Decomposition](#lu-decomposition)
+7. [Eigenvalue Decomposition](#eigenvalue-decomposition)
+8. [Statistics](#statistics)
+9. [PCA](#pca)
+10. [Linear Regression](#linear-regression)
+11. [Polar Decomposition](#polar-decomposition)
+12. [Schur Decomposition](#schur-decomposition)
+13. [Sylvester Equation](#sylvester-equation)
+14. [Orthogonalization](#orthogonalization)
+15. [Iterative](#iterative)
+16. [Triangular](#triangular)
+17. [Utility Functions](#utility-functions)
 
 ---
 
@@ -543,6 +555,152 @@ pub enum JacobianError {
 }
 ```
 
+### QR Errors
+
+```rust
+pub enum QRError {
+    EmptyMatrix,
+    SingularMatrix,
+    ConvergenceFailed,
+    InvalidDimensions(String),
+    NumericalInstability,
+    InvalidInput(String),
+}
+```
+
+### Cholesky Errors
+
+```rust
+pub enum CholeskyError {
+    EmptyMatrix,
+    NotSquare,
+    NotPositiveDefinite,
+    NumericalInstability,
+    InvalidInput(String),
+}
+```
+
+### LU Errors
+
+```rust
+pub enum LUError {
+    EmptyMatrix,
+    NotSquare,
+    SingularMatrix,
+    NumericalInstability,
+    InvalidInput(String),
+}
+```
+
+### Eigen Errors
+
+```rust
+pub enum EigenError {
+    EmptyMatrix,
+    NotSquare,
+    NonSymmetric,
+    NotPositiveDefinite,
+    DimensionMismatch,
+    ConvergenceFailed,
+    NumericalInstability,
+    InvalidInput(String),
+}
+```
+
+### Regression Errors
+
+```rust
+pub enum RegressionError {
+    EmptyInput,
+    DimensionMismatch(String),
+    SingularMatrix,
+    QRError(String),
+}
+```
+
+### PCA Errors
+
+```rust
+pub enum PCAError {
+    EmptyMatrix,
+    InsufficientSamples,
+    InvalidComponents,
+    Computation(String),
+}
+```
+
+### Polar Errors
+
+```rust
+pub enum PolarError {
+    EmptyMatrix,
+    NotSquare,
+    SVDError(SVDError),
+    InvalidInput(String),
+}
+```
+
+### Schur Errors
+
+```rust
+pub enum SchurError {
+    EmptyMatrix,
+    NotSquare,
+    ConvergenceFailed,
+    InvalidInput(String),
+}
+```
+
+### Sylvester Errors
+
+```rust
+pub enum SylvesterError {
+    EmptyMatrix,
+    DimensionMismatch,
+    SchurError(SchurError),
+    InvalidInput(String),
+}
+```
+
+### Orthogonalization Errors
+
+```rust
+pub enum OrthogonalizationError {
+    EmptyMatrix,
+    InvalidInput(String),
+}
+```
+
+### Stats Errors
+
+```rust
+pub enum StatsError {
+    EmptyMatrix,
+    InsufficientSamples,
+    InvalidInput(String),
+}
+```
+
+### Triangular Errors
+
+```rust
+pub enum TriangularError {
+    EmptyMatrix,
+    NotSquare,
+    SingularMatrix,
+    InvalidInput(String),
+}
+```
+
+### Iterative Errors
+
+```rust
+pub enum IterativeError {
+    NotConverged,
+    InvalidInput(String),
+}
+```
+
 ---
 
 ## Performance Considerations
@@ -825,6 +983,182 @@ Error types for QR decomposition operations.
 - Column pivoting improves numerical stability but adds overhead
 - Least squares solving is O(mn²) using QR decomposition
 - Condition number computation is O(min(m,n))
+
+---
+
+## Cholesky Decomposition
+
+Cholesky decomposition for symmetric positive-definite matrices. Used for solving linear systems and computing matrix inverses.
+
+### Functions
+
+#### `compute_cholesky(matrix)` (nalgebra_cholesky / ndarray_cholesky)
+
+Computes the Cholesky decomposition A = LL^T where L is lower triangular.
+
+**Returns:** `NalgebraCholeskyResult` or `NdarrayCholeskyResult` with `.l` (lower triangular factor)
+
+#### `solve(matrix, rhs)`
+
+Solves Ax = b using the Cholesky decomposition.
+
+#### `inverse(matrix)`
+
+Computes the matrix inverse using Cholesky.
+
+---
+
+## LU Decomposition
+
+LU decomposition for solving linear systems Ax = b and computing matrix inverse.
+
+### Functions
+
+#### `compute_lu(matrix)` (nalgebra_lu / ndarray_lu)
+
+Computes the LU decomposition with partial pivoting.
+
+**Returns:** `NalgebraLUResult` or `NdarrayLUResult` with `.l`, `.u`, `.p`
+
+#### `solve(matrix, rhs)` / `inverse(matrix)` / `log_det(matrix)`
+
+Solve linear systems, compute inverse, or log determinant from LU result.
+
+---
+
+## Eigenvalue Decomposition
+
+Symmetric eigenvalue decomposition for real symmetric matrices.
+
+### Functions
+
+#### `compute_symmetric_eigen(matrix)` (nalgebra_eigen / ndarray_eigen)
+
+Computes eigenvalues and eigenvectors of a symmetric matrix.
+
+**Returns:** `NalgebraEigenResult` or `NdarrayEigenResult` with `.eigenvalues`, `.eigenvectors`
+
+#### `compute_generalized_eigen(a, b)`
+
+Solves the generalized eigenvalue problem Av = λBv for symmetric A and positive-definite B.
+
+---
+
+## Statistics
+
+Covariance and correlation for data matrices.
+
+### Functions
+
+#### `column_means(matrix)` / `center_columns(matrix)`
+
+Compute column means and center columns (subtract mean).
+
+#### `covariance_matrix(matrix)` / `correlation_matrix(matrix)`
+
+Compute sample covariance matrix (Bessel correction n-1) and correlation matrix.
+
+**Module:** `rust_linalg::stats::nalgebra_stats` / `ndarray_stats`
+
+---
+
+## PCA
+
+Principal Component Analysis via SVD of centered data.
+
+### Functions
+
+#### `compute_pca(matrix, n_components)`
+
+Computes PCA: centers data, performs SVD, returns components, scores, explained variance.
+
+**Returns:** `NalgebraPCAResult` / `NdarrayPCAResult` with `.components`, `.scores`, `.explained_variance`, `.explained_variance_ratio`
+
+#### `transform(result, data)` / `inverse_transform(result, scores)`
+
+Project data onto principal components or reconstruct from scores.
+
+---
+
+## Linear Regression
+
+Ordinary least squares linear regression via QR decomposition.
+
+### Functions
+
+#### `linear_regression(x, y, intercept)`
+
+Computes OLS coefficients. Set `intercept` true to include intercept term.
+
+**Returns:** `NalgebraRegressionResult` / `NdarrayRegressionResult` with `.coefficients`, `.fitted_values`, `.residuals`, `.r_squared`
+
+---
+
+## Polar Decomposition
+
+Polar decomposition A = UP where U is unitary and P is positive-semidefinite. Uses SVD.
+
+### Functions
+
+#### `compute_polar(matrix)` (nalgebra_polar / ndarray_polar)
+
+**Returns:** `NalgebraPolarResult` / `NdarrayPolarResult` with `.u` (unitary), `.p` (positive-semidefinite)
+
+---
+
+## Schur Decomposition
+
+Schur decomposition: A = QUQ^T where Q is orthogonal and U is upper quasi-triangular.
+
+### Functions
+
+#### `compute_schur(matrix)` (nalgebra_schur / ndarray_schur)
+
+**Returns:** `NalgebraSchurResult` / `NdarraySchurResult` with `.q`, `.t` (quasi-triangular)
+
+---
+
+## Sylvester Equation
+
+Solves the Sylvester equation AX + XB = C.
+
+### Functions
+
+#### `solve_sylvester(a, b, c)` (nalgebra_sylvester / ndarray_sylvester)
+
+Uses Schur decomposition. Matrices A, B, C; returns solution X.
+
+**Requires:** A and B square; dimensions must be compatible.
+
+---
+
+## Orthogonalization
+
+Gram-Schmidt and related orthogonalization procedures.
+
+### Functions
+
+Provides orthogonalization of a set of vectors (e.g., Gram-Schmidt process). See `rust_linalg::orthogonalization` for available functions.
+
+---
+
+## Iterative
+
+Iterative solver configuration and infrastructure.
+
+### `IterativeConfig`
+
+Configuration for iterative methods (max iterations, tolerance, etc.). See `rust_linalg::iterative`.
+
+---
+
+## Triangular
+
+Triangular matrix solve operations.
+
+### Functions
+
+Solves lower/upper triangular systems. See `rust_linalg::triangular` module.
 
 ---
 

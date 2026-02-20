@@ -202,8 +202,6 @@
 //! # Ok::<(), rust_linalg::qr::QRError>(())
 //! ```
 
-#[cfg(feature = "arrow")]
-pub mod arrow;
 pub mod cholesky;
 pub mod eigen;
 pub mod iterative;
