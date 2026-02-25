@@ -3,31 +3,33 @@
 //! This module provides SVD implementations using both nalgebra and ndarray.
 //! It includes enhanced algorithms and utilities for SVD computation.
 
-use nalgebra::{DMatrix, DVector, RealField};
-use ndarray::{s, Array1, Array2};
-use num_traits::{float::FloatCore, Float};
 use std::fmt;
+
+use nalgebra::{DMatrix, DVector, RealField};
+use ndarray::{Array1, Array2, s};
+use num_traits::Float;
+use num_traits::float::FloatCore;
 
 /// SVD result structure for nalgebra
 #[derive(Debug, Clone)]
 pub struct NalgebraSVD<T: RealField> {
     /// Left singular vectors (U matrix)
-    pub u: DMatrix<T>,
+    pub u:               DMatrix<T>,
     /// Singular values
     pub singular_values: DVector<T>,
     /// Right singular vectors (V^T matrix)
-    pub vt: DMatrix<T>,
+    pub vt:              DMatrix<T>,
 }
 
 /// SVD result structure for ndarray
 #[derive(Debug, Clone)]
 pub struct NdarraySVD<T: Float> {
     /// Left singular vectors (U matrix)
-    pub u: Array2<T>,
+    pub u:               Array2<T>,
     /// Singular values
     pub singular_values: Array1<T>,
     /// Right singular vectors (V^T matrix)
-    pub vt: Array2<T>,
+    pub vt:              Array2<T>,
 }
 
 /// Error types for SVD computation
@@ -79,17 +81,14 @@ pub mod nalgebra_svd {
 
         // Check if U and V^T were computed successfully
         match (svd.u, svd.v_t) {
-            (Some(u), Some(vt)) => Ok(NalgebraSVD {
-                u,
-                singular_values: svd.singular_values,
-                vt,
-            }),
+            (Some(u), Some(vt)) => Ok(NalgebraSVD { u, singular_values: svd.singular_values, vt }),
             _ => Err(SVDError::ConvergenceFailed),
         }
     }
 
     /// Compute SVD with custom tolerance.
-    /// Singular values below the tolerance are set to zero (useful for rank determination and low-rank approximation).
+    /// Singular values below the tolerance are set to zero (useful for rank determination and
+    /// low-rank approximation).
     pub fn compute_svd_with_tolerance<T: RealField>(
         matrix: &DMatrix<T>,
         tolerance: T,
@@ -102,13 +101,7 @@ pub mod nalgebra_svd {
         let sv_values: Vec<T> = svd
             .singular_values
             .iter()
-            .map(|sv| {
-                if *sv < tolerance {
-                    T::zero()
-                } else {
-                    sv.clone()
-                }
-            })
+            .map(|sv| if *sv < tolerance { T::zero() } else { sv.clone() })
             .collect();
         svd.singular_values = DVector::from_vec(sv_values);
         Ok(svd)
@@ -126,9 +119,7 @@ pub mod nalgebra_svd {
         let k = k.min(full_svd.singular_values.len());
 
         if k == 0 {
-            return Err(SVDError::InvalidInput(
-                "k must be greater than 0".to_string(),
-            ));
+            return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
         }
 
         // Truncate the matrices
@@ -137,9 +128,9 @@ pub mod nalgebra_svd {
         let vt_truncated = full_svd.vt.rows(0, k).into_owned();
 
         Ok(NalgebraSVD {
-            u: u_truncated,
+            u:               u_truncated,
             singular_values: singular_values_truncated,
-            vt: vt_truncated,
+            vt:              vt_truncated,
         })
     }
 
@@ -159,11 +150,7 @@ pub mod nalgebra_svd {
         let max_sv = singular_values.max();
         let min_sv = singular_values.min();
 
-        if min_sv.is_zero() {
-            T::infinity()
-        } else {
-            max_sv / min_sv
-        }
+        if min_sv.is_zero() { T::infinity() } else { max_sv / min_sv }
     }
 
     /// Compute the rank of the matrix from its SVD
@@ -188,9 +175,7 @@ pub mod nalgebra_svd {
         let (m, n) = matrix.shape();
         let max_dim = T::from(m.max(n)).unwrap_or_else(|| T::from_f64(f64::NAN).unwrap());
         let max_sv = svd.singular_values.max();
-        let tol = config
-            .tolerance
-            .unwrap_or_else(|| max_sv * max_dim * T::epsilon());
+        let tol = config.tolerance.unwrap_or_else(|| max_sv * max_dim * T::epsilon());
 
         let r = svd.singular_values.len();
         let ncols_v = svd.vt.ncols();
@@ -274,11 +259,7 @@ pub mod ndarray_svd {
         let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
         let singular_values = Array1::from_vec(nalgebra_svd.singular_values.as_slice().to_vec());
 
-        Ok(NdarraySVD {
-            u,
-            singular_values,
-            vt,
-        })
+        Ok(NdarraySVD { u, singular_values, vt })
     }
 
     /// Compute SVD with custom tolerance.
@@ -300,11 +281,7 @@ pub mod ndarray_svd {
         let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
         let singular_values = Array1::from_vec(nalgebra_svd.singular_values.as_slice().to_vec());
 
-        Ok(NdarraySVD {
-            u,
-            singular_values,
-            vt,
-        })
+        Ok(NdarraySVD { u, singular_values, vt })
     }
 
     /// Compute truncated SVD (keeping only the k largest singular values)
@@ -317,9 +294,7 @@ pub mod ndarray_svd {
         let k = k.min(full_svd.singular_values.len());
 
         if k == 0 {
-            return Err(SVDError::InvalidInput(
-                "k must be greater than 0".to_string(),
-            ));
+            return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
         }
 
         // Truncate the matrices
@@ -328,9 +303,9 @@ pub mod ndarray_svd {
         let vt_truncated = full_svd.vt.slice(s![..k, ..]).to_owned();
 
         Ok(NdarraySVD {
-            u: u_truncated,
+            u:               u_truncated,
             singular_values: singular_values_truncated,
-            vt: vt_truncated,
+            vt:              vt_truncated,
         })
     }
 
@@ -361,16 +336,9 @@ pub mod ndarray_svd {
         }
 
         let max_sv = svd.singular_values.iter().fold(T::zero(), |a, &b| a.max(b));
-        let min_sv = svd
-            .singular_values
-            .iter()
-            .fold(T::infinity(), |a, &b| a.min(b));
+        let min_sv = svd.singular_values.iter().fold(T::infinity(), |a, &b| a.min(b));
 
-        if min_sv.is_zero() {
-            T::infinity()
-        } else {
-            max_sv / min_sv
-        }
+        if min_sv.is_zero() { T::infinity() } else { max_sv / min_sv }
     }
 
     /// Compute the rank of the matrix from its SVD
@@ -408,9 +376,10 @@ pub mod ndarray_svd {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use nalgebra::DMatrix;
     use ndarray::Array2;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_svd_basic() {

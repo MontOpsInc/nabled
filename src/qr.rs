@@ -13,10 +13,12 @@
 //! - **Comprehensive error handling**
 //! - **Numerical stability considerations**
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
-use num_traits::{float::FloatCore, Float};
-use std::fmt;
+use num_traits::Float;
+use num_traits::float::FloatCore;
 
 /// Error types for QR decomposition
 #[derive(Debug, Clone)]
@@ -58,16 +60,12 @@ pub struct QRConfig<T> {
     /// Maximum number of iterations for iterative methods
     pub max_iterations: usize,
     /// Enable column pivoting for numerical stability
-    pub use_pivoting: bool,
+    pub use_pivoting:   bool,
 }
 
 impl<T: Float> Default for QRConfig<T> {
     fn default() -> Self {
-        Self {
-            rank_tolerance: T::from(1e-12).unwrap(),
-            max_iterations: 100,
-            use_pivoting: false,
-        }
+        Self { rank_tolerance: T::from(1e-12).unwrap(), max_iterations: 100, use_pivoting: false }
     }
 }
 
@@ -75,19 +73,20 @@ impl<T: Float> Default for QRConfig<T> {
 #[derive(Debug, Clone)]
 pub struct QRResult<T> {
     /// Orthogonal matrix Q
-    pub q: DMatrix<T>,
+    pub q:    DMatrix<T>,
     /// Upper triangular matrix R
-    pub r: DMatrix<T>,
+    pub r:    DMatrix<T>,
     /// Column permutation matrix (if pivoting was used)
-    pub p: Option<DMatrix<T>>,
+    pub p:    Option<DMatrix<T>>,
     /// Matrix rank
     pub rank: usize,
 }
 
 /// Nalgebra QR decomposition functions
 pub mod nalgebra_qr {
-    use super::*;
     use nalgebra::{DMatrix, DVector, RealField};
+
+    use super::*;
 
     /// Compute QR decomposition using nalgebra's built-in implementation
     ///
@@ -131,14 +130,10 @@ pub mod nalgebra_qr {
             let val = matrix[(0, 0)];
             if num_traits::Float::is_finite(val) {
                 return Ok(QRResult {
-                    q: DMatrix::from_element(1, 1, T::one()),
-                    r: DMatrix::from_element(1, 1, val),
-                    p: None,
-                    rank: if num_traits::Float::abs(val) >= config.rank_tolerance {
-                        1
-                    } else {
-                        0
-                    },
+                    q:    DMatrix::from_element(1, 1, T::one()),
+                    r:    DMatrix::from_element(1, 1, val),
+                    p:    None,
+                    rank: if num_traits::Float::abs(val) >= config.rank_tolerance { 1 } else { 0 },
                 });
             } else {
                 return Err(QRError::NumericalInstability);
@@ -146,16 +141,13 @@ pub mod nalgebra_qr {
         }
 
         // Edge case: Zero matrix
-        if matrix
-            .iter()
-            .all(|&x| num_traits::Float::abs(x) < config.rank_tolerance)
-        {
+        if matrix.iter().all(|&x| num_traits::Float::abs(x) < config.rank_tolerance) {
             let (m, n) = matrix.shape();
             let min_dim = m.min(n);
             return Ok(QRResult {
-                q: DMatrix::identity(m, min_dim),
-                r: DMatrix::zeros(min_dim, n),
-                p: None,
+                q:    DMatrix::identity(m, min_dim),
+                r:    DMatrix::zeros(min_dim, n),
+                p:    None,
                 rank: 0,
             });
         }
@@ -167,9 +159,7 @@ pub mod nalgebra_qr {
 
         // Validate configuration
         if config.rank_tolerance <= T::zero() {
-            return Err(QRError::InvalidInput(
-                "Rank tolerance must be positive".to_string(),
-            ));
+            return Err(QRError::InvalidInput("Rank tolerance must be positive".to_string()));
         }
 
         // Edge case: Very small rank tolerance
@@ -203,12 +193,7 @@ pub mod nalgebra_qr {
             // This is handled gracefully by returning the reduced rank
         }
 
-        Ok(QRResult {
-            q: q.clone(),
-            r: r.clone(),
-            p: None,
-            rank,
-        })
+        Ok(QRResult { q: q.clone(), r: r.clone(), p: None, rank })
     }
 
     /// Compute reduced QR decomposition (economy size)
@@ -237,9 +222,9 @@ pub mod nalgebra_qr {
         let r_reduced = full_qr.r.rows(0, min_dim);
 
         Ok(QRResult {
-            q: q_reduced.into(),
-            r: r_reduced.into(),
-            p: full_qr.p,
+            q:    q_reduced.into(),
+            r:    r_reduced.into(),
+            p:    full_qr.p,
             rank: full_qr.rank,
         })
     }
@@ -280,12 +265,7 @@ pub mod nalgebra_qr {
 
         let rank = determine_rank(&r, config.rank_tolerance);
 
-        Ok(QRResult {
-            q,
-            r,
-            p: Some(p_matrix),
-            rank,
-        })
+        Ok(QRResult { q, r, p: Some(p_matrix), rank })
     }
 
     /// Solve least squares problem using QR decomposition
@@ -453,8 +433,9 @@ pub mod nalgebra_qr {
 
 /// Ndarray QR decomposition functions
 pub mod ndarray_qr {
-    use super::*;
     use ndarray::{Array1, Array2};
+
+    use super::*;
 
     /// Compute QR decomposition using Householder reflections
     ///
@@ -588,10 +569,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
     use nalgebra::DMatrix;
     use ndarray::Array2;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_qr_basic() {
@@ -619,13 +601,9 @@ mod tests {
 
     #[test]
     fn test_nalgebra_qr_rectangular() {
-        let matrix = DMatrix::from_row_slice(
-            4,
-            3,
-            &[
-                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
-            ],
-        );
+        let matrix = DMatrix::from_row_slice(4, 3, &[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ]);
 
         let config = QRConfig::default();
         let qr = nalgebra_qr::compute_qr(&matrix, &config).unwrap();
@@ -643,13 +621,9 @@ mod tests {
 
     #[test]
     fn test_nalgebra_reduced_qr() {
-        let matrix = DMatrix::from_row_slice(
-            4,
-            3,
-            &[
-                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
-            ],
-        );
+        let matrix = DMatrix::from_row_slice(4, 3, &[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ]);
 
         let config = QRConfig::default();
         let qr = nalgebra_qr::compute_reduced_qr(&matrix, &config).unwrap();
@@ -774,11 +748,8 @@ mod tests {
         ));
 
         // Test invalid rank tolerance
-        let invalid_config = QRConfig {
-            rank_tolerance: 0.0,
-            max_iterations: 100,
-            use_pivoting: false,
-        };
+        let invalid_config =
+            QRConfig { rank_tolerance: 0.0, max_iterations: 100, use_pivoting: false };
         let matrix = DMatrix::from_element(2, 2, 1.0);
         assert!(matches!(
             nalgebra_qr::compute_qr(&matrix, &invalid_config),
@@ -786,11 +757,8 @@ mod tests {
         ));
 
         // Test very small rank tolerance
-        let small_tol_config = QRConfig {
-            rank_tolerance: 1e-20,
-            max_iterations: 100,
-            use_pivoting: false,
-        };
+        let small_tol_config =
+            QRConfig { rank_tolerance: 1e-20, max_iterations: 100, use_pivoting: false };
         assert!(matches!(
             nalgebra_qr::compute_qr(&matrix, &small_tol_config),
             Err(QRError::InvalidInput(_))
@@ -832,13 +800,9 @@ mod tests {
         assert_relative_eq!(solution[0], 3.0, epsilon = 1e-10);
 
         // Test singular matrix
-        let singular_matrix = DMatrix::from_row_slice(
-            2,
-            2,
-            &[
-                1.0, 2.0, 2.0, 4.0, // Second row is 2 * first row
-            ],
-        );
+        let singular_matrix = DMatrix::from_row_slice(2, 2, &[
+            1.0, 2.0, 2.0, 4.0, // Second row is 2 * first row
+        ]);
         let vector = DVector::from_vec(vec![1.0, 2.0]);
         assert!(matches!(
             nalgebra_qr::solve_least_squares(&singular_matrix, &vector, &config),
@@ -867,13 +831,9 @@ mod tests {
     #[test]
     fn test_rank_deficient_matrix() {
         // Test rank-deficient matrix (rank 1 instead of 2)
-        let rank_deficient = DMatrix::from_row_slice(
-            2,
-            2,
-            &[
-                1.0, 2.0, 2.0, 4.0, // Second row is 2 * first row
-            ],
-        );
+        let rank_deficient = DMatrix::from_row_slice(2, 2, &[
+            1.0, 2.0, 2.0, 4.0, // Second row is 2 * first row
+        ]);
 
         let config = QRConfig::default();
         let qr = nalgebra_qr::compute_qr(&rank_deficient, &config).unwrap();
@@ -932,12 +892,9 @@ mod tests {
 
     #[test]
     fn test_ndarray_reduced_qr() {
-        let matrix = Array2::from_shape_vec(
-            (4, 3),
-            vec![
-                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
-            ],
-        )
+        let matrix = Array2::from_shape_vec((4, 3), vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ])
         .unwrap();
 
         let config = QRConfig::default();

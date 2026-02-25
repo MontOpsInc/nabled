@@ -5,8 +5,7 @@
 
 use nalgebra::DVector;
 use num_complex::Complex;
-use rust_linalg::jacobian::complex_jacobian;
-use rust_linalg::jacobian::{JacobianConfig, JacobianError};
+use rust_linalg::jacobian::{JacobianConfig, JacobianError, complex_jacobian};
 
 fn main() -> Result<(), JacobianError> {
     println!("=== Complex Jacobian Computation Examples ===\n");

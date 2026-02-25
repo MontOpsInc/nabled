@@ -2,10 +2,11 @@
 //!
 //! Symmetric eigenvalue decomposition for real symmetric matrices.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
-use std::fmt;
 
 /// Error types for eigenvalue decomposition
 #[derive(Debug, Clone, PartialEq)]
@@ -51,7 +52,7 @@ impl std::error::Error for EigenError {}
 #[derive(Debug, Clone)]
 pub struct NalgebraEigenResult<T: RealField> {
     /// Eigenvalues
-    pub eigenvalues: DVector<T>,
+    pub eigenvalues:  DVector<T>,
     /// Eigenvectors (columns)
     pub eigenvectors: DMatrix<T>,
 }
@@ -60,7 +61,7 @@ pub struct NalgebraEigenResult<T: RealField> {
 #[derive(Debug, Clone)]
 pub struct NdarrayEigenResult<T: Float> {
     /// Eigenvalues
-    pub eigenvalues: Array1<T>,
+    pub eigenvalues:  Array1<T>,
     /// Eigenvectors (columns)
     pub eigenvectors: Array2<T>,
 }
@@ -105,7 +106,7 @@ pub mod nalgebra_eigen {
 
         let eigen = matrix.clone().symmetric_eigen();
         Ok(NalgebraEigenResult {
-            eigenvalues: eigen.eigenvalues,
+            eigenvalues:  eigen.eigenvalues,
             eigenvectors: eigen.eigenvectors,
         })
     }
@@ -137,9 +138,7 @@ pub mod nalgebra_eigen {
         let l = cholesky.l();
 
         // C = L^{-1} A L^{-T}
-        let linv_a = l
-            .solve_lower_triangular(a)
-            .ok_or(EigenError::NumericalInstability)?;
+        let linv_a = l.solve_lower_triangular(a).ok_or(EigenError::NumericalInstability)?;
         let c = l
             .transpose()
             .solve_upper_triangular(&linv_a)
@@ -149,15 +148,10 @@ pub mod nalgebra_eigen {
 
         // v = L^{-T} w (eigenvectors of generalized problem)
         let w = eigen.eigenvectors;
-        let eigenvectors = l
-            .transpose()
-            .solve_lower_triangular(&w)
-            .ok_or(EigenError::NumericalInstability)?;
+        let eigenvectors =
+            l.transpose().solve_lower_triangular(&w).ok_or(EigenError::NumericalInstability)?;
 
-        Ok(NalgebraGeneralizedEigenResult {
-            eigenvalues: eigen.eigenvalues,
-            eigenvectors,
-        })
+        Ok(NalgebraGeneralizedEigenResult { eigenvalues: eigen.eigenvalues, eigenvectors })
     }
 }
 
@@ -165,7 +159,7 @@ pub mod nalgebra_eigen {
 #[derive(Debug, Clone)]
 pub struct NalgebraGeneralizedEigenResult<T: RealField> {
     /// Generalized eigenvalues
-    pub eigenvalues: DVector<T>,
+    pub eigenvalues:  DVector<T>,
     /// Generalized eigenvectors (columns)
     pub eigenvectors: DMatrix<T>,
 }
@@ -174,7 +168,7 @@ pub struct NalgebraGeneralizedEigenResult<T: RealField> {
 #[derive(Debug, Clone)]
 pub struct NdarrayGeneralizedEigenResult<T: Float> {
     /// Generalized eigenvalues
-    pub eigenvalues: Array1<T>,
+    pub eigenvalues:  Array1<T>,
     /// Generalized eigenvectors (columns)
     pub eigenvectors: Array2<T>,
 }
@@ -191,7 +185,7 @@ pub mod ndarray_eigen {
         let nalg = ndarray_to_nalgebra(matrix);
         let result = super::nalgebra_eigen::compute_symmetric_eigen(&nalg)?;
         Ok(NdarrayEigenResult {
-            eigenvalues: Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
+            eigenvalues:  Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
             eigenvectors: nalgebra_to_ndarray(&result.eigenvectors),
         })
     }
@@ -205,7 +199,7 @@ pub mod ndarray_eigen {
         let nalg_b = ndarray_to_nalgebra(b);
         let result = super::nalgebra_eigen::compute_generalized_eigen(&nalg_a, &nalg_b)?;
         Ok(NdarrayGeneralizedEigenResult {
-            eigenvalues: Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
+            eigenvalues:  Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
             eigenvectors: nalgebra_to_ndarray(&result.eigenvectors),
         })
     }
@@ -213,8 +207,9 @@ pub mod ndarray_eigen {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_eigen_reconstruct() {

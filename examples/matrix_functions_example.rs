@@ -3,7 +3,7 @@
 use nalgebra::DMatrix;
 use ndarray::Array2;
 use rust_linalg::matrix_functions::{
-    nalgebra_matrix_functions, ndarray_matrix_functions, MatrixFunctionError,
+    MatrixFunctionError, nalgebra_matrix_functions, ndarray_matrix_functions,
 };
 
 fn main() -> Result<(), MatrixFunctionError> {
@@ -58,10 +58,7 @@ fn main() -> Result<(), MatrixFunctionError> {
     // Test exp(log(A)) ≈ A
     let exp_log_pos_def = nalgebra_matrix_functions::matrix_exp_eigen(&log_pos_def)?;
     println!("exp(log(pos_def)):\n{}", exp_log_pos_def);
-    println!(
-        "Difference from original: {}",
-        (exp_log_pos_def - pos_def).norm()
-    );
+    println!("Difference from original: {}", (exp_log_pos_def - pos_def).norm());
 
     // Test matrix power
     println!("\n--- Matrix Power ---");

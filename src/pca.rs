@@ -2,10 +2,11 @@
 //!
 //! PCA via SVD of the centered data matrix.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
-use std::fmt;
 
 use crate::stats::nalgebra_stats;
 
@@ -39,30 +40,30 @@ impl std::error::Error for PCAError {}
 #[derive(Debug, Clone)]
 pub struct NalgebraPCAResult<T: RealField> {
     /// Principal components (rows = components, cols = features)
-    pub components: DMatrix<T>,
+    pub components:               DMatrix<T>,
     /// Projected data (scores)
-    pub scores: DMatrix<T>,
+    pub scores:                   DMatrix<T>,
     /// Explained variance (variance of each PC)
-    pub explained_variance: DVector<T>,
+    pub explained_variance:       DVector<T>,
     /// Explained variance ratio (fraction of total variance)
     pub explained_variance_ratio: DVector<T>,
     /// Column means of original data
-    pub mean: DVector<T>,
+    pub mean:                     DVector<T>,
 }
 
 /// PCA result for ndarray
 #[derive(Debug, Clone)]
 pub struct NdarrayPCAResult<T: Float> {
     /// Principal components (rows = components, cols = features)
-    pub components: Array2<T>,
+    pub components:               Array2<T>,
     /// Projected data (scores)
-    pub scores: Array2<T>,
+    pub scores:                   Array2<T>,
     /// Explained variance
-    pub explained_variance: Array1<T>,
+    pub explained_variance:       Array1<T>,
     /// Explained variance ratio
     pub explained_variance_ratio: Array1<T>,
     /// Column means
-    pub mean: Array1<T>,
+    pub mean:                     Array1<T>,
 }
 
 /// Nalgebra PCA
@@ -173,13 +174,15 @@ pub mod ndarray_pca {
         let nalg = ndarray_to_nalgebra(matrix);
         let result = super::nalgebra_pca::compute_pca(&nalg, n_components)?;
         Ok(NdarrayPCAResult {
-            components: nalgebra_to_ndarray(&result.components),
-            scores: nalgebra_to_ndarray(&result.scores),
-            explained_variance: Array1::from_vec(result.explained_variance.as_slice().to_vec()),
+            components:               nalgebra_to_ndarray(&result.components),
+            scores:                   nalgebra_to_ndarray(&result.scores),
+            explained_variance:       Array1::from_vec(
+                result.explained_variance.as_slice().to_vec(),
+            ),
             explained_variance_ratio: Array1::from_vec(
                 result.explained_variance_ratio.as_slice().to_vec(),
             ),
-            mean: Array1::from_vec(result.mean.as_slice().to_vec()),
+            mean:                     Array1::from_vec(result.mean.as_slice().to_vec()),
         })
     }
 
@@ -190,13 +193,15 @@ pub mod ndarray_pca {
     ) -> Array2<T> {
         let nalg_matrix = ndarray_to_nalgebra(matrix);
         let nalg_result = super::NalgebraPCAResult {
-            components: ndarray_to_nalgebra(&pca_result.components),
-            scores: ndarray_to_nalgebra(&pca_result.scores),
-            explained_variance: nalgebra::DVector::from_vec(pca_result.explained_variance.to_vec()),
+            components:               ndarray_to_nalgebra(&pca_result.components),
+            scores:                   ndarray_to_nalgebra(&pca_result.scores),
+            explained_variance:       nalgebra::DVector::from_vec(
+                pca_result.explained_variance.to_vec(),
+            ),
             explained_variance_ratio: nalgebra::DVector::from_vec(
                 pca_result.explained_variance_ratio.to_vec(),
             ),
-            mean: nalgebra::DVector::from_vec(pca_result.mean.to_vec()),
+            mean:                     nalgebra::DVector::from_vec(pca_result.mean.to_vec()),
         };
         let transformed = super::nalgebra_pca::transform(&nalg_matrix, &nalg_result);
         nalgebra_to_ndarray(&transformed)
@@ -209,13 +214,15 @@ pub mod ndarray_pca {
     ) -> Array2<T> {
         let nalg_scores = ndarray_to_nalgebra(scores);
         let nalg_result = super::NalgebraPCAResult {
-            components: ndarray_to_nalgebra(&pca_result.components),
-            scores: ndarray_to_nalgebra(&pca_result.scores),
-            explained_variance: nalgebra::DVector::from_vec(pca_result.explained_variance.to_vec()),
+            components:               ndarray_to_nalgebra(&pca_result.components),
+            scores:                   ndarray_to_nalgebra(&pca_result.scores),
+            explained_variance:       nalgebra::DVector::from_vec(
+                pca_result.explained_variance.to_vec(),
+            ),
             explained_variance_ratio: nalgebra::DVector::from_vec(
                 pca_result.explained_variance_ratio.to_vec(),
             ),
-            mean: nalgebra::DVector::from_vec(pca_result.mean.to_vec()),
+            mean:                     nalgebra::DVector::from_vec(pca_result.mean.to_vec()),
         };
         let reconstructed = super::nalgebra_pca::inverse_transform(&nalg_scores, &nalg_result);
         nalgebra_to_ndarray(&reconstructed)
@@ -224,18 +231,15 @@ pub mod ndarray_pca {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_pca_roundtrip() {
-        let m = DMatrix::from_row_slice(
-            4,
-            3,
-            &[
-                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
-            ],
-        );
+        let m = DMatrix::from_row_slice(4, 3, &[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ]);
         let pca = nalgebra_pca::compute_pca(&m, Some(3)).unwrap();
         let reconstructed = nalgebra_pca::inverse_transform(&pca.scores, &pca);
         for i in 0..4 {
@@ -247,13 +251,9 @@ mod tests {
 
     #[test]
     fn test_explained_variance_ratio_sums_to_one() {
-        let m = DMatrix::from_row_slice(
-            5,
-            3,
-            &[
-                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
-            ],
-        );
+        let m = DMatrix::from_row_slice(5, 3, &[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+        ]);
         let pca = nalgebra_pca::compute_pca(&m, Some(3)).unwrap();
         let sum: f64 = pca.explained_variance_ratio.iter().sum();
         assert_relative_eq!(sum, 1.0, epsilon = 0.01);

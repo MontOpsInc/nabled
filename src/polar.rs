@@ -3,12 +3,13 @@
 //! Polar decomposition: A = U P where U is orthogonal and P is symmetric positive semi-definite.
 //! Computed via SVD: A = U_svd Σ V_svd^T ⇒ U = U_svd V_svd^T, P = V_svd Σ V_svd^T.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, RealField};
 use ndarray::Array2;
 use num_traits::Float;
-use std::fmt;
 
-use crate::svd::{nalgebra_svd, SVDError};
+use crate::svd::{SVDError, nalgebra_svd};
 
 /// Error types for polar decomposition
 #[derive(Debug, Clone, PartialEq)]
@@ -37,9 +38,7 @@ impl fmt::Display for PolarError {
 impl std::error::Error for PolarError {}
 
 impl From<SVDError> for PolarError {
-    fn from(e: SVDError) -> Self {
-        PolarError::SVDFailed(e)
-    }
+    fn from(e: SVDError) -> Self { PolarError::SVDFailed(e) }
 }
 
 /// Polar decomposition result for nalgebra
@@ -109,8 +108,9 @@ pub mod ndarray_polar {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_polar_reconstruct() {

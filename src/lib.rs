@@ -226,15 +226,13 @@ pub use eigen::{
     NdarrayGeneralizedEigenResult,
 };
 pub use iterative::{IterativeConfig, IterativeError};
-pub use jacobian::*;
-pub use jacobian::{JacobianConfig, JacobianError};
+pub use jacobian::{JacobianConfig, JacobianError, *};
 pub use lu::{LUError, LogDetResult, NalgebraLUResult, NdarrayLUResult};
 pub use matrix_functions::*;
 pub use orthogonalization::OrthogonalizationError;
 pub use pca::{NalgebraPCAResult, NdarrayPCAResult, PCAError};
 pub use polar::{NalgebraPolarResult, NdarrayPolarResult, PolarError};
-pub use qr::*;
-pub use qr::{QRConfig, QRError, QRResult};
+pub use qr::{QRConfig, QRError, QRResult, *};
 pub use regression::{NalgebraRegressionResult, NdarrayRegressionResult, RegressionError};
 pub use schur::{NalgebraSchurResult, NdarraySchurResult, SchurError};
 pub use stats::StatsError;

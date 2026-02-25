@@ -3,16 +3,17 @@
 //! Conjugate Gradient (CG) for symmetric positive-definite systems.
 //! GMRES for general non-singular systems.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
-use std::fmt;
 
 /// Configuration for iterative solvers
 #[derive(Debug, Clone)]
 pub struct IterativeConfig<T> {
     /// Relative tolerance for residual
-    pub tolerance: T,
+    pub tolerance:      T,
     /// Maximum number of iterations
     pub max_iterations: usize,
 }
@@ -20,18 +21,11 @@ pub struct IterativeConfig<T> {
 impl IterativeConfig<f64> {
     /// Default configuration for f64
     #[must_use]
-    pub const fn default_f64() -> Self {
-        Self {
-            tolerance: 1e-10,
-            max_iterations: 1000,
-        }
-    }
+    pub const fn default_f64() -> Self { Self { tolerance: 1e-10, max_iterations: 1000 } }
 }
 
 impl Default for IterativeConfig<f64> {
-    fn default() -> Self {
-        Self::default_f64()
-    }
+    fn default() -> Self { Self::default_f64() }
 }
 
 /// Error types for iterative solvers
@@ -197,8 +191,9 @@ pub mod ndarray_iterative {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_conjugate_gradient() {

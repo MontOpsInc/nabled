@@ -4,10 +4,12 @@
 //! These functions are essential for many applications in differential equations,
 //! optimization, and machine learning.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, RealField};
 use ndarray::Array2;
-use num_traits::{float::FloatCore, Float};
-use std::fmt;
+use num_traits::Float;
+use num_traits::float::FloatCore;
 
 /// Error types for matrix function computation
 #[derive(Debug, Clone, PartialEq)]
@@ -412,10 +414,11 @@ pub mod ndarray_matrix_functions {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
     use nalgebra::DMatrix;
     use ndarray::Array2;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_matrix_exp_identity() {

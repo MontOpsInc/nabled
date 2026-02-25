@@ -3,10 +3,9 @@
 //! Common utility functions for linear algebra operations.
 
 use nalgebra::{DMatrix, RealField};
-use ndarray::Array;
-use ndarray::Array2;
-use ndarray_rand::rand_distr::Uniform;
+use ndarray::{Array, Array2};
 use ndarray_rand::RandomExt;
+use ndarray_rand::rand_distr::Uniform;
 use num_traits::Float;
 
 /// Convert nalgebra DMatrix to ndarray Array2
@@ -54,9 +53,7 @@ pub fn matrix_approx_eq<T: Float>(a: &Array2<T>, b: &Array2<T>, epsilon: T) -> b
         return false;
     }
 
-    a.iter()
-        .zip(b.iter())
-        .all(|(&x, &y)| (x - y).abs() < epsilon)
+    a.iter().zip(b.iter()).all(|(&x, &y)| (x - y).abs() < epsilon)
 }
 
 /// Compute the Frobenius norm of a matrix
@@ -94,13 +91,7 @@ pub mod nalgebra_utils {
         }
         let (_, cols) = matrix.shape();
         (0..cols)
-            .map(|j| {
-                matrix
-                    .column(j)
-                    .iter()
-                    .map(|x| x.abs())
-                    .fold(T::zero(), |a, b| a + b)
-            })
+            .map(|j| matrix.column(j).iter().map(|x| x.abs()).fold(T::zero(), |a, b| a + b))
             .fold(T::zero(), num_traits::Float::max)
     }
 
@@ -112,13 +103,7 @@ pub mod nalgebra_utils {
         }
         let (rows, _) = matrix.shape();
         (0..rows)
-            .map(|i| {
-                matrix
-                    .row(i)
-                    .iter()
-                    .map(|x| x.abs())
-                    .fold(T::zero(), |a, b| a + b)
-            })
+            .map(|i| matrix.row(i).iter().map(|x| x.abs()).fold(T::zero(), |a, b| a + b))
             .fold(T::zero(), num_traits::Float::max)
     }
 
@@ -171,10 +156,7 @@ pub mod ndarray_utils {
         if matrix.is_empty() {
             return T::zero();
         }
-        matrix
-            .axis_iter(Axis(1))
-            .map(|col| col.mapv(|x| x.abs()).sum())
-            .fold(T::zero(), T::max)
+        matrix.axis_iter(Axis(1)).map(|col| col.mapv(|x| x.abs()).sum()).fold(T::zero(), T::max)
     }
 
     /// Compute the infinity norm (max row sum) of a matrix
@@ -183,10 +165,7 @@ pub mod ndarray_utils {
         if matrix.is_empty() {
             return T::zero();
         }
-        matrix
-            .axis_iter(Axis(0))
-            .map(|row| row.mapv(|x| x.abs()).sum())
-            .fold(T::zero(), T::max)
+        matrix.axis_iter(Axis(0)).map(|row| row.mapv(|x| x.abs()).sum()).fold(T::zero(), T::max)
     }
 
     /// Compute the nuclear norm (sum of singular values) of a matrix
@@ -208,9 +187,10 @@ pub mod ndarray_utils {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use nalgebra::DMatrix;
     use ndarray::Array2;
+
+    use super::*;
 
     #[test]
     fn test_conversion_roundtrip() {
@@ -220,11 +200,7 @@ mod tests {
 
         for i in 0..original.nrows() {
             for j in 0..original.ncols() {
-                assert!(approx::relative_eq!(
-                    original[(i, j)],
-                    back[(i, j)],
-                    epsilon = 1e-10
-                ));
+                assert!(approx::relative_eq!(original[(i, j)], back[(i, j)], epsilon = 1e-10));
             }
         }
     }
@@ -239,18 +215,10 @@ mod tests {
     #[test]
     fn test_spectral_norm() {
         let identity = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
-        assert!(approx::relative_eq!(
-            spectral_norm(&identity),
-            1.0,
-            epsilon = 1e-10
-        ));
+        assert!(approx::relative_eq!(spectral_norm(&identity), 1.0, epsilon = 1e-10));
 
         let diagonal = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 3.0]).unwrap();
-        assert!(approx::relative_eq!(
-            spectral_norm(&diagonal),
-            3.0,
-            epsilon = 1e-10
-        ));
+        assert!(approx::relative_eq!(spectral_norm(&diagonal), 3.0, epsilon = 1e-10));
     }
 
     #[test]
@@ -276,41 +244,25 @@ mod tests {
     #[test]
     fn test_nalgebra_trace() {
         let m = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
-        assert!(approx::relative_eq!(
-            nalgebra_utils::trace(&m),
-            5.0,
-            epsilon = 1e-10
-        ));
+        assert!(approx::relative_eq!(nalgebra_utils::trace(&m), 5.0, epsilon = 1e-10));
     }
 
     #[test]
     fn test_ndarray_trace() {
         let m = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-        assert!(approx::relative_eq!(
-            ndarray_utils::trace(&m),
-            5.0,
-            epsilon = 1e-10
-        ));
+        assert!(approx::relative_eq!(ndarray_utils::trace(&m), 5.0, epsilon = 1e-10));
     }
 
     #[test]
     fn test_nalgebra_norm_1() {
         let m = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
-        assert!(approx::relative_eq!(
-            nalgebra_utils::norm_1(&m),
-            6.0,
-            epsilon = 1e-10
-        ));
+        assert!(approx::relative_eq!(nalgebra_utils::norm_1(&m), 6.0, epsilon = 1e-10));
     }
 
     #[test]
     fn test_nalgebra_norm_inf() {
         let m = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
-        assert!(approx::relative_eq!(
-            nalgebra_utils::norm_inf(&m),
-            7.0,
-            epsilon = 1e-10
-        ));
+        assert!(approx::relative_eq!(nalgebra_utils::norm_inf(&m), 7.0, epsilon = 1e-10));
     }
 
     #[test]

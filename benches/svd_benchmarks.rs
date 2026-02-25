@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use nalgebra::DMatrix;
 use ndarray::Array2;
 use rand::Rng;
@@ -81,10 +81,5 @@ fn benchmark_comparison(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    benchmark_nalgebra_svd,
-    benchmark_ndarray_svd,
-    benchmark_comparison
-);
+criterion_group!(benches, benchmark_nalgebra_svd, benchmark_ndarray_svd, benchmark_comparison);
 criterion_main!(benches);

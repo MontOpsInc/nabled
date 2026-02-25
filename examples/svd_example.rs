@@ -23,10 +23,7 @@ fn main() {
 
             // Test truncated SVD
             let truncated = nalgebra_svd::compute_truncated_svd(&nalgebra_matrix, 2).unwrap();
-            println!(
-                "Truncated SVD (k=2) singular values: {:?}",
-                truncated.singular_values
-            );
+            println!("Truncated SVD (k=2) singular values: {:?}", truncated.singular_values);
         }
         Err(e) => println!("Error: {}", e),
     }
@@ -44,10 +41,7 @@ fn main() {
 
             // Test truncated SVD
             let truncated = ndarray_svd::compute_truncated_svd(&ndarray_matrix, 2).unwrap();
-            println!(
-                "Truncated SVD (k=2) singular values: {:?}",
-                truncated.singular_values
-            );
+            println!("Truncated SVD (k=2) singular values: {:?}", truncated.singular_values);
         }
         Err(e) => println!("Error: {}", e),
     }

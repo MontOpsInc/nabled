@@ -9,7 +9,7 @@
 
 use nalgebra::{DMatrix, DVector};
 use ndarray::Array2;
-use rust_linalg::{nalgebra_qr, ndarray_qr, QRConfig, QRError};
+use rust_linalg::{QRConfig, QRError, nalgebra_qr, ndarray_qr};
 
 fn main() -> Result<(), QRError> {
     println!("🔢 QR Decomposition Examples\n");
@@ -46,13 +46,9 @@ fn main() -> Result<(), QRError> {
 
     // Example 2: Rectangular Matrix QR Decomposition
     println!("📐 Example 2: Rectangular Matrix QR Decomposition");
-    let rectangular = DMatrix::from_row_slice(
-        4,
-        3,
-        &[
-            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
-        ],
-    );
+    let rectangular = DMatrix::from_row_slice(4, 3, &[
+        1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+    ]);
 
     println!("Original 4×3 matrix:");
     println!("{}", rectangular);
@@ -155,11 +151,8 @@ fn main() -> Result<(), QRError> {
     }
 
     // Test with invalid configuration
-    let invalid_config = QRConfig {
-        rank_tolerance: -1.0,
-        max_iterations: 100,
-        use_pivoting: false,
-    };
+    let invalid_config =
+        QRConfig { rank_tolerance: -1.0, max_iterations: 100, use_pivoting: false };
 
     match nalgebra_qr::compute_qr(&matrix, &invalid_config) {
         Err(QRError::InvalidInput(_)) => println!("✅ Correctly caught invalid input error"),

@@ -3,7 +3,7 @@
 use approx::assert_relative_eq;
 use nalgebra::DMatrix;
 use ndarray::Array2;
-use rust_linalg::svd::{nalgebra_svd, ndarray_svd, SVDError};
+use rust_linalg::svd::{SVDError, nalgebra_svd, ndarray_svd};
 
 #[test]
 fn test_nalgebra_svd_identity_matrix() {
@@ -72,13 +72,9 @@ fn test_ndarray_svd_reconstruction() {
 
 #[test]
 fn test_nalgebra_truncated_svd() {
-    let matrix = DMatrix::from_row_slice(
-        4,
-        4,
-        &[
-            1.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 4.0,
-        ],
-    );
+    let matrix = DMatrix::from_row_slice(4, 4, &[
+        1.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 4.0,
+    ]);
 
     let full_svd = nalgebra_svd::compute_svd(&matrix).unwrap();
     let truncated_svd = nalgebra_svd::compute_truncated_svd(&matrix, 2).unwrap();
@@ -103,12 +99,9 @@ fn test_nalgebra_truncated_svd() {
 
 #[test]
 fn test_ndarray_truncated_svd() {
-    let matrix = Array2::from_shape_vec(
-        (4, 4),
-        vec![
-            1.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 4.0,
-        ],
-    )
+    let matrix = Array2::from_shape_vec((4, 4), vec![
+        1.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 4.0,
+    ])
     .unwrap();
 
     let full_svd = ndarray_svd::compute_svd(&matrix).unwrap();
@@ -167,14 +160,10 @@ fn test_ndarray_svd_invalid_truncation() {
 #[test]
 fn test_nalgebra_svd_rank_deficient_matrix() {
     // Create a rank-deficient matrix
-    let matrix = DMatrix::from_row_slice(
-        3,
-        3,
-        &[
-            1.0, 2.0, 3.0, 2.0, 4.0, 6.0, // This row is 2 * first row
-            1.0, 2.0, 3.0, // This row is same as first row
-        ],
-    );
+    let matrix = DMatrix::from_row_slice(3, 3, &[
+        1.0, 2.0, 3.0, 2.0, 4.0, 6.0, // This row is 2 * first row
+        1.0, 2.0, 3.0, // This row is same as first row
+    ]);
 
     let svd = nalgebra_svd::compute_svd(&matrix).unwrap();
     let rank = nalgebra_svd::matrix_rank(&svd, None);
@@ -186,13 +175,10 @@ fn test_nalgebra_svd_rank_deficient_matrix() {
 #[test]
 fn test_ndarray_svd_rank_deficient_matrix() {
     // Create a rank-deficient matrix
-    let matrix = Array2::from_shape_vec(
-        (3, 3),
-        vec![
-            1.0, 2.0, 3.0, 2.0, 4.0, 6.0, // This row is 2 * first row
-            1.0, 2.0, 3.0, // This row is same as first row
-        ],
-    )
+    let matrix = Array2::from_shape_vec((3, 3), vec![
+        1.0, 2.0, 3.0, 2.0, 4.0, 6.0, // This row is 2 * first row
+        1.0, 2.0, 3.0, // This row is same as first row
+    ])
     .unwrap();
 
     let svd = ndarray_svd::compute_svd(&matrix).unwrap();

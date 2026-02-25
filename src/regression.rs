@@ -2,13 +2,13 @@
 //!
 //! Ordinary least squares linear regression via QR decomposition.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
-use std::fmt;
 
-use crate::qr::nalgebra_qr;
-use crate::qr::QRConfig;
+use crate::qr::{QRConfig, nalgebra_qr};
 
 /// Error type for regression
 #[derive(Debug, Clone, PartialEq)]
@@ -40,32 +40,33 @@ impl std::error::Error for RegressionError {}
 #[derive(Debug, Clone)]
 pub struct NalgebraRegressionResult<T: RealField> {
     /// Coefficient estimates
-    pub coefficients: DVector<T>,
+    pub coefficients:  DVector<T>,
     /// Fitted values (X * coefficients)
     pub fitted_values: DVector<T>,
     /// Residuals (y - fitted_values)
-    pub residuals: DVector<T>,
+    pub residuals:     DVector<T>,
     /// R-squared
-    pub r_squared: T,
+    pub r_squared:     T,
 }
 
 /// Regression result for ndarray
 #[derive(Debug, Clone)]
 pub struct NdarrayRegressionResult<T: Float> {
     /// Coefficient estimates
-    pub coefficients: Array1<T>,
+    pub coefficients:  Array1<T>,
     /// Fitted values
     pub fitted_values: Array1<T>,
     /// Residuals
-    pub residuals: Array1<T>,
+    pub residuals:     Array1<T>,
     /// R-squared
-    pub r_squared: T,
+    pub r_squared:     T,
 }
 
 /// Nalgebra linear regression
 pub mod nalgebra_regression {
-    use super::*;
     use num_traits::float::FloatCore;
+
+    use super::*;
 
     /// Compute linear regression: min ||X*beta - y||^2
     pub fn linear_regression<T: RealField + Copy + FloatCore + num_traits::Float>(
@@ -115,26 +116,19 @@ pub mod nalgebra_regression {
             ss_tot += diff * diff;
             ss_res += residuals[i] * residuals[i];
         }
-        let r_squared = if ss_tot > T::zero() {
-            T::one() - ss_res / ss_tot
-        } else {
-            num_traits::Float::nan()
-        };
+        let r_squared =
+            if ss_tot > T::zero() { T::one() - ss_res / ss_tot } else { num_traits::Float::nan() };
 
-        Ok(NalgebraRegressionResult {
-            coefficients,
-            fitted_values,
-            residuals,
-            r_squared,
-        })
+        Ok(NalgebraRegressionResult { coefficients, fitted_values, residuals, r_squared })
     }
 }
 
 /// Ndarray linear regression
 pub mod ndarray_regression {
+    use num_traits::float::FloatCore;
+
     use super::*;
     use crate::utils::ndarray_to_nalgebra;
-    use num_traits::float::FloatCore;
 
     /// Compute linear regression
     pub fn linear_regression<T: Float + RealField + FloatCore + num_traits::NumCast>(
@@ -147,18 +141,19 @@ pub mod ndarray_regression {
         let result =
             super::nalgebra_regression::linear_regression(&nalg_x, &nalg_y, add_intercept)?;
         Ok(NdarrayRegressionResult {
-            coefficients: Array1::from_vec(result.coefficients.as_slice().to_vec()),
+            coefficients:  Array1::from_vec(result.coefficients.as_slice().to_vec()),
             fitted_values: Array1::from_vec(result.fitted_values.as_slice().to_vec()),
-            residuals: Array1::from_vec(result.residuals.as_slice().to_vec()),
-            r_squared: result.r_squared,
+            residuals:     Array1::from_vec(result.residuals.as_slice().to_vec()),
+            r_squared:     result.r_squared,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_linear_regression_known_slope() {

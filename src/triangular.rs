@@ -2,10 +2,11 @@
 //!
 //! Solve linear systems with lower or upper triangular matrices.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
-use std::fmt;
 
 /// Error types for triangular solve
 #[derive(Debug, Clone, PartialEq)]
@@ -126,8 +127,9 @@ pub mod ndarray_triangular {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_solve_lower() {

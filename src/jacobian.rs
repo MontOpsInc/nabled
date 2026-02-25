@@ -15,8 +15,10 @@
 
 // Note: These imports are used in the module implementations
 // but not directly in the module-level code, hence the warnings
-use num_traits::{float::FloatCore, Float};
 use std::fmt;
+
+use num_traits::Float;
+use num_traits::float::FloatCore;
 
 /// Error types for Jacobian computation
 #[derive(Debug, Clone)]
@@ -54,9 +56,9 @@ impl std::error::Error for JacobianError {}
 #[derive(Debug, Clone)]
 pub struct JacobianConfig<T> {
     /// Step size for finite differences
-    pub step_size: T,
+    pub step_size:      T,
     /// Relative tolerance for convergence
-    pub tolerance: T,
+    pub tolerance:      T,
     /// Maximum number of iterations
     pub max_iterations: usize,
 }
@@ -64,8 +66,8 @@ pub struct JacobianConfig<T> {
 impl<T: Float> Default for JacobianConfig<T> {
     fn default() -> Self {
         Self {
-            step_size: T::from(1e-6).unwrap(),
-            tolerance: T::from(1e-8).unwrap(),
+            step_size:      T::from(1e-6).unwrap(),
+            tolerance:      T::from(1e-8).unwrap(),
             max_iterations: 100,
         }
     }
@@ -78,9 +80,7 @@ impl<T: Float> JacobianConfig<T> {
             return Err(JacobianError::InvalidStepSize);
         }
         if tolerance <= T::zero() {
-            return Err(JacobianError::InvalidDimensions(
-                "Tolerance must be positive".to_string(),
-            ));
+            return Err(JacobianError::InvalidDimensions("Tolerance must be positive".to_string()));
         }
         if max_iterations == 0 {
             return Err(JacobianError::InvalidDimensions(
@@ -88,11 +88,7 @@ impl<T: Float> JacobianConfig<T> {
             ));
         }
 
-        Ok(Self {
-            step_size,
-            tolerance,
-            max_iterations,
-        })
+        Ok(Self { step_size, tolerance, max_iterations })
     }
 
     /// Validate the configuration
@@ -101,9 +97,7 @@ impl<T: Float> JacobianConfig<T> {
             return Err(JacobianError::InvalidStepSize);
         }
         if self.tolerance <= T::zero() {
-            return Err(JacobianError::InvalidDimensions(
-                "Tolerance must be positive".to_string(),
-            ));
+            return Err(JacobianError::InvalidDimensions("Tolerance must be positive".to_string()));
         }
         if self.max_iterations == 0 {
             return Err(JacobianError::InvalidDimensions(
@@ -116,8 +110,9 @@ impl<T: Float> JacobianConfig<T> {
 
 /// Nalgebra Jacobian computation functions
 pub mod nalgebra_jacobian {
-    use super::*;
     use nalgebra::{DMatrix, DVector, RealField};
+
+    use super::*;
 
     /// Compute numerical Jacobian using finite differences
     ///
@@ -212,9 +207,11 @@ pub mod nalgebra_jacobian {
             // Check for non-finite values in perturbed function output
             for i in 0..m {
                 if !num_traits::Float::is_finite(fx_plus[i]) {
-                    return Err(JacobianError::FunctionError(
-                        format!("Function returned non-finite value at index {} when perturbing variable {}", i, j)
-                    ));
+                    return Err(JacobianError::FunctionError(format!(
+                        "Function returned non-finite value at index {} when perturbing variable \
+                         {}",
+                        i, j
+                    )));
                 }
             }
 
@@ -398,8 +395,9 @@ pub mod nalgebra_jacobian {
 
 /// Ndarray Jacobian computation functions
 pub mod ndarray_jacobian {
-    use super::*;
     use ndarray::{Array1, Array2};
+
+    use super::*;
 
     /// Compute numerical Jacobian using finite differences
     ///
@@ -603,9 +601,10 @@ pub mod ndarray_jacobian {
 
 /// Complex derivative computation functions
 pub mod complex_jacobian {
-    use super::*;
     use nalgebra::{ComplexField, DMatrix, DVector};
     use num_complex::Complex;
+
+    use super::*;
 
     /// Compute numerical Jacobian for complex-valued functions using complex step method
     ///
@@ -812,10 +811,11 @@ pub mod complex_jacobian {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
     use nalgebra::DVector;
     use ndarray::Array1;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_numerical_jacobian_quadratic() {
@@ -963,11 +963,8 @@ mod tests {
         let x = DVector::from_vec(vec![1.0, 2.0]);
 
         // Test negative step size
-        let config = JacobianConfig {
-            step_size: -1e-6,
-            tolerance: 1e-8,
-            max_iterations: 100,
-        };
+        let config =
+            JacobianConfig { step_size: -1e-6, tolerance: 1e-8, max_iterations: 100 };
 
         let result = nalgebra_jacobian::numerical_jacobian(&f, &x, &config);
         assert!(result.is_err());

@@ -2,10 +2,11 @@
 //!
 //! Gram-Schmidt process for computing orthonormal bases from a set of vectors.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, RealField};
 use ndarray::Array2;
 use num_traits::Float;
-use std::fmt;
 
 /// Error types for orthogonalization
 #[derive(Debug, Clone, PartialEq)]
@@ -130,8 +131,9 @@ pub mod ndarray_orthogonalization {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_gram_schmidt_orthonormal() {

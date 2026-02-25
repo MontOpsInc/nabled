@@ -2,10 +2,11 @@
 //!
 //! LU decomposition with partial pivoting for solving linear systems and computing matrix inverses.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
-use std::fmt;
 
 /// Error types for LU decomposition
 #[derive(Debug, Clone, PartialEq)]
@@ -40,7 +41,7 @@ impl std::error::Error for LUError {}
 #[derive(Debug, Clone, PartialEq)]
 pub struct LogDetResult<T> {
     /// Sign of determinant: 1 (positive), -1 (negative)
-    pub sign: i8,
+    pub sign:       i8,
     /// Natural log of absolute value of determinant
     pub ln_abs_det: T,
 }
@@ -54,7 +55,7 @@ pub struct NalgebraLUResult<T: RealField> {
     pub u: DMatrix<T>,
     /// Internal LU decomposition (for solve/inverse)
     #[allow(dead_code)]
-    lu: nalgebra::linalg::LU<T, nalgebra::Dyn, nalgebra::Dyn>,
+    lu:    nalgebra::linalg::LU<T, nalgebra::Dyn, nalgebra::Dyn>,
 }
 
 /// LU decomposition result for ndarray
@@ -68,8 +69,9 @@ pub struct NdarrayLUResult<T: Float> {
 
 /// Nalgebra LU decomposition
 pub mod nalgebra_lu {
-    use super::*;
     use nalgebra::linalg::LU;
+
+    use super::*;
 
     /// Compute LU decomposition with partial pivoting
     pub fn compute_lu<T: RealField + Copy + num_traits::Float>(
@@ -174,10 +176,7 @@ pub mod ndarray_lu {
     ) -> Result<NdarrayLUResult<T>, LUError> {
         let nalg = ndarray_to_nalgebra(matrix);
         let result = super::nalgebra_lu::compute_lu(&nalg)?;
-        Ok(NdarrayLUResult {
-            l: nalgebra_to_ndarray(&result.l),
-            u: nalgebra_to_ndarray(&result.u),
-        })
+        Ok(NdarrayLUResult { l: nalgebra_to_ndarray(&result.l), u: nalgebra_to_ndarray(&result.u) })
     }
 
     /// Solve Ax = b
@@ -215,8 +214,9 @@ pub mod ndarray_lu {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_lu_solve() {

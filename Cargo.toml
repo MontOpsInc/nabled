@@ -1,33 +1,101 @@
 [package]
 name = "rust-linalg"
-version = "0.3.0"
-edition = "2021"
+version = "0.0.1"
+edition = "2024"
 description = "A linear algebra library written in Rust. SVD, QR, LU, Cholesky, eigen, PCA, regression, matrix functions, Jacobians, and more."
-authors = ["Niklaus Parcell <nik.parcell@gmail.com>"]
+authors = ["Niklaus Parcell <nik.parcell@gmail.com>", "George Lee Patterson <patterson.george@gmail.com>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/NiklausParcell/rust-linearalgebra-better"
-homepage = "https://github.com/NiklausParcell/rust-linearalgebra-better"
-documentation = "https://docs.rs/rust-linalg"
+repository = "https://github.com/MontOpsInc/nabled"
+homepage = "https://github.com/MontOpsInc/nabled"
+documentation = "https://docs.rs/nabled"
 readme = "README.md"
 keywords = ["linear-algebra", "svd", "nalgebra", "ndarray", "rust", "mathematics", "decomposition", "pca", "regression"]
 categories = ["mathematics", "science", "algorithms"]
-publish = false  # change when ready
+publish = false
 
 [features]
 default = []
 
 [dependencies]
-nalgebra = { version = "0.32", features = ["serde-serialize"] }
-ndarray = { version = "0.15", features = ["serde"] }
-ndarray-rand = "0.14"
-rand = "0.8"
-serde = { version = "1.0", features = ["derive"] }
+nalgebra = { version = "0.34", features = ["serde-serialize"] }
+ndarray = { version = "0.17", features = ["serde"] }
+ndarray-rand = "0.16"
+rand = "0.10"
+serde = { version = "1", features = ["derive"] }
 num-traits = "0.2"
 num-complex = "0.4"
 approx = "0.5"
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Detects large stack-allocated futures that may cause stack overflow crashes (see threshold in clippy.toml)
+large_futures = "warn"
+clone_on_ref_ptr = "warn"
+must_use_candidate = "allow"
+
+[lints.rust]
+unused_imports = "deny"
+elided_lifetimes_in_paths = "deny"
+explicit_outlives_requirements = "warn"
+let_underscore_drop = "warn"
+missing_copy_implementations = "warn"
+redundant_lifetimes = "warn"
+rust_2024_incompatible_pat = "warn"
+single_use_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+unit_bindings = "warn"
+unnameable_types = "warn"
+unreachable_pub = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+# Disabled: False positive for dev-dependencies that are also transitive dependencies
+# (e.g., comfy-table is both a dev-dep for examples and transitive via arrow-cast)
+# See: https://github.com/rust-lang/rust/issues/95513
+# unused_crate_dependencies = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_results = "warn"
+unused_qualifications = "warn"
+variant_size_differences = "warn"
+
+[profile.release-with-debug]
+inherits = "release"
+debug = "full"
+
+[profile.release-lto]
+inherits = "release"
+lto = true
+opt-level = 3
+codegen-units = 1
+
+[profile.instruments]
+inherits = "release"
+debug = "full"
+lto = "off"
+codegen-units = 16       # default
+opt-level = 2
+debug-assertions = false
+incremental = false
+
+[profile.release-with-debug.package."*"]
+debug = "full"
+
+[profile.instruments.package."*"]
+debug = "full"
+
+[profile.ci]
+inherits = "dev"
+incremental = false
+
+# ci turns off debug info, etc. for dependencies to allow for smaller binaries making caching more effective
+[profile.ci.package."*"]
+debug = false
+debug-assertions = false
+strip = "debuginfo"
+incremental = false
 
 [[bench]]
 name = "svd_benchmarks"

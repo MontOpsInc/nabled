@@ -3,10 +3,11 @@
 //! Cholesky decomposition for symmetric positive-definite matrices.
 //! Used for solving linear systems and computing matrix inverses.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
-use std::fmt;
 
 /// Error types for Cholesky decomposition
 #[derive(Debug, Clone, PartialEq)]
@@ -53,8 +54,9 @@ pub struct NdarrayCholeskyResult<T: Float> {
 
 /// Nalgebra Cholesky decomposition
 pub mod nalgebra_cholesky {
-    use super::*;
     use nalgebra::linalg::Cholesky;
+
+    use super::*;
 
     /// Compute Cholesky decomposition
     pub fn compute_cholesky<T: RealField + Copy + num_traits::Float>(
@@ -125,9 +127,7 @@ pub mod ndarray_cholesky {
     ) -> Result<NdarrayCholeskyResult<T>, CholeskyError> {
         let nalg = ndarray_to_nalgebra(matrix);
         let result = super::nalgebra_cholesky::compute_cholesky(&nalg)?;
-        Ok(NdarrayCholeskyResult {
-            l: nalgebra_to_ndarray(&result.l),
-        })
+        Ok(NdarrayCholeskyResult { l: nalgebra_to_ndarray(&result.l) })
     }
 
     /// Solve Ax = b
@@ -151,8 +151,9 @@ pub mod ndarray_cholesky {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_cholesky_solve() {

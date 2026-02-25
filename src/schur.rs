@@ -3,10 +3,11 @@
 //! Schur decomposition: A = Q T Q^H where Q is unitary and T is upper triangular.
 //! Used for eigenvalue problems and matrix functions.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, RealField};
 use ndarray::Array2;
 use num_traits::Float;
-use std::fmt;
 
 /// Error types for Schur decomposition
 #[derive(Debug, Clone, PartialEq)]
@@ -105,8 +106,9 @@ pub mod ndarray_schur {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_nalgebra_schur_reconstruct() {

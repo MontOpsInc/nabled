@@ -5,12 +5,13 @@
 //!
 //! Uses Bartels-Stewart algorithm via Schur decomposition.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, RealField};
 use ndarray::Array2;
 use num_traits::Float;
-use std::fmt;
 
-use crate::schur::{nalgebra_schur, SchurError};
+use crate::schur::{SchurError, nalgebra_schur};
 
 /// Error types for matrix equations
 #[derive(Debug, Clone, PartialEq)]
@@ -41,9 +42,7 @@ impl fmt::Display for SylvesterError {
 impl std::error::Error for SylvesterError {}
 
 impl From<SchurError> for SylvesterError {
-    fn from(e: SchurError) -> Self {
-        SylvesterError::SchurFailed(e)
-    }
+    fn from(e: SchurError) -> Self { SylvesterError::SchurFailed(e) }
 }
 
 /// Nalgebra Sylvester equation solver
@@ -135,8 +134,9 @@ pub mod ndarray_sylvester {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_sylvester_simple() {

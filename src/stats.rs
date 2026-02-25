@@ -2,10 +2,11 @@
 //!
 //! Covariance and correlation matrices for numerical data.
 
+use std::fmt;
+
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
-use std::fmt;
 
 /// Error types for stats operations
 #[derive(Debug, Clone, PartialEq)]
@@ -146,8 +147,9 @@ pub mod ndarray_stats {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use approx::assert_relative_eq;
+
+    use super::*;
 
     #[test]
     fn test_covariance_bessel() {
@@ -159,14 +161,10 @@ mod tests {
 
     #[test]
     fn test_correlation_bounds() {
-        let m = DMatrix::from_row_slice(
-            10,
-            2,
-            &[
-                1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0,
-                9.0, 9.0, 10.0, 10.0,
-            ],
-        );
+        let m = DMatrix::from_row_slice(10, 2, &[
+            1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0,
+            9.0, 10.0, 10.0,
+        ]);
         let corr = nalgebra_stats::correlation_matrix(&m).unwrap();
         assert_relative_eq!(corr[(0, 1)], 1.0, epsilon = 1e-10);
         assert_relative_eq!(corr[(0, 0)], 1.0, epsilon = 1e-10);

@@ -5,7 +5,7 @@
 
 use nalgebra::DVector;
 use ndarray::Array1;
-use rust_linalg::{nalgebra_jacobian, ndarray_jacobian, JacobianConfig, JacobianError};
+use rust_linalg::{JacobianConfig, JacobianError, nalgebra_jacobian, ndarray_jacobian};
 
 fn main() -> Result<(), JacobianError> {
     println!("=== Jacobian Computation Examples ===\n");
@@ -54,11 +54,7 @@ fn main() -> Result<(), JacobianError> {
     // Example 4: More complex function with ndarray
     println!("4. Ndarray - Complex function f(x,y,z) = [x²+y, y²+z, z²+x]");
     let f_complex = |x: &Array1<f64>| -> Result<Array1<f64>, String> {
-        Ok(Array1::from_vec(vec![
-            x[0] * x[0] + x[1],
-            x[1] * x[1] + x[2],
-            x[2] * x[2] + x[0],
-        ]))
+        Ok(Array1::from_vec(vec![x[0] * x[0] + x[1], x[1] * x[1] + x[2], x[2] * x[2] + x[0]]))
     };
 
     let x4 = Array1::from_vec(vec![1.0, 2.0, 3.0]);

@@ -1,14 +1,21 @@
 # Rust build artifacts
-/target/
+debug
+target
 **/*.rs.bk
 Cargo.lock
 
 # IDE files
+.zed
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# Compressed files
+/*.zip
+/*.tar.gz
+/*.gz
 
 # OS files
 .DS_Store
@@ -23,3 +30,37 @@ criterion/
 # Temporary files
 *.tmp
 *.temp
+
+# Sampling
+coverage/*
+flamegraph.svg
+**/benchmark_results.txt
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+.cache
+coverage.xml
+*.cover
+.hypothesis/
+cover/
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+downloads/
+lib64/
+parts/
+MANIFEST
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/

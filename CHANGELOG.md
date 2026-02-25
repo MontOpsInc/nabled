@@ -141,7 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Large matrices (100x100)**: Nalgebra ~2.24ms, Ndarray ~2.37ms
 - **Very large matrices (200x200)**: Nalgebra ~15.4ms, Ndarray ~16.0ms
 
-[Unreleased]: https://github.com/NiklausParcell/rust-linearalgebra-better/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/NiklausParcell/rust-linearalgebra-better/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/NiklausParcell/rust-linearalgebra-better/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/NiklausParcell/rust-linearalgebra-better/releases/tag/v0.1.0
+[Unreleased]: https://github.com/MontOpsInc/nabled/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/MontOpsInc/nabled/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/MontOpsInc/nabled/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/MontOpsInc/nabled/releases/tag/v0.1.0
