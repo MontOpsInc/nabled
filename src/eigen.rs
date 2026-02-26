@@ -41,7 +41,7 @@ impl fmt::Display for EigenError {
             EigenError::DimensionMismatch => write!(f, "Matrix dimensions must match"),
             EigenError::ConvergenceFailed => write!(f, "Eigenvalue algorithm failed to converge"),
             EigenError::NumericalInstability => write!(f, "Numerical instability detected"),
-            EigenError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            EigenError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
         }
     }
 }
@@ -87,7 +87,10 @@ pub mod nalgebra_eigen {
     use super::*;
 
     /// Compute symmetric eigenvalue decomposition
-    pub fn compute_symmetric_eigen<T: RealField + Copy + num_traits::Float>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn compute_symmetric_eigen<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraEigenResult<T>, EigenError> {
         if matrix.is_empty() {
@@ -100,7 +103,7 @@ pub mod nalgebra_eigen {
         if !is_symmetric(matrix, tol) {
             return Err(EigenError::NonSymmetric);
         }
-        if matrix.iter().any(|&x| !num_traits::Float::is_finite(x)) {
+        if matrix.iter().any(|&x| !Float::is_finite(x)) {
             return Err(EigenError::NumericalInstability);
         }
 
@@ -113,32 +116,35 @@ pub mod nalgebra_eigen {
 
     /// Compute generalized eigenvalue decomposition Av = λBv for symmetric A and SPD B
     /// Reduces to standard eigen via Cholesky on B: C = L^{-1} A L^{-T}, then v = L^{-T} w
-    pub fn compute_generalized_eigen<T: RealField + Copy + num_traits::Float>(
-        a: &DMatrix<T>,
-        b: &DMatrix<T>,
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn compute_generalized_eigen<T: RealField + Copy + Float>(
+        matrix_a: &DMatrix<T>,
+        matrix_b: &DMatrix<T>,
     ) -> Result<NalgebraGeneralizedEigenResult<T>, EigenError> {
-        if a.is_empty() || b.is_empty() {
+        if matrix_a.is_empty() || matrix_b.is_empty() {
             return Err(EigenError::EmptyMatrix);
         }
-        let (ar, ac) = a.shape();
-        let (br, bc) = b.shape();
+        let (ar, ac) = matrix_a.shape();
+        let (br, bc) = matrix_b.shape();
         if ar != ac || br != bc || ar != br {
             return Err(EigenError::DimensionMismatch);
         }
         let tol = T::from(1e-10).unwrap_or_else(T::nan);
-        if !is_symmetric(a, tol) {
+        if !is_symmetric(matrix_a, tol) {
             return Err(EigenError::NonSymmetric);
         }
-        if !is_symmetric(b, tol) {
+        if !is_symmetric(matrix_b, tol) {
             return Err(EigenError::NonSymmetric);
         }
 
-        let cholesky =
-            nalgebra::linalg::Cholesky::new(b.clone()).ok_or(EigenError::NotPositiveDefinite)?;
+        let cholesky = nalgebra::linalg::Cholesky::new(matrix_b.clone())
+            .ok_or(EigenError::NotPositiveDefinite)?;
         let l = cholesky.l();
 
         // C = L^{-1} A L^{-T}
-        let linv_a = l.solve_lower_triangular(a).ok_or(EigenError::NumericalInstability)?;
+        let linv_a = l.solve_lower_triangular(matrix_a).ok_or(EigenError::NumericalInstability)?;
         let c = l
             .transpose()
             .solve_upper_triangular(&linv_a)
@@ -176,14 +182,17 @@ pub struct NdarrayGeneralizedEigenResult<T: Float> {
 /// Ndarray symmetric eigenvalue decomposition (via nalgebra)
 pub mod ndarray_eigen {
     use super::*;
-    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute symmetric eigenvalue decomposition
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_symmetric_eigen<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayEigenResult<T>, EigenError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let result = super::nalgebra_eigen::compute_symmetric_eigen(&nalg)?;
+        let result = nalgebra_eigen::compute_symmetric_eigen(&nalg)?;
         Ok(NdarrayEigenResult {
             eigenvalues:  Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
             eigenvectors: nalgebra_to_ndarray(&result.eigenvectors),
@@ -191,13 +200,16 @@ pub mod ndarray_eigen {
     }
 
     /// Compute generalized eigenvalue decomposition Av = λBv
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_generalized_eigen<T: Float + RealField>(
         a: &Array2<T>,
         b: &Array2<T>,
     ) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError> {
         let nalg_a = ndarray_to_nalgebra(a);
         let nalg_b = ndarray_to_nalgebra(b);
-        let result = super::nalgebra_eigen::compute_generalized_eigen(&nalg_a, &nalg_b)?;
+        let result = nalgebra_eigen::compute_generalized_eigen(&nalg_a, &nalg_b)?;
         Ok(NdarrayGeneralizedEigenResult {
             eigenvalues:  Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
             eigenvectors: nalgebra_to_ndarray(&result.eigenvectors),

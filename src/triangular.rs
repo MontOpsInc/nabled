@@ -9,7 +9,7 @@ use ndarray::{Array1, Array2};
 use num_traits::Float;
 
 /// Error types for triangular solve
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TriangularError {
     /// Matrix is empty
     EmptyMatrix,
@@ -39,6 +39,9 @@ pub mod nalgebra_triangular {
     use super::*;
 
     /// Solve Lx = b where L is lower triangular (forward substitution)
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve_lower<T: RealField + Copy>(
         l: &DMatrix<T>,
         b: &DVector<T>,
@@ -68,6 +71,9 @@ pub mod nalgebra_triangular {
     }
 
     /// Solve Ux = b where U is upper triangular (back substitution)
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve_upper<T: RealField + Copy>(
         u: &DMatrix<T>,
         b: &DVector<T>,
@@ -100,27 +106,33 @@ pub mod nalgebra_triangular {
 /// Ndarray triangular solve
 pub mod ndarray_triangular {
     use super::*;
-    use crate::utils::ndarray_to_nalgebra;
+    use crate::interop::ndarray_to_nalgebra;
 
     /// Solve Lx = b where L is lower triangular
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve_lower<T: Float + RealField>(
         l: &Array2<T>,
         b: &Array1<T>,
     ) -> Result<Array1<T>, TriangularError> {
         let nalg_l = ndarray_to_nalgebra(l);
         let nalg_b = DVector::from_vec(b.to_vec());
-        let result = super::nalgebra_triangular::solve_lower(&nalg_l, &nalg_b)?;
+        let result = nalgebra_triangular::solve_lower(&nalg_l, &nalg_b)?;
         Ok(Array1::from_vec(result.as_slice().to_vec()))
     }
 
     /// Solve Ux = b where U is upper triangular
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve_upper<T: Float + RealField>(
         u: &Array2<T>,
         b: &Array1<T>,
     ) -> Result<Array1<T>, TriangularError> {
         let nalg_u = ndarray_to_nalgebra(u);
         let nalg_b = DVector::from_vec(b.to_vec());
-        let result = super::nalgebra_triangular::solve_upper(&nalg_u, &nalg_b)?;
+        let result = nalgebra_triangular::solve_upper(&nalg_u, &nalg_b)?;
         Ok(Array1::from_vec(result.as_slice().to_vec()))
     }
 }

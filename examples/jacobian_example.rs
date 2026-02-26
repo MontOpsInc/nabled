@@ -22,11 +22,11 @@ fn main() -> Result<(), JacobianError> {
     let jacobian1 = nalgebra_jacobian::numerical_jacobian(&f_quad, &x1, &config)?;
     println!("   Point: [2.0, 3.0]");
     println!("   Jacobian (forward differences):");
-    println!("   {}", jacobian1);
+    println!("   {jacobian1}");
 
     let jacobian1_central = nalgebra_jacobian::numerical_jacobian_central(&f_quad, &x1, &config)?;
     println!("   Jacobian (central differences):");
-    println!("   {}", jacobian1_central);
+    println!("   {jacobian1_central}");
     println!("   Expected: [[4.0, 0.0], [0.0, 6.0]]\n");
 
     // Example 2: Gradient computation (scalar function)
@@ -36,7 +36,7 @@ fn main() -> Result<(), JacobianError> {
     let x2 = DVector::from_vec(vec![3.0, 4.0]);
     let gradient = nalgebra_jacobian::numerical_gradient(&f_scalar, &x2, &config)?;
     println!("   Point: [3.0, 4.0]");
-    println!("   Gradient: {}", gradient);
+    println!("   Gradient: {gradient}");
     println!("   Expected: [6.0, 8.0]\n");
 
     // Example 3: Hessian computation
@@ -48,7 +48,7 @@ fn main() -> Result<(), JacobianError> {
     let hessian = nalgebra_jacobian::numerical_hessian(&f_cubic, &x3, &config)?;
     println!("   Point: [2.0, 3.0]");
     println!("   Hessian:");
-    println!("   {}", hessian);
+    println!("   {hessian}");
     println!("   Expected: [[12.0, 0.0], [0.0, 18.0]]\n");
 
     // Example 4: More complex function with ndarray
@@ -93,7 +93,7 @@ fn main() -> Result<(), JacobianError> {
     let x6 = DVector::from_vec(vec![1.0, 2.0]);
     match nalgebra_jacobian::numerical_jacobian(&f_error, &x6, &config) {
         Err(JacobianError::FunctionError(msg)) => {
-            println!("   Caught expected error: {}", msg);
+            println!("   Caught expected error: {msg}");
         }
         _ => {
             println!("   Unexpected result");
@@ -102,13 +102,12 @@ fn main() -> Result<(), JacobianError> {
 
     // Example 7: Custom configuration
     println!("\n7. Custom configuration with different step size");
-    let mut custom_config = JacobianConfig::default();
-    custom_config.step_size = 1e-8; // Smaller step size for higher precision
+    let custom_config = JacobianConfig::<f64> { step_size: 1e-8, ..JacobianConfig::default() };
 
     let jacobian_precise = nalgebra_jacobian::numerical_jacobian(&f_quad, &x1, &custom_config)?;
     println!("   Point: [2.0, 3.0]");
     println!("   Jacobian (high precision):");
-    println!("   {}", jacobian_precise);
+    println!("   {jacobian_precise}");
 
     println!("\n=== All examples completed successfully! ===");
     Ok(())

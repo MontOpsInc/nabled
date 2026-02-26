@@ -31,7 +31,7 @@ impl fmt::Display for CholeskyError {
             CholeskyError::NotSquare => write!(f, "Matrix must be square"),
             CholeskyError::NotPositiveDefinite => write!(f, "Matrix is not positive-definite"),
             CholeskyError::NumericalInstability => write!(f, "Numerical instability detected"),
-            CholeskyError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            CholeskyError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
         }
     }
 }
@@ -59,7 +59,10 @@ pub mod nalgebra_cholesky {
     use super::*;
 
     /// Compute Cholesky decomposition
-    pub fn compute_cholesky<T: RealField + Copy + num_traits::Float>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn compute_cholesky<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraCholeskyResult<T>, CholeskyError> {
         if matrix.is_empty() {
@@ -69,7 +72,7 @@ pub mod nalgebra_cholesky {
         if rows != cols {
             return Err(CholeskyError::NotSquare);
         }
-        if matrix.iter().any(|&x| !num_traits::Float::is_finite(x)) {
+        if matrix.iter().any(|&x| !Float::is_finite(x)) {
             return Err(CholeskyError::NumericalInstability);
         }
 
@@ -80,6 +83,9 @@ pub mod nalgebra_cholesky {
     }
 
     /// Solve Ax = b for symmetric positive-definite A
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve<T: RealField + Copy>(
         matrix: &DMatrix<T>,
         rhs: &DVector<T>,
@@ -102,6 +108,9 @@ pub mod nalgebra_cholesky {
     }
 
     /// Compute matrix inverse
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn inverse<T: RealField + Copy>(matrix: &DMatrix<T>) -> Result<DMatrix<T>, CholeskyError> {
         if matrix.is_empty() {
             return Err(CholeskyError::EmptyMatrix);
@@ -119,32 +128,41 @@ pub mod nalgebra_cholesky {
 /// Ndarray Cholesky decomposition (via nalgebra)
 pub mod ndarray_cholesky {
     use super::*;
-    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute Cholesky decomposition
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_cholesky<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayCholeskyResult<T>, CholeskyError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let result = super::nalgebra_cholesky::compute_cholesky(&nalg)?;
+        let result = nalgebra_cholesky::compute_cholesky(&nalg)?;
         Ok(NdarrayCholeskyResult { l: nalgebra_to_ndarray(&result.l) })
     }
 
     /// Solve Ax = b
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve<T: Float + RealField>(
         matrix: &Array2<T>,
         rhs: &Array1<T>,
     ) -> Result<Array1<T>, CholeskyError> {
         let nalg_matrix = ndarray_to_nalgebra(matrix);
         let nalg_rhs = DVector::from_vec(rhs.to_vec());
-        let solution = super::nalgebra_cholesky::solve(&nalg_matrix, &nalg_rhs)?;
+        let solution = nalgebra_cholesky::solve(&nalg_matrix, &nalg_rhs)?;
         Ok(Array1::from_vec(solution.as_slice().to_vec()))
     }
 
     /// Compute matrix inverse
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn inverse<T: Float + RealField>(matrix: &Array2<T>) -> Result<Array2<T>, CholeskyError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let inv = super::nalgebra_cholesky::inverse(&nalg)?;
+        let inv = nalgebra_cholesky::inverse(&nalg)?;
         Ok(nalgebra_to_ndarray(&inv))
     }
 }

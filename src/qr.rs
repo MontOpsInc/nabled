@@ -15,6 +15,7 @@
 
 use std::fmt;
 
+use nalgebra::linalg::ColPivQR;
 use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
@@ -43,9 +44,9 @@ impl fmt::Display for QRError {
             QRError::EmptyMatrix => write!(f, "Matrix is empty"),
             QRError::SingularMatrix => write!(f, "Matrix is singular or rank-deficient"),
             QRError::ConvergenceFailed => write!(f, "Convergence failed"),
-            QRError::InvalidDimensions(msg) => write!(f, "Invalid dimensions: {}", msg),
+            QRError::InvalidDimensions(msg) => write!(f, "Invalid dimensions: {msg}"),
             QRError::NumericalInstability => write!(f, "Numerical instability detected"),
-            QRError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            QRError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
         }
     }
 }
@@ -116,9 +117,16 @@ pub mod nalgebra_qr {
     /// println!("R: {}", qr.r);
     /// # Ok::<(), rust_linalg::qr::QRError>(())
     /// ```
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    ///
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_qr<T>(matrix: &DMatrix<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>
     where
-        T: RealField + FloatCore + num_traits::Float,
+        T: RealField + FloatCore + Float,
     {
         // Edge case: Empty matrix
         if matrix.is_empty() {
@@ -128,20 +136,19 @@ pub mod nalgebra_qr {
         // Edge case: Single element matrix
         if matrix.nrows() == 1 && matrix.ncols() == 1 {
             let val = matrix[(0, 0)];
-            if num_traits::Float::is_finite(val) {
+            if Float::is_finite(val) {
                 return Ok(QRResult {
                     q:    DMatrix::from_element(1, 1, T::one()),
                     r:    DMatrix::from_element(1, 1, val),
                     p:    None,
-                    rank: if num_traits::Float::abs(val) >= config.rank_tolerance { 1 } else { 0 },
+                    rank: usize::from(Float::abs(val) >= config.rank_tolerance),
                 });
-            } else {
-                return Err(QRError::NumericalInstability);
             }
+            return Err(QRError::NumericalInstability);
         }
 
         // Edge case: Zero matrix
-        if matrix.iter().all(|&x| num_traits::Float::abs(x) < config.rank_tolerance) {
+        if matrix.iter().all(|&x| Float::abs(x) < config.rank_tolerance) {
             let (m, n) = matrix.shape();
             let min_dim = m.min(n);
             return Ok(QRResult {
@@ -153,7 +160,7 @@ pub mod nalgebra_qr {
         }
 
         // Edge case: Check for NaN or infinite values
-        if matrix.iter().any(|&x| !num_traits::Float::is_finite(x)) {
+        if matrix.iter().any(|&x| !Float::is_finite(x)) {
             return Err(QRError::NumericalInstability);
         }
 
@@ -176,9 +183,7 @@ pub mod nalgebra_qr {
         let r = qr.r();
 
         // Edge case: Check if QR decomposition failed
-        if q.iter().any(|&x| !num_traits::Float::is_finite(x))
-            || r.iter().any(|&x| !num_traits::Float::is_finite(x))
-        {
+        if q.iter().any(|&x| !Float::is_finite(x)) || r.iter().any(|&x| !Float::is_finite(x)) {
             return Err(QRError::NumericalInstability);
         }
 
@@ -206,12 +211,15 @@ pub mod nalgebra_qr {
     ///
     /// # Returns
     /// * `Result<QRResult<T>, QRError>` - Reduced QR decomposition result
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_reduced_qr<T>(
         matrix: &DMatrix<T>,
         config: &QRConfig<T>,
     ) -> Result<QRResult<T>, QRError>
     where
-        T: RealField + FloatCore + num_traits::Float,
+        T: RealField + FloatCore + Float,
     {
         let full_qr = compute_qr(matrix, config)?;
         let (m, n) = matrix.shape();
@@ -240,18 +248,19 @@ pub mod nalgebra_qr {
     ///
     /// # Returns
     /// * `Result<QRResult<T>, QRError>` - QR decomposition with pivoting result
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_qr_with_pivoting<T>(
         matrix: &DMatrix<T>,
         config: &QRConfig<T>,
     ) -> Result<QRResult<T>, QRError>
     where
-        T: RealField + FloatCore + num_traits::Float,
+        T: RealField + FloatCore + Float,
     {
         if matrix.is_empty() {
             return Err(QRError::EmptyMatrix);
         }
-
-        use nalgebra::linalg::ColPivQR;
 
         let col_piv_qr = ColPivQR::new(matrix.clone());
         let q = col_piv_qr.q().clone();
@@ -279,13 +288,16 @@ pub mod nalgebra_qr {
     ///
     /// # Returns
     /// * `Result<DVector<T>, QRError>` - Solution vector x
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve_least_squares<T>(
         matrix: &DMatrix<T>,
         rhs: &DVector<T>,
         config: &QRConfig<T>,
     ) -> Result<DVector<T>, QRError>
     where
-        T: RealField + FloatCore + num_traits::Float,
+        T: RealField + FloatCore + Float,
     {
         // Edge case: Empty inputs
         if matrix.is_empty() || rhs.is_empty() {
@@ -293,8 +305,7 @@ pub mod nalgebra_qr {
         }
 
         // Edge case: Check for NaN or infinite values in inputs
-        if matrix.iter().any(|&x| !num_traits::Float::is_finite(x))
-            || rhs.iter().any(|&x| !num_traits::Float::is_finite(x))
+        if matrix.iter().any(|&x| !Float::is_finite(x)) || rhs.iter().any(|&x| !Float::is_finite(x))
         {
             return Err(QRError::NumericalInstability);
         }
@@ -322,15 +333,14 @@ pub mod nalgebra_qr {
             if n == 1 {
                 let a_val = matrix[(0, 0)];
                 let b_val = rhs[0];
-                if num_traits::Float::abs(a_val) < config.rank_tolerance {
+                if Float::abs(a_val) < config.rank_tolerance {
                     return Err(QRError::SingularMatrix);
                 }
                 return Ok(DVector::from_vec(vec![b_val / a_val]));
-            } else {
-                return Err(QRError::InvalidDimensions(
-                    "Single equation with multiple unknowns".to_string(),
-                ));
             }
+            return Err(QRError::InvalidDimensions(
+                "Single equation with multiple unknowns".to_string(),
+            ));
         }
 
         // Compute QR decomposition
@@ -345,7 +355,7 @@ pub mod nalgebra_qr {
         let qt_b = qr.q.transpose() * rhs;
 
         // Edge case: Check for numerical issues in Q^T * b
-        if qt_b.iter().any(|&x| !num_traits::Float::is_finite(x)) {
+        if qt_b.iter().any(|&x| !Float::is_finite(x)) {
             return Err(QRError::NumericalInstability);
         }
 
@@ -363,14 +373,14 @@ pub mod nalgebra_qr {
             }
 
             // Edge case: Check for singular or near-singular R
-            if num_traits::float::FloatCore::abs(qr.r[(i, i)]) < config.rank_tolerance {
+            if FloatCore::abs(qr.r[(i, i)]) < config.rank_tolerance {
                 return Err(QRError::SingularMatrix);
             }
 
             x[i] = sum / qr.r[(i, i)];
 
             // Edge case: Check for numerical overflow/underflow
-            if !num_traits::Float::is_finite(x[i]) {
+            if !Float::is_finite(x[i]) {
                 return Err(QRError::NumericalInstability);
             }
         }
@@ -385,6 +395,7 @@ pub mod nalgebra_qr {
     ///
     /// # Returns
     /// * `DMatrix<T>` - Reconstructed matrix
+    #[must_use]
     pub fn reconstruct_matrix<T>(qr: &QRResult<T>) -> DMatrix<T>
     where
         T: RealField,
@@ -402,19 +413,20 @@ pub mod nalgebra_qr {
     ///
     /// # Returns
     /// * `T` - Condition number
+    #[must_use]
     pub fn condition_number<T>(qr: &QRResult<T>) -> T
     where
-        T: RealField + FloatCore + num_traits::Float,
+        T: RealField + FloatCore + Float,
     {
         let r = &qr.r;
         let (m, n) = r.shape();
         let min_dim = m.min(n);
 
         let mut max_diag = T::zero();
-        let mut min_diag = num_traits::Float::infinity();
+        let mut min_diag = Float::infinity();
 
         for i in 0..min_dim {
-            let diag = num_traits::float::FloatCore::abs(r[(i, i)]);
+            let diag = FloatCore::abs(r[(i, i)]);
             if diag > max_diag {
                 max_diag = diag;
             }
@@ -423,11 +435,7 @@ pub mod nalgebra_qr {
             }
         }
 
-        if min_diag == num_traits::Float::infinity() {
-            num_traits::Float::infinity()
-        } else {
-            max_diag / min_diag
-        }
+        if min_diag == Float::infinity() { Float::infinity() } else { max_diag / min_diag }
     }
 }
 
@@ -445,18 +453,24 @@ pub mod ndarray_qr {
     ///
     /// # Returns
     /// * `Result<QRResult<T>, QRError>` - QR decomposition result
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_qr<T>(matrix: &Array2<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>
     where
         T: Float + FloatCore + RealField,
     {
         // Convert to nalgebra, compute QR, convert back
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix)?;
+        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
         let qr = nalgebra_qr::compute_qr(&nalgebra_matrix, config)?;
 
         Ok(qr)
     }
 
     /// Compute reduced QR decomposition (economy size)
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_reduced_qr<T>(
         matrix: &Array2<T>,
         config: &QRConfig<T>,
@@ -464,13 +478,16 @@ pub mod ndarray_qr {
     where
         T: Float + FloatCore + RealField,
     {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix)?;
+        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
         let qr = nalgebra_qr::compute_reduced_qr(&nalgebra_matrix, config)?;
 
         Ok(qr)
     }
 
     /// Compute QR decomposition with column pivoting
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_qr_with_pivoting<T>(
         matrix: &Array2<T>,
         config: &QRConfig<T>,
@@ -478,13 +495,16 @@ pub mod ndarray_qr {
     where
         T: Float + FloatCore + RealField,
     {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix)?;
+        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
         let qr = nalgebra_qr::compute_qr_with_pivoting(&nalgebra_matrix, config)?;
 
         Ok(qr)
     }
 
     /// Solve least squares problem using QR decomposition
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve_least_squares<T>(
         matrix: &Array2<T>,
         rhs: &Array1<T>,
@@ -493,8 +513,8 @@ pub mod ndarray_qr {
     where
         T: Float + FloatCore + RealField,
     {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix)?;
-        let nalgebra_rhs = ndarray_to_nalgebra_vector(rhs)?;
+        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
+        let nalgebra_rhs = ndarray_to_nalgebra_vector(rhs);
 
         let solution = nalgebra_qr::solve_least_squares(&nalgebra_matrix, &nalgebra_rhs, config)?;
 
@@ -512,7 +532,7 @@ where
 
     let mut rank = 0;
     for i in 0..min_dim {
-        if num_traits::float::FloatCore::abs(r[(i, i)]) > tolerance {
+        if FloatCore::abs(r[(i, i)]) > tolerance {
             rank += 1;
         }
     }
@@ -521,7 +541,7 @@ where
 }
 
 /// Convert ndarray matrix to nalgebra matrix
-fn ndarray_to_nalgebra<T>(array: &Array2<T>) -> Result<DMatrix<T>, QRError>
+fn ndarray_to_nalgebra<T>(array: &Array2<T>) -> DMatrix<T>
 where
     T: RealField,
 {
@@ -534,11 +554,11 @@ where
         }
     }
 
-    Ok(matrix)
+    matrix
 }
 
 /// Convert ndarray vector to nalgebra vector
-fn ndarray_to_nalgebra_vector<T>(array: &Array1<T>) -> Result<DVector<T>, QRError>
+fn ndarray_to_nalgebra_vector<T>(array: &Array1<T>) -> DVector<T>
 where
     T: RealField,
 {
@@ -549,7 +569,7 @@ where
         vector[i] = array[i].clone();
     }
 
-    Ok(vector)
+    vector
 }
 
 /// Convert nalgebra vector to ndarray vector
@@ -672,7 +692,7 @@ mod tests {
 
         // Check reconstruction
         let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
-        let expected = ndarray_to_nalgebra(&matrix).unwrap();
+        let expected = ndarray_to_nalgebra(&matrix);
         assert_relative_eq!(reconstructed, expected, epsilon = 1e-10);
     }
 
@@ -886,7 +906,7 @@ mod tests {
 
         // Check reconstruction
         let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
-        let expected = ndarray_to_nalgebra(&matrix).unwrap();
+        let expected = ndarray_to_nalgebra(&matrix);
         assert_relative_eq!(reconstructed, expected, epsilon = 1e-10);
     }
 

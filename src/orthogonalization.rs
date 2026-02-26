@@ -26,7 +26,7 @@ impl fmt::Display for OrthogonalizationError {
             OrthogonalizationError::ZeroNorm => {
                 write!(f, "Zero norm vector encountered (linear dependency)")
             }
-            OrthogonalizationError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            OrthogonalizationError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
         }
     }
 }
@@ -38,7 +38,10 @@ pub mod nalgebra_orthogonalization {
     use super::*;
 
     /// Modified Gram-Schmidt: orthogonalize columns of matrix, return orthonormal Q
-    pub fn gram_schmidt<T: RealField + Copy + num_traits::Float>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn gram_schmidt<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, OrthogonalizationError> {
         if matrix.is_empty() {
@@ -75,7 +78,10 @@ pub mod nalgebra_orthogonalization {
     }
 
     /// Classic Gram-Schmidt (less numerically stable than modified)
-    pub fn gram_schmidt_classic<T: RealField + Copy + num_traits::Float>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn gram_schmidt_classic<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, OrthogonalizationError> {
         if matrix.is_empty() {
@@ -108,23 +114,29 @@ pub mod nalgebra_orthogonalization {
 /// Ndarray Gram-Schmidt orthogonalization
 pub mod ndarray_orthogonalization {
     use super::*;
-    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Modified Gram-Schmidt
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn gram_schmidt<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, OrthogonalizationError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let result = super::nalgebra_orthogonalization::gram_schmidt(&nalg)?;
+        let result = nalgebra_orthogonalization::gram_schmidt(&nalg)?;
         Ok(nalgebra_to_ndarray(&result))
     }
 
     /// Classic Gram-Schmidt
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn gram_schmidt_classic<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, OrthogonalizationError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let result = super::nalgebra_orthogonalization::gram_schmidt_classic(&nalg)?;
+        let result = nalgebra_orthogonalization::gram_schmidt_classic(&nalg)?;
         Ok(nalgebra_to_ndarray(&result))
     }
 }

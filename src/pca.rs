@@ -17,7 +17,7 @@ pub enum PCAError {
     EmptyMatrix,
     /// Insufficient samples
     InsufficientSamples,
-    /// n_components too large
+    /// `n_components` too large
     InvalidComponents,
     /// SVD or stats error
     Computation(String),
@@ -29,7 +29,7 @@ impl fmt::Display for PCAError {
             PCAError::EmptyMatrix => write!(f, "Matrix is empty"),
             PCAError::InsufficientSamples => write!(f, "Insufficient samples"),
             PCAError::InvalidComponents => write!(f, "Invalid number of components"),
-            PCAError::Computation(msg) => write!(f, "Computation error: {}", msg),
+            PCAError::Computation(msg) => write!(f, "Computation error: {msg}"),
         }
     }
 }
@@ -72,7 +72,14 @@ pub mod nalgebra_pca {
     use crate::svd::nalgebra_svd;
 
     /// Compute PCA
-    pub fn compute_pca<T: RealField + Copy + num_traits::Float + num_traits::NumCast>(
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    ///
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn compute_pca<T: RealField + Copy + Float + num_traits::NumCast>(
         matrix: &DMatrix<T>,
         n_components: Option<usize>,
     ) -> Result<NalgebraPCAResult<T>, PCAError> {
@@ -131,6 +138,7 @@ pub mod nalgebra_pca {
     }
 
     /// Transform new data using fitted PCA
+    #[must_use]
     pub fn transform<T: RealField + Copy>(
         matrix: &DMatrix<T>,
         pca_result: &NalgebraPCAResult<T>,
@@ -146,6 +154,7 @@ pub mod nalgebra_pca {
     }
 
     /// Inverse transform from scores to original space
+    #[must_use]
     pub fn inverse_transform<T: RealField + Copy>(
         scores: &DMatrix<T>,
         pca_result: &NalgebraPCAResult<T>,
@@ -164,15 +173,18 @@ pub mod nalgebra_pca {
 /// Ndarray PCA
 pub mod ndarray_pca {
     use super::*;
-    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute PCA
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_pca<T: Float + RealField + num_traits::NumCast>(
         matrix: &Array2<T>,
         n_components: Option<usize>,
     ) -> Result<NdarrayPCAResult<T>, PCAError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let result = super::nalgebra_pca::compute_pca(&nalg, n_components)?;
+        let result = nalgebra_pca::compute_pca(&nalg, n_components)?;
         Ok(NdarrayPCAResult {
             components:               nalgebra_to_ndarray(&result.components),
             scores:                   nalgebra_to_ndarray(&result.scores),
@@ -187,44 +199,42 @@ pub mod ndarray_pca {
     }
 
     /// Transform new data
+    #[must_use]
     pub fn transform<T: Float + RealField>(
         matrix: &Array2<T>,
         pca_result: &NdarrayPCAResult<T>,
     ) -> Array2<T> {
         let nalg_matrix = ndarray_to_nalgebra(matrix);
-        let nalg_result = super::NalgebraPCAResult {
+        let nalg_result = NalgebraPCAResult {
             components:               ndarray_to_nalgebra(&pca_result.components),
             scores:                   ndarray_to_nalgebra(&pca_result.scores),
-            explained_variance:       nalgebra::DVector::from_vec(
-                pca_result.explained_variance.to_vec(),
-            ),
-            explained_variance_ratio: nalgebra::DVector::from_vec(
+            explained_variance:       DVector::from_vec(pca_result.explained_variance.to_vec()),
+            explained_variance_ratio: DVector::from_vec(
                 pca_result.explained_variance_ratio.to_vec(),
             ),
-            mean:                     nalgebra::DVector::from_vec(pca_result.mean.to_vec()),
+            mean:                     DVector::from_vec(pca_result.mean.to_vec()),
         };
-        let transformed = super::nalgebra_pca::transform(&nalg_matrix, &nalg_result);
+        let transformed = nalgebra_pca::transform(&nalg_matrix, &nalg_result);
         nalgebra_to_ndarray(&transformed)
     }
 
     /// Inverse transform
+    #[must_use]
     pub fn inverse_transform<T: Float + RealField>(
         scores: &Array2<T>,
         pca_result: &NdarrayPCAResult<T>,
     ) -> Array2<T> {
         let nalg_scores = ndarray_to_nalgebra(scores);
-        let nalg_result = super::NalgebraPCAResult {
+        let nalg_result = NalgebraPCAResult {
             components:               ndarray_to_nalgebra(&pca_result.components),
             scores:                   ndarray_to_nalgebra(&pca_result.scores),
-            explained_variance:       nalgebra::DVector::from_vec(
-                pca_result.explained_variance.to_vec(),
-            ),
-            explained_variance_ratio: nalgebra::DVector::from_vec(
+            explained_variance:       DVector::from_vec(pca_result.explained_variance.to_vec()),
+            explained_variance_ratio: DVector::from_vec(
                 pca_result.explained_variance_ratio.to_vec(),
             ),
-            mean:                     nalgebra::DVector::from_vec(pca_result.mean.to_vec()),
+            mean:                     DVector::from_vec(pca_result.mean.to_vec()),
         };
-        let reconstructed = super::nalgebra_pca::inverse_transform(&nalg_scores, &nalg_result);
+        let reconstructed = nalgebra_pca::inverse_transform(&nalg_scores, &nalg_result);
         nalgebra_to_ndarray(&reconstructed)
     }
 }

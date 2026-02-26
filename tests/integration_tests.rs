@@ -11,7 +11,7 @@ fn test_nalgebra_svd_identity_matrix() {
     let svd = nalgebra_svd::compute_svd(&identity).unwrap();
 
     // For identity matrix, singular values should all be 1.0
-    for &sv in svd.singular_values.iter() {
+    for &sv in &svd.singular_values {
         assert_relative_eq!(sv, 1.0, epsilon = 1e-10);
     }
 
@@ -28,7 +28,7 @@ fn test_ndarray_svd_identity_matrix() {
     let svd = ndarray_svd::compute_svd(&identity).unwrap();
 
     // For identity matrix, singular values should all be 1.0
-    for &sv in svd.singular_values.iter() {
+    for &sv in &svd.singular_values {
         assert_relative_eq!(sv, 1.0, epsilon = 1e-10);
     }
 

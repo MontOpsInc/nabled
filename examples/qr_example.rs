@@ -19,7 +19,7 @@ fn main() -> Result<(), QRError> {
     let matrix = DMatrix::from_row_slice(3, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0]);
 
     println!("Original matrix A:");
-    println!("{}", matrix);
+    println!("{matrix}");
 
     let config = QRConfig::default();
     let qr = nalgebra_qr::compute_qr(&matrix, &config)?;
@@ -35,12 +35,12 @@ fn main() -> Result<(), QRError> {
     // Verify reconstruction
     let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
     println!("\nReconstruction A = Q * R:");
-    println!("{}", reconstructed);
+    println!("{reconstructed}");
 
     // Verify Q is orthogonal (Q^T * Q = I)
     let qt_q = qr.q.transpose() * &qr.q;
     println!("\nQ^T * Q (should be identity):");
-    println!("{}", qt_q);
+    println!("{qt_q}");
 
     println!("\n{}\n", "=".repeat(60));
 
@@ -51,7 +51,7 @@ fn main() -> Result<(), QRError> {
     ]);
 
     println!("Original 4×3 matrix:");
-    println!("{}", rectangular);
+    println!("{rectangular}");
 
     let qr_rect = nalgebra_qr::compute_qr(&rectangular, &config)?;
 
@@ -76,7 +76,7 @@ fn main() -> Result<(), QRError> {
     // Verify Q^T * Q = I for reduced Q
     let qt_q_reduced = reduced_qr.q.transpose() * &reduced_qr.q;
     println!("\nQ^T * Q for reduced Q (should be 3×3 identity):");
-    println!("{}", qt_q_reduced);
+    println!("{qt_q_reduced}");
 
     println!("\n{}\n", "=".repeat(60));
 
@@ -88,20 +88,20 @@ fn main() -> Result<(), QRError> {
     let b = DVector::from_vec(vec![2.0, 3.0, 4.0, 5.0]);
 
     println!("Coefficient matrix A (4×2):");
-    println!("{}", a);
+    println!("{a}");
 
     println!("\nRight-hand side b:");
-    println!("{}", b);
+    println!("{b}");
 
     let x = nalgebra_qr::solve_least_squares(&a, &b, &config)?;
 
     println!("\nLeast squares solution x:");
-    println!("{}", x);
+    println!("{x}");
 
     // Verify the solution
     let residual = &a * &x - &b;
     let residual_norm = residual.norm();
-    println!("\nResidual norm ||Ax - b||: {:.6}", residual_norm);
+    println!("\nResidual norm ||Ax - b||: {residual_norm:.6}");
 
     println!("\n{}\n", "=".repeat(60));
 
@@ -111,7 +111,7 @@ fn main() -> Result<(), QRError> {
         Array2::from_shape_vec((3, 3), vec![2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0, 1.0, 2.0]).unwrap();
 
     println!("Original ndarray matrix:");
-    println!("{:?}", ndarray_matrix);
+    println!("{ndarray_matrix:?}");
 
     let qr_ndarray = ndarray_qr::compute_qr(&ndarray_matrix, &config)?;
 
@@ -135,8 +135,8 @@ fn main() -> Result<(), QRError> {
     let cond_well = nalgebra_qr::condition_number(&qr_well);
     let cond_ill = nalgebra_qr::condition_number(&qr_ill);
 
-    println!("Well-conditioned matrix condition number: {:.6}", cond_well);
-    println!("Ill-conditioned matrix condition number: {:.6}", cond_ill);
+    println!("Well-conditioned matrix condition number: {cond_well:.6}");
+    println!("Ill-conditioned matrix condition number: {cond_ill:.6}");
 
     println!("\n{}\n", "=".repeat(60));
 

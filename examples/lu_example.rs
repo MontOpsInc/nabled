@@ -12,20 +12,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let x = lu::nalgebra_lu::solve(&a, &b)?;
     println!("Solve Ax = b:");
-    println!("  A = {}", a);
-    println!("  b = {}", b);
-    println!("  x = {}", x);
+    println!("  A = {a}");
+    println!("  b = {b}");
+    println!("  x = {x}");
 
     let inv = lu::nalgebra_lu::inverse(&a)?;
     println!("\nInverse of A:");
-    println!("  A^(-1) = {}", inv);
-    println!("  A * A^(-1) = {}", &a * &inv);
+    println!("  A^(-1) = {inv}");
+    let identity_check = &a * &inv;
+    println!("  A * A^(-1) = {identity_check}");
 
     println!("\n=== Ndarray version ===");
     let a_nd = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0])?;
     let b_nd = Array1::from_vec(vec![5.0, 6.0]);
     let x_nd = lu::ndarray_lu::solve(&a_nd, &b_nd)?;
-    println!("  x = {:?}", x_nd);
+    println!("  x = {x_nd:?}");
 
     Ok(())
 }

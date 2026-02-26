@@ -24,7 +24,7 @@ impl fmt::Display for StatsError {
         match self {
             StatsError::EmptyMatrix => write!(f, "Matrix is empty"),
             StatsError::InsufficientSamples => write!(f, "Need at least 2 samples for covariance"),
-            StatsError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            StatsError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
         }
     }
 }
@@ -36,6 +36,10 @@ pub mod nalgebra_stats {
     use super::*;
 
     /// Compute column means
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    #[must_use]
     pub fn column_means<T: RealField + Copy + num_traits::NumCast>(
         matrix: &DMatrix<T>,
     ) -> DVector<T> {
@@ -53,6 +57,7 @@ pub mod nalgebra_stats {
     }
 
     /// Center columns (subtract mean from each column)
+    #[must_use]
     pub fn center_columns<T: RealField + Copy + num_traits::NumCast>(
         matrix: &DMatrix<T>,
     ) -> DMatrix<T> {
@@ -68,7 +73,14 @@ pub mod nalgebra_stats {
     }
 
     /// Compute sample covariance matrix (Bessel correction, n-1)
-    pub fn covariance_matrix<T: RealField + Copy + num_traits::Float + num_traits::NumCast>(
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    ///
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn covariance_matrix<T: RealField + Copy + Float + num_traits::NumCast>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, StatsError> {
         if matrix.is_empty() {
@@ -86,7 +98,10 @@ pub mod nalgebra_stats {
     }
 
     /// Compute correlation matrix
-    pub fn correlation_matrix<T: RealField + Copy + num_traits::Float + num_traits::NumCast>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn correlation_matrix<T: RealField + Copy + Float + num_traits::NumCast>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, StatsError> {
         let cov = covariance_matrix(matrix)?;
@@ -110,37 +125,45 @@ pub mod nalgebra_stats {
 /// Ndarray stats functions
 pub mod ndarray_stats {
     use super::*;
-    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute column means
+    #[must_use]
     pub fn column_means<T: Float + RealField>(matrix: &Array2<T>) -> Array1<T> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let means = super::nalgebra_stats::column_means(&nalg);
+        let means = nalgebra_stats::column_means(&nalg);
         Array1::from_vec(means.as_slice().to_vec())
     }
 
     /// Center columns
+    #[must_use]
     pub fn center_columns<T: Float + RealField>(matrix: &Array2<T>) -> Array2<T> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let centered = super::nalgebra_stats::center_columns(&nalg);
+        let centered = nalgebra_stats::center_columns(&nalg);
         nalgebra_to_ndarray(&centered)
     }
 
     /// Compute sample covariance matrix (Bessel correction)
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn covariance_matrix<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, StatsError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let cov = super::nalgebra_stats::covariance_matrix(&nalg)?;
+        let cov = nalgebra_stats::covariance_matrix(&nalg)?;
         Ok(nalgebra_to_ndarray(&cov))
     }
 
     /// Compute correlation matrix
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn correlation_matrix<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, StatsError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let corr = super::nalgebra_stats::correlation_matrix(&nalg)?;
+        let corr = nalgebra_stats::correlation_matrix(&nalg)?;
         Ok(nalgebra_to_ndarray(&corr))
     }
 }

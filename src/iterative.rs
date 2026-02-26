@@ -29,7 +29,7 @@ impl Default for IterativeConfig<f64> {
 }
 
 /// Error types for iterative solvers
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IterativeError {
     /// Matrix is empty
     EmptyMatrix,
@@ -62,26 +62,29 @@ pub mod nalgebra_iterative {
     use super::*;
 
     /// Conjugate Gradient for SPD system Ax = b
-    pub fn conjugate_gradient<T: RealField + Copy + num_traits::Float>(
-        a: &DMatrix<T>,
-        b: &DVector<T>,
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn conjugate_gradient<T: RealField + Copy + Float>(
+        matrix_a: &DMatrix<T>,
+        matrix_b: &DVector<T>,
         config: &IterativeConfig<T>,
     ) -> Result<DVector<T>, IterativeError> {
-        if a.is_empty() || b.is_empty() {
+        if matrix_a.is_empty() || matrix_b.is_empty() {
             return Err(IterativeError::EmptyMatrix);
         }
-        if !a.is_square() || a.nrows() != b.len() {
+        if !matrix_a.is_square() || matrix_a.nrows() != matrix_b.len() {
             return Err(IterativeError::DimensionMismatch);
         }
 
-        let n = b.len();
+        let n = matrix_b.len();
         let mut x = DVector::zeros(n);
-        let mut r = b.clone();
+        let mut r = matrix_b.clone();
         let mut p = r.clone();
         let mut rs_old = r.dot(&r);
 
         for _ in 0..config.max_iterations {
-            let ap = a * &p;
+            let ap = matrix_a * &p;
             let pap = p.dot(&ap);
             if pap <= T::zero() {
                 return Err(IterativeError::NotPositiveDefinite);
@@ -90,7 +93,7 @@ pub mod nalgebra_iterative {
             x += &p * alpha;
             r -= &ap * alpha;
             let rs_new = r.dot(&r);
-            if num_traits::Float::sqrt(rs_new) < config.tolerance {
+            if Float::sqrt(rs_new) < config.tolerance {
                 return Ok(x);
             }
             let beta = rs_new / rs_old;
@@ -101,43 +104,46 @@ pub mod nalgebra_iterative {
     }
 
     /// GMRES for general system Ax = b (restart version)
-    pub fn gmres<T: RealField + Copy + num_traits::Float + num_traits::float::FloatCore>(
-        a: &DMatrix<T>,
-        b: &DVector<T>,
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn gmres<T: RealField + Copy + Float + num_traits::float::FloatCore>(
+        matrix_a: &DMatrix<T>,
+        matrix_b: &DVector<T>,
         config: &IterativeConfig<T>,
     ) -> Result<DVector<T>, IterativeError> {
-        if a.is_empty() || b.is_empty() {
+        if matrix_a.is_empty() || matrix_b.is_empty() {
             return Err(IterativeError::EmptyMatrix);
         }
-        if !a.is_square() || a.nrows() != b.len() {
+        if !matrix_a.is_square() || matrix_a.nrows() != matrix_b.len() {
             return Err(IterativeError::DimensionMismatch);
         }
 
-        let n = b.len();
-        let restart = n.clamp(1, 50);
-        let mut x = DVector::zeros(n);
+        let b_len = matrix_b.len();
+        let restart = b_len.clamp(1, 50);
+        let mut b_len_zeroes = DVector::zeros(b_len);
 
         for _outer in 0..(config.max_iterations / restart).max(1) {
-            let r = b - a * &x;
+            let r = matrix_b - matrix_a * &b_len_zeroes;
             let beta = r.norm();
             if beta < config.tolerance {
-                return Ok(x);
+                return Ok(b_len_zeroes);
             }
 
-            let mut v = vec![DVector::zeros(n); restart + 1];
+            let mut v = vec![DVector::zeros(b_len); restart + 1];
             v[0] = r / beta;
 
             let mut h = DMatrix::zeros(restart + 1, restart);
             let mut krylov_dim = restart;
 
             for j in 0..restart {
-                let mut w = a * &v[j];
+                let mut w = matrix_a * &v[j];
                 for i in 0..=j {
                     h[(i, j)] = v[i].dot(&w);
                     w -= &v[i] * h[(i, j)];
                 }
                 h[(j + 1, j)] = w.norm();
-                if h[(j + 1, j)] < <T as num_traits::Float>::epsilon() * beta {
+                if h[(j + 1, j)] < <T as Float>::epsilon() * beta {
                     krylov_dim = j;
                     break;
                 }
@@ -148,11 +154,15 @@ pub mod nalgebra_iterative {
             let mut e1 = DVector::zeros(krylov_dim + 1);
             e1[0] = beta;
 
-            let y = crate::qr::nalgebra_qr::solve_least_squares(&h_small, &e1, &Default::default())
-                .map_err(|_| IterativeError::Breakdown)?;
+            let y = crate::qr::nalgebra_qr::solve_least_squares(
+                &h_small,
+                &e1,
+                &crate::qr::QRConfig::default(),
+            )
+            .map_err(|_| IterativeError::Breakdown)?;
 
             for i in 0..krylov_dim {
-                x += &v[i] * y[i];
+                b_len_zeroes += &v[i] * y[i];
             }
         }
         Err(IterativeError::MaxIterationsExceeded)
@@ -162,29 +172,35 @@ pub mod nalgebra_iterative {
 /// Ndarray iterative solvers
 pub mod ndarray_iterative {
     use super::*;
-    use crate::utils::ndarray_to_nalgebra;
+    use crate::interop::ndarray_to_nalgebra;
 
     /// Conjugate Gradient for SPD system Ax = b
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn conjugate_gradient<T: Float + RealField>(
         a: &Array2<T>,
         b: &Array1<T>,
         config: &IterativeConfig<T>,
     ) -> Result<Array1<T>, IterativeError> {
         let nalg_a = ndarray_to_nalgebra(a);
-        let nalg_b = nalgebra::DVector::from_vec(b.to_vec());
-        let result = super::nalgebra_iterative::conjugate_gradient(&nalg_a, &nalg_b, config)?;
+        let nalg_b = DVector::from_vec(b.to_vec());
+        let result = nalgebra_iterative::conjugate_gradient(&nalg_a, &nalg_b, config)?;
         Ok(Array1::from_vec(result.as_slice().to_vec()))
     }
 
     /// GMRES for general system Ax = b
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn gmres<T: Float + RealField + num_traits::float::FloatCore>(
         a: &Array2<T>,
         b: &Array1<T>,
         config: &IterativeConfig<T>,
     ) -> Result<Array1<T>, IterativeError> {
         let nalg_a = ndarray_to_nalgebra(a);
-        let nalg_b = nalgebra::DVector::from_vec(b.to_vec());
-        let result = super::nalgebra_iterative::gmres(&nalg_a, &nalg_b, config)?;
+        let nalg_b = DVector::from_vec(b.to_vec());
+        let result = nalgebra_iterative::gmres(&nalg_a, &nalg_b, config)?;
         Ok(Array1::from_vec(result.as_slice().to_vec()))
     }
 }

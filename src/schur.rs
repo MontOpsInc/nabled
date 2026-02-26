@@ -33,7 +33,7 @@ impl fmt::Display for SchurError {
                 write!(f, "Schur decomposition failed to converge")
             }
             SchurError::NumericalInstability => write!(f, "Numerical instability detected"),
-            SchurError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            SchurError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
         }
     }
 }
@@ -63,7 +63,10 @@ pub mod nalgebra_schur {
     use super::*;
 
     /// Compute Schur decomposition A = Q T Q^H
-    pub fn compute_schur<T: RealField + Copy + num_traits::Float>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn compute_schur<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraSchurResult<T>, SchurError> {
         if matrix.is_empty() {
@@ -72,7 +75,7 @@ pub mod nalgebra_schur {
         if !matrix.is_square() {
             return Err(SchurError::NotSquare);
         }
-        if matrix.iter().any(|&x| !num_traits::Float::is_finite(x)) {
+        if matrix.iter().any(|&x| !Float::is_finite(x)) {
             return Err(SchurError::NumericalInstability);
         }
 
@@ -89,14 +92,17 @@ pub mod nalgebra_schur {
 /// Ndarray Schur decomposition (via nalgebra)
 pub mod ndarray_schur {
     use super::*;
-    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute Schur decomposition
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_schur<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarraySchurResult<T>, SchurError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let result = super::nalgebra_schur::compute_schur(&nalg)?;
+        let result = nalgebra_schur::compute_schur(&nalg)?;
         Ok(NdarraySchurResult {
             q: nalgebra_to_ndarray(&result.q),
             t: nalgebra_to_ndarray(&result.t),

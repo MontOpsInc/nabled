@@ -40,8 +40,8 @@ pub enum JacobianError {
 impl fmt::Display for JacobianError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            JacobianError::FunctionError(msg) => write!(f, "Function error: {}", msg),
-            JacobianError::InvalidDimensions(msg) => write!(f, "Invalid dimensions: {}", msg),
+            JacobianError::FunctionError(msg) => write!(f, "Function error: {msg}"),
+            JacobianError::InvalidDimensions(msg) => write!(f, "Invalid dimensions: {msg}"),
             JacobianError::InvalidStepSize => write!(f, "Invalid step size"),
             JacobianError::ConvergenceFailed => write!(f, "Convergence failed"),
             JacobianError::EmptyInput => write!(f, "Empty input"),
@@ -74,7 +74,10 @@ impl<T: Float> Default for JacobianConfig<T> {
 }
 
 impl<T: Float> JacobianConfig<T> {
-    /// Create a new JacobianConfig with validation
+    /// Create a new `JacobianConfig` with validation
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn new(step_size: T, tolerance: T, max_iterations: usize) -> Result<Self, JacobianError> {
         if step_size <= T::zero() {
             return Err(JacobianError::InvalidStepSize);
@@ -92,6 +95,9 @@ impl<T: Float> JacobianConfig<T> {
     }
 
     /// Validate the configuration
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn validate(&self) -> Result<(), JacobianError> {
         if self.step_size <= T::zero() {
             return Err(JacobianError::InvalidStepSize);
@@ -117,7 +123,7 @@ pub mod nalgebra_jacobian {
     /// Compute numerical Jacobian using finite differences
     ///
     /// # Arguments
-    /// * `f` - Function that takes a DVector and returns a DVector
+    /// * `f` - Function that takes a `DVector` and returns a `DVector`
     /// * `x` - Point at which to compute the Jacobian
     /// * `config` - Configuration for the computation
     ///
@@ -138,6 +144,9 @@ pub mod nalgebra_jacobian {
     /// // Jacobian should be [[2.0, 0.0], [0.0, 4.0]]
     /// # Ok::<(), rust_linalg::jacobian::JacobianError>(())
     /// ```
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_jacobian<T, F>(
         f: &F,
         x: &DVector<T>,
@@ -154,10 +163,9 @@ pub mod nalgebra_jacobian {
 
         // Check for NaN or infinite values in input
         for i in 0..x.len() {
-            if !num_traits::Float::is_finite(x[i]) {
+            if !Float::is_finite(x[i]) {
                 return Err(JacobianError::InvalidDimensions(format!(
-                    "Input contains non-finite value at index {}",
-                    i
+                    "Input contains non-finite value at index {i}"
                 )));
             }
         }
@@ -176,10 +184,9 @@ pub mod nalgebra_jacobian {
 
         // Check for non-finite values in function output
         for i in 0..m {
-            if !num_traits::Float::is_finite(x[i]) {
+            if !Float::is_finite(x[i]) {
                 return Err(JacobianError::FunctionError(format!(
-                    "Function returned non-finite value at index {}",
-                    i
+                    "Function returned non-finite value at index {i}"
                 )));
             }
         }
@@ -192,7 +199,7 @@ pub mod nalgebra_jacobian {
 
             // Check for overflow when adding step size
             let step = config.step_size;
-            if num_traits::Float::is_finite(x_plus[j]) && num_traits::Float::is_finite(step) {
+            if Float::is_finite(x_plus[j]) && Float::is_finite(step) {
                 x_plus[j] += step;
             } else {
                 return Err(JacobianError::InvalidStepSize);
@@ -206,11 +213,10 @@ pub mod nalgebra_jacobian {
 
             // Check for non-finite values in perturbed function output
             for i in 0..m {
-                if !num_traits::Float::is_finite(fx_plus[i]) {
+                if !Float::is_finite(fx_plus[i]) {
                     return Err(JacobianError::FunctionError(format!(
-                        "Function returned non-finite value at index {} when perturbing variable \
-                         {}",
-                        i, j
+                        "Function returned non-finite value at index {i} when perturbing variable \
+                         {j}"
                     )));
                 }
             }
@@ -218,10 +224,7 @@ pub mod nalgebra_jacobian {
             // Compute finite difference
             for i in 0..m {
                 let diff = fx_plus[i] - fx[i];
-                if num_traits::Float::is_finite(diff)
-                    && num_traits::Float::is_finite(step)
-                    && step != T::zero()
-                {
+                if Float::is_finite(diff) && Float::is_finite(step) && step != T::zero() {
                     jacobian[(i, j)] = diff / step;
                 } else {
                     return Err(JacobianError::ConvergenceFailed);
@@ -235,12 +238,19 @@ pub mod nalgebra_jacobian {
     /// Compute Jacobian using central differences (more accurate)
     ///
     /// # Arguments
-    /// * `f` - Function that takes a DVector and returns a DVector
+    /// * `f` - Function that takes a `DVector` and returns a `DVector`
     /// * `x` - Point at which to compute the Jacobian
     /// * `config` - Configuration for the computation
     ///
     /// # Returns
     /// * `Result<DMatrix<T>, JacobianError>` - Jacobian matrix
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    ///
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_jacobian_central<T, F>(
         f: &F,
         x: &DVector<T>,
@@ -257,10 +267,9 @@ pub mod nalgebra_jacobian {
 
         // Check for NaN or infinite values in input
         for i in 0..x.len() {
-            if !num_traits::Float::is_finite(x[i]) {
+            if !Float::is_finite(x[i]) {
                 return Err(JacobianError::InvalidDimensions(format!(
-                    "Input contains non-finite value at index {}",
-                    i
+                    "Input contains non-finite value at index {i}"
                 )));
             }
         }
@@ -305,12 +314,15 @@ pub mod nalgebra_jacobian {
     /// Compute Jacobian for a scalar function (gradient)
     ///
     /// # Arguments
-    /// * `f` - Function that takes a DVector and returns a scalar
+    /// * `f` - Function that takes a `DVector` and returns a scalar
     /// * `x` - Point at which to compute the gradient
     /// * `config` - Configuration for the computation
     ///
     /// # Returns
     /// * `Result<DVector<T>, JacobianError>` - Gradient vector
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_gradient<T, F>(
         f: &F,
         x: &DVector<T>,
@@ -344,12 +356,16 @@ pub mod nalgebra_jacobian {
     /// Compute Hessian matrix (second-order partial derivatives)
     ///
     /// # Arguments
-    /// * `f` - Function that takes a DVector and returns a scalar
+    /// * `f` - Function that takes a `DVector` and returns a scalar
     /// * `x` - Point at which to compute the Hessian
     /// * `config` - Configuration for the computation
     ///
     /// # Returns
     /// * `Result<DMatrix<T>, JacobianError>` - Hessian matrix
+    #[expect(clippy::similar_names)]
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_hessian<T, F>(
         f: &F,
         x: &DVector<T>,
@@ -408,6 +424,9 @@ pub mod ndarray_jacobian {
     ///
     /// # Returns
     /// * `Result<Array2<T>, JacobianError>` - Jacobian matrix
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_jacobian<T, F>(
         f: &F,
         x: &Array1<T>,
@@ -461,6 +480,13 @@ pub mod ndarray_jacobian {
     ///
     /// # Returns
     /// * `Result<Array2<T>, JacobianError>` - Jacobian matrix
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    ///
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_jacobian_central<T, F>(
         f: &F,
         x: &Array1<T>,
@@ -517,6 +543,9 @@ pub mod ndarray_jacobian {
     ///
     /// # Returns
     /// * `Result<Array1<T>, JacobianError>` - Gradient vector
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_gradient<T, F>(
         f: &F,
         x: &Array1<T>,
@@ -556,6 +585,10 @@ pub mod ndarray_jacobian {
     ///
     /// # Returns
     /// * `Result<Array2<T>, JacobianError>` - Hessian matrix
+    #[expect(clippy::similar_names)]
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_hessian<T, F>(
         f: &F,
         x: &Array1<T>,
@@ -634,8 +667,11 @@ pub mod complex_jacobian {
     /// let jacobian = complex_jacobian::numerical_jacobian(&f, &x, &Default::default())?;
     /// # Ok::<(), rust_linalg::jacobian::JacobianError>(())
     /// ```
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_jacobian<T, F>(
-        f: F,
+        func: F,
         x: &DVector<Complex<T>>,
         config: &JacobianConfig<T>,
     ) -> Result<DMatrix<Complex<T>>, JacobianError>
@@ -652,14 +688,13 @@ pub mod complex_jacobian {
         for i in 0..x.len() {
             if !x[i].is_finite() {
                 return Err(JacobianError::InvalidDimensions(format!(
-                    "Input contains non-finite value at index {}",
-                    i
+                    "Input contains non-finite value at index {i}"
                 )));
             }
         }
 
         // Evaluate function at the point
-        let f_x = f(x).map_err(JacobianError::FunctionError)?;
+        let f_x = func(x).map_err(JacobianError::FunctionError)?;
         let m = f_x.len();
         let n = x.len();
 
@@ -674,7 +709,7 @@ pub mod complex_jacobian {
             x_plus[j] = x[j] + h;
 
             // Evaluate function at x + h
-            let f_x_plus = f(&x_plus).map_err(JacobianError::FunctionError)?;
+            let f_x_plus = func(&x_plus).map_err(JacobianError::FunctionError)?;
 
             // Compute partial derivative: ∂f/∂x_j ≈ Im(f(x + ih)) / step_size
             for i in 0..m {
@@ -682,8 +717,7 @@ pub mod complex_jacobian {
                     jacobian[(i, j)] = Complex::new(f_x_plus[i].im / config.step_size, T::zero());
                 } else {
                     return Err(JacobianError::FunctionError(format!(
-                        "Function returned non-finite value at index {}",
-                        i
+                        "Function returned non-finite value at index {i}"
                     )));
                 }
             }
@@ -701,6 +735,9 @@ pub mod complex_jacobian {
     ///
     /// # Returns
     /// * `Result<DVector<Complex<T>>, JacobianError>` - Complex gradient vector
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_gradient<T, F>(
         f: F,
         x: &DVector<Complex<T>>,
@@ -750,6 +787,14 @@ pub mod complex_jacobian {
     ///
     /// # Returns
     /// * `Result<DMatrix<Complex<T>>, JacobianError>` - Complex Hessian matrix
+    #[expect(clippy::similar_names)]
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    ///
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn numerical_hessian<T, F>(
         f: F,
         x: &DVector<Complex<T>>,
@@ -1046,7 +1091,7 @@ mod tests {
         let x = DVector::from_vec(vec![Complex::new(1.0, 0.0), Complex::new(2.0, 0.0)]);
         let config = JacobianConfig::default();
 
-        let jacobian = complex_jacobian::numerical_jacobian(&f, &x, &config).unwrap();
+        let jacobian = complex_jacobian::numerical_jacobian(f, &x, &config).unwrap();
 
         // For f(z) = z² with z real, the derivative is 2z
         // At z = 1, derivative is 2
@@ -1071,7 +1116,7 @@ mod tests {
         let f = |x: &DVector<Complex<f64>>| -> Result<Complex<f64>, String> {
             let mut sum = Complex::new(0.0, 0.0);
             for i in 0..x.len() {
-                sum = sum + x[i] * x[i];
+                sum += x[i] * x[i];
             }
             Ok(sum)
         };
@@ -1079,7 +1124,7 @@ mod tests {
         let x = DVector::from_vec(vec![Complex::new(2.0, 0.0), Complex::new(3.0, 0.0)]);
         let config = JacobianConfig::default();
 
-        let gradient = complex_jacobian::numerical_gradient(&f, &x, &config).unwrap();
+        let gradient = complex_jacobian::numerical_gradient(f, &x, &config).unwrap();
 
         // For f(z) = z₁² + z₂² with z real, the gradient is [2z₁, 2z₂]
         // At z₁ = 2, derivative is 4
@@ -1099,7 +1144,7 @@ mod tests {
         let f = |x: &DVector<Complex<f64>>| -> Result<Complex<f64>, String> {
             let mut sum = Complex::new(0.0, 0.0);
             for i in 0..x.len() {
-                sum = sum + x[i] * x[i];
+                sum += x[i] * x[i];
             }
             Ok(sum)
         };
@@ -1107,7 +1152,7 @@ mod tests {
         let x = DVector::from_vec(vec![Complex::new(1.0, 0.0), Complex::new(2.0, 0.0)]);
         let config = JacobianConfig::default();
 
-        let hessian = complex_jacobian::numerical_hessian(&f, &x, &config).unwrap();
+        let hessian = complex_jacobian::numerical_hessian(f, &x, &config).unwrap();
 
         // Test that the function runs without error and returns a valid matrix
         // Note: Complex step method for second derivatives has limitations
@@ -1134,7 +1179,7 @@ mod tests {
         let empty_x = DVector::<Complex<f64>>::zeros(0);
         let config = JacobianConfig::default();
 
-        let result = complex_jacobian::numerical_jacobian(&f, &empty_x, &config);
+        let result = complex_jacobian::numerical_jacobian(f, &empty_x, &config);
         assert!(matches!(result, Err(JacobianError::EmptyInput)));
 
         // Test function error
@@ -1143,7 +1188,7 @@ mod tests {
         };
 
         let x = DVector::from_vec(vec![Complex::new(1.0, 0.0)]);
-        let result = complex_jacobian::numerical_jacobian(&error_f, &x, &config);
+        let result = complex_jacobian::numerical_jacobian(error_f, &x, &config);
         assert!(matches!(result, Err(JacobianError::FunctionError(_))));
     }
 }

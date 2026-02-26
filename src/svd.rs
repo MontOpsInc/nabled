@@ -51,7 +51,7 @@ impl fmt::Display for SVDError {
             SVDError::NotSquare => write!(f, "Matrix must be square"),
             SVDError::EmptyMatrix => write!(f, "Matrix cannot be empty"),
             SVDError::ConvergenceFailed => write!(f, "SVD algorithm failed to converge"),
-            SVDError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            SVDError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
         }
     }
 }
@@ -71,6 +71,9 @@ pub mod nalgebra_svd {
     // Note: ComplexField and SymmetricEigen imports removed as they are not used
 
     /// Compute SVD using nalgebra's built-in implementation
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_svd<T: RealField>(matrix: &DMatrix<T>) -> Result<NalgebraSVD<T>, SVDError> {
         if matrix.is_empty() {
             return Err(SVDError::EmptyMatrix);
@@ -89,6 +92,10 @@ pub mod nalgebra_svd {
     /// Compute SVD with custom tolerance.
     /// Singular values below the tolerance are set to zero (useful for rank determination and
     /// low-rank approximation).
+    #[allow(clippy::needless_pass_by_value)]
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_svd_with_tolerance<T: RealField>(
         matrix: &DMatrix<T>,
         tolerance: T,
@@ -108,6 +115,9 @@ pub mod nalgebra_svd {
     }
 
     /// Compute truncated SVD (keeping only the k largest singular values)
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_truncated_svd<T: RealField>(
         matrix: &DMatrix<T>,
         k: usize,
@@ -135,12 +145,14 @@ pub mod nalgebra_svd {
     }
 
     /// Reconstruct the original matrix from SVD components
+    #[must_use]
     pub fn reconstruct_matrix<T: RealField>(svd: &NalgebraSVD<T>) -> DMatrix<T> {
         let sigma = DMatrix::from_diagonal(&svd.singular_values);
         &svd.u * &sigma * &svd.vt
     }
 
     /// Compute the condition number from singular values
+    #[must_use]
     pub fn condition_number<T: RealField + FloatCore>(svd: &NalgebraSVD<T>) -> T {
         let singular_values = &svd.singular_values;
         if singular_values.is_empty() {
@@ -154,6 +166,9 @@ pub mod nalgebra_svd {
     }
 
     /// Compute the rank of the matrix from its SVD
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
     pub fn matrix_rank<T: RealField>(svd: &NalgebraSVD<T>, tolerance: Option<T>) -> usize {
         let tol = tolerance.unwrap_or_else(|| {
             let max_sv = svd.singular_values.max();
@@ -164,7 +179,14 @@ pub mod nalgebra_svd {
     }
 
     /// Compute Moore-Penrose pseudo-inverse pinv(A) = V Σ⁻¹ U^T
-    pub fn pseudo_inverse<T: RealField + Copy + num_traits::Float>(
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    ///
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn pseudo_inverse<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
         config: &PseudoInverseConfig<T>,
     ) -> Result<DMatrix<T>, SVDError> {
@@ -197,7 +219,10 @@ pub mod nalgebra_svd {
     }
 
     /// Compute null space (kernel) - columns of V for singular values below tolerance
-    pub fn null_space<T: RealField + Copy + num_traits::Float>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn null_space<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
         tolerance: Option<T>,
     ) -> Result<DMatrix<T>, SVDError> {
@@ -212,7 +237,7 @@ pub mod nalgebra_svd {
             .singular_values
             .iter()
             .enumerate()
-            .filter(|(_, &s)| s <= tol)
+            .filter(|(_, s)| **s <= tol)
             .map(|(i, _)| i)
             .collect();
 
@@ -235,10 +260,14 @@ pub mod nalgebra_svd {
 /// Enhanced SVD computation using ndarray
 pub mod ndarray_svd {
     use super::*;
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
     // Note: general_mat_mul import removed as it's not used
 
     /// Compute SVD using conversion to nalgebra and back
     /// Note: This is a simplified implementation that converts to nalgebra for computation
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_svd<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarraySVD<T>, SVDError> {
@@ -247,14 +276,12 @@ pub mod ndarray_svd {
         }
 
         // Convert ndarray to nalgebra
-        use crate::utils::ndarray_to_nalgebra;
         let nalgebra_matrix = ndarray_to_nalgebra(matrix);
 
         // Compute SVD using nalgebra
-        let nalgebra_svd = crate::svd::nalgebra_svd::compute_svd(&nalgebra_matrix)?;
+        let nalgebra_svd = nalgebra_svd::compute_svd(&nalgebra_matrix)?;
 
         // Convert results back to ndarray
-        use crate::utils::nalgebra_to_ndarray;
         let u = nalgebra_to_ndarray(&nalgebra_svd.u);
         let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
         let singular_values = Array1::from_vec(nalgebra_svd.singular_values.as_slice().to_vec());
@@ -264,6 +291,9 @@ pub mod ndarray_svd {
 
     /// Compute SVD with custom tolerance.
     /// Singular values below the tolerance are set to zero.
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_svd_with_tolerance<T: Float + RealField>(
         matrix: &Array2<T>,
         tolerance: T,
@@ -272,10 +302,8 @@ pub mod ndarray_svd {
             return Err(SVDError::EmptyMatrix);
         }
 
-        use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
         let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let nalgebra_svd =
-            crate::svd::nalgebra_svd::compute_svd_with_tolerance(&nalgebra_matrix, tolerance)?;
+        let nalgebra_svd = nalgebra_svd::compute_svd_with_tolerance(&nalgebra_matrix, tolerance)?;
 
         let u = nalgebra_to_ndarray(&nalgebra_svd.u);
         let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
@@ -285,6 +313,9 @@ pub mod ndarray_svd {
     }
 
     /// Compute truncated SVD (keeping only the k largest singular values)
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_truncated_svd<T: Float + RealField>(
         matrix: &Array2<T>,
         k: usize,
@@ -310,6 +341,7 @@ pub mod ndarray_svd {
     }
 
     /// Reconstruct the original matrix from SVD components
+    #[must_use]
     pub fn reconstruct_matrix<T: Float>(svd: &NdarraySVD<T>) -> Array2<T> {
         let mut result = Array2::zeros((svd.u.nrows(), svd.vt.ncols()));
 
@@ -330,6 +362,7 @@ pub mod ndarray_svd {
     }
 
     /// Compute the condition number from singular values
+    #[must_use]
     pub fn condition_number<T: Float>(svd: &NdarraySVD<T>) -> T {
         if svd.singular_values.is_empty() {
             return T::zero();
@@ -342,6 +375,9 @@ pub mod ndarray_svd {
     }
 
     /// Compute the rank of the matrix from its SVD
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
     pub fn matrix_rank<T: Float>(svd: &NdarraySVD<T>, tolerance: Option<T>) -> usize {
         let tol = tolerance.unwrap_or_else(|| {
             let max_sv = svd.singular_values.iter().fold(T::zero(), |a, &b| a.max(b));
@@ -352,24 +388,28 @@ pub mod ndarray_svd {
     }
 
     /// Compute Moore-Penrose pseudo-inverse
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn pseudo_inverse<T: Float + RealField>(
         matrix: &Array2<T>,
         config: &PseudoInverseConfig<T>,
     ) -> Result<Array2<T>, SVDError> {
-        use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
         let nalg = ndarray_to_nalgebra(matrix);
-        let pinv = crate::svd::nalgebra_svd::pseudo_inverse(&nalg, config)?;
+        let pinv = nalgebra_svd::pseudo_inverse(&nalg, config)?;
         Ok(nalgebra_to_ndarray(&pinv))
     }
 
     /// Compute null space (kernel)
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn null_space<T: Float + RealField>(
         matrix: &Array2<T>,
         tolerance: Option<T>,
     ) -> Result<Array2<T>, SVDError> {
-        use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
         let nalg = ndarray_to_nalgebra(matrix);
-        let nulls = crate::svd::nalgebra_svd::null_space(&nalg, tolerance)?;
+        let nulls = nalgebra_svd::null_space(&nalg, tolerance)?;
         Ok(nalgebra_to_ndarray(&nulls))
     }
 }

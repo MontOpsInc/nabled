@@ -34,7 +34,7 @@ impl fmt::Display for SylvesterError {
             SylvesterError::SingularSystem => {
                 write!(f, "Singular system: eigenvalues of A and -B overlap")
             }
-            SylvesterError::SchurFailed(e) => write!(f, "Schur decomposition failed: {}", e),
+            SylvesterError::SchurFailed(e) => write!(f, "Schur decomposition failed: {e}"),
         }
     }
 }
@@ -50,31 +50,34 @@ pub mod nalgebra_sylvester {
     use super::*;
 
     /// Solve Sylvester equation AX + XB = C
-    pub fn solve_sylvester<T: RealField + Copy + num_traits::Float>(
-        a: &DMatrix<T>,
-        b: &DMatrix<T>,
-        c: &DMatrix<T>,
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn solve_sylvester<T: RealField + Copy + Float>(
+        matrix_a: &DMatrix<T>,
+        matrix_b: &DMatrix<T>,
+        matrix_c: &DMatrix<T>,
     ) -> Result<DMatrix<T>, SylvesterError> {
-        let (m, n) = (a.nrows(), b.ncols());
-        if a.is_empty() || b.is_empty() || c.is_empty() {
+        let (m, n) = (matrix_a.nrows(), matrix_b.ncols());
+        if matrix_a.is_empty() || matrix_b.is_empty() || matrix_c.is_empty() {
             return Err(SylvesterError::EmptyMatrix);
         }
-        if a.nrows() != a.ncols() || b.nrows() != b.ncols() {
+        if matrix_a.nrows() != matrix_a.ncols() || matrix_b.nrows() != matrix_b.ncols() {
             return Err(SylvesterError::DimensionMismatch);
         }
-        if a.nrows() != c.nrows() || b.ncols() != c.ncols() {
+        if matrix_a.nrows() != matrix_c.nrows() || matrix_b.ncols() != matrix_c.ncols() {
             return Err(SylvesterError::DimensionMismatch);
         }
 
-        let schur_a = nalgebra_schur::compute_schur(a)?;
-        let schur_b = nalgebra_schur::compute_schur(b)?;
+        let schur_a = nalgebra_schur::compute_schur(matrix_a)?;
+        let schur_b = nalgebra_schur::compute_schur(matrix_b)?;
 
         let ta = schur_a.t;
         let tb = schur_b.t;
         let qa = schur_a.q;
         let qb = schur_b.q;
 
-        let d = qa.transpose() * c * &qb;
+        let d = qa.transpose() * matrix_c * &qb;
 
         let mut y = DMatrix::zeros(m, n);
         for j in 0..n {
@@ -93,7 +96,10 @@ pub mod nalgebra_sylvester {
     }
 
     /// Solve Lyapunov equation AX + XA^T = Q
-    pub fn solve_lyapunov<T: RealField + Copy + num_traits::Float>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn solve_lyapunov<T: RealField + Copy + Float>(
         a: &DMatrix<T>,
         q: &DMatrix<T>,
     ) -> Result<DMatrix<T>, SylvesterError> {
@@ -105,9 +111,12 @@ pub mod nalgebra_sylvester {
 /// Ndarray Sylvester equation solver
 pub mod ndarray_sylvester {
     use super::*;
-    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Solve Sylvester equation AX + XB = C
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve_sylvester<T: Float + RealField>(
         a: &Array2<T>,
         b: &Array2<T>,
@@ -116,18 +125,21 @@ pub mod ndarray_sylvester {
         let nalg_a = ndarray_to_nalgebra(a);
         let nalg_b = ndarray_to_nalgebra(b);
         let nalg_c = ndarray_to_nalgebra(c);
-        let result = super::nalgebra_sylvester::solve_sylvester(&nalg_a, &nalg_b, &nalg_c)?;
+        let result = nalgebra_sylvester::solve_sylvester(&nalg_a, &nalg_b, &nalg_c)?;
         Ok(nalgebra_to_ndarray(&result))
     }
 
     /// Solve Lyapunov equation AX + XA^T = Q
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn solve_lyapunov<T: Float + RealField>(
         a: &Array2<T>,
         q: &Array2<T>,
     ) -> Result<Array2<T>, SylvesterError> {
         let nalg_a = ndarray_to_nalgebra(a);
         let nalg_q = ndarray_to_nalgebra(q);
-        let result = super::nalgebra_sylvester::solve_lyapunov(&nalg_a, &nalg_q)?;
+        let result = nalgebra_sylvester::solve_lyapunov(&nalg_a, &nalg_q)?;
         Ok(nalgebra_to_ndarray(&result))
     }
 }

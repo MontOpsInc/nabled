@@ -27,9 +27,9 @@ impl fmt::Display for RegressionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RegressionError::EmptyInput => write!(f, "Empty input"),
-            RegressionError::DimensionMismatch(msg) => write!(f, "Dimension mismatch: {}", msg),
+            RegressionError::DimensionMismatch(msg) => write!(f, "Dimension mismatch: {msg}"),
             RegressionError::SingularMatrix => write!(f, "Singular matrix"),
-            RegressionError::QRError(msg) => write!(f, "QR error: {}", msg),
+            RegressionError::QRError(msg) => write!(f, "QR error: {msg}"),
         }
     }
 }
@@ -43,7 +43,7 @@ pub struct NalgebraRegressionResult<T: RealField> {
     pub coefficients:  DVector<T>,
     /// Fitted values (X * coefficients)
     pub fitted_values: DVector<T>,
-    /// Residuals (y - fitted_values)
+    /// Residuals (`y - fitted_values`)
     pub residuals:     DVector<T>,
     /// R-squared
     pub r_squared:     T,
@@ -69,7 +69,14 @@ pub mod nalgebra_regression {
     use super::*;
 
     /// Compute linear regression: min ||X*beta - y||^2
-    pub fn linear_regression<T: RealField + Copy + FloatCore + num_traits::Float>(
+    /// # Panics
+    /// Panics if internal numeric assumptions are violated during setup or
+    /// intermediate conversion steps.
+    ///
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn linear_regression<T: RealField + Copy + FloatCore + Float>(
         x: &DMatrix<T>,
         y: &DVector<T>,
         add_intercept: bool,
@@ -116,8 +123,7 @@ pub mod nalgebra_regression {
             ss_tot += diff * diff;
             ss_res += residuals[i] * residuals[i];
         }
-        let r_squared =
-            if ss_tot > T::zero() { T::one() - ss_res / ss_tot } else { num_traits::Float::nan() };
+        let r_squared = if ss_tot > T::zero() { T::one() - ss_res / ss_tot } else { Float::nan() };
 
         Ok(NalgebraRegressionResult { coefficients, fitted_values, residuals, r_squared })
     }
@@ -128,9 +134,12 @@ pub mod ndarray_regression {
     use num_traits::float::FloatCore;
 
     use super::*;
-    use crate::utils::ndarray_to_nalgebra;
+    use crate::interop::ndarray_to_nalgebra;
 
     /// Compute linear regression
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn linear_regression<T: Float + RealField + FloatCore + num_traits::NumCast>(
         x: &Array2<T>,
         y: &Array1<T>,
@@ -138,8 +147,7 @@ pub mod ndarray_regression {
     ) -> Result<NdarrayRegressionResult<T>, RegressionError> {
         let nalg_x = ndarray_to_nalgebra(x);
         let nalg_y = DVector::from_vec(y.to_vec());
-        let result =
-            super::nalgebra_regression::linear_regression(&nalg_x, &nalg_y, add_intercept)?;
+        let result = nalgebra_regression::linear_regression(&nalg_x, &nalg_y, add_intercept)?;
         Ok(NdarrayRegressionResult {
             coefficients:  Array1::from_vec(result.coefficients.as_slice().to_vec()),
             fitted_values: Array1::from_vec(result.fitted_values.as_slice().to_vec()),

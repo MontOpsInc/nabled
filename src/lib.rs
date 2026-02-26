@@ -204,6 +204,7 @@
 
 pub mod cholesky;
 pub mod eigen;
+pub(crate) mod interop;
 pub mod iterative;
 pub mod jacobian;
 pub mod lu;
@@ -218,7 +219,6 @@ pub mod stats;
 pub mod svd;
 pub mod sylvester;
 pub mod triangular;
-pub mod utils;
 
 pub use cholesky::{CholeskyError, NalgebraCholeskyResult, NdarrayCholeskyResult};
 pub use eigen::{

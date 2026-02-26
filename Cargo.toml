@@ -19,7 +19,6 @@ default = []
 [dependencies]
 nalgebra = { version = "0.34", features = ["serde-serialize"] }
 ndarray = { version = "0.17", features = ["serde"] }
-ndarray-rand = "0.16"
 rand = "0.10"
 serde = { version = "1", features = ["derive"] }
 num-traits = "0.2"

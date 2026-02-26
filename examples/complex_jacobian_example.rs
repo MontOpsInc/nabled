@@ -24,9 +24,9 @@ fn main() -> Result<(), JacobianError> {
     println!("   Point: [{}, {}]", x[0], x[1]);
 
     let config = JacobianConfig::default();
-    let jacobian = complex_jacobian::numerical_jacobian(&f, &x, &config)?;
+    let jacobian = complex_jacobian::numerical_jacobian(f, &x, &config)?;
     println!("   Jacobian:");
-    println!("   {}", jacobian);
+    println!("   {jacobian}");
     println!("   Expected: [[2.0, 0.0], [0.0, 4.0]]\n");
 
     // Example 2: Complex gradient
@@ -34,7 +34,7 @@ fn main() -> Result<(), JacobianError> {
     let f_grad = |x: &DVector<Complex<f64>>| -> Result<Complex<f64>, String> {
         let mut sum = Complex::new(0.0, 0.0);
         for i in 0..x.len() {
-            sum = sum + x[i] * x[i];
+            sum += x[i] * x[i];
         }
         Ok(sum)
     };
@@ -42,8 +42,8 @@ fn main() -> Result<(), JacobianError> {
     let x_grad = DVector::from_vec(vec![Complex::new(3.0, 0.0), Complex::new(4.0, 0.0)]);
     println!("   Point: [{}, {}]", x_grad[0], x_grad[1]);
 
-    let gradient = complex_jacobian::numerical_gradient(&f_grad, &x_grad, &config)?;
-    println!("   Gradient: {}", gradient);
+    let gradient = complex_jacobian::numerical_gradient(f_grad, &x_grad, &config)?;
+    println!("   Gradient: {gradient}");
     println!("   Expected: [6.0, 8.0]\n");
 
     // Example 3: Complex Hessian
@@ -51,9 +51,9 @@ fn main() -> Result<(), JacobianError> {
     let x_hess = DVector::from_vec(vec![Complex::new(1.0, 0.0), Complex::new(2.0, 0.0)]);
     println!("   Point: [{}, {}]", x_hess[0], x_hess[1]);
 
-    let hessian = complex_jacobian::numerical_hessian(&f_grad, &x_hess, &config)?;
+    let hessian = complex_jacobian::numerical_hessian(f_grad, &x_hess, &config)?;
     println!("   Hessian:");
-    println!("   {}", hessian);
+    println!("   {hessian}");
     println!("   Expected: [[2.0, 0.0], [0.0, 2.0]]\n");
 
     // Example 4: Error handling
@@ -63,8 +63,8 @@ fn main() -> Result<(), JacobianError> {
     };
 
     let x_error = DVector::from_vec(vec![Complex::new(1.0, 0.0)]);
-    match complex_jacobian::numerical_jacobian(&error_f, &x_error, &config) {
-        Err(e) => println!("   Caught expected error: {}", e),
+    match complex_jacobian::numerical_jacobian(error_f, &x_error, &config) {
+        Err(e) => println!("   Caught expected error: {e}"),
         Ok(_) => println!("   Unexpected success"),
     }
 

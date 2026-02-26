@@ -1,7 +1,8 @@
 //! # Polar Decomposition
 //!
-//! Polar decomposition: A = U P where U is orthogonal and P is symmetric positive semi-definite.
-//! Computed via SVD: A = U_svd Σ V_svd^T ⇒ U = U_svd V_svd^T, P = V_svd Σ V_svd^T.
+//! Polar decomposition: `A = U P` where `U` is orthogonal and `P` is symmetric positive
+//! semi-definite. Computed via SVD: `A = U_svd Σ V_svd^T => U = U_svd V_svd^T, P = V_svd Σ
+//! V_svd^T`.
 
 use std::fmt;
 
@@ -29,7 +30,7 @@ impl fmt::Display for PolarError {
         match self {
             PolarError::EmptyMatrix => write!(f, "Matrix is empty"),
             PolarError::NotSquare => write!(f, "Matrix must be square"),
-            PolarError::SVDFailed(e) => write!(f, "SVD failed: {}", e),
+            PolarError::SVDFailed(e) => write!(f, "SVD failed: {e}"),
             PolarError::NumericalInstability => write!(f, "Numerical instability detected"),
         }
     }
@@ -64,7 +65,10 @@ pub mod nalgebra_polar {
     use super::*;
 
     /// Compute polar decomposition A = U P
-    pub fn compute_polar<T: RealField + Copy + num_traits::Float>(
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
+    pub fn compute_polar<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraPolarResult<T>, PolarError> {
         if matrix.is_empty() {
@@ -73,7 +77,7 @@ pub mod nalgebra_polar {
         if !matrix.is_square() {
             return Err(PolarError::NotSquare);
         }
-        if matrix.iter().any(|&x| !num_traits::Float::is_finite(x)) {
+        if matrix.iter().any(|&x| !Float::is_finite(x)) {
             return Err(PolarError::NumericalInstability);
         }
 
@@ -91,14 +95,17 @@ pub mod nalgebra_polar {
 /// Ndarray polar decomposition (via nalgebra)
 pub mod ndarray_polar {
     use super::*;
-    use crate::utils::{nalgebra_to_ndarray, ndarray_to_nalgebra};
+    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute polar decomposition
+    /// # Errors
+    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
+    /// underlying numerical routine fails to converge or produce a valid result.
     pub fn compute_polar<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayPolarResult<T>, PolarError> {
         let nalg = ndarray_to_nalgebra(matrix);
-        let result = super::nalgebra_polar::compute_polar(&nalg)?;
+        let result = nalgebra_polar::compute_polar(&nalg)?;
         Ok(NdarrayPolarResult {
             u: nalgebra_to_ndarray(&result.u),
             p: nalgebra_to_ndarray(&result.p),

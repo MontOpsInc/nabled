@@ -12,9 +12,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let x = cholesky::nalgebra_cholesky::solve(&a, &b)?;
     println!("Solve Ax = b (A is symmetric positive-definite):");
-    println!("  A = {}", a);
-    println!("  b = {}", b);
-    println!("  x = {}", x);
+    println!("  A = {a}");
+    println!("  b = {b}");
+    println!("  x = {x}");
 
     let decomp = cholesky::nalgebra_cholesky::compute_cholesky(&a)?;
     println!("\nCholesky factor L:");
