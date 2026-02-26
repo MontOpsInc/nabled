@@ -16,6 +16,9 @@ publish = false
 [features]
 default = []
 
+# TODO: placeholder
+test-utils = []
+
 [dependencies]
 nalgebra = { version = "0.34", features = ["serde-serialize"] }
 ndarray = { version = "0.17", features = ["serde"] }
