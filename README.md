@@ -1,4 +1,10 @@
-# Rust Linear Algebra Library
+# ꩜ Nabled - Rust Linear Algebra
+
+[![Crates.io](https://img.shields.io/crates/v/nabled.svg)](https://crates.io/crates/nabled)
+[![Documentation](https://docs.rs/nabled/badge.svg)](https://docs.rs/nabled)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/MontOpsInc/nabled/ci.yml?branch=main)](https://github.com/MontOpsInc/nabled/actions)
+[![Coverage](https://codecov.io/gh/MontOpsInc/nabled/branch/main/graph/badge.svg)](https://codecov.io/gh/MontOpsInc/nabled)
 
 This is a linear algebra library written in Rust. Advanced linear algebra functions built on top of `nalgebra` and `ndarray` crates, with focus on performance and numerical stability.
 
