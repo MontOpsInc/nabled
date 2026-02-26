@@ -153,7 +153,7 @@ jobs:
 
     - name: Run integration tests
       run: |
-        cargo test --profile ci -F ${{ matrix.features }} --test "e2e" -- --nocapture --show-output
+        cargo test --profile ci -F ${{ matrix.features }} --test "integration" -- --nocapture --show-output
 
     # TODO: Convert doc test to tests and reenable
     # - name: Run doc tests
