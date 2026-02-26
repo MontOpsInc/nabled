@@ -40,8 +40,8 @@ pub mod nalgebra_triangular {
 
     /// Solve Lx = b where L is lower triangular (forward substitution)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_lower<T: RealField + Copy>(
         l: &DMatrix<T>,
         b: &DVector<T>,
@@ -72,8 +72,8 @@ pub mod nalgebra_triangular {
 
     /// Solve Ux = b where U is upper triangular (back substitution)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_upper<T: RealField + Copy>(
         u: &DMatrix<T>,
         b: &DVector<T>,
@@ -110,8 +110,8 @@ pub mod ndarray_triangular {
 
     /// Solve Lx = b where L is lower triangular
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_lower<T: Float + RealField>(
         l: &Array2<T>,
         b: &Array1<T>,
@@ -124,8 +124,8 @@ pub mod ndarray_triangular {
 
     /// Solve Ux = b where U is upper triangular
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_upper<T: Float + RealField>(
         u: &Array2<T>,
         b: &Array1<T>,

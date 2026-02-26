@@ -51,8 +51,8 @@ pub mod nalgebra_sylvester {
 
     /// Solve Sylvester equation AX + XB = C
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_sylvester<T: RealField + Copy + Float>(
         matrix_a: &DMatrix<T>,
         matrix_b: &DMatrix<T>,
@@ -97,8 +97,8 @@ pub mod nalgebra_sylvester {
 
     /// Solve Lyapunov equation AX + XA^T = Q
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_lyapunov<T: RealField + Copy + Float>(
         a: &DMatrix<T>,
         q: &DMatrix<T>,
@@ -115,8 +115,8 @@ pub mod ndarray_sylvester {
 
     /// Solve Sylvester equation AX + XB = C
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_sylvester<T: Float + RealField>(
         a: &Array2<T>,
         b: &Array2<T>,
@@ -131,8 +131,8 @@ pub mod ndarray_sylvester {
 
     /// Solve Lyapunov equation AX + XA^T = Q
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_lyapunov<T: Float + RealField>(
         a: &Array2<T>,
         q: &Array2<T>,

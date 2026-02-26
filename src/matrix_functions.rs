@@ -64,8 +64,8 @@ pub mod nalgebra_matrix_functions {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_exp<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
         max_iterations: usize,
@@ -107,8 +107,8 @@ pub mod nalgebra_matrix_functions {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_exp_eigen<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
@@ -149,8 +149,8 @@ pub mod nalgebra_matrix_functions {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_log_taylor<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
         max_iterations: usize,
@@ -201,8 +201,8 @@ pub mod nalgebra_matrix_functions {
     /// Compute matrix logarithm using eigenvalue decomposition
     /// For diagonalizable matrices: log(A) = P * log(D) * P^(-1)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_log_eigen<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
@@ -244,8 +244,8 @@ pub mod nalgebra_matrix_functions {
     /// Compute matrix logarithm using SVD decomposition
     /// log(A) = U * log(S) * V^T where A = U * S * V^T
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_log_svd<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
@@ -283,8 +283,8 @@ pub mod nalgebra_matrix_functions {
     /// Compute matrix power using eigenvalue decomposition
     /// A^p = P * D^p * P^(-1) where A = P * D * P^(-1)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_power<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
         power: T,
@@ -331,8 +331,8 @@ pub mod nalgebra_matrix_functions {
     /// Compute matrix sign function: sign(A) for symmetric diagonalizable A
     /// sign(λ) = 1 if λ>0, -1 if λ<0; requires no zero eigenvalues
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_sign<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
@@ -373,8 +373,8 @@ pub mod ndarray_matrix_functions {
 
     /// Compute matrix exponential using conversion to nalgebra
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_exp<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
         max_iterations: usize,
@@ -388,8 +388,8 @@ pub mod ndarray_matrix_functions {
 
     /// Compute matrix exponential using eigenvalue decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_exp_eigen<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, MatrixFunctionError> {
@@ -400,8 +400,8 @@ pub mod ndarray_matrix_functions {
 
     /// Compute matrix logarithm using Taylor series
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_log_taylor<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
         max_iterations: usize,
@@ -418,8 +418,8 @@ pub mod ndarray_matrix_functions {
 
     /// Compute matrix logarithm using eigenvalue decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_log_eigen<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, MatrixFunctionError> {
@@ -430,8 +430,8 @@ pub mod ndarray_matrix_functions {
 
     /// Compute matrix logarithm using SVD decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_log_svd<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, MatrixFunctionError> {
@@ -442,8 +442,8 @@ pub mod ndarray_matrix_functions {
 
     /// Compute matrix power
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_power<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
         power: T,
@@ -455,8 +455,8 @@ pub mod ndarray_matrix_functions {
 
     /// Compute matrix sign function
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn matrix_sign<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, MatrixFunctionError> {

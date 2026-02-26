@@ -122,8 +122,8 @@ pub mod nalgebra_qr {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_qr<T>(matrix: &DMatrix<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>
     where
         T: RealField + FloatCore + Float,
@@ -212,8 +212,8 @@ pub mod nalgebra_qr {
     /// # Returns
     /// * `Result<QRResult<T>, QRError>` - Reduced QR decomposition result
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_reduced_qr<T>(
         matrix: &DMatrix<T>,
         config: &QRConfig<T>,
@@ -249,8 +249,8 @@ pub mod nalgebra_qr {
     /// # Returns
     /// * `Result<QRResult<T>, QRError>` - QR decomposition with pivoting result
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_qr_with_pivoting<T>(
         matrix: &DMatrix<T>,
         config: &QRConfig<T>,
@@ -289,8 +289,8 @@ pub mod nalgebra_qr {
     /// # Returns
     /// * `Result<DVector<T>, QRError>` - Solution vector x
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_least_squares<T>(
         matrix: &DMatrix<T>,
         rhs: &DVector<T>,
@@ -454,8 +454,8 @@ pub mod ndarray_qr {
     /// # Returns
     /// * `Result<QRResult<T>, QRError>` - QR decomposition result
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_qr<T>(matrix: &Array2<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>
     where
         T: Float + FloatCore + RealField,
@@ -469,8 +469,8 @@ pub mod ndarray_qr {
 
     /// Compute reduced QR decomposition (economy size)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_reduced_qr<T>(
         matrix: &Array2<T>,
         config: &QRConfig<T>,
@@ -486,8 +486,8 @@ pub mod ndarray_qr {
 
     /// Compute QR decomposition with column pivoting
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_qr_with_pivoting<T>(
         matrix: &Array2<T>,
         config: &QRConfig<T>,
@@ -503,8 +503,8 @@ pub mod ndarray_qr {
 
     /// Solve least squares problem using QR decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve_least_squares<T>(
         matrix: &Array2<T>,
         rhs: &Array1<T>,

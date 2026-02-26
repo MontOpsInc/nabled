@@ -75,8 +75,8 @@ pub mod nalgebra_lu {
 
     /// Compute LU decomposition with partial pivoting
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_lu<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraLUResult<T>, LUError> {
@@ -100,8 +100,8 @@ pub mod nalgebra_lu {
 
     /// Solve Ax = b for square matrix A
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve<T: RealField + Copy>(
         matrix: &DMatrix<T>,
         rhs: &DVector<T>,
@@ -125,8 +125,8 @@ pub mod nalgebra_lu {
 
     /// Compute matrix inverse
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn inverse<T: RealField + Copy>(matrix: &DMatrix<T>) -> Result<DMatrix<T>, LUError> {
         if matrix.is_empty() {
             return Err(LUError::EmptyMatrix);
@@ -142,8 +142,8 @@ pub mod nalgebra_lu {
 
     /// Compute the determinant (det = sign(permutation) * prod(diag(U)))
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn determinant<T: RealField + Copy + Float>(matrix: &DMatrix<T>) -> Result<T, LUError> {
         if matrix.is_empty() {
             return Err(LUError::EmptyMatrix);
@@ -162,8 +162,8 @@ pub mod nalgebra_lu {
 
     /// Compute log-determinant for general matrices (handles sign)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn log_determinant<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<LogDetResult<T>, LUError> {
@@ -185,8 +185,8 @@ pub mod ndarray_lu {
 
     /// Compute LU decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_lu<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayLUResult<T>, LUError> {
@@ -197,8 +197,8 @@ pub mod ndarray_lu {
 
     /// Solve Ax = b
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn solve<T: Float + RealField>(
         matrix: &Array2<T>,
         rhs: &Array1<T>,
@@ -211,8 +211,8 @@ pub mod ndarray_lu {
 
     /// Compute matrix inverse
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn inverse<T: Float + RealField>(matrix: &Array2<T>) -> Result<Array2<T>, LUError> {
         let nalg = ndarray_to_nalgebra(matrix);
         let inv = nalgebra_lu::inverse(&nalg)?;
@@ -221,8 +221,8 @@ pub mod ndarray_lu {
 
     /// Compute the determinant
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn determinant<T: Float + RealField>(matrix: &Array2<T>) -> Result<T, LUError> {
         let nalg = ndarray_to_nalgebra(matrix);
         nalgebra_lu::determinant(&nalg)
@@ -230,8 +230,8 @@ pub mod ndarray_lu {
 
     /// Compute log-determinant (handles sign for general matrices)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn log_determinant<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<LogDetResult<T>, LUError> {

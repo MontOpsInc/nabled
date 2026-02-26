@@ -6,15 +6,13 @@
 //!
 //! ## Features
 //!
-//! - **Numerical Jacobian**: Finite difference approximation for real and complex functions
-//! - **Complex Derivatives**: Support for complex-valued functions and derivatives
-//! - **Analytical Jacobian**: Symbolic differentiation for common functions
-//! - **Support for both nalgebra and ndarray**
-//! - **Configurable step size and tolerance**
-//! - **Comprehensive error handling**
+//! - Numerical Jacobian via forward and central finite differences
+//! - Gradient and Hessian computation for scalar-valued functions
+//! - Complex-valued Jacobian/gradient/Hessian support
+//! - Implementations for both `nalgebra` and `ndarray`
+//! - Configurable step size, tolerance, and iteration budget
+//! - Explicit error reporting for invalid dimensions and non-finite values
 
-// Note: These imports are used in the module implementations
-// but not directly in the module-level code, hence the warnings
 use std::fmt;
 
 use num_traits::Float;
@@ -76,8 +74,8 @@ impl<T: Float> Default for JacobianConfig<T> {
 impl<T: Float> JacobianConfig<T> {
     /// Create a new `JacobianConfig` with validation
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn new(step_size: T, tolerance: T, max_iterations: usize) -> Result<Self, JacobianError> {
         if step_size <= T::zero() {
             return Err(JacobianError::InvalidStepSize);
@@ -96,8 +94,8 @@ impl<T: Float> JacobianConfig<T> {
 
     /// Validate the configuration
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn validate(&self) -> Result<(), JacobianError> {
         if self.step_size <= T::zero() {
             return Err(JacobianError::InvalidStepSize);
@@ -145,8 +143,8 @@ pub mod nalgebra_jacobian {
     /// # Ok::<(), rust_linalg::jacobian::JacobianError>(())
     /// ```
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_jacobian<T, F>(
         f: &F,
         x: &DVector<T>,
@@ -249,8 +247,8 @@ pub mod nalgebra_jacobian {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_jacobian_central<T, F>(
         f: &F,
         x: &DVector<T>,
@@ -321,8 +319,8 @@ pub mod nalgebra_jacobian {
     /// # Returns
     /// * `Result<DVector<T>, JacobianError>` - Gradient vector
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_gradient<T, F>(
         f: &F,
         x: &DVector<T>,
@@ -364,8 +362,8 @@ pub mod nalgebra_jacobian {
     /// * `Result<DMatrix<T>, JacobianError>` - Hessian matrix
     #[expect(clippy::similar_names)]
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_hessian<T, F>(
         f: &F,
         x: &DVector<T>,
@@ -425,8 +423,8 @@ pub mod ndarray_jacobian {
     /// # Returns
     /// * `Result<Array2<T>, JacobianError>` - Jacobian matrix
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_jacobian<T, F>(
         f: &F,
         x: &Array1<T>,
@@ -485,8 +483,8 @@ pub mod ndarray_jacobian {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_jacobian_central<T, F>(
         f: &F,
         x: &Array1<T>,
@@ -544,8 +542,8 @@ pub mod ndarray_jacobian {
     /// # Returns
     /// * `Result<Array1<T>, JacobianError>` - Gradient vector
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_gradient<T, F>(
         f: &F,
         x: &Array1<T>,
@@ -587,8 +585,8 @@ pub mod ndarray_jacobian {
     /// * `Result<Array2<T>, JacobianError>` - Hessian matrix
     #[expect(clippy::similar_names)]
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_hessian<T, F>(
         f: &F,
         x: &Array1<T>,
@@ -668,8 +666,8 @@ pub mod complex_jacobian {
     /// # Ok::<(), rust_linalg::jacobian::JacobianError>(())
     /// ```
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_jacobian<T, F>(
         func: F,
         x: &DVector<Complex<T>>,
@@ -736,8 +734,8 @@ pub mod complex_jacobian {
     /// # Returns
     /// * `Result<DVector<Complex<T>>, JacobianError>` - Complex gradient vector
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_gradient<T, F>(
         f: F,
         x: &DVector<Complex<T>>,
@@ -793,8 +791,8 @@ pub mod complex_jacobian {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn numerical_hessian<T, F>(
         f: F,
         x: &DVector<Complex<T>>,

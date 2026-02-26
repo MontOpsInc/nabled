@@ -72,8 +72,8 @@ pub mod nalgebra_svd {
 
     /// Compute SVD using nalgebra's built-in implementation
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_svd<T: RealField>(matrix: &DMatrix<T>) -> Result<NalgebraSVD<T>, SVDError> {
         if matrix.is_empty() {
             return Err(SVDError::EmptyMatrix);
@@ -94,8 +94,8 @@ pub mod nalgebra_svd {
     /// low-rank approximation).
     #[allow(clippy::needless_pass_by_value)]
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_svd_with_tolerance<T: RealField>(
         matrix: &DMatrix<T>,
         tolerance: T,
@@ -116,8 +116,8 @@ pub mod nalgebra_svd {
 
     /// Compute truncated SVD (keeping only the k largest singular values)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_truncated_svd<T: RealField>(
         matrix: &DMatrix<T>,
         k: usize,
@@ -184,8 +184,8 @@ pub mod nalgebra_svd {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn pseudo_inverse<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
         config: &PseudoInverseConfig<T>,
@@ -220,8 +220,8 @@ pub mod nalgebra_svd {
 
     /// Compute null space (kernel) - columns of V for singular values below tolerance
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn null_space<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
         tolerance: Option<T>,
@@ -266,8 +266,8 @@ pub mod ndarray_svd {
     /// Compute SVD using conversion to nalgebra and back
     /// Note: This is a simplified implementation that converts to nalgebra for computation
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_svd<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarraySVD<T>, SVDError> {
@@ -292,8 +292,8 @@ pub mod ndarray_svd {
     /// Compute SVD with custom tolerance.
     /// Singular values below the tolerance are set to zero.
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_svd_with_tolerance<T: Float + RealField>(
         matrix: &Array2<T>,
         tolerance: T,
@@ -314,8 +314,8 @@ pub mod ndarray_svd {
 
     /// Compute truncated SVD (keeping only the k largest singular values)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_truncated_svd<T: Float + RealField>(
         matrix: &Array2<T>,
         k: usize,
@@ -389,8 +389,8 @@ pub mod ndarray_svd {
 
     /// Compute Moore-Penrose pseudo-inverse
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn pseudo_inverse<T: Float + RealField>(
         matrix: &Array2<T>,
         config: &PseudoInverseConfig<T>,
@@ -402,8 +402,8 @@ pub mod ndarray_svd {
 
     /// Compute null space (kernel)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn null_space<T: Float + RealField>(
         matrix: &Array2<T>,
         tolerance: Option<T>,

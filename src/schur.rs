@@ -64,8 +64,8 @@ pub mod nalgebra_schur {
 
     /// Compute Schur decomposition A = Q T Q^H
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_schur<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraSchurResult<T>, SchurError> {
@@ -96,8 +96,8 @@ pub mod ndarray_schur {
 
     /// Compute Schur decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_schur<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarraySchurResult<T>, SchurError> {

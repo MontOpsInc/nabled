@@ -78,8 +78,8 @@ pub mod nalgebra_stats {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn covariance_matrix<T: RealField + Copy + Float + num_traits::NumCast>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, StatsError> {
@@ -99,8 +99,8 @@ pub mod nalgebra_stats {
 
     /// Compute correlation matrix
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn correlation_matrix<T: RealField + Copy + Float + num_traits::NumCast>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, StatsError> {
@@ -145,8 +145,8 @@ pub mod ndarray_stats {
 
     /// Compute sample covariance matrix (Bessel correction)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn covariance_matrix<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, StatsError> {
@@ -157,8 +157,8 @@ pub mod ndarray_stats {
 
     /// Compute correlation matrix
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn correlation_matrix<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, StatsError> {

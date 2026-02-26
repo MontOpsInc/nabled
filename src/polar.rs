@@ -66,8 +66,8 @@ pub mod nalgebra_polar {
 
     /// Compute polar decomposition A = U P
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_polar<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraPolarResult<T>, PolarError> {
@@ -99,8 +99,8 @@ pub mod ndarray_polar {
 
     /// Compute polar decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_polar<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayPolarResult<T>, PolarError> {

@@ -74,8 +74,8 @@ pub mod nalgebra_regression {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn linear_regression<T: RealField + Copy + FloatCore + Float>(
         x: &DMatrix<T>,
         y: &DVector<T>,
@@ -138,8 +138,8 @@ pub mod ndarray_regression {
 
     /// Compute linear regression
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn linear_regression<T: Float + RealField + FloatCore + num_traits::NumCast>(
         x: &Array2<T>,
         y: &Array1<T>,

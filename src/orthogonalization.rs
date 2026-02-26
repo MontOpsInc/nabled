@@ -39,8 +39,8 @@ pub mod nalgebra_orthogonalization {
 
     /// Modified Gram-Schmidt: orthogonalize columns of matrix, return orthonormal Q
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn gram_schmidt<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, OrthogonalizationError> {
@@ -79,8 +79,8 @@ pub mod nalgebra_orthogonalization {
 
     /// Classic Gram-Schmidt (less numerically stable than modified)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn gram_schmidt_classic<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, OrthogonalizationError> {
@@ -118,8 +118,8 @@ pub mod ndarray_orthogonalization {
 
     /// Modified Gram-Schmidt
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn gram_schmidt<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, OrthogonalizationError> {
@@ -130,8 +130,8 @@ pub mod ndarray_orthogonalization {
 
     /// Classic Gram-Schmidt
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn gram_schmidt_classic<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, OrthogonalizationError> {

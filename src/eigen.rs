@@ -88,8 +88,8 @@ pub mod nalgebra_eigen {
 
     /// Compute symmetric eigenvalue decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_symmetric_eigen<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraEigenResult<T>, EigenError> {
@@ -117,8 +117,8 @@ pub mod nalgebra_eigen {
     /// Compute generalized eigenvalue decomposition Av = λBv for symmetric A and SPD B
     /// Reduces to standard eigen via Cholesky on B: C = L^{-1} A L^{-T}, then v = L^{-T} w
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_generalized_eigen<T: RealField + Copy + Float>(
         matrix_a: &DMatrix<T>,
         matrix_b: &DMatrix<T>,
@@ -186,8 +186,8 @@ pub mod ndarray_eigen {
 
     /// Compute symmetric eigenvalue decomposition
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_symmetric_eigen<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayEigenResult<T>, EigenError> {
@@ -201,8 +201,8 @@ pub mod ndarray_eigen {
 
     /// Compute generalized eigenvalue decomposition Av = λBv
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_generalized_eigen<T: Float + RealField>(
         a: &Array2<T>,
         b: &Array2<T>,

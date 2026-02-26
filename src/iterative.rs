@@ -63,8 +63,8 @@ pub mod nalgebra_iterative {
 
     /// Conjugate Gradient for SPD system Ax = b
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn conjugate_gradient<T: RealField + Copy + Float>(
         matrix_a: &DMatrix<T>,
         matrix_b: &DVector<T>,
@@ -105,8 +105,8 @@ pub mod nalgebra_iterative {
 
     /// GMRES for general system Ax = b (restart version)
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn gmres<T: RealField + Copy + Float + num_traits::float::FloatCore>(
         matrix_a: &DMatrix<T>,
         matrix_b: &DVector<T>,
@@ -176,8 +176,8 @@ pub mod ndarray_iterative {
 
     /// Conjugate Gradient for SPD system Ax = b
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn conjugate_gradient<T: Float + RealField>(
         a: &Array2<T>,
         b: &Array1<T>,
@@ -191,8 +191,8 @@ pub mod ndarray_iterative {
 
     /// GMRES for general system Ax = b
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn gmres<T: Float + RealField + num_traits::float::FloatCore>(
         a: &Array2<T>,
         b: &Array1<T>,

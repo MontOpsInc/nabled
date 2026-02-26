@@ -77,8 +77,8 @@ pub mod nalgebra_pca {
     /// intermediate conversion steps.
     ///
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_pca<T: RealField + Copy + Float + num_traits::NumCast>(
         matrix: &DMatrix<T>,
         n_components: Option<usize>,
@@ -177,8 +177,8 @@ pub mod ndarray_pca {
 
     /// Compute PCA
     /// # Errors
-    /// Returns an error if inputs are invalid, dimensions are incompatible, or the
-    /// underlying numerical routine fails to converge or produce a valid result.
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_pca<T: Float + RealField + num_traits::NumCast>(
         matrix: &Array2<T>,
         n_components: Option<usize>,
