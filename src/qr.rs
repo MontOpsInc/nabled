@@ -129,6 +129,21 @@ pub mod nalgebra_qr {
         crate::backend::qr::compute_nalgebra_qr(matrix, config)
     }
 
+    /// Compute QR decomposition using a LAPACK-backed nalgebra kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_qr_lapack(
+        matrix: &DMatrix<f64>,
+        config: &QRConfig<f64>,
+    ) -> Result<QRResult<f64>, QRError> {
+        crate::backend::qr::compute_nalgebra_lapack_qr(matrix, config)
+    }
+
     /// Compute reduced QR decomposition (economy size)
     ///
     /// For an m×n matrix with m ≥ n, returns Q as m×n and R as n×n
@@ -150,6 +165,21 @@ pub mod nalgebra_qr {
         T: RealField + FloatCore + Float,
     {
         crate::backend::qr::compute_nalgebra_reduced_qr(matrix, config)
+    }
+
+    /// Compute reduced QR decomposition using a LAPACK-backed nalgebra kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_reduced_qr_lapack(
+        matrix: &DMatrix<f64>,
+        config: &QRConfig<f64>,
+    ) -> Result<QRResult<f64>, QRError> {
+        crate::backend::qr::compute_nalgebra_lapack_reduced_qr(matrix, config)
     }
 
     /// Compute QR decomposition with column pivoting using nalgebra's built-in implementation
@@ -199,6 +229,22 @@ pub mod nalgebra_qr {
         T: RealField + FloatCore + Float,
     {
         crate::backend::qr::solve_nalgebra_least_squares(matrix, rhs, config)
+    }
+
+    /// Solve least squares using a LAPACK-backed nalgebra QR kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_least_squares_lapack(
+        matrix: &DMatrix<f64>,
+        rhs: &DVector<f64>,
+        config: &QRConfig<f64>,
+    ) -> Result<DVector<f64>, QRError> {
+        crate::backend::qr::solve_nalgebra_lapack_least_squares(matrix, rhs, config)
     }
 
     /// Reconstruct original matrix from QR decomposition
@@ -276,6 +322,21 @@ pub mod ndarray_qr {
         crate::backend::qr::compute_ndarray_qr(matrix, config)
     }
 
+    /// Compute QR decomposition using a LAPACK-backed ndarray kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_qr_lapack(
+        matrix: &Array2<f64>,
+        config: &QRConfig<f64>,
+    ) -> Result<QRResult<f64>, QRError> {
+        crate::backend::qr::compute_ndarray_lapack_qr(matrix, config)
+    }
+
     /// Compute reduced QR decomposition (economy size)
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
@@ -288,6 +349,21 @@ pub mod ndarray_qr {
         T: Float + FloatCore + RealField,
     {
         crate::backend::qr::compute_ndarray_reduced_qr(matrix, config)
+    }
+
+    /// Compute reduced QR decomposition using a LAPACK-backed ndarray kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_reduced_qr_lapack(
+        matrix: &Array2<f64>,
+        config: &QRConfig<f64>,
+    ) -> Result<QRResult<f64>, QRError> {
+        crate::backend::qr::compute_ndarray_lapack_reduced_qr(matrix, config)
     }
 
     /// Compute QR decomposition with column pivoting
@@ -317,6 +393,22 @@ pub mod ndarray_qr {
         T: Float + FloatCore + RealField,
     {
         crate::backend::qr::solve_ndarray_least_squares(matrix, rhs, config)
+    }
+
+    /// Solve least squares using a LAPACK-backed ndarray QR kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_least_squares_lapack(
+        matrix: &Array2<f64>,
+        rhs: &Array1<f64>,
+        config: &QRConfig<f64>,
+    ) -> Result<Array1<f64>, QRError> {
+        crate::backend::qr::solve_ndarray_lapack_least_squares(matrix, rhs, config)
     }
 }
 
@@ -425,6 +517,29 @@ mod tests {
         assert_relative_eq!(qt_q, identity, epsilon = 1e-10);
 
         // Check reconstruction
+        let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
+        let expected = ndarray_to_nalgebra(&matrix);
+        assert_relative_eq!(reconstructed, expected, epsilon = 1e-10);
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_qr_lapack_basic() {
+        let matrix = DMatrix::from_row_slice(3, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0]);
+        let config = QRConfig::default();
+        let qr = nalgebra_qr::compute_qr_lapack(&matrix, &config).unwrap();
+        let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
+        assert_relative_eq!(reconstructed, matrix, epsilon = 1e-10);
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_qr_lapack_basic() {
+        let matrix =
+            Array2::from_shape_vec((3, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0])
+                .unwrap();
+        let config = QRConfig::default();
+        let qr = ndarray_qr::compute_qr_lapack(&matrix, &config).unwrap();
         let reconstructed = nalgebra_qr::reconstruct_matrix(&qr);
         let expected = ndarray_to_nalgebra(&matrix);
         assert_relative_eq!(reconstructed, expected, epsilon = 1e-10);

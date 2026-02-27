@@ -180,6 +180,12 @@ checks:
     cargo +nightly clippy --all-features --all-targets
     cargo +stable clippy --all-features --all-targets -- -D warnings
     just -f {{ justfile() }} test
+    just -f {{ justfile() }} check-linux-lapack
+
+# Verify Linux-gated LAPACK code paths compile under stable.
+check-linux-lapack:
+    rustup target list --installed | grep -q '^x86_64-unknown-linux-gnu$' || rustup target add --toolchain stable x86_64-unknown-linux-gnu
+    cargo +stable check --features lapack-kernels --target x86_64-unknown-linux-gnu
 
 # Initialize development environment for maintainers
 init-dev:

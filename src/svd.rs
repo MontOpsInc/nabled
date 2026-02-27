@@ -78,6 +78,17 @@ pub mod nalgebra_svd {
         crate::backend::svd::compute_nalgebra_svd(matrix)
     }
 
+    /// Compute SVD using a LAPACK-backed nalgebra kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when the matrix is empty or when the LAPACK routine fails.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_svd_lapack(matrix: &DMatrix<f64>) -> Result<NalgebraSVD<f64>, SVDError> {
+        crate::backend::svd::compute_nalgebra_lapack_svd(matrix)
+    }
+
     /// Compute SVD with custom tolerance.
     /// Singular values below the tolerance are set to zero (useful for rank determination and
     /// low-rank approximation).
@@ -263,6 +274,17 @@ pub mod ndarray_svd {
         crate::backend::svd::compute_ndarray_svd(matrix)
     }
 
+    /// Compute SVD using a LAPACK-backed ndarray kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when the matrix is empty or when the LAPACK routine fails.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_svd_lapack(matrix: &Array2<f64>) -> Result<NdarraySVD<f64>, SVDError> {
+        crate::backend::svd::compute_ndarray_lapack_svd(matrix)
+    }
+
     /// Compute SVD with custom tolerance.
     /// Singular values below the tolerance are set to zero.
     /// # Errors
@@ -420,6 +442,42 @@ mod tests {
 
         // Reconstruct and check
         let reconstructed = ndarray_svd::reconstruct_matrix(&svd);
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!(approx::relative_eq!(
+                    matrix[[i, j]],
+                    reconstructed[[i, j]],
+                    epsilon = 1e-10
+                ));
+            }
+        }
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_svd_lapack_basic() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+        let svd = nalgebra_svd::compute_svd_lapack(&matrix).unwrap();
+        let reconstructed = nalgebra_svd::reconstruct_matrix(&svd);
+
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!(approx::relative_eq!(
+                    matrix[(i, j)],
+                    reconstructed[(i, j)],
+                    epsilon = 1e-10
+                ));
+            }
+        }
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_svd_lapack_basic() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let svd = ndarray_svd::compute_svd_lapack(&matrix).unwrap();
+        let reconstructed = ndarray_svd::reconstruct_matrix(&svd);
+
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
                 assert!(approx::relative_eq!(

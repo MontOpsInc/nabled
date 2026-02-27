@@ -4,7 +4,13 @@ use std::marker::PhantomData;
 
 use nalgebra::linalg::ColPivQR;
 use nalgebra::{DMatrix, DVector, RealField};
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+use nalgebra_lapack::QR as NalgebraLapackQr;
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+use nalgebra_lapack::qr::QrDecomposition;
 use ndarray::{Array1, Array2};
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+use ndarray_linalg::QR as NdarrayLinalgQr;
 use num_traits::Float;
 use num_traits::float::FloatCore;
 
@@ -288,6 +294,237 @@ where
     }
 }
 
+/// Nalgebra LAPACK-backed QR kernel.
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+pub(crate) struct NalgebraLapackQrKernel;
+
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+impl QrKernel for NalgebraLapackQrKernel {
+    type Decomposition = QRResult<f64>;
+    type Matrix = DMatrix<f64>;
+    type Scalar = f64;
+    type Vector = DVector<f64>;
+
+    #[inline]
+    fn compute_qr(
+        matrix: &Self::Matrix,
+        config: &QRConfig<Self::Scalar>,
+    ) -> Result<Self::Decomposition, QRError> {
+        if matrix.is_empty() {
+            return Err(QRError::EmptyMatrix);
+        }
+
+        if matrix.iter().any(|x| !x.is_finite()) {
+            return Err(QRError::NumericalInstability);
+        }
+
+        if config.rank_tolerance <= 0.0 {
+            return Err(QRError::InvalidInput("Rank tolerance must be positive".to_string()));
+        }
+        if config.rank_tolerance < 1e-15 {
+            return Err(QRError::InvalidInput(
+                "Rank tolerance too small, may cause numerical issues".to_string(),
+            ));
+        }
+
+        let qr = NalgebraLapackQr::new(matrix.clone()).map_err(|_| QRError::ConvergenceFailed)?;
+        let q = qr.q();
+        let r = qr.r();
+
+        if q.iter().any(|x: &f64| !x.is_finite()) || r.iter().any(|x: &f64| !x.is_finite()) {
+            return Err(QRError::NumericalInstability);
+        }
+
+        let rank = determine_rank(&r, config.rank_tolerance);
+        Ok(QRResult { q, r, p: None, rank })
+    }
+
+    #[inline]
+    fn compute_reduced_qr(
+        matrix: &Self::Matrix,
+        config: &QRConfig<Self::Scalar>,
+    ) -> Result<Self::Decomposition, QRError> {
+        let full_qr = Self::compute_qr(matrix, config)?;
+        let (m, n) = matrix.shape();
+        let min_dim = m.min(n);
+
+        let q_reduced = full_qr.q.columns(0, min_dim);
+        let r_reduced = full_qr.r.rows(0, min_dim);
+
+        Ok(QRResult {
+            q:    q_reduced.into(),
+            r:    r_reduced.into(),
+            p:    None,
+            rank: full_qr.rank,
+        })
+    }
+
+    #[inline]
+    fn compute_qr_with_pivoting(
+        matrix: &Self::Matrix,
+        config: &QRConfig<Self::Scalar>,
+    ) -> Result<Self::Decomposition, QRError> {
+        <NalgebraQrKernel<f64> as QrKernel>::compute_qr_with_pivoting(matrix, config)
+    }
+
+    #[inline]
+    fn solve_least_squares(
+        matrix: &Self::Matrix,
+        rhs: &Self::Vector,
+        config: &QRConfig<Self::Scalar>,
+    ) -> Result<Self::Vector, QRError> {
+        if matrix.is_empty() || rhs.is_empty() {
+            return Err(QRError::EmptyMatrix);
+        }
+
+        if matrix.iter().any(|x| !x.is_finite()) || rhs.iter().any(|x| !x.is_finite()) {
+            return Err(QRError::NumericalInstability);
+        }
+
+        let (m, n) = matrix.shape();
+        if m != rhs.len() {
+            return Err(QRError::InvalidDimensions(format!(
+                "Matrix rows ({}) must match RHS length ({})",
+                m,
+                rhs.len()
+            )));
+        }
+
+        if n > m {
+            return Err(QRError::InvalidDimensions(
+                "Underdetermined system: more unknowns than equations".to_string(),
+            ));
+        }
+
+        if m == 1 {
+            let a_val = matrix[(0, 0)];
+            if a_val.abs() < config.rank_tolerance {
+                return Err(QRError::SingularMatrix);
+            }
+            return Ok(DVector::from_vec(vec![rhs[0] / a_val]));
+        }
+
+        let qr = Self::compute_qr(matrix, config)?;
+        if qr.rank < n {
+            return Err(QRError::SingularMatrix);
+        }
+
+        let qt_b = qr.q.transpose() * rhs;
+        if qt_b.iter().any(|x| !x.is_finite()) {
+            return Err(QRError::NumericalInstability);
+        }
+
+        let mut x = DVector::zeros(n);
+        for i in (0..n).rev() {
+            let mut sum = qt_b[i];
+            for j in (i + 1)..n {
+                sum -= qr.r[(i, j)] * x[j];
+            }
+
+            if qr.r[(i, i)].abs() < config.rank_tolerance {
+                return Err(QRError::SingularMatrix);
+            }
+
+            x[i] = sum / qr.r[(i, i)];
+            if !x[i].is_finite() {
+                return Err(QRError::NumericalInstability);
+            }
+        }
+
+        Ok(x)
+    }
+}
+
+/// Ndarray LAPACK-backed QR kernel.
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+pub(crate) struct NdarrayLapackQrKernel;
+
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+impl QrKernel for NdarrayLapackQrKernel {
+    type Decomposition = QRResult<f64>;
+    type Matrix = Array2<f64>;
+    type Scalar = f64;
+    type Vector = Array1<f64>;
+
+    #[inline]
+    fn compute_qr(
+        matrix: &Self::Matrix,
+        config: &QRConfig<Self::Scalar>,
+    ) -> Result<Self::Decomposition, QRError> {
+        if matrix.is_empty() {
+            return Err(QRError::EmptyMatrix);
+        }
+
+        if matrix.iter().any(|x| !x.is_finite()) {
+            return Err(QRError::NumericalInstability);
+        }
+
+        if config.rank_tolerance <= 0.0 {
+            return Err(QRError::InvalidInput("Rank tolerance must be positive".to_string()));
+        }
+        if config.rank_tolerance < 1e-15 {
+            return Err(QRError::InvalidInput(
+                "Rank tolerance too small, may cause numerical issues".to_string(),
+            ));
+        }
+
+        let (q_nd, r_nd) = matrix.view().qr().map_err(|_| QRError::ConvergenceFailed)?;
+        if q_nd.iter().any(|x| !x.is_finite()) || r_nd.iter().any(|x| !x.is_finite()) {
+            return Err(QRError::NumericalInstability);
+        }
+
+        let q = ndarray_to_nalgebra(&q_nd);
+        let r = ndarray_to_nalgebra(&r_nd);
+        let rank = determine_rank(&r, config.rank_tolerance);
+
+        Ok(QRResult { q, r, p: None, rank })
+    }
+
+    #[inline]
+    fn compute_reduced_qr(
+        matrix: &Self::Matrix,
+        config: &QRConfig<Self::Scalar>,
+    ) -> Result<Self::Decomposition, QRError> {
+        let full_qr = Self::compute_qr(matrix, config)?;
+        let (m, n) = matrix.dim();
+        let min_dim = m.min(n);
+
+        let q_reduced = full_qr.q.columns(0, min_dim);
+        let r_reduced = full_qr.r.rows(0, min_dim);
+
+        Ok(QRResult {
+            q:    q_reduced.into(),
+            r:    r_reduced.into(),
+            p:    None,
+            rank: full_qr.rank,
+        })
+    }
+
+    #[inline]
+    fn compute_qr_with_pivoting(
+        matrix: &Self::Matrix,
+        config: &QRConfig<Self::Scalar>,
+    ) -> Result<Self::Decomposition, QRError> {
+        <NdarrayQrKernel<f64> as QrKernel>::compute_qr_with_pivoting(matrix, config)
+    }
+
+    #[inline]
+    fn solve_least_squares(
+        matrix: &Self::Matrix,
+        rhs: &Self::Vector,
+        config: &QRConfig<Self::Scalar>,
+    ) -> Result<Self::Vector, QRError> {
+        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
+        let nalgebra_rhs = ndarray_to_nalgebra_vector(rhs);
+        let solution = <NalgebraLapackQrKernel as QrKernel>::solve_least_squares(
+            &nalgebra_matrix,
+            &nalgebra_rhs,
+            config,
+        )?;
+        Ok(nalgebra_to_ndarray_vector(&solution))
+    }
+}
+
 /// Dispatch QR decomposition to the nalgebra kernel.
 #[inline]
 pub(crate) fn compute_nalgebra_qr<T>(
@@ -349,6 +586,37 @@ where
     <NdarrayQrKernel<T> as QrKernel>::compute_qr(matrix, config)
 }
 
+/// Dispatch QR decomposition to the nalgebra LAPACK kernel.
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+#[inline]
+pub(crate) fn compute_nalgebra_lapack_qr(
+    matrix: &DMatrix<f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    <NalgebraLapackQrKernel as QrKernel>::compute_qr(matrix, config)
+}
+
+/// Dispatch reduced QR decomposition to the nalgebra LAPACK kernel.
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+#[inline]
+pub(crate) fn compute_nalgebra_lapack_reduced_qr(
+    matrix: &DMatrix<f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    <NalgebraLapackQrKernel as QrKernel>::compute_reduced_qr(matrix, config)
+}
+
+/// Dispatch least-squares solving to the nalgebra LAPACK kernel.
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+#[inline]
+pub(crate) fn solve_nalgebra_lapack_least_squares(
+    matrix: &DMatrix<f64>,
+    rhs: &DVector<f64>,
+    config: &QRConfig<f64>,
+) -> Result<DVector<f64>, QRError> {
+    <NalgebraLapackQrKernel as QrKernel>::solve_least_squares(matrix, rhs, config)
+}
+
 /// Dispatch reduced QR decomposition to the ndarray kernel.
 #[inline]
 pub(crate) fn compute_ndarray_reduced_qr<T>(
@@ -359,6 +627,37 @@ where
     T: Float + FloatCore + RealField,
 {
     <NdarrayQrKernel<T> as QrKernel>::compute_reduced_qr(matrix, config)
+}
+
+/// Dispatch QR decomposition to the ndarray LAPACK kernel.
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+#[inline]
+pub(crate) fn compute_ndarray_lapack_qr(
+    matrix: &Array2<f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    <NdarrayLapackQrKernel as QrKernel>::compute_qr(matrix, config)
+}
+
+/// Dispatch reduced QR decomposition to the ndarray LAPACK kernel.
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+#[inline]
+pub(crate) fn compute_ndarray_lapack_reduced_qr(
+    matrix: &Array2<f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    <NdarrayLapackQrKernel as QrKernel>::compute_reduced_qr(matrix, config)
+}
+
+/// Dispatch least-squares solving to the ndarray LAPACK kernel.
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+#[inline]
+pub(crate) fn solve_ndarray_lapack_least_squares(
+    matrix: &Array2<f64>,
+    rhs: &Array1<f64>,
+    config: &QRConfig<f64>,
+) -> Result<Array1<f64>, QRError> {
+    <NdarrayLapackQrKernel as QrKernel>::solve_least_squares(matrix, rhs, config)
 }
 
 /// Dispatch pivoted QR decomposition to the ndarray kernel.

@@ -249,4 +249,6 @@ Current state:
 6. Regression checks now enforce nabled-owned benchmark paths (`competitor == none`) against baseline, not external competitor paths.
 7. CI now includes smoke benchmarking with branch-local baseline cache restore/save and regression enforcement when a baseline exists.
 8. LAPACK-backed competitor harnesses are implemented for SVD/QR (`nalgebra-lapack`, `ndarray-linalg`) behind the `lapack-competitors` benchmark feature on Linux.
-9. Next execution focus is integrating one LAPACK-backed backend path into the kernel layer, then extending kernel abstraction across the rest of Tier A.
+9. LAPACK-backed internal SVD kernels are integrated in `src/backend/svd.rs` with Linux + `lapack-kernels` feature gates, with public wrappers at `svd::nalgebra_svd::compute_svd_lapack` and `svd::ndarray_svd::compute_svd_lapack`.
+10. LAPACK-backed internal QR kernels are integrated in `src/backend/qr.rs` with Linux + `lapack-kernels` feature gates, with public wrappers in `qr::nalgebra_qr` and `qr::ndarray_qr`.
+11. Next execution focus is selecting the next Tier A domains to port to backend kernels (LU and Eigen first) and establishing backend capability tests per domain.

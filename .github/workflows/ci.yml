@@ -58,6 +58,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         components: clippy
+        targets: x86_64-unknown-linux-gnu
 
     - name: Install Rust nightly (for formatting)
       uses: dtolnay/rust-toolchain@nightly
@@ -74,6 +75,9 @@ jobs:
 
     - name: Run clippy
       run: cargo +stable clippy --profile ci --all-features --all-targets -- -D warnings
+
+    - name: Verify Linux LAPACK kernel path compiles
+      run: cargo +stable check --profile ci --features lapack-kernels --target x86_64-unknown-linux-gnu
 
   test-unit:
     name: Unit Tests
@@ -192,6 +196,9 @@ jobs:
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
+
+    - name: Install just
+      uses: taiki-e/install-action@just
 
     - name: Cache cargo registry
       uses: actions/cache@v4

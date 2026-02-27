@@ -18,7 +18,8 @@ default = []
 
 # TODO: placeholder
 test-utils = []
-lapack-competitors = ["dep:nalgebra-lapack", "dep:ndarray-linalg"]
+lapack-kernels = ["dep:nalgebra-lapack", "dep:ndarray-linalg"]
+lapack-competitors = ["lapack-kernels"]
 
 [dependencies]
 nalgebra = { version = "0.34", features = ["serde-serialize"] }
