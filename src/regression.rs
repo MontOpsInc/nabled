@@ -8,8 +8,6 @@ use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
 
-use crate::qr::{QRConfig, nalgebra_qr};
-
 /// Error type for regression
 #[derive(Debug, Clone, PartialEq)]
 pub enum RegressionError {
@@ -64,8 +62,6 @@ pub struct NdarrayRegressionResult<T: Float> {
 
 /// Nalgebra linear regression
 pub mod nalgebra_regression {
-    use num_traits::float::FloatCore;
-
     use super::*;
 
     /// Compute linear regression: min ||X*beta - y||^2
@@ -76,84 +72,65 @@ pub mod nalgebra_regression {
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
-    pub fn linear_regression<T: RealField + Copy + FloatCore + Float>(
+    pub fn linear_regression<
+        T: RealField + Copy + num_traits::float::FloatCore + Float + num_traits::NumCast,
+    >(
         x: &DMatrix<T>,
         y: &DVector<T>,
         add_intercept: bool,
     ) -> Result<NalgebraRegressionResult<T>, RegressionError> {
-        if x.is_empty() || y.is_empty() {
-            return Err(RegressionError::EmptyInput);
-        }
-        let (n_samples, n_features) = x.shape();
-        if n_samples != y.len() {
-            return Err(RegressionError::DimensionMismatch(
-                "X rows must match y length".to_string(),
-            ));
-        }
+        crate::backend::regression::linear_regression_nalgebra(x, y, add_intercept)
+    }
 
-        let x_design = if add_intercept {
-            let mut x_new = DMatrix::zeros(n_samples, n_features + 1);
-            for i in 0..n_samples {
-                x_new[(i, 0)] = T::one();
-                for j in 0..n_features {
-                    x_new[(i, j + 1)] = x[(i, j)];
-                }
-            }
-            x_new
-        } else {
-            x.clone()
-        };
-
-        let config = QRConfig::default();
-        let coefficients = nalgebra_qr::solve_least_squares(&x_design, y, &config)
-            .map_err(|e| RegressionError::QRError(e.to_string()))?;
-
-        let fitted_values = &x_design * &coefficients;
-        let residuals = y - &fitted_values;
-
-        let mut y_sum = T::zero();
-        for i in 0..n_samples {
-            y_sum += y[i];
-        }
-        let y_mean = y_sum / num_traits::NumCast::from(n_samples).unwrap();
-        let mut ss_tot = T::zero();
-        let mut ss_res = T::zero();
-        for i in 0..n_samples {
-            let diff = y[i] - y_mean;
-            ss_tot += diff * diff;
-            ss_res += residuals[i] * residuals[i];
-        }
-        let r_squared = if ss_tot > T::zero() { T::one() - ss_res / ss_tot } else { Float::nan() };
-
-        Ok(NalgebraRegressionResult { coefficients, fitted_values, residuals, r_squared })
+    /// Compute linear regression with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn linear_regression_lapack(
+        x: &DMatrix<f64>,
+        y: &DVector<f64>,
+        add_intercept: bool,
+    ) -> Result<NalgebraRegressionResult<f64>, RegressionError> {
+        crate::backend::regression::linear_regression_nalgebra_lapack(x, y, add_intercept)
     }
 }
 
 /// Ndarray linear regression
 pub mod ndarray_regression {
-    use num_traits::float::FloatCore;
-
     use super::*;
-    use crate::interop::ndarray_to_nalgebra;
 
     /// Compute linear regression
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
-    pub fn linear_regression<T: Float + RealField + FloatCore + num_traits::NumCast>(
+    pub fn linear_regression<
+        T: Float + RealField + num_traits::float::FloatCore + num_traits::NumCast,
+    >(
         x: &Array2<T>,
         y: &Array1<T>,
         add_intercept: bool,
     ) -> Result<NdarrayRegressionResult<T>, RegressionError> {
-        let nalg_x = ndarray_to_nalgebra(x);
-        let nalg_y = DVector::from_vec(y.to_vec());
-        let result = nalgebra_regression::linear_regression(&nalg_x, &nalg_y, add_intercept)?;
-        Ok(NdarrayRegressionResult {
-            coefficients:  Array1::from_vec(result.coefficients.as_slice().to_vec()),
-            fitted_values: Array1::from_vec(result.fitted_values.as_slice().to_vec()),
-            residuals:     Array1::from_vec(result.residuals.as_slice().to_vec()),
-            r_squared:     result.r_squared,
-        })
+        crate::backend::regression::linear_regression_ndarray(x, y, add_intercept)
+    }
+
+    /// Compute linear regression with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn linear_regression_lapack(
+        x: &Array2<f64>,
+        y: &Array1<f64>,
+        add_intercept: bool,
+    ) -> Result<NdarrayRegressionResult<f64>, RegressionError> {
+        crate::backend::regression::linear_regression_ndarray_lapack(x, y, add_intercept)
     }
 }
 
@@ -219,5 +196,25 @@ mod tests {
         let y = DVector::from_vec(vec![2.0, 4.0, 6.0]);
         let no_intercept = nalgebra_regression::linear_regression(&x, &y, false).unwrap();
         assert_eq!(no_intercept.coefficients.len(), 1);
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_linear_regression_lapack_known_slope() {
+        let x = DMatrix::from_row_slice(4, 1, &[1.0, 2.0, 3.0, 4.0]);
+        let y = DVector::from_vec(vec![3.0, 5.0, 7.0, 9.0]);
+        let result = nalgebra_regression::linear_regression_lapack(&x, &y, true).unwrap();
+        assert_relative_eq!(result.coefficients[0], 1.0, epsilon = 0.1);
+        assert_relative_eq!(result.coefficients[1], 2.0, epsilon = 0.1);
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_linear_regression_lapack_known_slope() {
+        let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let y = Array1::from_vec(vec![3.0, 5.0, 7.0, 9.0]);
+        let result = ndarray_regression::linear_regression_lapack(&x, &y, true).unwrap();
+        assert_relative_eq!(result.coefficients[0], 1.0, epsilon = 0.1);
+        assert_relative_eq!(result.coefficients[1], 2.0, epsilon = 0.1);
     }
 }

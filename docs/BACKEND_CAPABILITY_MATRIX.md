@@ -19,10 +19,20 @@ Legend:
 - `✅`: Implemented and covered by smoke tests.
 - `➖`: Not a distinct LAPACK kernel path yet.
 
+## Tier B Pilot
+
+Tier B backend-kernel pilot status:
+
+| Domain | Baseline Kernels (`nalgebra` + `ndarray`) | LAPACK Kernels (`lapack-kernels`, Linux) | Notes |
+|---|---|---|---|
+| Polar | ✅ | ✅ | `src/backend/polar.rs` |
+| PCA | ✅ | ✅ | `src/backend/pca.rs` |
+| Regression | ✅ | ✅ | `src/backend/regression.rs` |
+| Sylvester/Lyapunov | ✅ | ✅ | `src/backend/sylvester.rs` |
+
 ## Test Coverage Enforcement
 
-Capability smoke tests are enforced in [tests/integration.rs](../tests/integration.rs):
+Tier A capability tests are enforced in [tests/backend_capability_matrix.rs](../tests/backend_capability_matrix.rs):
 
-1. `test_backend_tier_a_baseline_capability_smoke`
-2. `test_backend_tier_a_lapack_capability_smoke` (Linux + `lapack-kernels`)
-
+1. Baseline tests: `test_tier_a_*_baseline`
+2. LAPACK tests: `test_tier_a_*_lapack` (Linux + `lapack-kernels`)

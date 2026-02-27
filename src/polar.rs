@@ -10,7 +10,7 @@ use nalgebra::{DMatrix, RealField};
 use ndarray::Array2;
 use num_traits::Float;
 
-use crate::svd::{SVDError, nalgebra_svd};
+use crate::svd::SVDError;
 
 /// Error types for polar decomposition
 #[derive(Debug, Clone, PartialEq)]
@@ -64,52 +64,57 @@ pub struct NdarrayPolarResult<T: Float> {
 pub mod nalgebra_polar {
     use super::*;
 
-    /// Compute polar decomposition A = U P
+    /// Compute polar decomposition A = U P.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_polar<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraPolarResult<T>, PolarError> {
-        if matrix.is_empty() {
-            return Err(PolarError::EmptyMatrix);
-        }
-        if !matrix.is_square() {
-            return Err(PolarError::NotSquare);
-        }
-        if matrix.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(PolarError::NumericalInstability);
-        }
+        crate::backend::polar::compute_nalgebra_polar(matrix)
+    }
 
-        let svd = nalgebra_svd::compute_svd(matrix)?;
-        // U = U_svd * V_svd^T, P = V_svd * Σ * V_svd^T
-        let u = &svd.u * svd.vt.transpose();
-        let sigma = DMatrix::from_diagonal(&svd.singular_values);
-        let v = svd.vt.transpose();
-        let p = &v * &sigma * &svd.vt;
-
-        Ok(NalgebraPolarResult { u, p })
+    /// Compute polar decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_polar_lapack(
+        matrix: &DMatrix<f64>,
+    ) -> Result<NalgebraPolarResult<f64>, PolarError> {
+        crate::backend::polar::compute_nalgebra_lapack_polar(matrix)
     }
 }
 
-/// Ndarray polar decomposition (via nalgebra)
+/// Ndarray polar decomposition
 pub mod ndarray_polar {
     use super::*;
-    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
-    /// Compute polar decomposition
+    /// Compute polar decomposition.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_polar<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayPolarResult<T>, PolarError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_polar::compute_polar(&nalg)?;
-        Ok(NdarrayPolarResult {
-            u: nalgebra_to_ndarray(&result.u),
-            p: nalgebra_to_ndarray(&result.p),
-        })
+        crate::backend::polar::compute_ndarray_polar(matrix)
+    }
+
+    /// Compute polar decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_polar_lapack(
+        matrix: &Array2<f64>,
+    ) -> Result<NdarrayPolarResult<f64>, PolarError> {
+        crate::backend::polar::compute_ndarray_lapack_polar(matrix)
     }
 }
 
@@ -195,5 +200,25 @@ mod tests {
 
         let converted: PolarError = SVDError::EmptyMatrix.into();
         assert!(matches!(converted, PolarError::SVDFailed(SVDError::EmptyMatrix)));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_polar_lapack_basic() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+        let polar = nalgebra_polar::compute_polar_lapack(&matrix).unwrap();
+
+        assert_eq!(polar.u.shape(), (2, 2));
+        assert_eq!(polar.p.shape(), (2, 2));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_polar_lapack_basic() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let polar = ndarray_polar::compute_polar_lapack(&matrix).unwrap();
+
+        assert_eq!(polar.u.dim(), (2, 2));
+        assert_eq!(polar.p.dim(), (2, 2));
     }
 }

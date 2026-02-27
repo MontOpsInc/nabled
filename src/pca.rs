@@ -8,8 +8,6 @@ use nalgebra::{DMatrix, DVector, RealField};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
 
-use crate::stats::nalgebra_stats;
-
 /// Error types for PCA
 #[derive(Debug, Clone, PartialEq)]
 pub enum PCAError {
@@ -69,7 +67,6 @@ pub struct NdarrayPCAResult<T: Float> {
 /// Nalgebra PCA
 pub mod nalgebra_pca {
     use super::*;
-    use crate::svd::nalgebra_svd;
 
     /// Compute PCA
     /// # Panics
@@ -83,58 +80,22 @@ pub mod nalgebra_pca {
         matrix: &DMatrix<T>,
         n_components: Option<usize>,
     ) -> Result<NalgebraPCAResult<T>, PCAError> {
-        if matrix.is_empty() {
-            return Err(PCAError::EmptyMatrix);
-        }
-        let (n_samples, n_features) = matrix.shape();
-        if n_samples < 2 {
-            return Err(PCAError::InsufficientSamples);
-        }
+        crate::backend::pca::compute_nalgebra_pca(matrix, n_components)
+    }
 
-        let mean = nalgebra_stats::column_means(matrix);
-        let centered = nalgebra_stats::center_columns(matrix);
-
-        let k = n_components.unwrap_or(n_features.min(n_samples));
-        if k == 0 || k > n_features || k > n_samples {
-            return Err(PCAError::InvalidComponents);
-        }
-
-        let svd = nalgebra_svd::compute_svd(&centered)
-            .map_err(|e| PCAError::Computation(e.to_string()))?;
-
-        let n_sv = svd.singular_values.len();
-        let k_actual = k.min(n_sv);
-
-        let components = svd.vt.rows(0, k_actual).transpose().clone();
-        let u = svd.u.columns(0, k_actual);
-        let s = svd.singular_values.rows(0, k_actual);
-        let scores = u * DMatrix::from_diagonal(&s);
-
-        let mut total_var = T::zero();
-        for i in 0..n_sv {
-            total_var += svd.singular_values[i] * svd.singular_values[i];
-        }
-        total_var /= num_traits::NumCast::from(n_samples - 1).unwrap();
-
-        let mut explained_variance = DVector::zeros(k_actual);
-        for i in 0..k_actual {
-            explained_variance[i] = (svd.singular_values[i] * svd.singular_values[i])
-                / num_traits::NumCast::from(n_samples - 1).unwrap();
-        }
-        let mut explained_variance_ratio = DVector::zeros(k_actual);
-        if total_var > T::zero() {
-            for i in 0..k_actual {
-                explained_variance_ratio[i] = explained_variance[i] / total_var;
-            }
-        }
-
-        Ok(NalgebraPCAResult {
-            components,
-            scores,
-            explained_variance,
-            explained_variance_ratio,
-            mean,
-        })
+    /// Compute PCA with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_pca_lapack(
+        matrix: &DMatrix<f64>,
+        n_components: Option<usize>,
+    ) -> Result<NalgebraPCAResult<f64>, PCAError> {
+        crate::backend::pca::compute_nalgebra_lapack_pca(matrix, n_components)
     }
 
     /// Transform new data using fitted PCA
@@ -183,19 +144,22 @@ pub mod ndarray_pca {
         matrix: &Array2<T>,
         n_components: Option<usize>,
     ) -> Result<NdarrayPCAResult<T>, PCAError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_pca::compute_pca(&nalg, n_components)?;
-        Ok(NdarrayPCAResult {
-            components:               nalgebra_to_ndarray(&result.components),
-            scores:                   nalgebra_to_ndarray(&result.scores),
-            explained_variance:       Array1::from_vec(
-                result.explained_variance.as_slice().to_vec(),
-            ),
-            explained_variance_ratio: Array1::from_vec(
-                result.explained_variance_ratio.as_slice().to_vec(),
-            ),
-            mean:                     Array1::from_vec(result.mean.as_slice().to_vec()),
-        })
+        crate::backend::pca::compute_ndarray_pca(matrix, n_components)
+    }
+
+    /// Compute PCA with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_pca_lapack(
+        matrix: &Array2<f64>,
+        n_components: Option<usize>,
+    ) -> Result<NdarrayPCAResult<f64>, PCAError> {
+        crate::backend::pca::compute_ndarray_lapack_pca(matrix, n_components)
     }
 
     /// Transform new data
@@ -297,5 +261,28 @@ mod tests {
         let pca = ndarray_pca::compute_pca(&m, Some(3)).unwrap();
         let sum: f64 = pca.explained_variance_ratio.iter().sum();
         assert_relative_eq!(sum, 1.0, epsilon = 1e-8);
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_pca_lapack_basic() {
+        let m = DMatrix::from_row_slice(4, 3, &[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ]);
+        let result = nalgebra_pca::compute_pca_lapack(&m, Some(2)).unwrap();
+        assert_eq!(result.components.shape(), (3, 2));
+        assert_eq!(result.scores.shape(), (4, 2));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_pca_lapack_basic() {
+        let m = Array2::from_shape_vec((4, 3), vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ])
+        .unwrap();
+        let result = ndarray_pca::compute_pca_lapack(&m, Some(2)).unwrap();
+        assert_eq!(result.components.dim(), (3, 2));
+        assert_eq!(result.scores.dim(), (4, 2));
     }
 }

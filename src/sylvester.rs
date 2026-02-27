@@ -11,7 +11,7 @@ use nalgebra::{DMatrix, RealField};
 use ndarray::Array2;
 use num_traits::Float;
 
-use crate::schur::{SchurError, nalgebra_schur};
+use crate::schur::SchurError;
 
 /// Error types for matrix equations
 #[derive(Debug, Clone, PartialEq)]
@@ -58,41 +58,7 @@ pub mod nalgebra_sylvester {
         matrix_b: &DMatrix<T>,
         matrix_c: &DMatrix<T>,
     ) -> Result<DMatrix<T>, SylvesterError> {
-        let (m, n) = (matrix_a.nrows(), matrix_b.ncols());
-        if matrix_a.is_empty() || matrix_b.is_empty() || matrix_c.is_empty() {
-            return Err(SylvesterError::EmptyMatrix);
-        }
-        if matrix_a.nrows() != matrix_a.ncols() || matrix_b.nrows() != matrix_b.ncols() {
-            return Err(SylvesterError::DimensionMismatch);
-        }
-        if matrix_a.nrows() != matrix_c.nrows() || matrix_b.ncols() != matrix_c.ncols() {
-            return Err(SylvesterError::DimensionMismatch);
-        }
-
-        let schur_a = nalgebra_schur::compute_schur(matrix_a)?;
-        let schur_b = nalgebra_schur::compute_schur(matrix_b)?;
-
-        let ta = schur_a.t;
-        let tb = schur_b.t;
-        let qa = schur_a.q;
-        let qb = schur_b.q;
-
-        let d = qa.transpose() * matrix_c * &qb;
-
-        let mut y = DMatrix::zeros(m, n);
-        for j in 0..n {
-            let mut rhs = d.column(j).clone_owned();
-            for k in 0..j {
-                rhs -= y.column(k) * tb[(k, j)];
-            }
-            let diag = ta.clone()
-                + DMatrix::from_diagonal(&nalgebra::DVector::from_element(m, tb[(j, j)]));
-            let inv = diag.try_inverse().ok_or(SylvesterError::SingularSystem)?;
-            let col = &inv * rhs;
-            y.set_column(j, &col);
-        }
-
-        Ok(&qa * &y * qb.transpose())
+        crate::backend::sylvester::solve_nalgebra_sylvester(matrix_a, matrix_b, matrix_c)
     }
 
     /// Solve Lyapunov equation AX + XA^T = Q
@@ -103,15 +69,44 @@ pub mod nalgebra_sylvester {
         a: &DMatrix<T>,
         q: &DMatrix<T>,
     ) -> Result<DMatrix<T>, SylvesterError> {
-        let at = a.transpose();
-        solve_sylvester(a, &at, q)
+        crate::backend::sylvester::solve_nalgebra_lyapunov(a, q)
+    }
+
+    /// Solve Sylvester equation with a LAPACK-backed Schur kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_sylvester_lapack(
+        matrix_a: &DMatrix<f64>,
+        matrix_b: &DMatrix<f64>,
+        matrix_c: &DMatrix<f64>,
+    ) -> Result<DMatrix<f64>, SylvesterError> {
+        crate::backend::sylvester::solve_nalgebra_lapack_sylvester(matrix_a, matrix_b, matrix_c)
+    }
+
+    /// Solve Lyapunov equation with a LAPACK-backed Schur kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_lyapunov_lapack(
+        a: &DMatrix<f64>,
+        q: &DMatrix<f64>,
+    ) -> Result<DMatrix<f64>, SylvesterError> {
+        crate::backend::sylvester::solve_nalgebra_lapack_lyapunov(a, q)
     }
 }
 
 /// Ndarray Sylvester equation solver
 pub mod ndarray_sylvester {
     use super::*;
-    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Solve Sylvester equation AX + XB = C
     /// # Errors
@@ -122,11 +117,7 @@ pub mod ndarray_sylvester {
         b: &Array2<T>,
         c: &Array2<T>,
     ) -> Result<Array2<T>, SylvesterError> {
-        let nalg_a = ndarray_to_nalgebra(a);
-        let nalg_b = ndarray_to_nalgebra(b);
-        let nalg_c = ndarray_to_nalgebra(c);
-        let result = nalgebra_sylvester::solve_sylvester(&nalg_a, &nalg_b, &nalg_c)?;
-        Ok(nalgebra_to_ndarray(&result))
+        crate::backend::sylvester::solve_ndarray_sylvester(a, b, c)
     }
 
     /// Solve Lyapunov equation AX + XA^T = Q
@@ -137,10 +128,38 @@ pub mod ndarray_sylvester {
         a: &Array2<T>,
         q: &Array2<T>,
     ) -> Result<Array2<T>, SylvesterError> {
-        let nalg_a = ndarray_to_nalgebra(a);
-        let nalg_q = ndarray_to_nalgebra(q);
-        let result = nalgebra_sylvester::solve_lyapunov(&nalg_a, &nalg_q)?;
-        Ok(nalgebra_to_ndarray(&result))
+        crate::backend::sylvester::solve_ndarray_lyapunov(a, q)
+    }
+
+    /// Solve Sylvester equation with a LAPACK-backed Schur kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_sylvester_lapack(
+        a: &Array2<f64>,
+        b: &Array2<f64>,
+        c: &Array2<f64>,
+    ) -> Result<Array2<f64>, SylvesterError> {
+        crate::backend::sylvester::solve_ndarray_lapack_sylvester(a, b, c)
+    }
+
+    /// Solve Lyapunov equation with a LAPACK-backed Schur kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_lyapunov_lapack(
+        a: &Array2<f64>,
+        q: &Array2<f64>,
+    ) -> Result<Array2<f64>, SylvesterError> {
+        crate::backend::sylvester::solve_ndarray_lapack_lyapunov(a, q)
     }
 }
 
@@ -212,5 +231,25 @@ mod tests {
                 assert_relative_eq!(ax_xat[(i, j)], nalg_q[(i, j)], epsilon = 1e-8);
             }
         }
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_sylvester_lapack_basic() {
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 2.0]);
+        let b = DMatrix::from_row_slice(2, 2, &[3.0, 0.0, 0.0, 4.0]);
+        let c = DMatrix::from_row_slice(2, 2, &[1.0, 1.0, 1.0, 1.0]);
+        let x = nalgebra_sylvester::solve_sylvester_lapack(&a, &b, &c).unwrap();
+        assert_eq!(x.shape(), (2, 2));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_sylvester_lapack_basic() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 2.0]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![3.0, 0.0, 0.0, 4.0]).unwrap();
+        let c = Array2::from_shape_vec((2, 2), vec![1.0, 1.0, 1.0, 1.0]).unwrap();
+        let x = ndarray_sylvester::solve_sylvester_lapack(&a, &b, &c).unwrap();
+        assert_eq!(x.dim(), (2, 2));
     }
 }
