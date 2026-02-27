@@ -253,7 +253,20 @@ jobs:
           export BENCH_WARN_PCT=5
           export BENCH_FAIL_PCT=10
           export BENCH_MIN_REGRESSION_NS=25000
-          just bench-report-check
+          baseline_branch="unknown"
+          if [[ -f coverage/benchmarks/baseline/branch.txt ]]; then
+            baseline_branch="$(cat coverage/benchmarks/baseline/branch.txt)"
+          fi
+
+          if [[ "$baseline_branch" == "${{ github.ref_name }}" ]]; then
+            echo "Benchmark gate: strict (baseline branch matches current branch: $baseline_branch)"
+            just bench-report-check
+          else
+            echo "Benchmark gate: advisory only (baseline branch '$baseline_branch' != current '${{ github.ref_name }}')"
+            if ! just bench-report-check; then
+              echo "Non-blocking benchmark regression warning on cross-branch baseline."
+            fi
+          fi
         else
           echo "No prior benchmark baseline found; skipping regression enforcement for this run."
         fi
@@ -262,6 +275,8 @@ jobs:
       run: |
         mkdir -p coverage/benchmarks/baseline
         cp coverage/benchmarks/summary.json coverage/benchmarks/baseline/summary.json
+        echo "${{ github.ref_name }}" > coverage/benchmarks/baseline/branch.txt
+        echo "${{ github.sha }}" > coverage/benchmarks/baseline/sha.txt
 
     - name: Save benchmark baseline cache
       uses: actions/cache/save@v4

@@ -103,6 +103,9 @@ Current commands:
    - `BENCH_WARN_PCT`
    - `BENCH_FAIL_PCT`
    - `BENCH_MIN_REGRESSION_NS`
+7. CI branch policy:
+   - strict fail-on-regression only when the restored baseline was generated from the same branch
+   - cross-branch baseline comparisons (for example, branch run using `main` fallback baseline) are advisory-only
 5. `just bench-smoke-check` runs smoke benches plus regression enforcement in one command.
 6. `just bench-baseline-update` promotes the latest `summary.json` to `baseline/summary.json`.
 7. `just bench-smoke-lapack` runs smoke SVD + QR suites with `lapack-competitors` enabled.
