@@ -83,6 +83,12 @@ Store outputs under `coverage/benchmarks/`:
    - human-readable delta vs baseline branch/tag
    - flagged cases above regression threshold
 
+Current commands:
+
+1. `just bench-smoke` runs quick SVD + QR benchmark suites.
+2. `just bench-report` parses Criterion output and writes `summary.json`, `summary.csv`, `regressions.md`.
+3. `just bench-smoke-report` runs both in sequence.
+
 ## CI Policy
 
 1. PR CI runs a smoke subset (small + medium sizes).
@@ -101,3 +107,4 @@ Initial regression threshold:
 1. Baselines are pinned to a tagged commit or explicit SHA.
 2. Benchmark environment metadata must be recorded with every run.
 3. Update baseline only via explicit maintainers’ approval.
+4. The report tool reads baseline from `coverage/benchmarks/baseline/summary.json`.

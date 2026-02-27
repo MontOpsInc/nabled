@@ -60,6 +60,17 @@ bench-one-lto bench:
      --bench "{{ bench }}" && \
      open ../target/criterion/report/index.html
 
+bench-smoke:
+    cargo bench --bench svd_benchmarks -- --quick
+    cargo bench --bench qr_benchmarks -- --quick
+
+bench-report:
+    cargo run --bin benchmark_report
+
+bench-smoke-report:
+    just -f {{ justfile() }} bench-smoke
+    just -f {{ justfile() }} bench-report
+
 # --- EXAMPLES ---
 
 debug-profile example:

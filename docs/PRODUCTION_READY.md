@@ -244,4 +244,6 @@ Current state:
 1. Benchmark specification is defined in `docs/BENCHMARK_SPEC.md`.
 2. Backend kernel pilot is implemented for `svd` and `qr` using internal `SvdKernel` and `QrKernel` adapters.
 3. Public APIs remain unchanged; dispatch routes through backend-owned kernel implementations (no temporary round-trip back into domain `*_impl` functions).
-4. Next execution focus remains competitor baselines and benchmark harness expansion before extending kernels to the rest of Tier A.
+4. Competitor benchmark harnesses now exist for both pilot domains (`benches/svd_benchmarks.rs`, `benches/qr_benchmarks.rs`) with direct `nalgebra` comparison paths and correctness guards.
+5. Benchmark artifact reporting is implemented via `src/bin/benchmark_report.rs` and `just bench-report`, emitting `coverage/benchmarks/summary.json`, `summary.csv`, and `regressions.md`.
+6. Next execution focus is adding additional competitor backends before extending kernels across the rest of Tier A.
