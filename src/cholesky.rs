@@ -54,95 +54,110 @@ pub struct NdarrayCholeskyResult<T: Float> {
 
 /// Nalgebra Cholesky decomposition
 pub mod nalgebra_cholesky {
-    use nalgebra::linalg::Cholesky;
-
     use super::*;
 
-    /// Compute Cholesky decomposition
+    /// Compute Cholesky decomposition.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_cholesky<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraCholeskyResult<T>, CholeskyError> {
-        if matrix.is_empty() {
-            return Err(CholeskyError::EmptyMatrix);
-        }
-        let (rows, cols) = matrix.shape();
-        if rows != cols {
-            return Err(CholeskyError::NotSquare);
-        }
-        if matrix.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(CholeskyError::NumericalInstability);
-        }
-
-        let cholesky = Cholesky::new(matrix.clone()).ok_or(CholeskyError::NotPositiveDefinite)?;
-        let l = cholesky.l().clone();
-
-        Ok(NalgebraCholeskyResult { l })
+        crate::backend::cholesky::compute_nalgebra_cholesky(matrix)
     }
 
-    /// Solve Ax = b for symmetric positive-definite A
+    /// Compute Cholesky decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_cholesky_lapack(
+        matrix: &DMatrix<f64>,
+    ) -> Result<NalgebraCholeskyResult<f64>, CholeskyError> {
+        crate::backend::cholesky::compute_nalgebra_lapack_cholesky(matrix)
+    }
+
+    /// Solve Ax = b for symmetric positive-definite A.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
-    pub fn solve<T: RealField + Copy>(
+    pub fn solve<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
         rhs: &DVector<T>,
     ) -> Result<DVector<T>, CholeskyError> {
-        if matrix.is_empty() || rhs.is_empty() {
-            return Err(CholeskyError::EmptyMatrix);
-        }
-        let (rows, cols) = matrix.shape();
-        if rows != cols {
-            return Err(CholeskyError::NotSquare);
-        }
-        if rows != rhs.len() {
-            return Err(CholeskyError::InvalidInput(
-                "RHS length must match matrix dimensions".to_string(),
-            ));
-        }
-
-        let cholesky = Cholesky::new(matrix.clone()).ok_or(CholeskyError::NotPositiveDefinite)?;
-        Ok(cholesky.solve(rhs))
+        crate::backend::cholesky::solve_nalgebra_cholesky(matrix, rhs)
     }
 
-    /// Compute matrix inverse
+    /// Solve Ax = b with a LAPACK-backed Cholesky kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_lapack(
+        matrix: &DMatrix<f64>,
+        rhs: &DVector<f64>,
+    ) -> Result<DVector<f64>, CholeskyError> {
+        crate::backend::cholesky::solve_nalgebra_lapack_cholesky(matrix, rhs)
+    }
+
+    /// Compute matrix inverse.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
-    pub fn inverse<T: RealField + Copy>(matrix: &DMatrix<T>) -> Result<DMatrix<T>, CholeskyError> {
-        if matrix.is_empty() {
-            return Err(CholeskyError::EmptyMatrix);
-        }
-        let (rows, cols) = matrix.shape();
-        if rows != cols {
-            return Err(CholeskyError::NotSquare);
-        }
+    pub fn inverse<T: RealField + Copy + Float>(
+        matrix: &DMatrix<T>,
+    ) -> Result<DMatrix<T>, CholeskyError> {
+        crate::backend::cholesky::inverse_nalgebra_cholesky(matrix)
+    }
 
-        let cholesky = Cholesky::new(matrix.clone()).ok_or(CholeskyError::NotPositiveDefinite)?;
-        Ok(cholesky.inverse())
+    /// Compute matrix inverse with a LAPACK-backed Cholesky kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn inverse_lapack(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, CholeskyError> {
+        crate::backend::cholesky::inverse_nalgebra_lapack_cholesky(matrix)
     }
 }
 
-/// Ndarray Cholesky decomposition (via nalgebra)
+/// Ndarray Cholesky decomposition
 pub mod ndarray_cholesky {
     use super::*;
-    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
-    /// Compute Cholesky decomposition
+    /// Compute Cholesky decomposition.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_cholesky<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayCholeskyResult<T>, CholeskyError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_cholesky::compute_cholesky(&nalg)?;
-        Ok(NdarrayCholeskyResult { l: nalgebra_to_ndarray(&result.l) })
+        crate::backend::cholesky::compute_ndarray_cholesky(matrix)
     }
 
-    /// Solve Ax = b
+    /// Compute Cholesky decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_cholesky_lapack(
+        matrix: &Array2<f64>,
+    ) -> Result<NdarrayCholeskyResult<f64>, CholeskyError> {
+        crate::backend::cholesky::compute_ndarray_lapack_cholesky(matrix)
+    }
+
+    /// Solve Ax = b.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
@@ -150,20 +165,42 @@ pub mod ndarray_cholesky {
         matrix: &Array2<T>,
         rhs: &Array1<T>,
     ) -> Result<Array1<T>, CholeskyError> {
-        let nalg_matrix = ndarray_to_nalgebra(matrix);
-        let nalg_rhs = DVector::from_vec(rhs.to_vec());
-        let solution = nalgebra_cholesky::solve(&nalg_matrix, &nalg_rhs)?;
-        Ok(Array1::from_vec(solution.as_slice().to_vec()))
+        crate::backend::cholesky::solve_ndarray_cholesky(matrix, rhs)
     }
 
-    /// Compute matrix inverse
+    /// Solve Ax = b with a LAPACK-backed Cholesky kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_lapack(
+        matrix: &Array2<f64>,
+        rhs: &Array1<f64>,
+    ) -> Result<Array1<f64>, CholeskyError> {
+        crate::backend::cholesky::solve_ndarray_lapack_cholesky(matrix, rhs)
+    }
+
+    /// Compute matrix inverse.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn inverse<T: Float + RealField>(matrix: &Array2<T>) -> Result<Array2<T>, CholeskyError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        let inv = nalgebra_cholesky::inverse(&nalg)?;
-        Ok(nalgebra_to_ndarray(&inv))
+        crate::backend::cholesky::inverse_ndarray_cholesky(matrix)
+    }
+
+    /// Compute matrix inverse with a LAPACK-backed Cholesky kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn inverse_lapack(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+        crate::backend::cholesky::inverse_ndarray_lapack_cholesky(matrix)
     }
 }
 
@@ -296,5 +333,32 @@ mod tests {
             nalgebra_cholesky::solve(&a, &b_bad),
             Err(CholeskyError::InvalidInput(_))
         ));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_cholesky_lapack_basic() {
+        let l = DMatrix::from_row_slice(2, 2, &[2.0, 0.0, 1.0, 3.0]);
+        let a = &l * l.transpose();
+
+        let cholesky = nalgebra_cholesky::compute_cholesky_lapack(&a).unwrap();
+        assert_eq!(cholesky.l.shape(), (2, 2));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_cholesky_lapack_basic() {
+        let l = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 1.0, 3.0]).unwrap();
+        let mut a: Array2<f64> = Array2::zeros((2, 2));
+        for i in 0..2 {
+            for j in 0..2 {
+                for k in 0..2 {
+                    a[[i, j]] += l[[i, k]] * l[[j, k]];
+                }
+            }
+        }
+
+        let cholesky = ndarray_cholesky::compute_cholesky_lapack(&a).unwrap();
+        assert_eq!(cholesky.l.dim(), (2, 2));
     }
 }

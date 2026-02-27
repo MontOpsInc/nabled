@@ -253,4 +253,9 @@ Current state:
 10. LAPACK-backed internal QR kernels are integrated in `src/backend/qr.rs` with Linux + `lapack-kernels` feature gates, with public wrappers in `qr::nalgebra_qr` and `qr::ndarray_qr`.
 11. LU is now ported to backend kernels in `src/backend/lu.rs`, with Linux + `lapack-kernels` wrappers exposed in `lu::nalgebra_lu` and `lu::ndarray_lu`.
 12. Eigen is now ported to backend kernels in `src/backend/eigen.rs`, with Linux + `lapack-kernels` wrappers exposed in `eigen::nalgebra_eigen` and `eigen::ndarray_eigen`.
-13. Next execution focus is Cholesky backend kernel integration and establishing backend capability tests per Tier A domain.
+13. Cholesky is now ported to backend kernels in `src/backend/cholesky.rs`, with Linux + `lapack-kernels` wrappers exposed in `cholesky::nalgebra_cholesky` and `cholesky::ndarray_cholesky`.
+14. Schur is now ported to backend kernels in `src/backend/schur.rs`, with Linux + `lapack-kernels` wrappers exposed in `schur::nalgebra_schur` and `schur::ndarray_schur`.
+15. Tier A backend capability smoke coverage now includes baseline (always) and LAPACK-gated variants in `tests/integration.rs`.
+16. Triangular solve is now ported to backend kernels in `src/backend/triangular.rs`, routed from `triangular::nalgebra_triangular` and `triangular::ndarray_triangular`.
+17. Backend capability matrix is now documented in `docs/BACKEND_CAPABILITY_MATRIX.md` and tied to integration smoke tests.
+18. Next execution focus is tightening Tier A capability enforcement (per-domain assertions and CI visibility) and beginning Tier B backend-kernel porting.

@@ -15,7 +15,10 @@ flowchart TB
         backend_svd[SvdKernel]
         backend_qr[QrKernel]
         backend_lu[LuKernel]
+        backend_cholesky[CholeskyKernel]
         backend_eigen[EigenKernel]
+        backend_schur[SchurKernel]
+        backend_triangular[TriangularSolveKernel]
     end
 
     subgraph Core [Core Decompositions]
@@ -47,7 +50,10 @@ flowchart TB
     svd --> backend_svd
     qr --> backend_qr
     lu --> backend_lu
+    cholesky --> backend_cholesky
     eigen --> backend_eigen
+    schur --> backend_schur
+    triangular --> backend_triangular
     pca --> stats
     pca --> svd
     regression --> qr
@@ -57,17 +63,20 @@ flowchart TB
 
 ## Data Flow
 
-Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. SVD, QR, LU, and Eigen currently dispatch through internal backend kernel traits before executing backend-specific implementations. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
+Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. SVD, QR, LU, Cholesky, Eigen, Schur, and triangular solve currently dispatch through internal backend kernel traits before executing backend-specific implementations. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
 
 ## File Reference
 
 | Module | Source File |
 |--------|-------------|
 | backend (root) | `src/backend/mod.rs` |
+| backend cholesky kernel | `src/backend/cholesky.rs` |
 | backend eigen kernel | `src/backend/eigen.rs` |
 | backend lu kernel | `src/backend/lu.rs` |
 | backend qr kernel | `src/backend/qr.rs` |
+| backend schur kernel | `src/backend/schur.rs` |
 | backend svd kernel | `src/backend/svd.rs` |
+| backend triangular kernel | `src/backend/triangular.rs` |
 | cholesky | `src/cholesky.rs` |
 | eigen | `src/eigen.rs` |
 | interop | `src/interop.rs` |

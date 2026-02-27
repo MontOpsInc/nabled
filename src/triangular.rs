@@ -38,7 +38,7 @@ impl std::error::Error for TriangularError {}
 pub mod nalgebra_triangular {
     use super::*;
 
-    /// Solve Lx = b where L is lower triangular (forward substitution)
+    /// Solve Lx = b where L is lower triangular (forward substitution).
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
@@ -46,31 +46,10 @@ pub mod nalgebra_triangular {
         l: &DMatrix<T>,
         b: &DVector<T>,
     ) -> Result<DVector<T>, TriangularError> {
-        if l.is_empty() || b.is_empty() {
-            return Err(TriangularError::EmptyMatrix);
-        }
-        if !l.is_square() {
-            return Err(TriangularError::NotSquare);
-        }
-        if l.nrows() != b.len() {
-            return Err(TriangularError::DimensionMismatch);
-        }
-        let n = l.nrows();
-        let mut x = b.clone();
-        for i in 0..n {
-            if l[(i, i)] == T::zero() {
-                return Err(TriangularError::Singular);
-            }
-            let mut sum = T::zero();
-            for j in 0..i {
-                sum += l[(i, j)] * x[j];
-            }
-            x[i] = (b[i] - sum) / l[(i, i)];
-        }
-        Ok(x)
+        crate::backend::triangular::solve_nalgebra_lower(l, b)
     }
 
-    /// Solve Ux = b where U is upper triangular (back substitution)
+    /// Solve Ux = b where U is upper triangular (back substitution).
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
@@ -78,37 +57,15 @@ pub mod nalgebra_triangular {
         u: &DMatrix<T>,
         b: &DVector<T>,
     ) -> Result<DVector<T>, TriangularError> {
-        if u.is_empty() || b.is_empty() {
-            return Err(TriangularError::EmptyMatrix);
-        }
-        if !u.is_square() {
-            return Err(TriangularError::NotSquare);
-        }
-        if u.nrows() != b.len() {
-            return Err(TriangularError::DimensionMismatch);
-        }
-        let n = u.nrows();
-        let mut x = b.clone();
-        for i in (0..n).rev() {
-            if u[(i, i)] == T::zero() {
-                return Err(TriangularError::Singular);
-            }
-            let mut sum = T::zero();
-            for j in (i + 1)..n {
-                sum += u[(i, j)] * x[j];
-            }
-            x[i] = (b[i] - sum) / u[(i, i)];
-        }
-        Ok(x)
+        crate::backend::triangular::solve_nalgebra_upper(u, b)
     }
 }
 
 /// Ndarray triangular solve
 pub mod ndarray_triangular {
     use super::*;
-    use crate::interop::ndarray_to_nalgebra;
 
-    /// Solve Lx = b where L is lower triangular
+    /// Solve Lx = b where L is lower triangular.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
@@ -116,13 +73,10 @@ pub mod ndarray_triangular {
         l: &Array2<T>,
         b: &Array1<T>,
     ) -> Result<Array1<T>, TriangularError> {
-        let nalg_l = ndarray_to_nalgebra(l);
-        let nalg_b = DVector::from_vec(b.to_vec());
-        let result = nalgebra_triangular::solve_lower(&nalg_l, &nalg_b)?;
-        Ok(Array1::from_vec(result.as_slice().to_vec()))
+        crate::backend::triangular::solve_ndarray_lower(l, b)
     }
 
-    /// Solve Ux = b where U is upper triangular
+    /// Solve Ux = b where U is upper triangular.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
@@ -130,10 +84,7 @@ pub mod ndarray_triangular {
         u: &Array2<T>,
         b: &Array1<T>,
     ) -> Result<Array1<T>, TriangularError> {
-        let nalg_u = ndarray_to_nalgebra(u);
-        let nalg_b = DVector::from_vec(b.to_vec());
-        let result = nalgebra_triangular::solve_upper(&nalg_u, &nalg_b)?;
-        Ok(Array1::from_vec(result.as_slice().to_vec()))
+        crate::backend::triangular::solve_ndarray_upper(u, b)
     }
 }
 

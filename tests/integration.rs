@@ -2,11 +2,16 @@
 
 use approx::assert_relative_eq;
 use nabled::IterativeConfig;
+use nabled::cholesky::{nalgebra_cholesky, ndarray_cholesky};
+use nabled::eigen::{nalgebra_eigen, ndarray_eigen};
 use nabled::iterative::{nalgebra_iterative, ndarray_iterative};
+use nabled::lu::{nalgebra_lu, ndarray_lu};
 use nabled::matrix_functions::{nalgebra_matrix_functions, ndarray_matrix_functions};
 use nabled::orthogonalization::ndarray_orthogonalization;
 use nabled::pca::ndarray_pca;
+use nabled::qr::{QRConfig, nalgebra_qr, ndarray_qr};
 use nabled::regression::ndarray_regression;
+use nabled::schur::{nalgebra_schur, ndarray_schur};
 use nabled::stats::{nalgebra_stats, ndarray_stats};
 use nabled::svd::{SVDError, nalgebra_svd, ndarray_svd};
 use nabled::sylvester::ndarray_sylvester;
@@ -309,4 +314,100 @@ fn test_integration_ndarray_sylvester_residual() {
             assert_relative_eq!(residual[[i, j]], c[[i, j]], epsilon = 1e-8);
         }
     }
+}
+
+#[test]
+fn test_backend_tier_a_baseline_capability_smoke() {
+    let matrix_nalg = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+    let matrix_nd = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
+
+    let svd_nalg = nalgebra_svd::compute_svd(&matrix_nalg).unwrap();
+    let svd_nd = ndarray_svd::compute_svd(&matrix_nd).unwrap();
+    assert_eq!(svd_nalg.singular_values.len(), 2);
+    assert_eq!(svd_nd.singular_values.len(), 2);
+
+    let qr_config = QRConfig::default();
+    let qr_nalg = nalgebra_qr::compute_qr(&matrix_nalg, &qr_config).unwrap();
+    let qr_nd = ndarray_qr::compute_qr(&matrix_nd, &qr_config).unwrap();
+    assert_eq!(qr_nalg.rank, 2);
+    assert_eq!(qr_nd.rank, 2);
+
+    let lu_nalg = nalgebra_lu::compute_lu(&matrix_nalg).unwrap();
+    let lu_nd = ndarray_lu::compute_lu(&matrix_nd).unwrap();
+    assert_eq!(lu_nalg.l.shape(), (2, 2));
+    assert_eq!(lu_nd.l.dim(), (2, 2));
+
+    let chol_nalg = nalgebra_cholesky::compute_cholesky(&matrix_nalg).unwrap();
+    let chol_nd = ndarray_cholesky::compute_cholesky(&matrix_nd).unwrap();
+    assert_eq!(chol_nalg.l.shape(), (2, 2));
+    assert_eq!(chol_nd.l.dim(), (2, 2));
+
+    let eig_nalg = nalgebra_eigen::compute_symmetric_eigen(&matrix_nalg).unwrap();
+    let eig_nd = ndarray_eigen::compute_symmetric_eigen(&matrix_nd).unwrap();
+    assert_eq!(eig_nalg.eigenvalues.len(), 2);
+    assert_eq!(eig_nd.eigenvalues.len(), 2);
+
+    let schur_nalg = nalgebra_schur::compute_schur(&matrix_nalg).unwrap();
+    let schur_nd = ndarray_schur::compute_schur(&matrix_nd).unwrap();
+    assert_eq!(schur_nalg.t.shape(), (2, 2));
+    assert_eq!(schur_nd.t.dim(), (2, 2));
+
+    let lower_nalg = DMatrix::from_row_slice(2, 2, &[2.0, 0.0, 1.0, 3.0]);
+    let rhs_nalg = DVector::from_vec(vec![4.0, 8.0]);
+    let tri_lower_nalg = nalgebra_triangular::solve_lower(&lower_nalg, &rhs_nalg).unwrap();
+    assert_eq!(tri_lower_nalg.len(), 2);
+
+    let lower_nd = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 1.0, 3.0]).unwrap();
+    let rhs_nd = Array1::from_vec(vec![4.0, 8.0]);
+    let tri_lower_nd = ndarray_triangular::solve_lower(&lower_nd, &rhs_nd).unwrap();
+    assert_eq!(tri_lower_nd.len(), 2);
+}
+
+#[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+#[test]
+fn test_backend_tier_a_lapack_capability_smoke() {
+    let matrix_nalg = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+    let matrix_nd = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
+
+    let svd_nalg = nalgebra_svd::compute_svd_lapack(&matrix_nalg).unwrap();
+    let svd_nd = ndarray_svd::compute_svd_lapack(&matrix_nd).unwrap();
+    assert_eq!(svd_nalg.singular_values.len(), 2);
+    assert_eq!(svd_nd.singular_values.len(), 2);
+
+    let qr_config = QRConfig::default();
+    let qr_nalg = nalgebra_qr::compute_qr_lapack(&matrix_nalg, &qr_config).unwrap();
+    let qr_nd = ndarray_qr::compute_qr_lapack(&matrix_nd, &qr_config).unwrap();
+    assert_eq!(qr_nalg.rank, 2);
+    assert_eq!(qr_nd.rank, 2);
+
+    let lu_nalg = nalgebra_lu::compute_lu_lapack(&matrix_nalg).unwrap();
+    let lu_nd = ndarray_lu::compute_lu_lapack(&matrix_nd).unwrap();
+    assert_eq!(lu_nalg.l.shape(), (2, 2));
+    assert_eq!(lu_nd.l.dim(), (2, 2));
+
+    let chol_nalg = nalgebra_cholesky::compute_cholesky_lapack(&matrix_nalg).unwrap();
+    let chol_nd = ndarray_cholesky::compute_cholesky_lapack(&matrix_nd).unwrap();
+    assert_eq!(chol_nalg.l.shape(), (2, 2));
+    assert_eq!(chol_nd.l.dim(), (2, 2));
+
+    let eig_nalg = nalgebra_eigen::compute_symmetric_eigen_lapack(&matrix_nalg).unwrap();
+    let eig_nd = ndarray_eigen::compute_symmetric_eigen_lapack(&matrix_nd).unwrap();
+    assert_eq!(eig_nalg.eigenvalues.len(), 2);
+    assert_eq!(eig_nd.eigenvalues.len(), 2);
+
+    let schur_nalg = nalgebra_schur::compute_schur_lapack(&matrix_nalg).unwrap();
+    let schur_nd = ndarray_schur::compute_schur_lapack(&matrix_nd).unwrap();
+    assert_eq!(schur_nalg.t.shape(), (2, 2));
+    assert_eq!(schur_nd.t.dim(), (2, 2));
+
+    // Triangular solve currently uses backend baseline kernels in lapack-enabled builds.
+    let lower_nalg = DMatrix::from_row_slice(2, 2, &[2.0, 0.0, 1.0, 3.0]);
+    let rhs_nalg = DVector::from_vec(vec![4.0, 8.0]);
+    let tri_lower_nalg = nalgebra_triangular::solve_lower(&lower_nalg, &rhs_nalg).unwrap();
+    assert_eq!(tri_lower_nalg.len(), 2);
+
+    let lower_nd = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 1.0, 3.0]).unwrap();
+    let rhs_nd = Array1::from_vec(vec![4.0, 8.0]);
+    let tri_lower_nd = ndarray_triangular::solve_lower(&lower_nd, &rhs_nd).unwrap();
+    assert_eq!(tri_lower_nd.len(), 2);
 }

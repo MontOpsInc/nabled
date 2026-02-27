@@ -62,51 +62,57 @@ pub struct NdarraySchurResult<T: Float> {
 pub mod nalgebra_schur {
     use super::*;
 
-    /// Compute Schur decomposition A = Q T Q^H
+    /// Compute Schur decomposition A = Q T Q^H.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_schur<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraSchurResult<T>, SchurError> {
-        if matrix.is_empty() {
-            return Err(SchurError::EmptyMatrix);
-        }
-        if !matrix.is_square() {
-            return Err(SchurError::NotSquare);
-        }
-        if matrix.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(SchurError::NumericalInstability);
-        }
+        crate::backend::schur::compute_nalgebra_schur(matrix)
+    }
 
-        let eps = T::epsilon();
-        let max_iter = 200;
-        let schur = nalgebra::linalg::Schur::try_new(matrix.clone(), eps, max_iter)
-            .ok_or(SchurError::ConvergenceFailed)?;
-        let (q, t) = schur.unpack();
-
-        Ok(NalgebraSchurResult { q, t })
+    /// Compute Schur decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_schur_lapack(
+        matrix: &DMatrix<f64>,
+    ) -> Result<NalgebraSchurResult<f64>, SchurError> {
+        crate::backend::schur::compute_nalgebra_lapack_schur(matrix)
     }
 }
 
-/// Ndarray Schur decomposition (via nalgebra)
+/// Ndarray Schur decomposition
 pub mod ndarray_schur {
     use super::*;
-    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
-    /// Compute Schur decomposition
+    /// Compute Schur decomposition.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_schur<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarraySchurResult<T>, SchurError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_schur::compute_schur(&nalg)?;
-        Ok(NdarraySchurResult {
-            q: nalgebra_to_ndarray(&result.q),
-            t: nalgebra_to_ndarray(&result.t),
-        })
+        crate::backend::schur::compute_ndarray_schur(matrix)
+    }
+
+    /// Compute Schur decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_schur_lapack(
+        matrix: &Array2<f64>,
+    ) -> Result<NdarraySchurResult<f64>, SchurError> {
+        crate::backend::schur::compute_ndarray_lapack_schur(matrix)
     }
 }
 
@@ -172,5 +178,25 @@ mod tests {
             nalgebra_schur::compute_schur(&non_finite),
             Err(SchurError::NumericalInstability)
         ));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_schur_lapack_basic() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+        let schur = nalgebra_schur::compute_schur_lapack(&matrix).unwrap();
+
+        assert_eq!(schur.q.shape(), (2, 2));
+        assert_eq!(schur.t.shape(), (2, 2));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_schur_lapack_basic() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
+        let schur = ndarray_schur::compute_schur_lapack(&matrix).unwrap();
+
+        assert_eq!(schur.q.dim(), (2, 2));
+        assert_eq!(schur.t.dim(), (2, 2));
     }
 }
