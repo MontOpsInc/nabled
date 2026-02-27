@@ -248,4 +248,5 @@ Current state:
 5. Benchmark artifact reporting is implemented via `src/bin/benchmark_report.rs` and `just bench-report`, emitting `coverage/benchmarks/summary.json`, `summary.csv`, and `regressions.md`.
 6. Regression checks now enforce nabled-owned benchmark paths (`competitor == none`) against baseline, not external competitor paths.
 7. CI now includes smoke benchmarking with branch-local baseline cache restore/save and regression enforcement when a baseline exists.
-8. Next execution focus is adding LAPACK-backed competitors (`nalgebra-lapack`, `ndarray-linalg`) and then extending kernel abstraction across the rest of Tier A.
+8. LAPACK-backed competitor harnesses are implemented for SVD/QR (`nalgebra-lapack`, `ndarray-linalg`) behind the `lapack-competitors` benchmark feature on Linux.
+9. Next execution focus is integrating one LAPACK-backed backend path into the kernel layer, then extending kernel abstraction across the rest of Tier A.

@@ -31,6 +31,8 @@ Current implemented competitor harnesses:
 
 1. direct `nalgebra` for SVD and QR
 2. direct `faer` for SVD and QR
+3. `nalgebra-lapack` for SVD and QR (enabled with `lapack-competitors` feature, Linux target)
+4. `ndarray-linalg` for SVD and QR (enabled with `lapack-competitors` feature, Linux target)
 
 ## Workload Matrix
 
@@ -96,6 +98,9 @@ Current commands:
 4. `just bench-report-check` runs report generation and fails if baseline regressions exceed the `>10%` threshold.
 5. `just bench-smoke-check` runs smoke benches plus regression enforcement in one command.
 6. `just bench-baseline-update` promotes the latest `summary.json` to `baseline/summary.json`.
+7. `just bench-smoke-lapack` runs smoke SVD + QR suites with `lapack-competitors` enabled.
+8. `just bench-smoke-report-lapack` runs lapack-enabled smoke suites and regenerates report artifacts.
+9. LAPACK smoke commands require Linux with system BLAS/LAPACK libraries available (`libopenblas-dev`, `liblapack-dev`).
 
 ## CI Policy
 

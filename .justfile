@@ -64,6 +64,10 @@ bench-smoke:
     cargo bench --bench svd_benchmarks -- --quick
     cargo bench --bench qr_benchmarks -- --quick
 
+bench-smoke-lapack:
+    cargo bench --features lapack-competitors --bench svd_benchmarks -- --quick
+    cargo bench --features lapack-competitors --bench qr_benchmarks -- --quick
+
 bench-report:
     cargo run --bin benchmark_report
 
@@ -76,6 +80,10 @@ bench-baseline-update:
 
 bench-smoke-report:
     just -f {{ justfile() }} bench-smoke
+    just -f {{ justfile() }} bench-report
+
+bench-smoke-report-lapack:
+    just -f {{ justfile() }} bench-smoke-lapack
     just -f {{ justfile() }} bench-report
 
 bench-smoke-check:

@@ -5,7 +5,13 @@ use faer::MatRef;
 use nabled::qr::{QRConfig, nalgebra_qr, ndarray_qr};
 use nalgebra::linalg::ColPivQR;
 use nalgebra::{DMatrix, DVector};
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+use nalgebra_lapack::QR as NalgebraLapackQr;
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+use nalgebra_lapack::qr::QrDecomposition;
 use ndarray::Array2;
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+use ndarray_linalg::QR as NdarrayLinalgQr;
 use rand::RngExt;
 
 #[derive(Clone, Copy)]
@@ -58,6 +64,11 @@ fn generate_rhs(rows: usize) -> DVector<f64> {
 
 fn reconstruction_error(reference: &DMatrix<f64>, reconstructed: &DMatrix<f64>) -> f64 {
     (reconstructed - reference).norm() / reference.norm().max(f64::EPSILON)
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn frobenius_norm_ndarray(matrix: &Array2<f64>) -> f64 {
+    matrix.iter().map(|x| x * x).sum::<f64>().sqrt()
 }
 
 fn assert_nabled_nalgebra_qr_correct(matrix: &DMatrix<f64>, config: &QRConfig<f64>) {
@@ -124,6 +135,23 @@ fn assert_faer_direct_pivoted_qr_correct(data: &[f64], rows: usize, cols: usize)
             assert!(r[(i, j)].is_finite(), "faer pivoted QR produced non-finite R entry");
         }
     }
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn assert_nalgebra_lapack_qr_correct(matrix: &DMatrix<f64>) {
+    let qr = NalgebraLapackQr::new(matrix.clone()).expect("nalgebra-lapack QR should succeed");
+    let reconstructed = qr.q() * qr.r();
+    let err = reconstruction_error(matrix, &reconstructed);
+    assert!(err < 1e-8, "nalgebra-lapack QR reconstruction error too high: {err}");
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn assert_ndarray_linalg_qr_correct(matrix: &Array2<f64>) {
+    let (q, r) = matrix.view().qr().expect("ndarray-linalg QR should succeed");
+    let reconstructed = q.dot(&r);
+    let diff = &reconstructed - matrix;
+    let err = frobenius_norm_ndarray(&diff) / frobenius_norm_ndarray(matrix).max(f64::EPSILON);
+    assert!(err < 1e-8, "ndarray-linalg QR reconstruction error too high: {err}");
 }
 
 fn benchmark_nabled_qr(c: &mut Criterion) {
@@ -254,6 +282,61 @@ fn benchmark_faer_qr_competitor(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn benchmark_nalgebra_lapack_qr_competitor(c: &mut Criterion) {
+    let mut group = c.benchmark_group("qr_competitor_nalgebra_lapack");
+    let sizes = [16, 64, 128];
+    let shapes = [MatrixShape::Square, MatrixShape::TallSkinny];
+
+    for size in sizes {
+        for shape in shapes {
+            let (rows, cols) = shape.dims(size);
+            let (matrix, _) = generate_matrix_pair(rows, cols);
+            assert_nalgebra_lapack_qr_correct(&matrix);
+            let id = format!("{}-{rows}x{cols}", shape.label());
+
+            _ = group.bench_with_input(BenchmarkId::new("qr", &id), &size, |b, _| {
+                b.iter(|| NalgebraLapackQr::new(black_box(matrix.clone())));
+            });
+        }
+    }
+
+    group.finish();
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn benchmark_ndarray_linalg_qr_competitor(c: &mut Criterion) {
+    let mut group = c.benchmark_group("qr_competitor_ndarray_linalg");
+    let sizes = [16, 64, 128];
+    let shapes = [MatrixShape::Square, MatrixShape::TallSkinny];
+
+    for size in sizes {
+        for shape in shapes {
+            let (rows, cols) = shape.dims(size);
+            let (_, matrix) = generate_matrix_pair(rows, cols);
+            assert_ndarray_linalg_qr_correct(&matrix);
+            let id = format!("{}-{rows}x{cols}", shape.label());
+
+            _ = group.bench_with_input(BenchmarkId::new("qr", &id), &size, |b, _| {
+                b.iter(|| matrix.view().qr());
+            });
+        }
+    }
+
+    group.finish();
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+criterion_group!(
+    benches,
+    benchmark_nabled_qr,
+    benchmark_nalgebra_qr_competitor,
+    benchmark_faer_qr_competitor,
+    benchmark_nalgebra_lapack_qr_competitor,
+    benchmark_ndarray_linalg_qr_competitor
+);
+
+#[cfg(not(all(feature = "lapack-competitors", target_os = "linux")))]
 criterion_group!(
     benches,
     benchmark_nabled_qr,

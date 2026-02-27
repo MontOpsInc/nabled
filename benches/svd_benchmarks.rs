@@ -4,7 +4,11 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use faer::MatRef;
 use nabled::svd::{nalgebra_svd, ndarray_svd};
 use nalgebra::DMatrix;
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+use nalgebra_lapack::SVD as NalgebraLapackSvd;
 use ndarray::Array2;
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+use ndarray_linalg::SVD as NdarrayLinalgSvd;
 use rand::RngExt;
 
 #[derive(Clone, Copy)]
@@ -105,6 +109,31 @@ fn assert_faer_direct_svd_correct(data: &[f64], rows: usize, cols: usize) {
             "faer singular value diverges from nalgebra baseline: {faer_value} vs {nalgebra_value}"
         );
     }
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn assert_nalgebra_lapack_svd_correct(matrix: &DMatrix<f64>) {
+    let svd = NalgebraLapackSvd::new(matrix.clone()).expect("nalgebra-lapack SVD should succeed");
+    let reconstructed = svd.recompose();
+    let err = (&reconstructed - matrix).norm() / matrix.norm().max(f64::EPSILON);
+    assert!(err < 1e-8, "nalgebra-lapack SVD reconstruction error too high: {err}");
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn assert_ndarray_linalg_svd_correct(matrix: &Array2<f64>) {
+    let (u_opt, singular_values, vt_opt) =
+        matrix.view().svd(true, true).expect("ndarray-linalg SVD should succeed");
+    let u = u_opt.expect("ndarray-linalg SVD should provide U when requested");
+    let vt = vt_opt.expect("ndarray-linalg SVD should provide V^T when requested");
+    let (rows, cols) = matrix.dim();
+    let mut sigma = Array2::zeros((rows, cols));
+    for (i, value) in singular_values.iter().enumerate() {
+        sigma[(i, i)] = *value;
+    }
+    let reconstructed = u.dot(&sigma).dot(&vt);
+    let diff = &reconstructed - matrix;
+    let err = frobenius_norm_ndarray(&diff) / frobenius_norm_ndarray(matrix).max(f64::EPSILON);
+    assert!(err < 1e-8, "ndarray-linalg SVD reconstruction error too high: {err}");
 }
 
 fn benchmark_nalgebra_svd(c: &mut Criterion) {
@@ -213,6 +242,64 @@ fn benchmark_faer_direct_competitor(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn benchmark_nalgebra_lapack_competitor(c: &mut Criterion) {
+    let mut group = c.benchmark_group("svd_competitor_nalgebra_lapack");
+    let sizes = [16, 64, 128];
+    let shapes = [MatrixShape::Square, MatrixShape::TallSkinny, MatrixShape::WideShort];
+
+    for size in sizes {
+        for shape in shapes {
+            let (rows, cols) = shape.dims(size);
+            let matrix = generate_random_matrix_nalgebra(rows, cols);
+            assert_nalgebra_lapack_svd_correct(&matrix);
+
+            _ = group.bench_with_input(
+                BenchmarkId::new("full_svd", format!("{}-{rows}x{cols}", shape.label())),
+                &size,
+                |b, _| b.iter(|| NalgebraLapackSvd::new(black_box(matrix.clone()))),
+            );
+        }
+    }
+
+    group.finish();
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+fn benchmark_ndarray_linalg_competitor(c: &mut Criterion) {
+    let mut group = c.benchmark_group("svd_competitor_ndarray_linalg");
+    let sizes = [16, 64, 128];
+    let shapes = [MatrixShape::Square, MatrixShape::TallSkinny, MatrixShape::WideShort];
+
+    for size in sizes {
+        for shape in shapes {
+            let (rows, cols) = shape.dims(size);
+            let matrix = generate_random_matrix_ndarray(rows, cols);
+            assert_ndarray_linalg_svd_correct(&matrix);
+
+            _ = group.bench_with_input(
+                BenchmarkId::new("full_svd", format!("{}-{rows}x{cols}", shape.label())),
+                &size,
+                |b, _| b.iter(|| matrix.view().svd(black_box(true), black_box(true))),
+            );
+        }
+    }
+
+    group.finish();
+}
+
+#[cfg(all(feature = "lapack-competitors", target_os = "linux"))]
+criterion_group!(
+    benches,
+    benchmark_nalgebra_svd,
+    benchmark_ndarray_svd,
+    benchmark_nalgebra_direct_competitor,
+    benchmark_faer_direct_competitor,
+    benchmark_nalgebra_lapack_competitor,
+    benchmark_ndarray_linalg_competitor
+);
+
+#[cfg(not(all(feature = "lapack-competitors", target_os = "linux")))]
 criterion_group!(
     benches,
     benchmark_nalgebra_svd,

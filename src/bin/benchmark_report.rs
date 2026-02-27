@@ -226,6 +226,12 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "svd_competitor_faer_direct" | "qr_competitor_faer_direct" => {
             ("faer_direct", "faer_direct")
         }
+        "svd_competitor_nalgebra_lapack" | "qr_competitor_nalgebra_lapack" => {
+            ("nalgebra_lapack", "nalgebra_lapack")
+        }
+        "svd_competitor_ndarray_linalg" | "qr_competitor_ndarray_linalg" => {
+            ("ndarray_linalg", "ndarray_linalg")
+        }
         "qr_nabled" if function_id.starts_with("ndarray") => ("ndarray", "none"),
         "qr_nabled" if function_id.starts_with("nalgebra") => ("nalgebra", "none"),
         "qr_nabled" => ("mixed", "none"),
