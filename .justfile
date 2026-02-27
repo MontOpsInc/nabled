@@ -74,6 +74,12 @@ bench-report:
 bench-report-check:
     cargo run --bin benchmark_report -- --fail-on-regression
 
+bench-history:
+    cargo run --bin benchmark_history
+
+bench-history-window max_runs:
+    cargo run --bin benchmark_history -- --max-runs "{{ max_runs }}"
+
 bench-baseline-update:
     mkdir -p coverage/benchmarks/baseline
     cp coverage/benchmarks/summary.json coverage/benchmarks/baseline/summary.json

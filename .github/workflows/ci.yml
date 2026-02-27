@@ -247,6 +247,24 @@ jobs:
     - name: Run smoke benchmarks and generate report
       run: just bench-smoke-report
 
+    - name: Update rolling benchmark history
+      run: |
+        cargo run --bin benchmark_history -- \
+          --summary coverage/benchmarks/summary.json \
+          --history coverage/benchmarks/baseline/history.json \
+          --output-md coverage/benchmarks/history.md \
+          --max-runs 30
+
+    - name: Publish benchmark trend summary
+      if: always()
+      run: |
+        if [[ -f coverage/benchmarks/history.md ]]; then
+          echo "## Benchmark Trend" >> "$GITHUB_STEP_SUMMARY"
+          sed -n '1,140p' coverage/benchmarks/history.md >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "No benchmark history markdown generated for this run." >> "$GITHUB_STEP_SUMMARY"
+        fi
+
     - name: Enforce benchmark regression threshold
       run: |
         if [[ -f coverage/benchmarks/baseline/summary.json ]]; then
@@ -278,7 +296,12 @@ jobs:
         echo "${{ github.ref_name }}" > coverage/benchmarks/baseline/branch.txt
         echo "${{ github.sha }}" > coverage/benchmarks/baseline/sha.txt
 
+    - name: Ensure benchmark baseline cache path exists
+      if: always()
+      run: mkdir -p coverage/benchmarks/baseline
+
     - name: Save benchmark baseline cache
+      if: always()
       uses: actions/cache/save@v4
       with:
         path: coverage/benchmarks/baseline

@@ -89,6 +89,11 @@ Store outputs under `coverage/benchmarks/`:
 3. `regressions.md`:
    - human-readable delta vs baseline branch/tag
    - flagged cases above regression threshold
+4. `history.md`:
+   - rolling benchmark trend table across the last N CI runs
+   - includes geomean trend and per-case latest/previous deltas
+5. `baseline/history.json`:
+   - machine-readable rolling benchmark history cache for CI trend tracking
 
 Current commands:
 
@@ -96,21 +101,23 @@ Current commands:
 2. `just bench-report` parses Criterion output and writes `summary.json`, `summary.csv`, `regressions.md`.
 3. `just bench-smoke-report` runs both in sequence.
 4. `just bench-report-check` runs report generation and fails if baseline regressions exceed both percent and absolute thresholds.
-5. Default regression thresholds:
+5. `just bench-history` updates rolling benchmark history and writes `history.md`.
+6. `just bench-history-window <N>` keeps a custom rolling window size.
+7. Default regression thresholds:
    - warn when `delta_pct > 5` and `delta_ns > 25_000`
    - fail when `delta_pct > 10` and `delta_ns > 25_000`
-6. Thresholds can be overridden via:
+8. Thresholds can be overridden via:
    - `BENCH_WARN_PCT`
    - `BENCH_FAIL_PCT`
    - `BENCH_MIN_REGRESSION_NS`
-7. CI branch policy:
+9. CI branch policy:
    - strict fail-on-regression only when the restored baseline was generated from the same branch
    - cross-branch baseline comparisons (for example, branch run using `main` fallback baseline) are advisory-only
-5. `just bench-smoke-check` runs smoke benches plus regression enforcement in one command.
-6. `just bench-baseline-update` promotes the latest `summary.json` to `baseline/summary.json`.
-7. `just bench-smoke-lapack` runs smoke SVD + QR suites with `lapack-competitors` enabled.
-10. `just bench-smoke-report-lapack` runs lapack-enabled smoke suites and regenerates report artifacts.
-9. LAPACK smoke commands require Linux with system BLAS/LAPACK libraries available (`libopenblas-dev`, `liblapack-dev`).
+10. `just bench-smoke-check` runs smoke benches plus regression enforcement in one command.
+11. `just bench-baseline-update` promotes the latest `summary.json` to `baseline/summary.json`.
+12. `just bench-smoke-lapack` runs smoke SVD + QR suites with `lapack-competitors` enabled.
+13. `just bench-smoke-report-lapack` runs lapack-enabled smoke suites and regenerates report artifacts.
+14. LAPACK smoke commands require Linux with system BLAS/LAPACK libraries available (`libopenblas-dev`, `liblapack-dev`).
 
 ## CI Policy
 
@@ -121,6 +128,8 @@ Current commands:
    - performance regression above threshold on protected cases
 4. Regression enforcement requires a baseline file at `coverage/benchmarks/baseline/summary.json`.
 5. Protected regression cases are nabled-owned paths only (`competitor == none`), not external competitor timings.
+6. CI also updates `coverage/benchmarks/baseline/history.json` and publishes `coverage/benchmarks/history.md` into `$GITHUB_STEP_SUMMARY` so trend data is visible per run.
+7. CI currently keeps a `30`-run rolling window for this history file.
 
 Initial regression threshold:
 
