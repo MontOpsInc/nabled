@@ -75,18 +75,7 @@ pub mod nalgebra_svd {
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_svd<T: RealField>(matrix: &DMatrix<T>) -> Result<NalgebraSVD<T>, SVDError> {
-        if matrix.is_empty() {
-            return Err(SVDError::EmptyMatrix);
-        }
-
-        // Use nalgebra's SVD implementation
-        let svd = matrix.clone().svd(true, true);
-
-        // Check if U and V^T were computed successfully
-        match (svd.u, svd.v_t) {
-            (Some(u), Some(vt)) => Ok(NalgebraSVD { u, singular_values: svd.singular_values, vt }),
-            _ => Err(SVDError::ConvergenceFailed),
-        }
+        crate::backend::svd::compute_nalgebra_svd(matrix)
     }
 
     /// Compute SVD with custom tolerance.
@@ -271,22 +260,7 @@ pub mod ndarray_svd {
     pub fn compute_svd<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarraySVD<T>, SVDError> {
-        if matrix.is_empty() {
-            return Err(SVDError::EmptyMatrix);
-        }
-
-        // Convert ndarray to nalgebra
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-
-        // Compute SVD using nalgebra
-        let nalgebra_svd = nalgebra_svd::compute_svd(&nalgebra_matrix)?;
-
-        // Convert results back to ndarray
-        let u = nalgebra_to_ndarray(&nalgebra_svd.u);
-        let vt = nalgebra_to_ndarray(&nalgebra_svd.vt);
-        let singular_values = Array1::from_vec(nalgebra_svd.singular_values.as_slice().to_vec());
-
-        Ok(NdarraySVD { u, singular_values, vt })
+        crate::backend::svd::compute_ndarray_svd(matrix)
     }
 
     /// Compute SVD with custom tolerance.

@@ -3,9 +3,9 @@
 //! This example demonstrates how to use the complex derivative functions
 //! in the rust-linalg library.
 
+use nabled::jacobian::{JacobianConfig, JacobianError, complex_jacobian};
 use nalgebra::DVector;
 use num_complex::Complex;
-use rust_linalg::jacobian::{JacobianConfig, JacobianError, complex_jacobian};
 
 fn main() -> Result<(), JacobianError> {
     println!("=== Complex Jacobian Computation Examples ===\n");

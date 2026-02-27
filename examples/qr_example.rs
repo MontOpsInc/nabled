@@ -7,9 +7,9 @@
 //! - Solve least squares problems
 //! - Handle both nalgebra and ndarray matrices
 
+use nabled::{QRConfig, QRError, nalgebra_qr, ndarray_qr};
 use nalgebra::{DMatrix, DVector};
 use ndarray::Array2;
-use rust_linalg::{QRConfig, QRError, nalgebra_qr, ndarray_qr};
 
 fn main() -> Result<(), QRError> {
     println!("🔢 QR Decomposition Examples\n");

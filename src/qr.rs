@@ -15,9 +15,7 @@
 
 use std::fmt;
 
-use nalgebra::linalg::ColPivQR;
-use nalgebra::{DMatrix, DVector, RealField};
-use ndarray::{Array1, Array2};
+use nalgebra::{DMatrix, RealField};
 use num_traits::Float;
 use num_traits::float::FloatCore;
 
@@ -103,7 +101,7 @@ pub mod nalgebra_qr {
     ///
     /// # Example
     /// ```rust
-    /// use rust_linalg::qr::nalgebra_qr;
+    /// use nabled::qr::nalgebra_qr;
     /// use nalgebra::DMatrix;
     ///
     /// let matrix = DMatrix::from_row_slice(3, 3, &[
@@ -115,7 +113,7 @@ pub mod nalgebra_qr {
     /// let qr = nalgebra_qr::compute_qr(&matrix, &Default::default())?;
     /// println!("Q: {}", qr.q);
     /// println!("R: {}", qr.r);
-    /// # Ok::<(), rust_linalg::qr::QRError>(())
+    /// # Ok::<(), nabled::qr::QRError>(())
     /// ```
     /// # Panics
     /// Panics if internal numeric assumptions are violated during setup or
@@ -128,77 +126,7 @@ pub mod nalgebra_qr {
     where
         T: RealField + FloatCore + Float,
     {
-        // Edge case: Empty matrix
-        if matrix.is_empty() {
-            return Err(QRError::EmptyMatrix);
-        }
-
-        // Edge case: Single element matrix
-        if matrix.nrows() == 1 && matrix.ncols() == 1 {
-            let val = matrix[(0, 0)];
-            if Float::is_finite(val) {
-                return Ok(QRResult {
-                    q:    DMatrix::from_element(1, 1, T::one()),
-                    r:    DMatrix::from_element(1, 1, val),
-                    p:    None,
-                    rank: usize::from(Float::abs(val) >= config.rank_tolerance),
-                });
-            }
-            return Err(QRError::NumericalInstability);
-        }
-
-        // Edge case: Zero matrix
-        if matrix.iter().all(|&x| Float::abs(x) < config.rank_tolerance) {
-            let (m, n) = matrix.shape();
-            let min_dim = m.min(n);
-            return Ok(QRResult {
-                q:    DMatrix::identity(m, min_dim),
-                r:    DMatrix::zeros(min_dim, n),
-                p:    None,
-                rank: 0,
-            });
-        }
-
-        // Edge case: Check for NaN or infinite values
-        if matrix.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(QRError::NumericalInstability);
-        }
-
-        // Validate configuration
-        if config.rank_tolerance <= T::zero() {
-            return Err(QRError::InvalidInput("Rank tolerance must be positive".to_string()));
-        }
-
-        // Edge case: Very small rank tolerance
-        if config.rank_tolerance < T::from(1e-15).unwrap() {
-            return Err(QRError::InvalidInput(
-                "Rank tolerance too small, may cause numerical issues".to_string(),
-            ));
-        }
-
-        // Use nalgebra's built-in QR decomposition for now
-        // TODO: Replace with our custom Householder implementation once debugged
-        let qr = matrix.clone().qr();
-        let q = qr.q();
-        let r = qr.r();
-
-        // Edge case: Check if QR decomposition failed
-        if q.iter().any(|&x| !Float::is_finite(x)) || r.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(QRError::NumericalInstability);
-        }
-
-        // Determine rank
-        let rank = determine_rank(&r, config.rank_tolerance);
-
-        // Edge case: Rank-deficient matrix warning
-        let (m, n) = matrix.shape();
-        let min_dim = m.min(n);
-        if rank < min_dim && rank > 0 {
-            // Matrix is rank-deficient but not completely singular
-            // This is handled gracefully by returning the reduced rank
-        }
-
-        Ok(QRResult { q: q.clone(), r: r.clone(), p: None, rank })
+        crate::backend::qr::compute_nalgebra_qr(matrix, config)
     }
 
     /// Compute reduced QR decomposition (economy size)
@@ -221,20 +149,7 @@ pub mod nalgebra_qr {
     where
         T: RealField + FloatCore + Float,
     {
-        let full_qr = compute_qr(matrix, config)?;
-        let (m, n) = matrix.shape();
-        let min_dim = m.min(n);
-
-        // Extract reduced Q and R
-        let q_reduced = full_qr.q.columns(0, min_dim);
-        let r_reduced = full_qr.r.rows(0, min_dim);
-
-        Ok(QRResult {
-            q:    q_reduced.into(),
-            r:    r_reduced.into(),
-            p:    full_qr.p,
-            rank: full_qr.rank,
-        })
+        crate::backend::qr::compute_nalgebra_reduced_qr(matrix, config)
     }
 
     /// Compute QR decomposition with column pivoting using nalgebra's built-in implementation
@@ -258,23 +173,7 @@ pub mod nalgebra_qr {
     where
         T: RealField + FloatCore + Float,
     {
-        if matrix.is_empty() {
-            return Err(QRError::EmptyMatrix);
-        }
-
-        let col_piv_qr = ColPivQR::new(matrix.clone());
-        let q = col_piv_qr.q().clone();
-        let r = col_piv_qr.r().clone();
-        let p_seq = col_piv_qr.p();
-
-        // Build permutation matrix P: A*P = Q*R
-        let n_cols = matrix.ncols();
-        let mut p_matrix = DMatrix::identity(n_cols, n_cols);
-        p_seq.permute_columns(&mut p_matrix);
-
-        let rank = determine_rank(&r, config.rank_tolerance);
-
-        Ok(QRResult { q, r, p: Some(p_matrix), rank })
+        crate::backend::qr::compute_nalgebra_qr_with_pivoting(matrix, config)
     }
 
     /// Solve least squares problem using QR decomposition
@@ -299,93 +198,7 @@ pub mod nalgebra_qr {
     where
         T: RealField + FloatCore + Float,
     {
-        // Edge case: Empty inputs
-        if matrix.is_empty() || rhs.is_empty() {
-            return Err(QRError::EmptyMatrix);
-        }
-
-        // Edge case: Check for NaN or infinite values in inputs
-        if matrix.iter().any(|&x| !Float::is_finite(x)) || rhs.iter().any(|&x| !Float::is_finite(x))
-        {
-            return Err(QRError::NumericalInstability);
-        }
-
-        let (m, n) = matrix.shape();
-
-        // Edge case: Dimension mismatch
-        if m != rhs.len() {
-            return Err(QRError::InvalidDimensions(format!(
-                "Matrix rows ({}) must match RHS length ({})",
-                m,
-                rhs.len()
-            )));
-        }
-
-        // Edge case: Underdetermined system (more unknowns than equations)
-        if n > m {
-            return Err(QRError::InvalidDimensions(
-                "Underdetermined system: more unknowns than equations".to_string(),
-            ));
-        }
-
-        // Edge case: Single equation
-        if m == 1 {
-            if n == 1 {
-                let a_val = matrix[(0, 0)];
-                let b_val = rhs[0];
-                if Float::abs(a_val) < config.rank_tolerance {
-                    return Err(QRError::SingularMatrix);
-                }
-                return Ok(DVector::from_vec(vec![b_val / a_val]));
-            }
-            return Err(QRError::InvalidDimensions(
-                "Single equation with multiple unknowns".to_string(),
-            ));
-        }
-
-        // Compute QR decomposition
-        let qr = compute_qr(matrix, config)?;
-
-        // Edge case: Check if matrix is rank-deficient
-        if qr.rank < n {
-            return Err(QRError::SingularMatrix);
-        }
-
-        // Compute Q^T * b
-        let qt_b = qr.q.transpose() * rhs;
-
-        // Edge case: Check for numerical issues in Q^T * b
-        if qt_b.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(QRError::NumericalInstability);
-        }
-
-        // Solve R * x = Q^T * b using back substitution
-        let mut x = DVector::zeros(n);
-
-        for i in (0..n).rev() {
-            if i >= qt_b.len() {
-                continue;
-            }
-
-            let mut sum = qt_b[i];
-            for j in (i + 1)..n {
-                sum -= qr.r[(i, j)] * x[j];
-            }
-
-            // Edge case: Check for singular or near-singular R
-            if FloatCore::abs(qr.r[(i, i)]) < config.rank_tolerance {
-                return Err(QRError::SingularMatrix);
-            }
-
-            x[i] = sum / qr.r[(i, i)];
-
-            // Edge case: Check for numerical overflow/underflow
-            if !Float::is_finite(x[i]) {
-                return Err(QRError::NumericalInstability);
-            }
-        }
-
-        Ok(x)
+        crate::backend::qr::solve_nalgebra_least_squares(matrix, rhs, config)
     }
 
     /// Reconstruct original matrix from QR decomposition
@@ -460,11 +273,7 @@ pub mod ndarray_qr {
     where
         T: Float + FloatCore + RealField,
     {
-        // Convert to nalgebra, compute QR, convert back
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let qr = nalgebra_qr::compute_qr(&nalgebra_matrix, config)?;
-
-        Ok(qr)
+        crate::backend::qr::compute_ndarray_qr(matrix, config)
     }
 
     /// Compute reduced QR decomposition (economy size)
@@ -478,10 +287,7 @@ pub mod ndarray_qr {
     where
         T: Float + FloatCore + RealField,
     {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let qr = nalgebra_qr::compute_reduced_qr(&nalgebra_matrix, config)?;
-
-        Ok(qr)
+        crate::backend::qr::compute_ndarray_reduced_qr(matrix, config)
     }
 
     /// Compute QR decomposition with column pivoting
@@ -495,10 +301,7 @@ pub mod ndarray_qr {
     where
         T: Float + FloatCore + RealField,
     {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let qr = nalgebra_qr::compute_qr_with_pivoting(&nalgebra_matrix, config)?;
-
-        Ok(qr)
+        crate::backend::qr::compute_ndarray_qr_with_pivoting(matrix, config)
     }
 
     /// Solve least squares problem using QR decomposition
@@ -513,87 +316,18 @@ pub mod ndarray_qr {
     where
         T: Float + FloatCore + RealField,
     {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let nalgebra_rhs = ndarray_to_nalgebra_vector(rhs);
-
-        let solution = nalgebra_qr::solve_least_squares(&nalgebra_matrix, &nalgebra_rhs, config)?;
-
-        Ok(nalgebra_to_ndarray_vector(&solution))
+        crate::backend::qr::solve_ndarray_least_squares(matrix, rhs, config)
     }
-}
-
-/// Helper function to determine matrix rank from R
-fn determine_rank<T>(r: &DMatrix<T>, tolerance: T) -> usize
-where
-    T: RealField + FloatCore,
-{
-    let (m, n) = r.shape();
-    let min_dim = m.min(n);
-
-    let mut rank = 0;
-    for i in 0..min_dim {
-        if FloatCore::abs(r[(i, i)]) > tolerance {
-            rank += 1;
-        }
-    }
-
-    rank
-}
-
-/// Convert ndarray matrix to nalgebra matrix
-fn ndarray_to_nalgebra<T>(array: &Array2<T>) -> DMatrix<T>
-where
-    T: RealField,
-{
-    let (rows, cols) = array.dim();
-    let mut matrix = DMatrix::zeros(rows, cols);
-
-    for i in 0..rows {
-        for j in 0..cols {
-            matrix[(i, j)] = array[(i, j)].clone();
-        }
-    }
-
-    matrix
-}
-
-/// Convert ndarray vector to nalgebra vector
-fn ndarray_to_nalgebra_vector<T>(array: &Array1<T>) -> DVector<T>
-where
-    T: RealField,
-{
-    let len = array.len();
-    let mut vector = DVector::zeros(len);
-
-    for i in 0..len {
-        vector[i] = array[i].clone();
-    }
-
-    vector
-}
-
-/// Convert nalgebra vector to ndarray vector
-fn nalgebra_to_ndarray_vector<T>(vector: &DVector<T>) -> Array1<T>
-where
-    T: Float + FloatCore,
-{
-    let len = vector.len();
-    let mut array = Array1::zeros(len);
-
-    for i in 0..len {
-        array[i] = vector[i];
-    }
-
-    array
 }
 
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
-    use nalgebra::DMatrix;
+    use nalgebra::{DMatrix, DVector};
     use ndarray::Array2;
 
     use super::*;
+    use crate::interop::ndarray_to_nalgebra;
 
     #[test]
     fn test_nalgebra_qr_basic() {

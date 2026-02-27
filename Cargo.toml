@@ -1,5 +1,5 @@
 [package]
-name = "rust-linalg"
+name = "nabled"
 version = "0.0.1"
 edition = "2024"
 description = "A linear algebra library written in Rust. SVD, QR, LU, Cholesky, eigen, PCA, regression, matrix functions, Jacobians, and more."

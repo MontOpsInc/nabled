@@ -1,8 +1,8 @@
 //! Example usage of the SVD implementations
 
+use nabled::svd::{nalgebra_svd, ndarray_svd};
 use nalgebra::DMatrix;
 use ndarray::Array2;
-use rust_linalg::svd::{nalgebra_svd, ndarray_svd};
 
 fn main() {
     println!("=== SVD Example ===");

@@ -1,18 +1,18 @@
 //! Integration tests for the linear algebra library
 
 use approx::assert_relative_eq;
+use nabled::IterativeConfig;
+use nabled::iterative::{nalgebra_iterative, ndarray_iterative};
+use nabled::matrix_functions::{nalgebra_matrix_functions, ndarray_matrix_functions};
+use nabled::orthogonalization::ndarray_orthogonalization;
+use nabled::pca::ndarray_pca;
+use nabled::regression::ndarray_regression;
+use nabled::stats::{nalgebra_stats, ndarray_stats};
+use nabled::svd::{SVDError, nalgebra_svd, ndarray_svd};
+use nabled::sylvester::ndarray_sylvester;
+use nabled::triangular::{nalgebra_triangular, ndarray_triangular};
 use nalgebra::{DMatrix, DVector};
 use ndarray::{Array1, Array2};
-use rust_linalg::IterativeConfig;
-use rust_linalg::iterative::{nalgebra_iterative, ndarray_iterative};
-use rust_linalg::matrix_functions::{nalgebra_matrix_functions, ndarray_matrix_functions};
-use rust_linalg::orthogonalization::ndarray_orthogonalization;
-use rust_linalg::pca::ndarray_pca;
-use rust_linalg::regression::ndarray_regression;
-use rust_linalg::stats::{nalgebra_stats, ndarray_stats};
-use rust_linalg::svd::{SVDError, nalgebra_svd, ndarray_svd};
-use rust_linalg::sylvester::ndarray_sylvester;
-use rust_linalg::triangular::{nalgebra_triangular, ndarray_triangular};
 
 #[test]
 fn test_nalgebra_svd_identity_matrix() {

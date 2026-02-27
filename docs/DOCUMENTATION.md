@@ -42,7 +42,7 @@ Computes the full singular value decomposition of a matrix.
 
 **Example:**
 ```rust
-use rust_linalg::svd::nalgebra_svd;
+use nabled::svd::nalgebra_svd;
 use nalgebra::DMatrix;
 
 let matrix = DMatrix::from_row_slice(3, 3, &[
@@ -153,7 +153,7 @@ Computes matrix exponential using Taylor series expansion.
 
 **Example:**
 ```rust
-use rust_linalg::matrix_functions::nalgebra_matrix_functions;
+use nabled::matrix_functions::nalgebra_matrix_functions;
 use nalgebra::DMatrix;
 
 let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 2.0]);
@@ -267,7 +267,7 @@ Configuration structure for Jacobian computation.
 
 **Example:**
 ```rust
-use rust_linalg::jacobian::JacobianConfig;
+use nabled::jacobian::JacobianConfig;
 
 let config = JacobianConfig {
     step_size: 1e-8,
@@ -292,7 +292,7 @@ Computes numerical Jacobian using forward finite differences.
 
 **Example:**
 ```rust
-use rust_linalg::jacobian::nalgebra_jacobian;
+use nabled::jacobian::nalgebra_jacobian;
 use nalgebra::DVector;
 
 let f = |x: &DVector<f64>| -> Result<DVector<f64>, String> {
@@ -395,7 +395,7 @@ Computes numerical Jacobian for complex-valued functions using the complex step 
 
 **Example:**
 ```rust
-use rust_linalg::jacobian::complex_jacobian;
+use nabled::jacobian::complex_jacobian;
 use nalgebra::DVector;
 use num_complex::Complex;
 
@@ -741,7 +741,7 @@ Computes the full QR decomposition of a matrix using nalgebra's built-in QR algo
 
 **Example:**
 ```rust
-use rust_linalg::qr::nalgebra_qr;
+use nabled::qr::nalgebra_qr;
 use nalgebra::DMatrix;
 
 let matrix = DMatrix::from_row_slice(3, 3, &[
@@ -769,7 +769,7 @@ Computes the reduced QR decomposition (economy size) for rectangular matrices.
 
 **Example:**
 ```rust
-use rust_linalg::qr::nalgebra_qr;
+use nabled::qr::nalgebra_qr;
 use nalgebra::DMatrix;
 
 let matrix = DMatrix::from_row_slice(4, 3, &[
@@ -808,7 +808,7 @@ Solves least squares problem min ||Ax - b||₂ using QR decomposition.
 
 **Example:**
 ```rust
-use rust_linalg::qr::nalgebra_qr;
+use nabled::qr::nalgebra_qr;
 use nalgebra::{DMatrix, DVector};
 
 let a = DMatrix::from_row_slice(4, 2, &[
@@ -1058,7 +1058,7 @@ Compute column means and center columns (subtract mean).
 
 Compute sample covariance matrix (Bessel correction n-1) and correlation matrix.
 
-**Module:** `rust_linalg::stats::nalgebra_stats` / `ndarray_stats`
+**Module:** `nabled::stats::nalgebra_stats` / `ndarray_stats`
 
 ---
 
@@ -1138,7 +1138,7 @@ Gram-Schmidt and related orthogonalization procedures.
 
 ### Functions
 
-Provides orthogonalization of a set of vectors (e.g., Gram-Schmidt process). See `rust_linalg::orthogonalization` for available functions.
+Provides orthogonalization of a set of vectors (e.g., Gram-Schmidt process). See `nabled::orthogonalization` for available functions.
 
 ---
 
@@ -1148,7 +1148,7 @@ Iterative solver configuration and infrastructure.
 
 ### `IterativeConfig`
 
-Configuration for iterative methods (max iterations, tolerance, etc.). See `rust_linalg::iterative`.
+Configuration for iterative methods (max iterations, tolerance, etc.). See `nabled::iterative`.
 
 ---
 
@@ -1158,7 +1158,7 @@ Triangular matrix solve operations.
 
 ### Functions
 
-Solves lower/upper triangular systems. See `rust_linalg::triangular` module.
+Solves lower/upper triangular systems. See `nabled::triangular` module.
 
 ---
 

@@ -1,7 +1,7 @@
 //! Cholesky decomposition: solve Ax = b for positive-definite A
 
+use nabled::cholesky;
 use nalgebra::{DMatrix, DVector};
-use rust_linalg::cholesky;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Cholesky Decomposition Example ===\n");

@@ -1,7 +1,7 @@
 //! Linear regression: least squares fit with R-squared
 
+use nabled::regression;
 use nalgebra::{DMatrix, DVector};
-use rust_linalg::regression;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Linear Regression Example ===\n");

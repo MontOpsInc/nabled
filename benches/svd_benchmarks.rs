@@ -1,10 +1,10 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use nabled::svd::{nalgebra_svd, ndarray_svd};
 use nalgebra::DMatrix;
 use ndarray::Array2;
 use rand::RngExt;
-use rust_linalg::svd::{nalgebra_svd, ndarray_svd};
 
 fn generate_random_matrix_nalgebra(size: usize) -> DMatrix<f64> {
     let mut rng = rand::rng();

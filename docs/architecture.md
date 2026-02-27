@@ -11,6 +11,11 @@ flowchart TB
         ndarray[ndarray]
     end
 
+    subgraph Backend [Internal Backend Kernels]
+        backend_svd[SvdKernel]
+        backend_qr[QrKernel]
+    end
+
     subgraph Core [Core Decompositions]
         svd[SVD]
         qr[QR]
@@ -29,7 +34,7 @@ flowchart TB
 
     subgraph Utils [Utils and Support]
         stats[Stats]
-        utils[Utils]
+        interop[Interop]
         matrix_functions[Matrix Functions]
         jacobian[Jacobian]
         orthogonalization[Orthogonalization]
@@ -37,6 +42,8 @@ flowchart TB
         iterative[Iterative]
     end
 
+    svd --> backend_svd
+    qr --> backend_qr
     pca --> stats
     pca --> svd
     regression --> qr
@@ -46,14 +53,18 @@ flowchart TB
 
 ## Data Flow
 
-Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
+Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. SVD and QR currently dispatch through internal backend kernel traits before executing backend-specific implementations. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
 
 ## File Reference
 
 | Module | Source File |
 |--------|-------------|
+| backend (root) | `src/backend/mod.rs` |
+| backend qr kernel | `src/backend/qr.rs` |
+| backend svd kernel | `src/backend/svd.rs` |
 | cholesky | `src/cholesky.rs` |
 | eigen | `src/eigen.rs` |
+| interop | `src/interop.rs` |
 | iterative | `src/iterative.rs` |
 | jacobian | `src/jacobian.rs` |
 | lu | `src/lu.rs` |
@@ -68,4 +79,3 @@ Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1
 | svd | `src/svd.rs` |
 | sylvester | `src/sylvester.rs` |
 | triangular | `src/triangular.rs` |
-| utils | `src/utils.rs` |

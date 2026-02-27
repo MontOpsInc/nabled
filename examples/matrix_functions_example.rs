@@ -1,10 +1,10 @@
 //! Example usage of matrix functions (exponential, logarithm, power)
 
-use nalgebra::DMatrix;
-use ndarray::Array2;
-use rust_linalg::matrix_functions::{
+use nabled::matrix_functions::{
     MatrixFunctionError, nalgebra_matrix_functions, ndarray_matrix_functions,
 };
+use nalgebra::DMatrix;
+use ndarray::Array2;
 
 fn main() -> Result<(), MatrixFunctionError> {
     println!("=== Matrix Functions Example ===");

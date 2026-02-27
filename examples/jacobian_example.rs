@@ -3,9 +3,9 @@
 //! This example demonstrates how to use the Jacobian computation functions
 //! for both nalgebra and ndarray.
 
+use nabled::{JacobianConfig, JacobianError, nalgebra_jacobian, ndarray_jacobian};
 use nalgebra::DVector;
 use ndarray::Array1;
-use rust_linalg::{JacobianConfig, JacobianError, nalgebra_jacobian, ndarray_jacobian};
 
 fn main() -> Result<(), JacobianError> {
     println!("=== Jacobian Computation Examples ===\n");

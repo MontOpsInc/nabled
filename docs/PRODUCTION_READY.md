@@ -121,6 +121,45 @@ Migration strategy:
 2. Validate parity and performance.
 3. Expand module by module after pilot passes.
 
+### Domain Trait Scope (No Patchwork Rule)
+
+To avoid fragmented backend support, backend abstraction is rolled out by domain tiers.
+
+Tier A: Core kernel domains (required for a backend to be considered supported)
+
+1. `SvdKernel`
+2. `QrKernel`
+3. `LuKernel`
+4. `CholeskyKernel`
+5. `EigenKernel`
+6. `SchurKernel`
+7. `TriangularSolveKernel`
+
+Tier B: Derived domains (may compose Tier A kernels)
+
+1. Polar decomposition
+2. PCA
+3. Regression
+4. Matrix functions
+5. Sylvester/Lyapunov
+
+Tier C: Utility and extension domains
+
+1. Iterative solvers
+2. Statistics helpers
+3. Numerical differentiation
+
+Support levels:
+
+1. **Experimental backend**: Pilot-only (`svd` + `qr`) to validate architecture. Not advertised as full backend support.
+2. **Supported backend**: Full Tier A parity with tests and benchmarks.
+3. **Production backend**: Tier A + Tier B parity, documented caveats, and stable benchmark profile.
+
+Backend acceptance rule:
+
+1. Do not mark a backend as supported if Tier A is partial.
+2. Keep a backend capability matrix in docs and CI checks to prevent regressions.
+
 ## Phase 2: Backend Expansion
 
 Recommended order:
@@ -197,3 +236,12 @@ Practical interpretation:
 2. Implement backend kernel pilot for `svd` and `qr`.
 3. Add one external competitor benchmark per pilot domain.
 4. Review pilot results before scaling architecture across all modules.
+
+### Status Note (February 27, 2026)
+
+Current state:
+
+1. Benchmark specification is defined in `docs/BENCHMARK_SPEC.md`.
+2. Backend kernel pilot is implemented for `svd` and `qr` using internal `SvdKernel` and `QrKernel` adapters.
+3. Public APIs remain unchanged; dispatch routes through backend-owned kernel implementations (no temporary round-trip back into domain `*_impl` functions).
+4. Next execution focus remains competitor baselines and benchmark harness expansion before extending kernels to the rest of Tier A.

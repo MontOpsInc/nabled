@@ -1,8 +1,8 @@
 //! LU decomposition: solve Ax = b and compute inverse
 
+use nabled::lu;
 use nalgebra::{DMatrix, DVector};
 use ndarray::{Array1, Array2};
-use rust_linalg::lu;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== LU Decomposition Example ===\n");

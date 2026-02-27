@@ -1,7 +1,7 @@
 //! PCA: dimensionality reduction and explained variance
 
+use nabled::pca;
 use nalgebra::DMatrix;
-use rust_linalg::pca;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== PCA Example ===\n");

@@ -23,15 +23,16 @@
 //!
 //! ```rust
 //! use nalgebra::DMatrix;
-//! use rust_linalg::svd::nalgebra_svd;
+//! use nabled::svd::nalgebra_svd;
 //!
 //! let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
 //! let svd = nalgebra_svd::compute_svd(&matrix)?;
 //!
 //! assert_eq!(svd.singular_values.len(), 2);
-//! # Ok::<(), rust_linalg::svd::SVDError>(())
+//! # Ok::<(), nabled::svd::SVDError>(())
 //! ```
 
+pub(crate) mod backend;
 pub mod cholesky;
 pub mod eigen;
 pub(crate) mod interop;

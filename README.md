@@ -49,9 +49,9 @@ rust-linalg = { git = "https://github.com/MontOpsInc/nabled" }
 
 ```rust
 use nalgebra::DMatrix;
-use rust_linalg::svd::nalgebra_svd;
+use nabled::svd::nalgebra_svd;
 
-fn main() -> Result<(), rust_linalg::svd::SVDError> {
+fn main() -> Result<(), nabled::svd::SVDError> {
     let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
     let svd = nalgebra_svd::compute_svd(&a)?;
 
@@ -65,9 +65,9 @@ fn main() -> Result<(), rust_linalg::svd::SVDError> {
 
 ```rust
 use nalgebra::{DMatrix, DVector};
-use rust_linalg::qr::{QRConfig, nalgebra_qr};
+use nabled::qr::{QRConfig, nalgebra_qr};
 
-fn main() -> Result<(), rust_linalg::qr::QRError> {
+fn main() -> Result<(), nabled::qr::QRError> {
     let a = DMatrix::from_row_slice(4, 2, &[
         1.0, 1.0,
         1.0, 2.0,
@@ -86,9 +86,9 @@ fn main() -> Result<(), rust_linalg::qr::QRError> {
 
 ```rust
 use nalgebra::DVector;
-use rust_linalg::jacobian::{JacobianConfig, nalgebra_jacobian};
+use nabled::jacobian::{JacobianConfig, nalgebra_jacobian};
 
-fn main() -> Result<(), rust_linalg::jacobian::JacobianError> {
+fn main() -> Result<(), nabled::jacobian::JacobianError> {
     let f = |x: &DVector<f64>| -> Result<DVector<f64>, String> {
         Ok(DVector::from_vec(vec![x[0] * x[0], x[1] * x[1]]))
     };

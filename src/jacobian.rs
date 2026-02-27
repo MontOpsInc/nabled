@@ -130,7 +130,7 @@ pub mod nalgebra_jacobian {
     ///
     /// # Example
     /// ```rust
-    /// use rust_linalg::jacobian::{nalgebra_jacobian, JacobianConfig};
+    /// use nabled::jacobian::{nalgebra_jacobian, JacobianConfig};
     /// use nalgebra::DVector;
     ///
     /// let f = |x: &DVector<f64>| -> Result<DVector<f64>, String> {
@@ -140,7 +140,7 @@ pub mod nalgebra_jacobian {
     /// let x = DVector::from_vec(vec![1.0, 2.0]);
     /// let jacobian = nalgebra_jacobian::numerical_jacobian(&f, &x, &JacobianConfig::default())?;
     /// // Jacobian should be [[2.0, 0.0], [0.0, 4.0]]
-    /// # Ok::<(), rust_linalg::jacobian::JacobianError>(())
+    /// # Ok::<(), nabled::jacobian::JacobianError>(())
     /// ```
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
@@ -649,7 +649,7 @@ pub mod complex_jacobian {
     ///
     /// # Example
     /// ```rust
-    /// use rust_linalg::jacobian::complex_jacobian;
+    /// use nabled::jacobian::complex_jacobian;
     /// use nalgebra::DVector;
     /// use num_complex::Complex;
     ///
@@ -663,7 +663,7 @@ pub mod complex_jacobian {
     ///
     /// let x = DVector::from_vec(vec![Complex::new(1.0, 2.0), Complex::new(3.0, 4.0)]);
     /// let jacobian = complex_jacobian::numerical_jacobian(&f, &x, &Default::default())?;
-    /// # Ok::<(), rust_linalg::jacobian::JacobianError>(())
+    /// # Ok::<(), nabled::jacobian::JacobianError>(())
     /// ```
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
