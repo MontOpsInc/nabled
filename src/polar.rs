@@ -137,6 +137,28 @@ mod tests {
         let result = nalgebra_polar::compute_polar(&a).unwrap();
         let identity = &result.u * result.u.transpose();
         assert_relative_eq!(identity[(0, 0)], 1.0, epsilon = 1e-10);
+        assert_relative_eq!(identity[(0, 1)], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(identity[(1, 0)], 0.0, epsilon = 1e-10);
         assert_relative_eq!(identity[(1, 1)], 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_ndarray_polar_reconstruct_and_orthogonal() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let result = ndarray_polar::compute_polar(&a).unwrap();
+
+        let reconstructed = result.u.dot(&result.p);
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_relative_eq!(reconstructed[[i, j]], a[[i, j]], epsilon = 1e-8);
+            }
+        }
+
+        let u_t = result.u.t().to_owned();
+        let identity = u_t.dot(&result.u);
+        assert_relative_eq!(identity[[0, 0]], 1.0, epsilon = 1e-8);
+        assert_relative_eq!(identity[[0, 1]], 0.0, epsilon = 1e-8);
+        assert_relative_eq!(identity[[1, 0]], 0.0, epsilon = 1e-8);
+        assert_relative_eq!(identity[[1, 1]], 1.0, epsilon = 1e-8);
     }
 }

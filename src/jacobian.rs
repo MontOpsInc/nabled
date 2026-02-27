@@ -942,8 +942,10 @@ mod tests {
         assert_relative_eq!(jacobian_central[(0, 0)], 12.0, epsilon = 1e-3);
         assert_relative_eq!(jacobian_central[(1, 1)], 6.0, epsilon = 1e-3);
 
-        // Central differences should be closer to analytical result
-        assert!(jacobian_central[(0, 0)].abs() - 12.0 < jacobian_forward[(0, 0)].abs() - 12.0);
+        // Central differences should be closer to the analytical result.
+        let central_error = (jacobian_central[(0, 0)] - 12.0).abs();
+        let forward_error = (jacobian_forward[(0, 0)] - 12.0).abs();
+        assert!(central_error < forward_error);
     }
 
     #[test]

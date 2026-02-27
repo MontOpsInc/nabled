@@ -149,6 +149,7 @@ mod tests {
     use approx::assert_relative_eq;
 
     use super::*;
+    use crate::interop::ndarray_to_nalgebra;
 
     #[test]
     fn test_sylvester_simple() {
@@ -173,6 +174,42 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert_relative_eq!(ax_xat[(i, j)], q[(i, j)], epsilon = 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn test_ndarray_sylvester_simple() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 2.0]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![3.0, 0.0, 0.0, 4.0]).unwrap();
+        let c = Array2::from_shape_vec((2, 2), vec![1.0, 1.0, 1.0, 1.0]).unwrap();
+        let x = ndarray_sylvester::solve_sylvester(&a, &b, &c).unwrap();
+
+        let nalg_a = ndarray_to_nalgebra(&a);
+        let nalg_b = ndarray_to_nalgebra(&b);
+        let nalg_c = ndarray_to_nalgebra(&c);
+        let nalg_x = ndarray_to_nalgebra(&x);
+        let ax_xb = &nalg_a * &nalg_x + &nalg_x * &nalg_b;
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_relative_eq!(ax_xb[(i, j)], nalg_c[(i, j)], epsilon = 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn test_ndarray_lyapunov_simple() {
+        let a = Array2::from_shape_vec((2, 2), vec![-1.0, 0.0, 0.0, -2.0]).unwrap();
+        let q = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
+        let x = ndarray_sylvester::solve_lyapunov(&a, &q).unwrap();
+
+        let nalg_a = ndarray_to_nalgebra(&a);
+        let nalg_q = ndarray_to_nalgebra(&q);
+        let nalg_x = ndarray_to_nalgebra(&x);
+        let ax_xat = &nalg_a * &nalg_x + &nalg_x * nalg_a.transpose();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_relative_eq!(ax_xat[(i, j)], nalg_q[(i, j)], epsilon = 1e-8);
             }
         }
     }

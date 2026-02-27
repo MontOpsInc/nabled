@@ -180,4 +180,15 @@ mod tests {
         let result = nalgebra_regression::linear_regression(&x, &y, true).unwrap();
         assert_relative_eq!(result.r_squared, 1.0, epsilon = 1e-10);
     }
+
+    #[test]
+    fn test_ndarray_linear_regression_known_slope() {
+        let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let y = Array1::from_vec(vec![3.0, 5.0, 7.0, 9.0]);
+        let result = ndarray_regression::linear_regression(&x, &y, true).unwrap();
+
+        assert_relative_eq!(result.coefficients[0], 1.0, epsilon = 0.1);
+        assert_relative_eq!(result.coefficients[1], 2.0, epsilon = 0.1);
+        assert_relative_eq!(result.r_squared, 1.0, epsilon = 1e-10);
+    }
 }

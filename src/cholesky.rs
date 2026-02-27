@@ -193,6 +193,8 @@ mod tests {
         let inv = nalgebra_cholesky::inverse(&a).unwrap();
         let identity = &a * &inv;
         assert_relative_eq!(identity[(0, 0)], 1.0, epsilon = 1e-10);
+        assert_relative_eq!(identity[(0, 1)], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(identity[(1, 0)], 0.0, epsilon = 1e-10);
         assert_relative_eq!(identity[(1, 1)], 1.0, epsilon = 1e-10);
     }
 

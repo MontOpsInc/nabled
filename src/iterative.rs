@@ -233,4 +233,28 @@ mod tests {
             assert_relative_eq!(ax[i], b[i], epsilon = 1e-8);
         }
     }
+
+    #[test]
+    fn test_ndarray_conjugate_gradient() {
+        let a = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
+        let b = Array1::from_vec(vec![1.0, 2.0]);
+        let x = ndarray_iterative::conjugate_gradient(&a, &b, &IterativeConfig::default()).unwrap();
+        let ax = a.dot(&x);
+
+        for i in 0..2 {
+            assert_relative_eq!(ax[i], b[i], epsilon = 1e-8);
+        }
+    }
+
+    #[test]
+    fn test_ndarray_gmres() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let b = Array1::from_vec(vec![5.0, 11.0]);
+        let x = ndarray_iterative::gmres(&a, &b, &IterativeConfig::default()).unwrap();
+        let ax = a.dot(&x);
+
+        for i in 0..2 {
+            assert_relative_eq!(ax[i], b[i], epsilon = 1e-8);
+        }
+    }
 }

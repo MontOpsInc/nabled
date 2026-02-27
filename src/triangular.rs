@@ -164,4 +164,28 @@ mod tests {
             assert_relative_eq!(ux[i], b[i], epsilon = 1e-10);
         }
     }
+
+    #[test]
+    fn test_ndarray_solve_lower() {
+        let l = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 1.0, 3.0]).unwrap();
+        let b = Array1::from_vec(vec![4.0, 8.0]);
+        let x = ndarray_triangular::solve_lower(&l, &b).unwrap();
+        let lx = l.dot(&x);
+
+        for i in 0..2 {
+            assert_relative_eq!(lx[i], b[i], epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_ndarray_solve_upper() {
+        let u = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 0.0, 3.0]).unwrap();
+        let b = Array1::from_vec(vec![4.0, 9.0]);
+        let x = ndarray_triangular::solve_upper(&u, &b).unwrap();
+        let ux = u.dot(&x);
+
+        for i in 0..2 {
+            assert_relative_eq!(ux[i], b[i], epsilon = 1e-10);
+        }
+    }
 }

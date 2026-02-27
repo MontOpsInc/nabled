@@ -192,4 +192,34 @@ mod tests {
         assert_relative_eq!(corr[(0, 1)], 1.0, epsilon = 1e-10);
         assert_relative_eq!(corr[(0, 0)], 1.0, epsilon = 1e-10);
     }
+
+    #[test]
+    fn test_column_means_and_center_columns() {
+        let m = DMatrix::from_row_slice(3, 2, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let means = nalgebra_stats::column_means(&m);
+        assert_relative_eq!(means[0], 3.0, epsilon = 1e-12);
+        assert_relative_eq!(means[1], 4.0, epsilon = 1e-12);
+
+        let centered = nalgebra_stats::center_columns(&m);
+        let centered_means = nalgebra_stats::column_means(&centered);
+        assert_relative_eq!(centered_means[0], 0.0, epsilon = 1e-12);
+        assert_relative_eq!(centered_means[1], 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_ndarray_stats_wrappers() {
+        let m = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let means = ndarray_stats::column_means(&m);
+        assert_relative_eq!(means[0], 3.0, epsilon = 1e-12);
+        assert_relative_eq!(means[1], 4.0, epsilon = 1e-12);
+
+        let centered = ndarray_stats::center_columns(&m);
+        let centered_means = ndarray_stats::column_means(&centered);
+        assert_relative_eq!(centered_means[0], 0.0, epsilon = 1e-12);
+        assert_relative_eq!(centered_means[1], 0.0, epsilon = 1e-12);
+
+        let cov = ndarray_stats::covariance_matrix(&m).unwrap();
+        assert_relative_eq!(cov[[0, 0]], 4.0, epsilon = 1e-12);
+        assert_relative_eq!(cov[[1, 1]], 4.0, epsilon = 1e-12);
+    }
 }

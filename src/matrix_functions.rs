@@ -55,7 +55,22 @@ impl std::error::Error for MatrixFunctionError {}
 /// Matrix exponential and logarithm functions using nalgebra
 pub mod nalgebra_matrix_functions {
     use super::*;
-    // Note: SymmetricEigen import removed as it's not used directly
+
+    #[inline]
+    fn is_symmetric<T: RealField + FloatCore>(matrix: &DMatrix<T>, tol: T) -> bool {
+        if !matrix.is_square() {
+            return false;
+        }
+        let n = matrix.nrows();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                if FloatCore::abs(matrix[(i, j)] - matrix[(j, i)]) > tol {
+                    return false;
+                }
+            }
+        }
+        true
+    }
 
     /// Compute matrix exponential using Taylor series expansion
     /// exp(A) = I + A + A²/2! + A³/3! + ...
@@ -120,11 +135,10 @@ pub mod nalgebra_matrix_functions {
             return Err(MatrixFunctionError::NotSquare);
         }
 
-        // For symmetric matrices, use eigenvalue decomposition
-        // Note: We'll assume the matrix is symmetric for now
-        // In a full implementation, you would check symmetry properly
-        if true {
-            // Simplified for now
+        let tol = T::from_f64(1e-10).unwrap_or_else(T::epsilon);
+
+        if is_symmetric(matrix, tol) {
+            // Symmetric path: exp(A) = Q * exp(Λ) * Q^T
             let eigen = matrix.clone().symmetric_eigen();
             let eigenvalues = eigen.eigenvalues;
             let eigenvectors = eigen.eigenvectors;
@@ -133,11 +147,10 @@ pub mod nalgebra_matrix_functions {
             let exp_eigenvalues = eigenvalues.map(nalgebra::ComplexField::exp);
             let exp_diagonal = DMatrix::from_diagonal(&exp_eigenvalues);
 
-            // Reconstruct: exp(A) = P * exp(D) * P^T
             Ok(&eigenvectors * &exp_diagonal * eigenvectors.transpose())
         } else {
-            // For non-symmetric matrices, fall back to Taylor series
-            matrix_exp(matrix, 50, T::from_f64(1e-10).unwrap())
+            // General path: Taylor series works for any square matrix.
+            matrix_exp(matrix, 100, tol)
         }
     }
 
@@ -214,31 +227,32 @@ pub mod nalgebra_matrix_functions {
             return Err(MatrixFunctionError::NotSquare);
         }
 
-        // For symmetric matrices, use eigenvalue decomposition
-        // Note: We'll assume the matrix is symmetric for now
-        if true {
-            // Simplified for now
-            let eigen = matrix.clone().symmetric_eigen();
-            let eigenvalues = eigen.eigenvalues;
-            let eigenvectors = eigen.eigenvectors;
-
-            // Check for negative eigenvalues
-            for &lambda in eigenvalues.iter() {
-                if lambda <= T::zero() {
-                    return Err(MatrixFunctionError::NegativeEigenvalues);
-                }
-            }
-
-            // Compute log(D) where D is diagonal matrix of eigenvalues
-            let log_eigenvalues = eigenvalues.map(nalgebra::ComplexField::ln);
-            let log_diagonal = DMatrix::from_diagonal(&log_eigenvalues);
-
-            // Reconstruct: log(A) = P * log(D) * P^T
-            Ok(&eigenvectors * &log_diagonal * eigenvectors.transpose())
-        } else {
-            // For non-symmetric matrices, use SVD-based approach
-            matrix_log_svd(matrix)
+        let tol = T::from_f64(1e-10).unwrap_or_else(T::epsilon);
+        if !is_symmetric(matrix, tol) {
+            return Err(MatrixFunctionError::InvalidInput(
+                "matrix_log_eigen requires a symmetric matrix; use matrix_log_svd for general \
+                 matrices"
+                    .to_string(),
+            ));
         }
+
+        let eigen = matrix.clone().symmetric_eigen();
+        let eigenvalues = eigen.eigenvalues;
+        let eigenvectors = eigen.eigenvectors;
+
+        // Check for negative eigenvalues
+        for &lambda in eigenvalues.iter() {
+            if lambda <= T::zero() {
+                return Err(MatrixFunctionError::NegativeEigenvalues);
+            }
+        }
+
+        // Compute log(D) where D is diagonal matrix of eigenvalues
+        let log_eigenvalues = eigenvalues.map(nalgebra::ComplexField::ln);
+        let log_diagonal = DMatrix::from_diagonal(&log_eigenvalues);
+
+        // Reconstruct: log(A) = P * log(D) * P^T
+        Ok(&eigenvectors * &log_diagonal * eigenvectors.transpose())
     }
 
     /// Compute matrix logarithm using SVD decomposition
@@ -297,35 +311,32 @@ pub mod nalgebra_matrix_functions {
             return Err(MatrixFunctionError::NotSquare);
         }
 
-        // For symmetric matrices, use eigenvalue decomposition
-        // Note: We'll assume the matrix is symmetric for now
-        if true {
-            // Simplified for now
-            let eigen = matrix.clone().symmetric_eigen();
-            let eigenvalues = eigen.eigenvalues;
-            let eigenvectors = eigen.eigenvectors;
+        let tol = T::from_f64(1e-10).unwrap_or_else(T::epsilon);
+        if !is_symmetric(matrix, tol) {
+            return Err(MatrixFunctionError::InvalidInput(
+                "matrix_power currently requires a symmetric matrix".to_string(),
+            ));
+        }
 
-            // Check for negative eigenvalues when power is not an integer
-            if FloatCore::fract(power) != T::zero() {
-                for &lambda in eigenvalues.iter() {
-                    if lambda <= T::zero() {
-                        return Err(MatrixFunctionError::NegativeEigenvalues);
-                    }
+        let eigen = matrix.clone().symmetric_eigen();
+        let eigenvalues = eigen.eigenvalues;
+        let eigenvectors = eigen.eigenvectors;
+
+        // Check for negative eigenvalues when power is not an integer
+        if FloatCore::fract(power) != T::zero() {
+            for &lambda in eigenvalues.iter() {
+                if lambda <= T::zero() {
+                    return Err(MatrixFunctionError::NegativeEigenvalues);
                 }
             }
-
-            // Compute D^p where D is diagonal matrix of eigenvalues
-            let powered_eigenvalues = eigenvalues.map(|lambda| lambda.powf(power));
-            let powered_diagonal = DMatrix::from_diagonal(&powered_eigenvalues);
-
-            // Reconstruct: A^p = P * D^p * P^T
-            Ok(&eigenvectors * &powered_diagonal * eigenvectors.transpose())
-        } else {
-            // For non-symmetric matrices, use matrix exponential: A^p = exp(p * log(A))
-            let log_a = matrix_log_eigen(matrix)?;
-            let p_log_a = &log_a * power;
-            matrix_exp_eigen(&p_log_a)
         }
+
+        // Compute D^p where D is diagonal matrix of eigenvalues
+        let powered_eigenvalues = eigenvalues.map(|lambda| lambda.powf(power));
+        let powered_diagonal = DMatrix::from_diagonal(&powered_eigenvalues);
+
+        // Reconstruct: A^p = P * D^p * P^T
+        Ok(&eigenvectors * &powered_diagonal * eigenvectors.transpose())
     }
 
     /// Compute matrix sign function: sign(A) for symmetric diagonalizable A
@@ -341,6 +352,12 @@ pub mod nalgebra_matrix_functions {
         }
         if !matrix.is_square() {
             return Err(MatrixFunctionError::NotSquare);
+        }
+        let tol = T::from_f64(1e-10).unwrap_or_else(T::epsilon);
+        if !is_symmetric(matrix, tol) {
+            return Err(MatrixFunctionError::InvalidInput(
+                "matrix_sign requires a symmetric matrix".to_string(),
+            ));
         }
 
         let eigen = matrix.clone().symmetric_eigen();
@@ -686,5 +703,82 @@ mod tests {
                 assert_relative_eq!(sign_a[(i, j)], identity[(i, j)], epsilon = 1e-10);
             }
         }
+    }
+
+    #[test]
+    fn test_nalgebra_matrix_exp_eigen_non_symmetric_fallback() {
+        // A^2 = 0 so exp(A) = I + A
+        let matrix = DMatrix::from_row_slice(2, 2, &[0.0, 1.0, 0.0, 0.0]);
+        let exp_matrix = nalgebra_matrix_functions::matrix_exp_eigen(&matrix).unwrap();
+        let expected = DMatrix::from_row_slice(2, 2, &[1.0, 1.0, 0.0, 1.0]);
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_relative_eq!(exp_matrix[(i, j)], expected[(i, j)], epsilon = 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn test_matrix_log_eigen_rejects_non_symmetric() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 0.0, 1.0]);
+        let result = nalgebra_matrix_functions::matrix_log_eigen(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn test_matrix_power_rejects_non_symmetric() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 0.0, 1.0]);
+        let result = nalgebra_matrix_functions::matrix_power(&matrix, 2.0);
+        assert!(matches!(result, Err(MatrixFunctionError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn test_matrix_sign_rejects_non_symmetric() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 0.0, 1.0]);
+        let result = nalgebra_matrix_functions::matrix_sign(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn test_matrix_log_eigen_negative_eigenvalues() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[-1.0, 0.0, 0.0, 2.0]);
+        let result = nalgebra_matrix_functions::matrix_log_eigen(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::NegativeEigenvalues)));
+    }
+
+    #[test]
+    fn test_matrix_log_svd_singular_matrix() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 0.0]);
+        let result = nalgebra_matrix_functions::matrix_log_svd(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::SingularMatrix)));
+    }
+
+    #[test]
+    fn test_matrix_sign_zero_eigenvalue() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 0.0]);
+        let result = nalgebra_matrix_functions::matrix_sign(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::ZeroEigenvalue)));
+    }
+
+    #[test]
+    fn test_ndarray_matrix_log_eigen_negative_eigenvalues() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![-1.0, 0.0, 0.0, 2.0]).unwrap();
+        let result = ndarray_matrix_functions::matrix_log_eigen(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::NegativeEigenvalues)));
+    }
+
+    #[test]
+    fn test_ndarray_matrix_sign_zero_eigenvalue() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 0.0]).unwrap();
+        let result = ndarray_matrix_functions::matrix_sign(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::ZeroEigenvalue)));
+    }
+
+    #[test]
+    fn test_ndarray_matrix_power_rejects_non_symmetric() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 0.0, 1.0]).unwrap();
+        let result = ndarray_matrix_functions::matrix_power(&matrix, 2.0);
+        assert!(matches!(result, Err(MatrixFunctionError::InvalidInput(_))));
     }
 }

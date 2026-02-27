@@ -268,4 +268,34 @@ mod tests {
         let sum: f64 = pca.explained_variance_ratio.iter().sum();
         assert_relative_eq!(sum, 1.0, epsilon = 0.01);
     }
+
+    #[test]
+    fn test_ndarray_pca_roundtrip() {
+        let m = Array2::from_shape_vec((5, 3), vec![
+            1.0, 2.0, 1.5, 2.0, 1.0, 3.5, 3.0, 4.0, 2.0, 4.0, 3.0, 5.0, 5.0, 5.0, 4.5,
+        ])
+        .unwrap();
+
+        let pca = ndarray_pca::compute_pca(&m, Some(3)).unwrap();
+        let transformed = ndarray_pca::transform(&m, &pca);
+        let reconstructed = ndarray_pca::inverse_transform(&transformed, &pca);
+
+        for i in 0..m.nrows() {
+            for j in 0..m.ncols() {
+                assert_relative_eq!(reconstructed[[i, j]], m[[i, j]], epsilon = 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn test_ndarray_pca_explained_variance_ratio_sums_to_one() {
+        let m = Array2::from_shape_vec((5, 3), vec![
+            1.0, 2.0, 1.5, 2.0, 1.0, 3.5, 3.0, 4.0, 2.0, 4.0, 3.0, 5.0, 5.0, 5.0, 4.5,
+        ])
+        .unwrap();
+
+        let pca = ndarray_pca::compute_pca(&m, Some(3)).unwrap();
+        let sum: f64 = pca.explained_variance_ratio.iter().sum();
+        assert_relative_eq!(sum, 1.0, epsilon = 1e-8);
+    }
 }

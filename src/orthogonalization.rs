@@ -166,4 +166,49 @@ mod tests {
         let q = ndarray_orthogonalization::gram_schmidt(&a).unwrap();
         assert_eq!(q.shape(), &[2, 2]);
     }
+
+    #[test]
+    fn test_nalgebra_classic_gram_schmidt_orthonormal() {
+        let a = DMatrix::from_row_slice(3, 3, &[1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0]);
+        let q = nalgebra_orthogonalization::gram_schmidt_classic(&a).unwrap();
+        let identity = q.transpose() * &q;
+
+        for i in 0..3 {
+            assert_relative_eq!(identity[(i, i)], 1.0, epsilon = 1e-10);
+            for j in 0..3 {
+                if i != j {
+                    assert_relative_eq!(identity[(i, j)], 0.0, epsilon = 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_ndarray_classic_gram_schmidt() {
+        let a = Array2::from_shape_vec((3, 3), vec![1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0])
+            .unwrap();
+        let q = ndarray_orthogonalization::gram_schmidt_classic(&a).unwrap();
+
+        let mut dot_01 = 0.0;
+        let mut dot_02 = 0.0;
+        let mut dot_12 = 0.0;
+        let mut norm_0_sq = 0.0;
+        let mut norm_1_sq = 0.0;
+        let mut norm_2_sq = 0.0;
+        for i in 0..3 {
+            dot_01 += q[[i, 0]] * q[[i, 1]];
+            dot_02 += q[[i, 0]] * q[[i, 2]];
+            dot_12 += q[[i, 1]] * q[[i, 2]];
+            norm_0_sq += q[[i, 0]] * q[[i, 0]];
+            norm_1_sq += q[[i, 1]] * q[[i, 1]];
+            norm_2_sq += q[[i, 2]] * q[[i, 2]];
+        }
+
+        assert_relative_eq!(dot_01, 0.0, epsilon = 1e-10);
+        assert_relative_eq!(dot_02, 0.0, epsilon = 1e-10);
+        assert_relative_eq!(dot_12, 0.0, epsilon = 1e-10);
+        assert_relative_eq!(norm_0_sq, 1.0, epsilon = 1e-10);
+        assert_relative_eq!(norm_1_sq, 1.0, epsilon = 1e-10);
+        assert_relative_eq!(norm_2_sq, 1.0, epsilon = 1e-10);
+    }
 }
