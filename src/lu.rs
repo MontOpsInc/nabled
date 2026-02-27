@@ -53,9 +53,6 @@ pub struct NalgebraLUResult<T: RealField> {
     pub l: DMatrix<T>,
     /// Upper triangular matrix U
     pub u: DMatrix<T>,
-    /// Internal LU decomposition (for solve/inverse)
-    #[allow(dead_code)]
-    lu:    nalgebra::linalg::LU<T, nalgebra::Dyn, nalgebra::Dyn>,
 }
 
 /// LU decomposition result for ndarray
@@ -69,8 +66,6 @@ pub struct NdarrayLUResult<T: Float> {
 
 /// Nalgebra LU decomposition
 pub mod nalgebra_lu {
-    use nalgebra::linalg::LU;
-
     use super::*;
 
     /// Compute LU decomposition with partial pivoting
@@ -80,64 +75,67 @@ pub mod nalgebra_lu {
     pub fn compute_lu<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<NalgebraLUResult<T>, LUError> {
-        if matrix.is_empty() {
-            return Err(LUError::EmptyMatrix);
-        }
-        let (rows, cols) = matrix.shape();
-        if rows != cols {
-            return Err(LUError::NotSquare);
-        }
-        if matrix.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(LUError::NumericalInstability);
-        }
+        crate::backend::lu::compute_nalgebra_lu(matrix)
+    }
 
-        let lu = LU::new(matrix.clone());
-        let l = lu.l().clone();
-        let u = lu.u().clone();
-
-        Ok(NalgebraLUResult { l, u, lu })
+    /// Compute LU decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_lu_lapack(matrix: &DMatrix<f64>) -> Result<NalgebraLUResult<f64>, LUError> {
+        crate::backend::lu::compute_nalgebra_lapack_lu(matrix)
     }
 
     /// Solve Ax = b for square matrix A
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
-    pub fn solve<T: RealField + Copy>(
+    pub fn solve<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
         rhs: &DVector<T>,
     ) -> Result<DVector<T>, LUError> {
-        if matrix.is_empty() || rhs.is_empty() {
-            return Err(LUError::EmptyMatrix);
-        }
-        let (rows, cols) = matrix.shape();
-        if rows != cols {
-            return Err(LUError::NotSquare);
-        }
-        if rows != rhs.len() {
-            return Err(LUError::InvalidInput(
-                "RHS length must match matrix dimensions".to_string(),
-            ));
-        }
+        crate::backend::lu::solve_nalgebra_lu(matrix, rhs)
+    }
 
-        let lu = LU::new(matrix.clone());
-        lu.solve(rhs).ok_or(LUError::SingularMatrix)
+    /// Solve Ax = b with a LAPACK-backed LU kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_lapack(
+        matrix: &DMatrix<f64>,
+        rhs: &DVector<f64>,
+    ) -> Result<DVector<f64>, LUError> {
+        crate::backend::lu::solve_nalgebra_lapack_lu(matrix, rhs)
     }
 
     /// Compute matrix inverse
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
-    pub fn inverse<T: RealField + Copy>(matrix: &DMatrix<T>) -> Result<DMatrix<T>, LUError> {
-        if matrix.is_empty() {
-            return Err(LUError::EmptyMatrix);
-        }
-        let (rows, cols) = matrix.shape();
-        if rows != cols {
-            return Err(LUError::NotSquare);
-        }
+    pub fn inverse<T: RealField + Copy + Float>(
+        matrix: &DMatrix<T>,
+    ) -> Result<DMatrix<T>, LUError> {
+        crate::backend::lu::inverse_nalgebra_lu(matrix)
+    }
 
-        let lu = LU::new(matrix.clone());
-        lu.try_inverse().ok_or(LUError::SingularMatrix)
+    /// Compute matrix inverse with a LAPACK-backed LU kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn inverse_lapack(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, LUError> {
+        crate::backend::lu::inverse_nalgebra_lapack_lu(matrix)
     }
 
     /// Compute the determinant (det = sign(permutation) * prod(diag(U)))
@@ -145,19 +143,19 @@ pub mod nalgebra_lu {
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn determinant<T: RealField + Copy + Float>(matrix: &DMatrix<T>) -> Result<T, LUError> {
-        if matrix.is_empty() {
-            return Err(LUError::EmptyMatrix);
-        }
-        let (rows, cols) = matrix.shape();
-        if rows != cols {
-            return Err(LUError::NotSquare);
-        }
-        if matrix.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(LUError::NumericalInstability);
-        }
+        crate::backend::lu::determinant_nalgebra_lu(matrix)
+    }
 
-        let lu = LU::new(matrix.clone());
-        Ok(lu.determinant())
+    /// Compute determinant with a LAPACK-backed LU kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn determinant_lapack(matrix: &DMatrix<f64>) -> Result<f64, LUError> {
+        crate::backend::lu::determinant_nalgebra_lapack_lu(matrix)
     }
 
     /// Compute log-determinant for general matrices (handles sign)
@@ -167,21 +165,25 @@ pub mod nalgebra_lu {
     pub fn log_determinant<T: RealField + Copy + Float>(
         matrix: &DMatrix<T>,
     ) -> Result<LogDetResult<T>, LUError> {
-        let det = determinant(matrix)?;
-        if det == T::zero() {
-            return Err(LUError::SingularMatrix);
-        }
-        let sign = if det > T::zero() { 1_i8 } else { -1_i8 };
-        let abs_det = Float::abs(det);
-        let ln_abs_det = Float::ln(abs_det);
-        Ok(LogDetResult { sign, ln_abs_det })
+        crate::backend::lu::log_determinant_nalgebra_lu(matrix)
+    }
+
+    /// Compute log-determinant with a LAPACK-backed LU kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn log_determinant_lapack(matrix: &DMatrix<f64>) -> Result<LogDetResult<f64>, LUError> {
+        crate::backend::lu::log_determinant_nalgebra_lapack_lu(matrix)
     }
 }
 
 /// Ndarray LU decomposition (via nalgebra)
 pub mod ndarray_lu {
     use super::*;
-    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute LU decomposition
     /// # Errors
@@ -190,9 +192,19 @@ pub mod ndarray_lu {
     pub fn compute_lu<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayLUResult<T>, LUError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_lu::compute_lu(&nalg)?;
-        Ok(NdarrayLUResult { l: nalgebra_to_ndarray(&result.l), u: nalgebra_to_ndarray(&result.u) })
+        crate::backend::lu::compute_ndarray_lu(matrix)
+    }
+
+    /// Compute LU decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_lu_lapack(matrix: &Array2<f64>) -> Result<NdarrayLUResult<f64>, LUError> {
+        crate::backend::lu::compute_ndarray_lapack_lu(matrix)
     }
 
     /// Solve Ax = b
@@ -203,10 +215,19 @@ pub mod ndarray_lu {
         matrix: &Array2<T>,
         rhs: &Array1<T>,
     ) -> Result<Array1<T>, LUError> {
-        let nalg_matrix = ndarray_to_nalgebra(matrix);
-        let nalg_rhs = DVector::from_vec(rhs.to_vec());
-        let solution = nalgebra_lu::solve(&nalg_matrix, &nalg_rhs)?;
-        Ok(Array1::from_vec(solution.as_slice().to_vec()))
+        crate::backend::lu::solve_ndarray_lu(matrix, rhs)
+    }
+
+    /// Solve Ax = b with a LAPACK-backed LU kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn solve_lapack(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, LUError> {
+        crate::backend::lu::solve_ndarray_lapack_lu(matrix, rhs)
     }
 
     /// Compute matrix inverse
@@ -214,9 +235,19 @@ pub mod ndarray_lu {
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn inverse<T: Float + RealField>(matrix: &Array2<T>) -> Result<Array2<T>, LUError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        let inv = nalgebra_lu::inverse(&nalg)?;
-        Ok(nalgebra_to_ndarray(&inv))
+        crate::backend::lu::inverse_ndarray_lu(matrix)
+    }
+
+    /// Compute matrix inverse with a LAPACK-backed LU kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn inverse_lapack(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> {
+        crate::backend::lu::inverse_ndarray_lapack_lu(matrix)
     }
 
     /// Compute the determinant
@@ -224,8 +255,19 @@ pub mod ndarray_lu {
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn determinant<T: Float + RealField>(matrix: &Array2<T>) -> Result<T, LUError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        nalgebra_lu::determinant(&nalg)
+        crate::backend::lu::determinant_ndarray_lu(matrix)
+    }
+
+    /// Compute determinant with a LAPACK-backed LU kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn determinant_lapack(matrix: &Array2<f64>) -> Result<f64, LUError> {
+        crate::backend::lu::determinant_ndarray_lapack_lu(matrix)
     }
 
     /// Compute log-determinant (handles sign for general matrices)
@@ -235,8 +277,19 @@ pub mod ndarray_lu {
     pub fn log_determinant<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<LogDetResult<T>, LUError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        nalgebra_lu::log_determinant(&nalg)
+        crate::backend::lu::log_determinant_ndarray_lu(matrix)
+    }
+
+    /// Compute log-determinant with a LAPACK-backed LU kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn log_determinant_lapack(matrix: &Array2<f64>) -> Result<LogDetResult<f64>, LUError> {
+        crate::backend::lu::log_determinant_ndarray_lapack_lu(matrix)
     }
 }
 
@@ -320,6 +373,25 @@ mod tests {
         let a = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
         let det = ndarray_lu::determinant(&a).unwrap();
         assert_relative_eq!(det, -2.0, epsilon = 1e-10);
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_lu_lapack_basic() {
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+        let lu = nalgebra_lu::compute_lu_lapack(&a).unwrap();
+        let reconstructed = &lu.l * &lu.u;
+        assert_eq!(reconstructed.nrows(), 2);
+        assert_eq!(reconstructed.ncols(), 2);
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_lu_lapack_basic() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let lu = ndarray_lu::compute_lu_lapack(&a).unwrap();
+        assert_eq!(lu.l.dim(), (2, 2));
+        assert_eq!(lu.u.dim(), (2, 2));
     }
 
     #[test]

@@ -251,4 +251,6 @@ Current state:
 8. LAPACK-backed competitor harnesses are implemented for SVD/QR (`nalgebra-lapack`, `ndarray-linalg`) behind the `lapack-competitors` benchmark feature on Linux.
 9. LAPACK-backed internal SVD kernels are integrated in `src/backend/svd.rs` with Linux + `lapack-kernels` feature gates, with public wrappers at `svd::nalgebra_svd::compute_svd_lapack` and `svd::ndarray_svd::compute_svd_lapack`.
 10. LAPACK-backed internal QR kernels are integrated in `src/backend/qr.rs` with Linux + `lapack-kernels` feature gates, with public wrappers in `qr::nalgebra_qr` and `qr::ndarray_qr`.
-11. Next execution focus is selecting the next Tier A domains to port to backend kernels (LU and Eigen first) and establishing backend capability tests per domain.
+11. LU is now ported to backend kernels in `src/backend/lu.rs`, with Linux + `lapack-kernels` wrappers exposed in `lu::nalgebra_lu` and `lu::ndarray_lu`.
+12. Eigen is now ported to backend kernels in `src/backend/eigen.rs`, with Linux + `lapack-kernels` wrappers exposed in `eigen::nalgebra_eigen` and `eigen::ndarray_eigen`.
+13. Next execution focus is Cholesky backend kernel integration and establishing backend capability tests per Tier A domain.

@@ -14,6 +14,8 @@ flowchart TB
     subgraph Backend [Internal Backend Kernels]
         backend_svd[SvdKernel]
         backend_qr[QrKernel]
+        backend_lu[LuKernel]
+        backend_eigen[EigenKernel]
     end
 
     subgraph Core [Core Decompositions]
@@ -44,6 +46,8 @@ flowchart TB
 
     svd --> backend_svd
     qr --> backend_qr
+    lu --> backend_lu
+    eigen --> backend_eigen
     pca --> stats
     pca --> svd
     regression --> qr
@@ -53,13 +57,15 @@ flowchart TB
 
 ## Data Flow
 
-Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. SVD and QR currently dispatch through internal backend kernel traits before executing backend-specific implementations. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
+Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. SVD, QR, LU, and Eigen currently dispatch through internal backend kernel traits before executing backend-specific implementations. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
 
 ## File Reference
 
 | Module | Source File |
 |--------|-------------|
 | backend (root) | `src/backend/mod.rs` |
+| backend eigen kernel | `src/backend/eigen.rs` |
+| backend lu kernel | `src/backend/lu.rs` |
 | backend qr kernel | `src/backend/qr.rs` |
 | backend svd kernel | `src/backend/svd.rs` |
 | cholesky | `src/cholesky.rs` |

@@ -66,101 +66,6 @@ pub struct NdarrayEigenResult<T: Float> {
     pub eigenvectors: Array2<T>,
 }
 
-/// Check if matrix is symmetric within tolerance
-fn is_symmetric<T: RealField + Copy>(matrix: &DMatrix<T>, tol: T) -> bool {
-    let (n, m) = matrix.shape();
-    if n != m {
-        return false;
-    }
-    for i in 0..n {
-        for j in (i + 1)..n {
-            if (matrix[(i, j)] - matrix[(j, i)]).abs() > tol {
-                return false;
-            }
-        }
-    }
-    true
-}
-
-/// Nalgebra symmetric eigenvalue decomposition
-pub mod nalgebra_eigen {
-    use super::*;
-
-    /// Compute symmetric eigenvalue decomposition
-    /// # Errors
-    /// Returns an error when inputs are invalid, dimensions are incompatible,
-    /// or the requested numerical routine cannot produce a stable result.
-    pub fn compute_symmetric_eigen<T: RealField + Copy + Float>(
-        matrix: &DMatrix<T>,
-    ) -> Result<NalgebraEigenResult<T>, EigenError> {
-        if matrix.is_empty() {
-            return Err(EigenError::EmptyMatrix);
-        }
-        if !matrix.is_square() {
-            return Err(EigenError::NotSquare);
-        }
-        let tol = T::from(1e-10).unwrap_or_else(T::nan);
-        if !is_symmetric(matrix, tol) {
-            return Err(EigenError::NonSymmetric);
-        }
-        if matrix.iter().any(|&x| !Float::is_finite(x)) {
-            return Err(EigenError::NumericalInstability);
-        }
-
-        let eigen = matrix.clone().symmetric_eigen();
-        Ok(NalgebraEigenResult {
-            eigenvalues:  eigen.eigenvalues,
-            eigenvectors: eigen.eigenvectors,
-        })
-    }
-
-    /// Compute generalized eigenvalue decomposition Av = λBv for symmetric A and SPD B
-    /// Reduces to standard eigen via Cholesky on B: C = L^{-1} A L^{-T}, then v = L^{-T} w
-    /// # Errors
-    /// Returns an error when inputs are invalid, dimensions are incompatible,
-    /// or the requested numerical routine cannot produce a stable result.
-    pub fn compute_generalized_eigen<T: RealField + Copy + Float>(
-        matrix_a: &DMatrix<T>,
-        matrix_b: &DMatrix<T>,
-    ) -> Result<NalgebraGeneralizedEigenResult<T>, EigenError> {
-        if matrix_a.is_empty() || matrix_b.is_empty() {
-            return Err(EigenError::EmptyMatrix);
-        }
-        let (ar, ac) = matrix_a.shape();
-        let (br, bc) = matrix_b.shape();
-        if ar != ac || br != bc || ar != br {
-            return Err(EigenError::DimensionMismatch);
-        }
-        let tol = T::from(1e-10).unwrap_or_else(T::nan);
-        if !is_symmetric(matrix_a, tol) {
-            return Err(EigenError::NonSymmetric);
-        }
-        if !is_symmetric(matrix_b, tol) {
-            return Err(EigenError::NonSymmetric);
-        }
-
-        let cholesky = nalgebra::linalg::Cholesky::new(matrix_b.clone())
-            .ok_or(EigenError::NotPositiveDefinite)?;
-        let l = cholesky.l();
-
-        // C = L^{-1} A L^{-T}
-        let linv_a = l.solve_lower_triangular(matrix_a).ok_or(EigenError::NumericalInstability)?;
-        let c = l
-            .transpose()
-            .solve_upper_triangular(&linv_a)
-            .ok_or(EigenError::NumericalInstability)?;
-
-        let eigen = c.symmetric_eigen();
-
-        // v = L^{-T} w (eigenvectors of generalized problem)
-        let w = eigen.eigenvectors;
-        let eigenvectors =
-            l.transpose().solve_lower_triangular(&w).ok_or(EigenError::NumericalInstability)?;
-
-        Ok(NalgebraGeneralizedEigenResult { eigenvalues: eigen.eigenvalues, eigenvectors })
-    }
-}
-
 /// Generalized eigenvalue result for nalgebra
 #[derive(Debug, Clone)]
 pub struct NalgebraGeneralizedEigenResult<T: RealField> {
@@ -179,41 +84,115 @@ pub struct NdarrayGeneralizedEigenResult<T: Float> {
     pub eigenvectors: Array2<T>,
 }
 
-/// Ndarray symmetric eigenvalue decomposition (via nalgebra)
+/// Nalgebra symmetric eigenvalue decomposition
+pub mod nalgebra_eigen {
+    use super::*;
+
+    /// Compute symmetric eigenvalue decomposition.
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    pub fn compute_symmetric_eigen<T: RealField + Copy + Float>(
+        matrix: &DMatrix<T>,
+    ) -> Result<NalgebraEigenResult<T>, EigenError> {
+        crate::backend::eigen::compute_nalgebra_symmetric_eigen(matrix)
+    }
+
+    /// Compute symmetric eigenvalue decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_symmetric_eigen_lapack(
+        matrix: &DMatrix<f64>,
+    ) -> Result<NalgebraEigenResult<f64>, EigenError> {
+        crate::backend::eigen::compute_nalgebra_lapack_symmetric_eigen(matrix)
+    }
+
+    /// Compute generalized eigenvalue decomposition Av = λBv for symmetric A and SPD B.
+    ///
+    /// This routine reduces to a symmetric standard eigen problem using a Cholesky factor of `B`.
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the requested numerical routine cannot produce a stable result.
+    pub fn compute_generalized_eigen<T: RealField + Copy + Float>(
+        matrix_a: &DMatrix<T>,
+        matrix_b: &DMatrix<T>,
+    ) -> Result<NalgebraGeneralizedEigenResult<T>, EigenError> {
+        crate::backend::eigen::compute_nalgebra_generalized_eigen(matrix_a, matrix_b)
+    }
+
+    /// Compute generalized eigenvalue decomposition with a LAPACK-backed symmetric eigensolver.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_generalized_eigen_lapack(
+        matrix_a: &DMatrix<f64>,
+        matrix_b: &DMatrix<f64>,
+    ) -> Result<NalgebraGeneralizedEigenResult<f64>, EigenError> {
+        crate::backend::eigen::compute_nalgebra_lapack_generalized_eigen(matrix_a, matrix_b)
+    }
+}
+
+/// Ndarray symmetric eigenvalue decomposition
 pub mod ndarray_eigen {
     use super::*;
-    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
-    /// Compute symmetric eigenvalue decomposition
+    /// Compute symmetric eigenvalue decomposition.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_symmetric_eigen<T: Float + RealField>(
         matrix: &Array2<T>,
     ) -> Result<NdarrayEigenResult<T>, EigenError> {
-        let nalg = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_eigen::compute_symmetric_eigen(&nalg)?;
-        Ok(NdarrayEigenResult {
-            eigenvalues:  Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
-            eigenvectors: nalgebra_to_ndarray(&result.eigenvectors),
-        })
+        crate::backend::eigen::compute_ndarray_symmetric_eigen(matrix)
     }
 
-    /// Compute generalized eigenvalue decomposition Av = λBv
+    /// Compute symmetric eigenvalue decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_symmetric_eigen_lapack(
+        matrix: &Array2<f64>,
+    ) -> Result<NdarrayEigenResult<f64>, EigenError> {
+        crate::backend::eigen::compute_ndarray_lapack_symmetric_eigen(matrix)
+    }
+
+    /// Compute generalized eigenvalue decomposition Av = λBv.
     /// # Errors
     /// Returns an error when inputs are invalid, dimensions are incompatible,
     /// or the requested numerical routine cannot produce a stable result.
     pub fn compute_generalized_eigen<T: Float + RealField>(
-        a: &Array2<T>,
-        b: &Array2<T>,
+        matrix_a: &Array2<T>,
+        matrix_b: &Array2<T>,
     ) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError> {
-        let nalg_a = ndarray_to_nalgebra(a);
-        let nalg_b = ndarray_to_nalgebra(b);
-        let result = nalgebra_eigen::compute_generalized_eigen(&nalg_a, &nalg_b)?;
-        Ok(NdarrayGeneralizedEigenResult {
-            eigenvalues:  Array1::from_vec(result.eigenvalues.as_slice().to_vec()),
-            eigenvectors: nalgebra_to_ndarray(&result.eigenvectors),
-        })
+        crate::backend::eigen::compute_ndarray_generalized_eigen(matrix_a, matrix_b)
+    }
+
+    /// Compute generalized eigenvalue decomposition with a LAPACK-backed kernel.
+    ///
+    /// This path is available on Linux when the `lapack-kernels` feature is enabled.
+    ///
+    /// # Errors
+    /// Returns an error when inputs are invalid, dimensions are incompatible,
+    /// or the LAPACK routine cannot produce a stable result.
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    pub fn compute_generalized_eigen_lapack(
+        matrix_a: &Array2<f64>,
+        matrix_b: &Array2<f64>,
+    ) -> Result<NdarrayGeneralizedEigenResult<f64>, EigenError> {
+        crate::backend::eigen::compute_ndarray_lapack_generalized_eigen(matrix_a, matrix_b)
     }
 }
 
@@ -242,7 +221,8 @@ mod tests {
         let a = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
         let b = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
         let result = nalgebra_eigen::compute_generalized_eigen(&a, &b).unwrap();
-        // For B=I, generalized eigen reduces to standard eigen
+
+        // For B=I, generalized eigen reduces to standard eigen.
         for i in 0..2 {
             let av = &a * result.eigenvectors.column(i);
             let bv = &b * result.eigenvectors.column(i);
@@ -330,6 +310,54 @@ mod tests {
         let a_nd = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 3.0]).unwrap();
         let b_nd = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
         let result = ndarray_eigen::compute_generalized_eigen(&a_nd, &b_nd).unwrap();
+        assert_eq!(result.eigenvalues.len(), 2);
+        assert_eq!(result.eigenvectors.dim(), (2, 2));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_symmetric_eigen_lapack_basic() {
+        let a = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+        let result = nalgebra_eigen::compute_symmetric_eigen_lapack(&a).unwrap();
+
+        assert_eq!(result.eigenvalues.len(), 2);
+        assert_eq!(result.eigenvectors.shape(), (2, 2));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_nalgebra_generalized_eigen_lapack_basic() {
+        let a = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+        let b = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
+        let result = nalgebra_eigen::compute_generalized_eigen_lapack(&a, &b).unwrap();
+
+        for i in 0..2 {
+            let av = &a * result.eigenvectors.column(i);
+            let bv = &b * result.eigenvectors.column(i);
+            let lam = result.eigenvalues[i];
+            for j in 0..2 {
+                assert_relative_eq!(av[j], lam * bv[j], epsilon = 1e-8);
+            }
+        }
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_symmetric_eigen_lapack_basic() {
+        let a = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
+        let result = ndarray_eigen::compute_symmetric_eigen_lapack(&a).unwrap();
+
+        assert_eq!(result.eigenvalues.len(), 2);
+        assert_eq!(result.eigenvectors.dim(), (2, 2));
+    }
+
+    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
+    #[test]
+    fn test_ndarray_generalized_eigen_lapack_basic() {
+        let a = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
+        let result = ndarray_eigen::compute_generalized_eigen_lapack(&a, &b).unwrap();
+
         assert_eq!(result.eigenvalues.len(), 2);
         assert_eq!(result.eigenvectors.dim(), (2, 2));
     }
