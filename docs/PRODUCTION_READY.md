@@ -244,6 +244,8 @@ Current state:
 1. Benchmark specification is defined in `docs/BENCHMARK_SPEC.md`.
 2. Backend kernel pilot is implemented for `svd` and `qr` using internal `SvdKernel` and `QrKernel` adapters.
 3. Public APIs remain unchanged; dispatch routes through backend-owned kernel implementations (no temporary round-trip back into domain `*_impl` functions).
-4. Competitor benchmark harnesses now exist for both pilot domains (`benches/svd_benchmarks.rs`, `benches/qr_benchmarks.rs`) with direct `nalgebra` comparison paths and correctness guards.
+4. Competitor benchmark harnesses now exist for both pilot domains (`benches/svd_benchmarks.rs`, `benches/qr_benchmarks.rs`) with direct `nalgebra` and direct `faer` comparison paths and correctness guards.
 5. Benchmark artifact reporting is implemented via `src/bin/benchmark_report.rs` and `just bench-report`, emitting `coverage/benchmarks/summary.json`, `summary.csv`, and `regressions.md`.
-6. Next execution focus is adding additional competitor backends before extending kernels across the rest of Tier A.
+6. Regression checks now enforce nabled-owned benchmark paths (`competitor == none`) against baseline, not external competitor paths.
+7. CI now includes smoke benchmarking with branch-local baseline cache restore/save and regression enforcement when a baseline exists.
+8. Next execution focus is adding LAPACK-backed competitors (`nalgebra-lapack`, `ndarray-linalg`) and then extending kernel abstraction across the rest of Tier A.

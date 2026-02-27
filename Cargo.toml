@@ -31,6 +31,7 @@ approx = "0.5"
 
 [dev-dependencies]
 criterion = "0.8"
+faer = { version = "0.24", default-features = false, features = ["std", "linalg"] }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

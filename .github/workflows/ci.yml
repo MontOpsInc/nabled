@@ -39,7 +39,6 @@ jobs:
             - '!docs/**'
             - '!.claude/**'
             - '!.gitignore'
-            - '!.justfile'
             - '!LICENSE'
             - '!.github/workflows/pr.yml'
             - '!.github/workflows/release.yml'
@@ -178,10 +177,76 @@ jobs:
         fail_ci_if_error: true
         disable_telem: true
 
+  benchmark-smoke:
+    name: Benchmark Smoke
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}-${{ github.job }}
+
+    - name: Restore benchmark baseline cache
+      uses: actions/cache/restore@v4
+      with:
+        path: coverage/benchmarks/baseline
+        key: ${{ runner.os }}-bench-baseline-${{ github.ref_name }}-${{ github.run_id }}
+        restore-keys: |
+          ${{ runner.os }}-bench-baseline-${{ github.ref_name }}-
+          ${{ runner.os }}-bench-baseline-main-
+
+    - name: Run smoke benchmarks and generate report
+      run: just bench-smoke-report
+
+    - name: Enforce benchmark regression threshold
+      run: |
+        if [[ -f coverage/benchmarks/baseline/summary.json ]]; then
+          just bench-report-check
+        else
+          echo "No prior benchmark baseline found; skipping regression enforcement for this run."
+        fi
+
+    - name: Update benchmark baseline
+      run: |
+        mkdir -p coverage/benchmarks/baseline
+        cp coverage/benchmarks/summary.json coverage/benchmarks/baseline/summary.json
+
+    - name: Save benchmark baseline cache
+      uses: actions/cache/save@v4
+      with:
+        path: coverage/benchmarks/baseline
+        key: ${{ runner.os }}-bench-baseline-${{ github.ref_name }}-${{ github.run_id }}
+
+    - name: Upload benchmark artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-smoke-${{ github.run_id }}
+        path: coverage/benchmarks
+
   # Summary job that branch protection can depend on
   ci-success:
     name: CI Success
-    needs: [changes, check, test-unit, test-integration, coverage]
+    needs: [changes, check, test-unit, test-integration, coverage, benchmark-smoke]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -197,7 +262,8 @@ jobs:
           if [[ "${{ needs.check.result }}" != "success" ||
                 "${{ needs.test-unit.result }}" != "success" ||
                 "${{ needs.test-integration.result }}" != "success" ||
-                "${{ needs.coverage.result }}" != "success" ]]; then
+                "${{ needs.coverage.result }}" != "success" ||
+                "${{ needs.benchmark-smoke.result }}" != "success" ]]; then
             echo "One or more jobs failed ❌"
             exit 1
           fi

@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use faer::MatRef;
 use nabled::qr::{QRConfig, nalgebra_qr, ndarray_qr};
 use nalgebra::linalg::ColPivQR;
 use nalgebra::{DMatrix, DVector};
@@ -30,16 +31,20 @@ impl MatrixShape {
 }
 
 fn generate_matrix_pair(rows: usize, cols: usize) -> (DMatrix<f64>, Array2<f64>) {
+    let data = generate_matrix_data(rows, cols);
+    let nalg = DMatrix::from_row_slice(rows, cols, &data);
+    let nd = Array2::from_shape_vec((rows, cols), data)
+        .expect("matrix dimensions should match generated data length");
+    (nalg, nd)
+}
+
+fn generate_matrix_data(rows: usize, cols: usize) -> Vec<f64> {
     let mut rng = rand::rng();
     let mut data = Vec::with_capacity(rows * cols);
     for _ in 0..rows * cols {
         data.push(rng.random_range(-1.0..1.0));
     }
-
-    let nalg = DMatrix::from_row_slice(rows, cols, &data);
-    let nd = Array2::from_shape_vec((rows, cols), data)
-        .expect("matrix dimensions should match generated data length");
-    (nalg, nd)
+    data
 }
 
 fn generate_rhs(rows: usize) -> DVector<f64> {
@@ -84,6 +89,41 @@ fn assert_nalgebra_direct_pivoted_qr_correct(matrix: &DMatrix<f64>) {
     let reconstructed = col_piv_qr.q() * col_piv_qr.r() * p.transpose();
     let err = reconstruction_error(matrix, &reconstructed);
     assert!(err < 1e-8, "direct nalgebra pivoted QR reconstruction error too high: {err}");
+}
+
+fn faer_to_nalgebra(matrix: MatRef<'_, f64>) -> DMatrix<f64> {
+    let (rows, cols) = matrix.shape();
+    let mut data = Vec::with_capacity(rows * cols);
+    for i in 0..rows {
+        for j in 0..cols {
+            data.push(matrix[(i, j)]);
+        }
+    }
+    DMatrix::from_row_slice(rows, cols, &data)
+}
+
+fn assert_faer_direct_qr_correct(data: &[f64], rows: usize, cols: usize) {
+    let matrix = MatRef::from_row_major_slice(data, rows, cols);
+    let qr = matrix.qr();
+    let q = qr.compute_thin_Q();
+    let r = qr.thin_R();
+    let reference = DMatrix::from_row_slice(rows, cols, data);
+    let reconstructed = faer_to_nalgebra(q.as_ref()) * faer_to_nalgebra(r);
+    let err = reconstruction_error(&reference, &reconstructed);
+    assert!(err < 1e-8, "direct faer QR reconstruction error too high: {err}");
+}
+
+fn assert_faer_direct_pivoted_qr_correct(data: &[f64], rows: usize, cols: usize) {
+    let matrix = MatRef::from_row_major_slice(data, rows, cols);
+    let col_piv_qr = matrix.col_piv_qr();
+    let r = col_piv_qr.thin_R();
+    assert_eq!(r.ncols(), cols, "faer pivoted QR R columns should match input");
+    assert!(r.nrows() <= rows, "faer pivoted QR R rows should be bounded by input rows");
+    for i in 0..r.nrows() {
+        for j in 0..r.ncols() {
+            assert!(r[(i, j)].is_finite(), "faer pivoted QR produced non-finite R entry");
+        }
+    }
 }
 
 fn benchmark_nabled_qr(c: &mut Criterion) {
@@ -182,5 +222,42 @@ fn benchmark_nalgebra_qr_competitor(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, benchmark_nabled_qr, benchmark_nalgebra_qr_competitor);
+fn benchmark_faer_qr_competitor(c: &mut Criterion) {
+    let mut group = c.benchmark_group("qr_competitor_faer_direct");
+    let sizes = [16, 64, 128];
+    let shapes = [MatrixShape::Square, MatrixShape::TallSkinny];
+
+    for size in sizes {
+        for shape in shapes {
+            let (rows, cols) = shape.dims(size);
+            let data = generate_matrix_data(rows, cols);
+            assert_faer_direct_qr_correct(&data, rows, cols);
+            assert_faer_direct_pivoted_qr_correct(&data, rows, cols);
+
+            let id = format!("{}-{rows}x{cols}", shape.label());
+
+            _ = group.bench_with_input(BenchmarkId::new("qr", &id), &size, |b, _| {
+                b.iter(|| {
+                    MatRef::from_row_major_slice(black_box(data.as_slice()), rows, cols).qr()
+                });
+            });
+
+            _ = group.bench_with_input(BenchmarkId::new("qr_pivoted", &id), &size, |b, _| {
+                b.iter(|| {
+                    MatRef::from_row_major_slice(black_box(data.as_slice()), rows, cols)
+                        .col_piv_qr()
+                });
+            });
+        }
+    }
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    benchmark_nabled_qr,
+    benchmark_nalgebra_qr_competitor,
+    benchmark_faer_qr_competitor
+);
 criterion_main!(benches);

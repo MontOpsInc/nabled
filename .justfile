@@ -67,9 +67,20 @@ bench-smoke:
 bench-report:
     cargo run --bin benchmark_report
 
+bench-report-check:
+    cargo run --bin benchmark_report -- --fail-on-regression
+
+bench-baseline-update:
+    mkdir -p coverage/benchmarks/baseline
+    cp coverage/benchmarks/summary.json coverage/benchmarks/baseline/summary.json
+
 bench-smoke-report:
     just -f {{ justfile() }} bench-smoke
     just -f {{ justfile() }} bench-report
+
+bench-smoke-check:
+    just -f {{ justfile() }} bench-smoke
+    just -f {{ justfile() }} bench-report-check
 
 # --- EXAMPLES ---
 

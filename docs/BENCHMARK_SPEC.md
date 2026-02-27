@@ -27,6 +27,11 @@ Target competitor set for pilot comparisons:
 3. `ndarray-linalg`
 4. `nalgebra-lapack`
 
+Current implemented competitor harnesses:
+
+1. direct `nalgebra` for SVD and QR
+2. direct `faer` for SVD and QR
+
 ## Workload Matrix
 
 Each benchmark suite should cover:
@@ -88,6 +93,9 @@ Current commands:
 1. `just bench-smoke` runs quick SVD + QR benchmark suites.
 2. `just bench-report` parses Criterion output and writes `summary.json`, `summary.csv`, `regressions.md`.
 3. `just bench-smoke-report` runs both in sequence.
+4. `just bench-report-check` runs report generation and fails if baseline regressions exceed the `>10%` threshold.
+5. `just bench-smoke-check` runs smoke benches plus regression enforcement in one command.
+6. `just bench-baseline-update` promotes the latest `summary.json` to `baseline/summary.json`.
 
 ## CI Policy
 
@@ -96,6 +104,8 @@ Current commands:
 3. Fail conditions:
    - any correctness failure
    - performance regression above threshold on protected cases
+4. Regression enforcement requires a baseline file at `coverage/benchmarks/baseline/summary.json`.
+5. Protected regression cases are nabled-owned paths only (`competitor == none`), not external competitor timings.
 
 Initial regression threshold:
 
@@ -104,7 +114,8 @@ Initial regression threshold:
 
 ## Baseline Management
 
-1. Baselines are pinned to a tagged commit or explicit SHA.
+1. Release-quality baselines should be pinned to a tagged commit or explicit SHA.
 2. Benchmark environment metadata must be recorded with every run.
 3. Update baseline only via explicit maintainers’ approval.
 4. The report tool reads baseline from `coverage/benchmarks/baseline/summary.json`.
+5. CI can restore this baseline path from branch-local cache before checks and update it after a successful run.

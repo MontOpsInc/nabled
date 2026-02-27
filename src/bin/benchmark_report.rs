@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{fs, io};
+use std::{env, fs, io};
 
 use serde::{Deserialize, Serialize};
 
@@ -56,7 +56,14 @@ struct BenchmarkSummary {
     entries:           Vec<BenchmarkEntry>,
 }
 
+#[derive(Debug)]
+struct RegressionSummary {
+    baseline_found: bool,
+    fail_count:     usize,
+}
+
 fn main() -> io::Result<()> {
+    let fail_on_regression = env::args().any(|arg| arg == "--fail-on-regression");
     let criterion_root = Path::new("target/criterion");
     let output_root = Path::new("coverage/benchmarks");
 
@@ -118,7 +125,24 @@ fn main() -> io::Result<()> {
 
     write_summary_json(output_root, &summary)?;
     write_summary_csv(output_root, &summary)?;
-    write_regressions_md(output_root, &summary)?;
+    let regressions = write_regressions_md(output_root, &summary)?;
+
+    if fail_on_regression {
+        if !regressions.baseline_found {
+            eprintln!(
+                "Regression check requested but baseline not found at \
+                 `coverage/benchmarks/baseline/summary.json`"
+            );
+            std::process::exit(2);
+        }
+        if regressions.fail_count > 0 {
+            eprintln!(
+                "Benchmark regression check failed: {} case(s) exceeded the 10% threshold",
+                regressions.fail_count
+            );
+            std::process::exit(3);
+        }
+    }
 
     println!("Wrote benchmark artifacts to {}", output_root.canonicalize()?.display());
     Ok(())
@@ -199,6 +223,9 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "svd_competitor_nalgebra_direct" | "qr_competitor_nalgebra_direct" => {
             ("nalgebra_direct", "nalgebra_direct")
         }
+        "svd_competitor_faer_direct" | "qr_competitor_faer_direct" => {
+            ("faer_direct", "faer_direct")
+        }
         "qr_nabled" if function_id.starts_with("ndarray") => ("ndarray", "none"),
         "qr_nabled" if function_id.starts_with("nalgebra") => ("nalgebra", "none"),
         "qr_nabled" => ("mixed", "none"),
@@ -207,6 +234,8 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
 
     (domain.to_string(), backend.to_string(), competitor.to_string(), function_id.to_string())
 }
+
+fn is_protected_nabled_case(entry: &BenchmarkEntry) -> bool { entry.competitor == "none" }
 
 fn write_summary_json(output_root: &Path, summary: &BenchmarkSummary) -> io::Result<()> {
     let path = output_root.join("summary.json");
@@ -247,7 +276,10 @@ fn write_summary_csv(output_root: &Path, summary: &BenchmarkSummary) -> io::Resu
     fs::write(path, lines.join("\n"))
 }
 
-fn write_regressions_md(output_root: &Path, summary: &BenchmarkSummary) -> io::Result<()> {
+fn write_regressions_md(
+    output_root: &Path,
+    summary: &BenchmarkSummary,
+) -> io::Result<RegressionSummary> {
     let baseline_path = output_root.join("baseline/summary.json");
     let mut lines = Vec::new();
 
@@ -258,13 +290,18 @@ fn write_regressions_md(output_root: &Path, summary: &BenchmarkSummary) -> io::R
     lines.push(format!("- Rustc: `{}`", summary.rustc_version));
     lines.push(format!("- Cases: `{}`", summary.entries.len()));
     lines.push(String::new());
+    lines.push(
+        "- Regression scope: nabled benchmark cases only (`competitor == none`).".to_string(),
+    );
+    lines.push(String::new());
 
     if !baseline_path.exists() {
         lines.push("No baseline found at `coverage/benchmarks/baseline/summary.json`.".to_string());
         lines.push(
             "Create a baseline by copying a trusted `summary.json` to that path.".to_string(),
         );
-        return fs::write(output_root.join("regressions.md"), lines.join("\n"));
+        fs::write(output_root.join("regressions.md"), lines.join("\n"))?;
+        return Ok(RegressionSummary { baseline_found: false, fail_count: 0 });
     }
 
     let baseline = read_json::<BenchmarkSummary>(&baseline_path)?;
@@ -283,9 +320,14 @@ fn write_regressions_md(output_root: &Path, summary: &BenchmarkSummary) -> io::R
 
     let mut warn_count = 0_usize;
     let mut fail_count = 0_usize;
+    let mut compared_cases = 0_usize;
 
     for entry in &summary.entries {
+        if !is_protected_nabled_case(entry) {
+            continue;
+        }
         if let Some(baseline_ns) = baseline_map.get(&entry.full_id) {
+            compared_cases += 1;
             let delta_pct = ((entry.median_ns - baseline_ns) / baseline_ns) * 100.0;
             let status = if delta_pct > 10.0 {
                 fail_count += 1;
@@ -306,6 +348,8 @@ fn write_regressions_md(output_root: &Path, summary: &BenchmarkSummary) -> io::R
     lines.push(String::new());
     lines.push(format!("- Warnings (>5%): `{warn_count}`"));
     lines.push(format!("- Failures (>10%): `{fail_count}`"));
+    lines.push(format!("- Compared cases: `{compared_cases}`"));
 
-    fs::write(output_root.join("regressions.md"), lines.join("\n"))
+    fs::write(output_root.join("regressions.md"), lines.join("\n"))?;
+    Ok(RegressionSummary { baseline_found: true, fail_count })
 }
