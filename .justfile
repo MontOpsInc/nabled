@@ -90,6 +90,21 @@ bench-smoke-check:
     just -f {{ justfile() }} bench-smoke
     just -f {{ justfile() }} bench-report-check
 
+# --- BACKEND CAPABILITY REPORTING ---
+backend-capability-report:
+    cargo run --bin backend_capability_report -- --output-dir coverage/backend-capabilities/baseline
+
+backend-capability-report-lapack:
+    cargo run --features lapack-kernels --bin backend_capability_report -- --output-dir coverage/backend-capabilities/lapack-linux
+
+backend-capability-report-all:
+    just -f {{ justfile() }} backend-capability-report
+    if [[ "$(uname -s)" == "Linux" ]]; then \
+      just -f {{ justfile() }} backend-capability-report-lapack; \
+    else \
+      echo "Skipping LAPACK capability report on non-Linux host."; \
+    fi
+
 # --- EXAMPLES ---
 
 debug-profile example:
@@ -181,6 +196,7 @@ checks:
     cargo +stable clippy --all-features --all-targets -- -D warnings
     just -f {{ justfile() }} test
     just -f {{ justfile() }} check-linux-lapack
+    just -f {{ justfile() }} backend-capability-report
 
 # Verify Linux-gated LAPACK code paths compile under stable.
 check-linux-lapack:

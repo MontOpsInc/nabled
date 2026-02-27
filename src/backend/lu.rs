@@ -267,7 +267,8 @@ impl LuKernel for NalgebraLapackLuKernel {
         }
 
         for (i, pivot) in lu.permutation_indices().iter().enumerate() {
-            if *pivot as usize != i + 1 {
+            let pivot_index = usize::try_from(*pivot).map_err(|_| LUError::NumericalInstability)?;
+            if pivot_index != i + 1 {
                 det = -det;
             }
         }

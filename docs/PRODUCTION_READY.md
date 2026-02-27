@@ -264,4 +264,5 @@ Current state:
 21. Regression is now ported to backend kernels in `src/backend/regression.rs`, with Linux + `lapack-kernels` wrappers exposed in `regression::nalgebra_regression` and `regression::ndarray_regression`.
 22. Sylvester/Lyapunov solve is now ported to backend kernels in `src/backend/sylvester.rs`, with Linux + `lapack-kernels` wrappers exposed in `sylvester::nalgebra_sylvester` and `sylvester::ndarray_sylvester`.
 23. Matrix functions are now ported to backend kernels in `src/backend/matrix_functions.rs`, routed from `matrix_functions::nalgebra_matrix_functions` and `matrix_functions::ndarray_matrix_functions`.
-24. Next execution focus is wiring backend capability visibility into CI reporting and evaluating distinct LAPACK kernel paths where Tier B domains still use baseline kernels under `lapack-kernels`.
+24. Backend capability visibility is now wired into CI via `src/bin/backend_capability_report.rs`, producing baseline and Linux+LAPACK artifacts plus a job summary in the `check` workflow.
+25. Next execution focus is evaluating and implementing distinct LAPACK kernel paths where domains still use baseline kernels under `lapack-kernels` (currently triangular solve and matrix functions).

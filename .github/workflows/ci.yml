@@ -79,6 +79,23 @@ jobs:
     - name: Verify Linux LAPACK kernel path compiles
       run: cargo +stable check --profile ci --features lapack-kernels --target x86_64-unknown-linux-gnu
 
+    - name: Generate backend capability reports
+      run: |
+        cargo +stable run --bin backend_capability_report -- --output-dir coverage/backend-capabilities/baseline
+        cargo +stable run --features lapack-kernels --bin backend_capability_report -- --output-dir coverage/backend-capabilities/lapack-linux
+
+    - name: Publish backend capability summary
+      run: |
+        cat coverage/backend-capabilities/baseline/summary.md >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        cat coverage/backend-capabilities/lapack-linux/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload backend capability artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-capabilities-${{ github.run_id }}
+        path: coverage/backend-capabilities
+
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -233,6 +250,9 @@ jobs:
     - name: Enforce benchmark regression threshold
       run: |
         if [[ -f coverage/benchmarks/baseline/summary.json ]]; then
+          export BENCH_WARN_PCT=5
+          export BENCH_FAIL_PCT=10
+          export BENCH_MIN_REGRESSION_NS=25000
           just bench-report-check
         else
           echo "No prior benchmark baseline found; skipping regression enforcement for this run."

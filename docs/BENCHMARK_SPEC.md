@@ -95,11 +95,18 @@ Current commands:
 1. `just bench-smoke` runs quick SVD + QR benchmark suites.
 2. `just bench-report` parses Criterion output and writes `summary.json`, `summary.csv`, `regressions.md`.
 3. `just bench-smoke-report` runs both in sequence.
-4. `just bench-report-check` runs report generation and fails if baseline regressions exceed the `>10%` threshold.
+4. `just bench-report-check` runs report generation and fails if baseline regressions exceed both percent and absolute thresholds.
+5. Default regression thresholds:
+   - warn when `delta_pct > 5` and `delta_ns > 25_000`
+   - fail when `delta_pct > 10` and `delta_ns > 25_000`
+6. Thresholds can be overridden via:
+   - `BENCH_WARN_PCT`
+   - `BENCH_FAIL_PCT`
+   - `BENCH_MIN_REGRESSION_NS`
 5. `just bench-smoke-check` runs smoke benches plus regression enforcement in one command.
 6. `just bench-baseline-update` promotes the latest `summary.json` to `baseline/summary.json`.
 7. `just bench-smoke-lapack` runs smoke SVD + QR suites with `lapack-competitors` enabled.
-8. `just bench-smoke-report-lapack` runs lapack-enabled smoke suites and regenerates report artifacts.
+10. `just bench-smoke-report-lapack` runs lapack-enabled smoke suites and regenerates report artifacts.
 9. LAPACK smoke commands require Linux with system BLAS/LAPACK libraries available (`libopenblas-dev`, `liblapack-dev`).
 
 ## CI Policy

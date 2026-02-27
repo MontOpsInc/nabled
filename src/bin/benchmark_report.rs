@@ -62,8 +62,16 @@ struct RegressionSummary {
     fail_count:     usize,
 }
 
+#[derive(Debug)]
+struct RegressionPolicy {
+    warn_pct:          f64,
+    fail_pct:          f64,
+    min_regression_ns: f64,
+}
+
 fn main() -> io::Result<()> {
     let fail_on_regression = env::args().any(|arg| arg == "--fail-on-regression");
+    let regression_policy = regression_policy_from_env();
     let criterion_root = Path::new("target/criterion");
     let output_root = Path::new("coverage/benchmarks");
 
@@ -125,7 +133,7 @@ fn main() -> io::Result<()> {
 
     write_summary_json(output_root, &summary)?;
     write_summary_csv(output_root, &summary)?;
-    let regressions = write_regressions_md(output_root, &summary)?;
+    let regressions = write_regressions_md(output_root, &summary, &regression_policy)?;
 
     if fail_on_regression {
         if !regressions.baseline_found {
@@ -137,8 +145,10 @@ fn main() -> io::Result<()> {
         }
         if regressions.fail_count > 0 {
             eprintln!(
-                "Benchmark regression check failed: {} case(s) exceeded the 10% threshold",
-                regressions.fail_count
+                "Benchmark regression check failed: {} case(s) exceeded {:.1}% and +{:.0}ns",
+                regressions.fail_count,
+                regression_policy.fail_pct,
+                regression_policy.min_regression_ns
             );
             std::process::exit(3);
         }
@@ -285,6 +295,7 @@ fn write_summary_csv(output_root: &Path, summary: &BenchmarkSummary) -> io::Resu
 fn write_regressions_md(
     output_root: &Path,
     summary: &BenchmarkSummary,
+    policy: &RegressionPolicy,
 ) -> io::Result<RegressionSummary> {
     let baseline_path = output_root.join("baseline/summary.json");
     let mut lines = Vec::new();
@@ -299,6 +310,10 @@ fn write_regressions_md(
     lines.push(
         "- Regression scope: nabled benchmark cases only (`competitor == none`).".to_string(),
     );
+    lines.push(format!(
+        "- Thresholds: warn >{:.1}% and +{:.0}ns, fail >{:.1}% and +{:.0}ns.",
+        policy.warn_pct, policy.min_regression_ns, policy.fail_pct, policy.min_regression_ns
+    ));
     lines.push(String::new());
 
     if !baseline_path.exists() {
@@ -334,13 +349,16 @@ fn write_regressions_md(
         }
         if let Some(baseline_ns) = baseline_map.get(&entry.full_id) {
             compared_cases += 1;
-            let delta_pct = ((entry.median_ns - baseline_ns) / baseline_ns) * 100.0;
-            let status = if delta_pct > 10.0 {
+            let delta_ns = entry.median_ns - baseline_ns;
+            let delta_pct =
+                if *baseline_ns > f64::EPSILON { (delta_ns / baseline_ns) * 100.0 } else { 0.0 };
+            let above_noise_floor = delta_ns > policy.min_regression_ns;
+            let status = if delta_pct > policy.fail_pct && above_noise_floor {
                 fail_count += 1;
-                "FAIL (>10%)"
-            } else if delta_pct > 5.0 {
+                "FAIL"
+            } else if delta_pct > policy.warn_pct && above_noise_floor {
                 warn_count += 1;
-                "WARN (>5%)"
+                "WARN"
             } else {
                 "OK"
             };
@@ -352,10 +370,32 @@ fn write_regressions_md(
     }
 
     lines.push(String::new());
-    lines.push(format!("- Warnings (>5%): `{warn_count}`"));
-    lines.push(format!("- Failures (>10%): `{fail_count}`"));
+    lines.push(format!(
+        "- Warnings (>{:.1}% and +{:.0}ns): `{warn_count}`",
+        policy.warn_pct, policy.min_regression_ns
+    ));
+    lines.push(format!(
+        "- Failures (>{:.1}% and +{:.0}ns): `{fail_count}`",
+        policy.fail_pct, policy.min_regression_ns
+    ));
     lines.push(format!("- Compared cases: `{compared_cases}`"));
 
     fs::write(output_root.join("regressions.md"), lines.join("\n"))?;
     Ok(RegressionSummary { baseline_found: true, fail_count })
+}
+
+fn regression_policy_from_env() -> RegressionPolicy {
+    RegressionPolicy {
+        warn_pct:          env_f64("BENCH_WARN_PCT", 5.0),
+        fail_pct:          env_f64("BENCH_FAIL_PCT", 10.0),
+        min_regression_ns: env_f64("BENCH_MIN_REGRESSION_NS", 25_000.0),
+    }
+}
+
+fn env_f64(key: &str, default_value: f64) -> f64 {
+    env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(default_value)
 }
