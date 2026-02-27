@@ -23,6 +23,7 @@ flowchart TB
         backend_pca[PcaKernel]
         backend_regression[RegressionKernel]
         backend_sylvester[SylvesterKernel]
+        backend_matrix_functions[MatrixFunctionsKernel]
     end
 
     subgraph Core [Core Decompositions]
@@ -59,6 +60,7 @@ flowchart TB
     schur --> backend_schur
     triangular --> backend_triangular
     polar --> backend_polar
+    matrix_functions --> backend_matrix_functions
     pca --> backend_pca
     regression --> backend_regression
     sylvester --> backend_sylvester
@@ -70,7 +72,7 @@ flowchart TB
 
 ## Data Flow
 
-Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. SVD, QR, LU, Cholesky, Eigen, Schur, triangular solve, polar decomposition, PCA, regression, and Sylvester/Lyapunov solve currently dispatch through internal backend kernel traits before executing backend-specific implementations. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
+Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. SVD, QR, LU, Cholesky, Eigen, Schur, triangular solve, polar decomposition, matrix functions, PCA, regression, and Sylvester/Lyapunov solve currently dispatch through internal backend kernel traits before executing backend-specific implementations. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
 
 ## File Reference
 
@@ -80,6 +82,7 @@ Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1
 | backend cholesky kernel | `src/backend/cholesky.rs` |
 | backend eigen kernel | `src/backend/eigen.rs` |
 | backend lu kernel | `src/backend/lu.rs` |
+| backend matrix-functions kernel | `src/backend/matrix_functions.rs` |
 | backend pca kernel | `src/backend/pca.rs` |
 | backend polar kernel | `src/backend/polar.rs` |
 | backend qr kernel | `src/backend/qr.rs` |

@@ -56,22 +56,6 @@ impl std::error::Error for MatrixFunctionError {}
 pub mod nalgebra_matrix_functions {
     use super::*;
 
-    #[inline]
-    fn is_symmetric<T: RealField + FloatCore>(matrix: &DMatrix<T>, tol: T) -> bool {
-        if !matrix.is_square() {
-            return false;
-        }
-        let n = matrix.nrows();
-        for i in 0..n {
-            for j in (i + 1)..n {
-                if FloatCore::abs(matrix[(i, j)] - matrix[(j, i)]) > tol {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
     /// Compute matrix exponential using Taylor series expansion
     /// exp(A) = I + A + A²/2! + A³/3! + ...
     /// # Panics
@@ -86,33 +70,7 @@ pub mod nalgebra_matrix_functions {
         max_iterations: usize,
         tolerance: T,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
-        if matrix.is_empty() {
-            return Err(MatrixFunctionError::EmptyMatrix);
-        }
-
-        if !matrix.is_square() {
-            return Err(MatrixFunctionError::NotSquare);
-        }
-
-        let n = matrix.nrows();
-        let identity = DMatrix::<T>::identity(n, n);
-        let mut result = identity.clone();
-        let mut term = identity.clone();
-
-        for k in 1..=max_iterations {
-            term = &term * matrix / T::from(k).unwrap();
-            let new_result = &result + &term;
-
-            // Check for convergence
-            let diff_norm = (&new_result - &result).norm();
-            if diff_norm < tolerance {
-                return Ok(new_result);
-            }
-
-            result = new_result;
-        }
-
-        Err(MatrixFunctionError::ConvergenceFailed)
+        crate::backend::matrix_functions::matrix_exp_nalgebra(matrix, max_iterations, tolerance)
     }
 
     /// Compute matrix exponential using eigenvalue decomposition
@@ -127,31 +85,7 @@ pub mod nalgebra_matrix_functions {
     pub fn matrix_exp_eigen<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
-        if matrix.is_empty() {
-            return Err(MatrixFunctionError::EmptyMatrix);
-        }
-
-        if !matrix.is_square() {
-            return Err(MatrixFunctionError::NotSquare);
-        }
-
-        let tol = T::from_f64(1e-10).unwrap_or_else(T::epsilon);
-
-        if is_symmetric(matrix, tol) {
-            // Symmetric path: exp(A) = Q * exp(Λ) * Q^T
-            let eigen = matrix.clone().symmetric_eigen();
-            let eigenvalues = eigen.eigenvalues;
-            let eigenvectors = eigen.eigenvectors;
-
-            // Compute exp(D) where D is diagonal matrix of eigenvalues
-            let exp_eigenvalues = eigenvalues.map(nalgebra::ComplexField::exp);
-            let exp_diagonal = DMatrix::from_diagonal(&exp_eigenvalues);
-
-            Ok(&eigenvectors * &exp_diagonal * eigenvectors.transpose())
-        } else {
-            // General path: Taylor series works for any square matrix.
-            matrix_exp(matrix, 100, tol)
-        }
+        crate::backend::matrix_functions::matrix_exp_eigen_nalgebra(matrix)
     }
 
     /// Compute matrix logarithm using Taylor series expansion
@@ -169,46 +103,11 @@ pub mod nalgebra_matrix_functions {
         max_iterations: usize,
         tolerance: T,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
-        if matrix.is_empty() {
-            return Err(MatrixFunctionError::EmptyMatrix);
-        }
-
-        if !matrix.is_square() {
-            return Err(MatrixFunctionError::NotSquare);
-        }
-
-        let n = matrix.nrows();
-        let identity = DMatrix::<T>::identity(n, n);
-
-        // Check if matrix is close to identity (||A - I|| < 1)
-        let diff = matrix - &identity;
-        if diff.norm() >= T::one() {
-            return Err(MatrixFunctionError::InvalidInput(
-                "Matrix must be close to identity (||A - I|| < 1) for Taylor series".to_string(),
-            ));
-        }
-
-        let mut result = DMatrix::<T>::zeros(n, n);
-        let mut term = diff.clone();
-
-        for k in 1..=max_iterations {
-            let sign = if k % 2 == 1 { T::one() } else { -T::one() };
-            let coeff = sign / T::from(k).unwrap();
-
-            let new_term = &term * coeff;
-            let new_result = &result + &new_term;
-
-            // Check for convergence
-            let diff_norm = (&new_result - &result).norm();
-            if diff_norm < tolerance {
-                return Ok(new_result);
-            }
-
-            result = new_result;
-            term = &term * &diff;
-        }
-
-        Err(MatrixFunctionError::ConvergenceFailed)
+        crate::backend::matrix_functions::matrix_log_taylor_nalgebra(
+            matrix,
+            max_iterations,
+            tolerance,
+        )
     }
 
     /// Compute matrix logarithm using eigenvalue decomposition
@@ -219,40 +118,7 @@ pub mod nalgebra_matrix_functions {
     pub fn matrix_log_eigen<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
-        if matrix.is_empty() {
-            return Err(MatrixFunctionError::EmptyMatrix);
-        }
-
-        if !matrix.is_square() {
-            return Err(MatrixFunctionError::NotSquare);
-        }
-
-        let tol = T::from_f64(1e-10).unwrap_or_else(T::epsilon);
-        if !is_symmetric(matrix, tol) {
-            return Err(MatrixFunctionError::InvalidInput(
-                "matrix_log_eigen requires a symmetric matrix; use matrix_log_svd for general \
-                 matrices"
-                    .to_string(),
-            ));
-        }
-
-        let eigen = matrix.clone().symmetric_eigen();
-        let eigenvalues = eigen.eigenvalues;
-        let eigenvectors = eigen.eigenvectors;
-
-        // Check for negative eigenvalues
-        for &lambda in eigenvalues.iter() {
-            if lambda <= T::zero() {
-                return Err(MatrixFunctionError::NegativeEigenvalues);
-            }
-        }
-
-        // Compute log(D) where D is diagonal matrix of eigenvalues
-        let log_eigenvalues = eigenvalues.map(nalgebra::ComplexField::ln);
-        let log_diagonal = DMatrix::from_diagonal(&log_eigenvalues);
-
-        // Reconstruct: log(A) = P * log(D) * P^T
-        Ok(&eigenvectors * &log_diagonal * eigenvectors.transpose())
+        crate::backend::matrix_functions::matrix_log_eigen_nalgebra(matrix)
     }
 
     /// Compute matrix logarithm using SVD decomposition
@@ -263,35 +129,7 @@ pub mod nalgebra_matrix_functions {
     pub fn matrix_log_svd<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
-        if matrix.is_empty() {
-            return Err(MatrixFunctionError::EmptyMatrix);
-        }
-
-        if !matrix.is_square() {
-            return Err(MatrixFunctionError::NotSquare);
-        }
-
-        let svd = matrix.clone().svd(true, true);
-
-        let (u, vt) = match (&svd.u, &svd.v_t) {
-            (Some(u), Some(vt)) => (u.clone(), vt.clone()),
-            _ => return Err(MatrixFunctionError::ConvergenceFailed),
-        };
-        let singular_values = svd.singular_values;
-
-        // Check for zero or negative singular values
-        for &sigma in singular_values.iter() {
-            if sigma <= T::zero() {
-                return Err(MatrixFunctionError::SingularMatrix);
-            }
-        }
-
-        // Compute log(S) where S is diagonal matrix of singular values
-        let log_singular_values = singular_values.map(nalgebra::ComplexField::ln);
-        let log_diagonal = DMatrix::from_diagonal(&log_singular_values);
-
-        // Reconstruct: log(A) = U * log(S) * V^T
-        Ok(&u * &log_diagonal * &vt)
+        crate::backend::matrix_functions::matrix_log_svd_nalgebra(matrix)
     }
 
     /// Compute matrix power using eigenvalue decomposition
@@ -303,40 +141,7 @@ pub mod nalgebra_matrix_functions {
         matrix: &DMatrix<T>,
         power: T,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
-        if matrix.is_empty() {
-            return Err(MatrixFunctionError::EmptyMatrix);
-        }
-
-        if !matrix.is_square() {
-            return Err(MatrixFunctionError::NotSquare);
-        }
-
-        let tol = T::from_f64(1e-10).unwrap_or_else(T::epsilon);
-        if !is_symmetric(matrix, tol) {
-            return Err(MatrixFunctionError::InvalidInput(
-                "matrix_power currently requires a symmetric matrix".to_string(),
-            ));
-        }
-
-        let eigen = matrix.clone().symmetric_eigen();
-        let eigenvalues = eigen.eigenvalues;
-        let eigenvectors = eigen.eigenvectors;
-
-        // Check for negative eigenvalues when power is not an integer
-        if FloatCore::fract(power) != T::zero() {
-            for &lambda in eigenvalues.iter() {
-                if lambda <= T::zero() {
-                    return Err(MatrixFunctionError::NegativeEigenvalues);
-                }
-            }
-        }
-
-        // Compute D^p where D is diagonal matrix of eigenvalues
-        let powered_eigenvalues = eigenvalues.map(|lambda| lambda.powf(power));
-        let powered_diagonal = DMatrix::from_diagonal(&powered_eigenvalues);
-
-        // Reconstruct: A^p = P * D^p * P^T
-        Ok(&eigenvectors * &powered_diagonal * eigenvectors.transpose())
+        crate::backend::matrix_functions::matrix_power_nalgebra(matrix, power)
     }
 
     /// Compute matrix sign function: sign(A) for symmetric diagonalizable A
@@ -347,46 +152,13 @@ pub mod nalgebra_matrix_functions {
     pub fn matrix_sign<T: RealField + FloatCore>(
         matrix: &DMatrix<T>,
     ) -> Result<DMatrix<T>, MatrixFunctionError> {
-        if matrix.is_empty() {
-            return Err(MatrixFunctionError::EmptyMatrix);
-        }
-        if !matrix.is_square() {
-            return Err(MatrixFunctionError::NotSquare);
-        }
-        let tol = T::from_f64(1e-10).unwrap_or_else(T::epsilon);
-        if !is_symmetric(matrix, tol) {
-            return Err(MatrixFunctionError::InvalidInput(
-                "matrix_sign requires a symmetric matrix".to_string(),
-            ));
-        }
-
-        let eigen = matrix.clone().symmetric_eigen();
-        let eigenvalues = eigen.eigenvalues;
-        let eigenvectors = eigen.eigenvectors;
-
-        let sign_eigenvalues: Vec<T> = eigenvalues
-            .iter()
-            .map(|&lambda| {
-                if lambda > T::zero() {
-                    Ok(T::one())
-                } else if lambda < T::zero() {
-                    Ok(-T::one())
-                } else {
-                    Err(MatrixFunctionError::ZeroEigenvalue)
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let sign_diagonal = DMatrix::from_diagonal(&nalgebra::DVector::from_vec(sign_eigenvalues));
-
-        Ok(&eigenvectors * &sign_diagonal * eigenvectors.transpose())
+        crate::backend::matrix_functions::matrix_sign_nalgebra(matrix)
     }
 }
 
 /// Matrix exponential and logarithm functions using ndarray
 pub mod ndarray_matrix_functions {
     use super::*;
-    use crate::interop::{nalgebra_to_ndarray, ndarray_to_nalgebra};
 
     /// Compute matrix exponential using conversion to nalgebra
     /// # Errors
@@ -397,10 +169,7 @@ pub mod ndarray_matrix_functions {
         max_iterations: usize,
         tolerance: T,
     ) -> Result<Array2<T>, MatrixFunctionError> {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result =
-            nalgebra_matrix_functions::matrix_exp(&nalgebra_matrix, max_iterations, tolerance)?;
-        Ok(nalgebra_to_ndarray(&result))
+        crate::backend::matrix_functions::matrix_exp_ndarray(matrix, max_iterations, tolerance)
     }
 
     /// Compute matrix exponential using eigenvalue decomposition
@@ -410,9 +179,7 @@ pub mod ndarray_matrix_functions {
     pub fn matrix_exp_eigen<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, MatrixFunctionError> {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_matrix_functions::matrix_exp_eigen(&nalgebra_matrix)?;
-        Ok(nalgebra_to_ndarray(&result))
+        crate::backend::matrix_functions::matrix_exp_eigen_ndarray(matrix)
     }
 
     /// Compute matrix logarithm using Taylor series
@@ -424,13 +191,11 @@ pub mod ndarray_matrix_functions {
         max_iterations: usize,
         tolerance: T,
     ) -> Result<Array2<T>, MatrixFunctionError> {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_matrix_functions::matrix_log_taylor(
-            &nalgebra_matrix,
+        crate::backend::matrix_functions::matrix_log_taylor_ndarray(
+            matrix,
             max_iterations,
             tolerance,
-        )?;
-        Ok(nalgebra_to_ndarray(&result))
+        )
     }
 
     /// Compute matrix logarithm using eigenvalue decomposition
@@ -440,9 +205,7 @@ pub mod ndarray_matrix_functions {
     pub fn matrix_log_eigen<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, MatrixFunctionError> {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_matrix_functions::matrix_log_eigen(&nalgebra_matrix)?;
-        Ok(nalgebra_to_ndarray(&result))
+        crate::backend::matrix_functions::matrix_log_eigen_ndarray(matrix)
     }
 
     /// Compute matrix logarithm using SVD decomposition
@@ -452,9 +215,7 @@ pub mod ndarray_matrix_functions {
     pub fn matrix_log_svd<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, MatrixFunctionError> {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_matrix_functions::matrix_log_svd(&nalgebra_matrix)?;
-        Ok(nalgebra_to_ndarray(&result))
+        crate::backend::matrix_functions::matrix_log_svd_ndarray(matrix)
     }
 
     /// Compute matrix power
@@ -465,9 +226,7 @@ pub mod ndarray_matrix_functions {
         matrix: &Array2<T>,
         power: T,
     ) -> Result<Array2<T>, MatrixFunctionError> {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_matrix_functions::matrix_power(&nalgebra_matrix, power)?;
-        Ok(nalgebra_to_ndarray(&result))
+        crate::backend::matrix_functions::matrix_power_ndarray(matrix, power)
     }
 
     /// Compute matrix sign function
@@ -477,9 +236,7 @@ pub mod ndarray_matrix_functions {
     pub fn matrix_sign<T: Float + RealField + FloatCore>(
         matrix: &Array2<T>,
     ) -> Result<Array2<T>, MatrixFunctionError> {
-        let nalgebra_matrix = ndarray_to_nalgebra(matrix);
-        let result = nalgebra_matrix_functions::matrix_sign(&nalgebra_matrix)?;
-        Ok(nalgebra_to_ndarray(&result))
+        crate::backend::matrix_functions::matrix_sign_ndarray(matrix)
     }
 }
 

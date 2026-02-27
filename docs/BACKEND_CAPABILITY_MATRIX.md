@@ -29,6 +29,7 @@ Tier B backend-kernel pilot status:
 | PCA | ✅ | ✅ | `src/backend/pca.rs` |
 | Regression | ✅ | ✅ | `src/backend/regression.rs` |
 | Sylvester/Lyapunov | ✅ | ✅ | `src/backend/sylvester.rs` |
+| Matrix Functions | ✅ | ➖ | `src/backend/matrix_functions.rs` (baseline kernels used under lapack-enabled builds) |
 
 ## Test Coverage Enforcement
 
