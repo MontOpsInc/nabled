@@ -161,4 +161,39 @@ mod tests {
         assert_relative_eq!(identity[[1, 0]], 0.0, epsilon = 1e-8);
         assert_relative_eq!(identity[[1, 1]], 1.0, epsilon = 1e-8);
     }
+
+    #[test]
+    fn test_polar_error_display_variants() {
+        assert!(format!("{}", PolarError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", PolarError::NotSquare).contains("square"));
+        assert!(format!("{}", PolarError::SVDFailed(SVDError::EmptyMatrix)).contains("SVD failed"));
+        assert!(format!("{}", PolarError::NumericalInstability).contains("instability"));
+    }
+
+    #[test]
+    fn test_polar_error_paths() {
+        assert!(matches!(
+            nalgebra_polar::compute_polar(&DMatrix::<f64>::zeros(0, 0)),
+            Err(PolarError::EmptyMatrix)
+        ));
+        assert!(matches!(
+            nalgebra_polar::compute_polar(&DMatrix::from_row_slice(1, 2, &[1.0, 2.0])),
+            Err(PolarError::NotSquare)
+        ));
+        assert!(matches!(
+            nalgebra_polar::compute_polar(&DMatrix::from_row_slice(2, 2, &[
+                1.0,
+                f64::NAN,
+                0.0,
+                1.0
+            ])),
+            Err(PolarError::NumericalInstability)
+        ));
+
+        let non_square_nd = Array2::from_shape_vec((1, 2), vec![1.0, 2.0]).unwrap();
+        assert!(matches!(ndarray_polar::compute_polar(&non_square_nd), Err(PolarError::NotSquare)));
+
+        let converted: PolarError = SVDError::EmptyMatrix.into();
+        assert!(matches!(converted, PolarError::SVDFailed(SVDError::EmptyMatrix)));
+    }
 }

@@ -257,4 +257,67 @@ mod tests {
             assert_relative_eq!(ax[i], b[i], epsilon = 1e-8);
         }
     }
+
+    #[test]
+    fn test_iterative_error_display_variants() {
+        assert!(format!("{}", IterativeError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", IterativeError::DimensionMismatch).contains("Dimension"));
+        assert!(format!("{}", IterativeError::MaxIterationsExceeded).contains("Maximum"));
+        assert!(format!("{}", IterativeError::NotPositiveDefinite).contains("positive definite"));
+        assert!(format!("{}", IterativeError::Breakdown).contains("breakdown"));
+    }
+
+    #[test]
+    fn test_iterative_error_paths() {
+        let empty_a = DMatrix::<f64>::zeros(0, 0);
+        let empty_b = DVector::<f64>::zeros(0);
+        let cfg = IterativeConfig::default();
+        assert!(matches!(
+            nalgebra_iterative::conjugate_gradient(&empty_a, &empty_b, &cfg),
+            Err(IterativeError::EmptyMatrix)
+        ));
+        assert!(matches!(
+            nalgebra_iterative::gmres(&empty_a, &empty_b, &cfg),
+            Err(IterativeError::EmptyMatrix)
+        ));
+
+        let a = DMatrix::<f64>::identity(2, 2);
+        let b_bad = DVector::from_vec(vec![1.0]);
+        assert!(matches!(
+            nalgebra_iterative::conjugate_gradient(&a, &b_bad, &cfg),
+            Err(IterativeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            nalgebra_iterative::gmres(&a, &b_bad, &cfg),
+            Err(IterativeError::DimensionMismatch)
+        ));
+
+        let not_pd = DMatrix::from_row_slice(2, 2, &[0.0, 0.0, 0.0, 0.0]);
+        let b = DVector::from_vec(vec![1.0, 1.0]);
+        assert!(matches!(
+            nalgebra_iterative::conjugate_gradient(&not_pd, &b, &cfg),
+            Err(IterativeError::NotPositiveDefinite)
+        ));
+
+        let cfg_zero_iter = IterativeConfig { tolerance: 1e-12, max_iterations: 0 };
+        assert!(matches!(
+            nalgebra_iterative::conjugate_gradient(
+                &a,
+                &DVector::from_vec(vec![1.0, 2.0]),
+                &cfg_zero_iter
+            ),
+            Err(IterativeError::MaxIterationsExceeded)
+        ));
+
+        let cfg_one_iter = IterativeConfig { tolerance: 1e-30, max_iterations: 1 };
+        let gmres_result = nalgebra_iterative::gmres(
+            &DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]),
+            &DVector::from_vec(vec![1.0, 2.0]),
+            &cfg_one_iter,
+        );
+        assert!(matches!(
+            gmres_result,
+            Err(IterativeError::MaxIterationsExceeded | IterativeError::Breakdown)
+        ));
+    }
 }

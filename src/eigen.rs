@@ -274,4 +274,63 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_eigen_error_display_variants() {
+        assert!(format!("{}", EigenError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", EigenError::NotSquare).contains("square"));
+        assert!(format!("{}", EigenError::NonSymmetric).contains("symmetric"));
+        assert!(format!("{}", EigenError::NotPositiveDefinite).contains("positive definite"));
+        assert!(format!("{}", EigenError::DimensionMismatch).contains("dimensions"));
+        assert!(format!("{}", EigenError::ConvergenceFailed).contains("failed"));
+        assert!(format!("{}", EigenError::NumericalInstability).contains("instability"));
+        assert!(format!("{}", EigenError::InvalidInput("x".to_string())).contains('x'));
+    }
+
+    #[test]
+    fn test_eigen_error_paths() {
+        let empty = DMatrix::<f64>::zeros(0, 0);
+        assert!(matches!(
+            nalgebra_eigen::compute_symmetric_eigen(&empty),
+            Err(EigenError::EmptyMatrix)
+        ));
+
+        let non_square = DMatrix::from_row_slice(1, 2, &[1.0, 2.0]);
+        assert!(matches!(
+            nalgebra_eigen::compute_symmetric_eigen(&non_square),
+            Err(EigenError::NotSquare)
+        ));
+
+        let non_symmetric = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 0.0, 1.0]);
+        assert!(matches!(
+            nalgebra_eigen::compute_symmetric_eigen(&non_symmetric),
+            Err(EigenError::NonSymmetric)
+        ));
+
+        let non_finite = DMatrix::from_row_slice(2, 2, &[1.0, f64::NAN, 0.0, 1.0]);
+        assert!(matches!(
+            nalgebra_eigen::compute_symmetric_eigen(&non_finite),
+            Err(EigenError::NumericalInstability)
+        ));
+
+        let a = DMatrix::from_row_slice(2, 2, &[2.0, 0.0, 0.0, 3.0]);
+        let b_dim_bad =
+            DMatrix::from_row_slice(3, 3, &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
+        assert!(matches!(
+            nalgebra_eigen::compute_generalized_eigen(&a, &b_dim_bad),
+            Err(EigenError::DimensionMismatch)
+        ));
+
+        let b_non_spd = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 0.0]);
+        assert!(matches!(
+            nalgebra_eigen::compute_generalized_eigen(&a, &b_non_spd),
+            Err(EigenError::NotPositiveDefinite)
+        ));
+
+        let a_nd = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 3.0]).unwrap();
+        let b_nd = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
+        let result = ndarray_eigen::compute_generalized_eigen(&a_nd, &b_nd).unwrap();
+        assert_eq!(result.eigenvalues.len(), 2);
+        assert_eq!(result.eigenvectors.dim(), (2, 2));
+    }
 }

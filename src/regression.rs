@@ -191,4 +191,33 @@ mod tests {
         assert_relative_eq!(result.coefficients[1], 2.0, epsilon = 0.1);
         assert_relative_eq!(result.r_squared, 1.0, epsilon = 1e-10);
     }
+
+    #[test]
+    fn test_regression_error_display_variants() {
+        assert!(format!("{}", RegressionError::EmptyInput).contains("Empty"));
+        assert!(format!("{}", RegressionError::DimensionMismatch("x".to_string())).contains('x'));
+        assert!(format!("{}", RegressionError::SingularMatrix).contains("Singular"));
+        assert!(format!("{}", RegressionError::QRError("x".to_string())).contains('x'));
+    }
+
+    #[test]
+    fn test_regression_error_paths() {
+        let x_empty = DMatrix::<f64>::zeros(0, 1);
+        let y_empty = DVector::<f64>::zeros(0);
+        assert!(matches!(
+            nalgebra_regression::linear_regression(&x_empty, &y_empty, true),
+            Err(RegressionError::EmptyInput)
+        ));
+
+        let x = DMatrix::from_row_slice(3, 1, &[1.0, 2.0, 3.0]);
+        let y_bad = DVector::from_vec(vec![1.0, 2.0]);
+        assert!(matches!(
+            nalgebra_regression::linear_regression(&x, &y_bad, true),
+            Err(RegressionError::DimensionMismatch(_))
+        ));
+
+        let y = DVector::from_vec(vec![2.0, 4.0, 6.0]);
+        let no_intercept = nalgebra_regression::linear_regression(&x, &y, false).unwrap();
+        assert_eq!(no_intercept.coefficients.len(), 1);
+    }
 }

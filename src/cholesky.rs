@@ -245,4 +245,56 @@ mod tests {
         assert_relative_eq!(identity[[0, 0]], 1.0, epsilon = 1e-10);
         assert_relative_eq!(identity[[1, 1]], 1.0, epsilon = 1e-10);
     }
+
+    #[test]
+    fn test_cholesky_error_display_variants() {
+        assert!(format!("{}", CholeskyError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", CholeskyError::NotSquare).contains("square"));
+        assert!(format!("{}", CholeskyError::NotPositiveDefinite).contains("positive-definite"));
+        assert!(format!("{}", CholeskyError::NumericalInstability).contains("instability"));
+        assert!(format!("{}", CholeskyError::InvalidInput("x".to_string())).contains('x'));
+    }
+
+    #[test]
+    fn test_cholesky_error_paths() {
+        let empty = DMatrix::<f64>::zeros(0, 0);
+        assert!(matches!(
+            nalgebra_cholesky::compute_cholesky(&empty),
+            Err(CholeskyError::EmptyMatrix)
+        ));
+
+        let non_square = DMatrix::from_row_slice(1, 2, &[1.0, 2.0]);
+        assert!(matches!(
+            nalgebra_cholesky::compute_cholesky(&non_square),
+            Err(CholeskyError::NotSquare)
+        ));
+        let non_square_nd = Array2::from_shape_vec((1, 2), vec![1.0, 2.0]).unwrap();
+        assert!(matches!(
+            ndarray_cholesky::compute_cholesky(&non_square_nd),
+            Err(CholeskyError::NotSquare)
+        ));
+
+        let non_finite = DMatrix::from_row_slice(2, 2, &[1.0, f64::NAN, 0.0, 1.0]);
+        assert!(matches!(
+            nalgebra_cholesky::compute_cholesky(&non_finite),
+            Err(CholeskyError::NumericalInstability)
+        ));
+
+        let non_pd = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 2.0, 1.0]);
+        assert!(matches!(
+            nalgebra_cholesky::compute_cholesky(&non_pd),
+            Err(CholeskyError::NotPositiveDefinite)
+        ));
+        assert!(matches!(
+            nalgebra_cholesky::inverse(&non_pd),
+            Err(CholeskyError::NotPositiveDefinite)
+        ));
+
+        let a = DMatrix::identity(2, 2);
+        let b_bad = DVector::from_vec(vec![1.0]);
+        assert!(matches!(
+            nalgebra_cholesky::solve(&a, &b_bad),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+    }
 }

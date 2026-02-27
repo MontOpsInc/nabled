@@ -149,4 +149,28 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_schur_error_display_variants() {
+        assert!(format!("{}", SchurError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", SchurError::NotSquare).contains("square"));
+        assert!(format!("{}", SchurError::ConvergenceFailed).contains("failed"));
+        assert!(format!("{}", SchurError::NumericalInstability).contains("instability"));
+        assert!(format!("{}", SchurError::InvalidInput("x".to_string())).contains('x'));
+    }
+
+    #[test]
+    fn test_schur_error_paths() {
+        let empty = DMatrix::<f64>::zeros(0, 0);
+        assert!(matches!(nalgebra_schur::compute_schur(&empty), Err(SchurError::EmptyMatrix)));
+
+        let non_square = DMatrix::from_row_slice(1, 2, &[1.0, 2.0]);
+        assert!(matches!(nalgebra_schur::compute_schur(&non_square), Err(SchurError::NotSquare)));
+
+        let non_finite = DMatrix::from_row_slice(2, 2, &[1.0, f64::NAN, 0.0, 1.0]);
+        assert!(matches!(
+            nalgebra_schur::compute_schur(&non_finite),
+            Err(SchurError::NumericalInstability)
+        ));
+    }
 }

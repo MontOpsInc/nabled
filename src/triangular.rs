@@ -188,4 +188,38 @@ mod tests {
             assert_relative_eq!(ux[i], b[i], epsilon = 1e-10);
         }
     }
+
+    #[test]
+    fn test_triangular_error_display_variants() {
+        assert!(format!("{}", TriangularError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", TriangularError::NotSquare).contains("square"));
+        assert!(format!("{}", TriangularError::Singular).contains("singular"));
+        assert!(format!("{}", TriangularError::DimensionMismatch).contains("Dimension"));
+    }
+
+    #[test]
+    fn test_triangular_error_paths() {
+        let lower_non_square = DMatrix::from_row_slice(1, 2, &[1.0, 0.0]);
+        let vec1 = DVector::from_vec(vec![1.0]);
+        assert!(matches!(
+            nalgebra_triangular::solve_lower(&lower_non_square, &vec1),
+            Err(TriangularError::NotSquare)
+        ));
+        let lower_singular = DMatrix::from_row_slice(2, 2, &[0.0, 0.0, 1.0, 1.0]);
+        assert!(matches!(
+            nalgebra_triangular::solve_lower(&lower_singular, &DVector::from_vec(vec![1.0, 2.0])),
+            Err(TriangularError::Singular)
+        ));
+
+        let upper_non_square = DMatrix::from_row_slice(1, 2, &[1.0, 0.0]);
+        assert!(matches!(
+            nalgebra_triangular::solve_upper(&upper_non_square, &vec1),
+            Err(TriangularError::NotSquare)
+        ));
+        let upper_singular = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 0.0, 0.0]);
+        assert!(matches!(
+            nalgebra_triangular::solve_upper(&upper_singular, &DVector::from_vec(vec![1.0, 2.0])),
+            Err(TriangularError::Singular)
+        ));
+    }
 }

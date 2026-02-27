@@ -321,4 +321,43 @@ mod tests {
         let det = ndarray_lu::determinant(&a).unwrap();
         assert_relative_eq!(det, -2.0, epsilon = 1e-10);
     }
+
+    #[test]
+    fn test_lu_error_display_variants() {
+        assert!(format!("{}", LUError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", LUError::NotSquare).contains("square"));
+        assert!(format!("{}", LUError::SingularMatrix).contains("singular"));
+        assert!(format!("{}", LUError::NumericalInstability).contains("instability"));
+        assert!(format!("{}", LUError::InvalidInput("x".to_string())).contains('x'));
+    }
+
+    #[test]
+    fn test_lu_error_paths() {
+        let empty = DMatrix::<f64>::zeros(0, 0);
+        assert!(matches!(nalgebra_lu::compute_lu(&empty), Err(LUError::EmptyMatrix)));
+
+        let non_square = DMatrix::from_row_slice(1, 2, &[1.0, 2.0]);
+        assert!(matches!(nalgebra_lu::compute_lu(&non_square), Err(LUError::NotSquare)));
+        assert!(matches!(nalgebra_lu::determinant(&non_square), Err(LUError::NotSquare)));
+
+        let non_finite = DMatrix::from_row_slice(2, 2, &[1.0, f64::NAN, 0.0, 1.0]);
+        assert!(matches!(nalgebra_lu::compute_lu(&non_finite), Err(LUError::NumericalInstability)));
+        assert!(matches!(
+            nalgebra_lu::determinant(&non_finite),
+            Err(LUError::NumericalInstability)
+        ));
+
+        let singular = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 2.0, 4.0]);
+        let rhs = DVector::from_vec(vec![1.0, 2.0]);
+        assert!(matches!(nalgebra_lu::solve(&singular, &rhs), Err(LUError::SingularMatrix)));
+        assert!(matches!(nalgebra_lu::inverse(&singular), Err(LUError::SingularMatrix)));
+        assert!(matches!(nalgebra_lu::log_determinant(&singular), Err(LUError::SingularMatrix)));
+
+        let rhs_bad = DVector::from_vec(vec![1.0]);
+        let a = DMatrix::identity(2, 2);
+        assert!(matches!(nalgebra_lu::solve(&a, &rhs_bad), Err(LUError::InvalidInput(_))));
+
+        let singular_nd = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 2.0, 4.0]).unwrap();
+        assert!(matches!(ndarray_lu::log_determinant(&singular_nd), Err(LUError::SingularMatrix)));
+    }
 }

@@ -222,4 +222,35 @@ mod tests {
         assert_relative_eq!(cov[[0, 0]], 4.0, epsilon = 1e-12);
         assert_relative_eq!(cov[[1, 1]], 4.0, epsilon = 1e-12);
     }
+
+    #[test]
+    fn test_stats_error_display_variants() {
+        assert!(format!("{}", StatsError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", StatsError::InsufficientSamples).contains("at least 2"));
+        assert!(format!("{}", StatsError::InvalidInput("x".to_string())).contains('x'));
+    }
+
+    #[test]
+    fn test_stats_error_paths() {
+        let empty = DMatrix::<f64>::zeros(0, 0);
+        assert!(matches!(nalgebra_stats::covariance_matrix(&empty), Err(StatsError::EmptyMatrix)));
+
+        let one_row = DMatrix::from_row_slice(1, 2, &[1.0, 2.0]);
+        assert!(matches!(
+            nalgebra_stats::covariance_matrix(&one_row),
+            Err(StatsError::InsufficientSamples)
+        ));
+
+        let with_constant_column =
+            DMatrix::<f64>::from_row_slice(3, 2, &[1.0, 7.0, 2.0, 7.0, 3.0, 7.0]);
+        let corr: DMatrix<f64> = nalgebra_stats::correlation_matrix(&with_constant_column).unwrap();
+        assert!(corr[(0, 1)].is_nan());
+        assert!(corr[(1, 0)].is_nan());
+
+        let with_constant_column_nd =
+            Array2::<f64>::from_shape_vec((3, 2), vec![1.0, 7.0, 2.0, 7.0, 3.0, 7.0]).unwrap();
+        let corr_nd: Array2<f64> =
+            ndarray_stats::correlation_matrix(&with_constant_column_nd).unwrap();
+        assert!(corr_nd[[0, 1]].is_nan());
+    }
 }

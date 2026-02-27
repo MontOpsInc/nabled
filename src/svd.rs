@@ -416,8 +416,8 @@ pub mod ndarray_svd {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::DMatrix;
-    use ndarray::Array2;
+    use nalgebra::{DMatrix, DVector};
+    use ndarray::{Array1, Array2};
 
     use super::*;
 
@@ -513,5 +513,56 @@ mod tests {
         let col = nulls.column(0);
         let ax = &a * col;
         assert!(ax.norm() < 1e-8);
+    }
+
+    #[test]
+    fn test_svd_error_display_variants() {
+        assert!(format!("{}", SVDError::NotSquare).contains("square"));
+        assert!(format!("{}", SVDError::EmptyMatrix).contains("empty"));
+        assert!(format!("{}", SVDError::ConvergenceFailed).contains("failed"));
+        assert!(format!("{}", SVDError::InvalidInput("x".to_string())).contains('x'));
+    }
+
+    #[test]
+    fn test_svd_ndarray_wrappers_and_edge_paths() {
+        let empty_nalg = NalgebraSVD {
+            u:               DMatrix::<f64>::zeros(0, 0),
+            singular_values: DVector::<f64>::zeros(0),
+            vt:              DMatrix::<f64>::zeros(0, 0),
+        };
+        assert!(nalgebra_svd::condition_number(&empty_nalg).abs() < f64::EPSILON);
+
+        let empty_nd = NdarraySVD {
+            u:               Array2::<f64>::zeros((0, 0)),
+            singular_values: Array1::<f64>::zeros(0),
+            vt:              Array2::<f64>::zeros((0, 0)),
+        };
+        assert!(ndarray_svd::condition_number(&empty_nd).abs() < f64::EPSILON);
+
+        let full_rank = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 2.0]);
+        let null_space = nalgebra_svd::null_space(&full_rank, Some(1e-12)).unwrap();
+        assert_eq!(null_space.ncols(), 0);
+
+        let matrix_nd = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let svd_tol = ndarray_svd::compute_svd_with_tolerance(&matrix_nd, 1e-12).unwrap();
+        let reconstructed = ndarray_svd::reconstruct_matrix(&svd_tol);
+        assert_eq!(reconstructed.dim(), (2, 2));
+
+        assert!(matches!(
+            ndarray_svd::compute_svd_with_tolerance(&Array2::<f64>::zeros((0, 0)), 1e-12),
+            Err(SVDError::EmptyMatrix)
+        ));
+        assert!(matches!(
+            ndarray_svd::compute_truncated_svd(&matrix_nd, 0),
+            Err(SVDError::InvalidInput(_))
+        ));
+
+        let pinv =
+            ndarray_svd::pseudo_inverse(&matrix_nd, &PseudoInverseConfig::default()).unwrap();
+        assert_eq!(pinv.dim(), (2, 2));
+
+        let rank_def = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 2.0, 4.0]).unwrap();
+        let nulls = ndarray_svd::null_space(&rank_def, Some(1e-10)).unwrap();
+        assert_eq!(nulls.ncols(), 1);
     }
 }
