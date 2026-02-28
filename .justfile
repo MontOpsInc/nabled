@@ -10,32 +10,39 @@ default:
 
 # --- TESTS ---
 test:
-    RUST_LOG={{ LOG }} cargo test -- --nocapture --show-output
+    just -f {{ justfile() }} test-unit
+    just -f {{ justfile() }} test-integration integration
+
+test-unit:
+    RUST_LOG={{ LOG }} cargo test --workspace --lib -- --nocapture --show-output
+
+test-all-targets:
+    RUST_LOG={{ LOG }} cargo test --workspace --all-targets -- --nocapture --show-output
 
 test-one test_name:
-    RUST_LOG={{ LOG }} cargo test "{{ test_name }}" -- --nocapture --show-output
+    RUST_LOG={{ LOG }} cargo test --workspace "{{ test_name }}" -- --nocapture --show-output
 
 test-integration test_name:
-    RUST_LOG={{ LOG }} cargo test --test "{{ test_name }}" -- --nocapture --show-output
+    RUST_LOG={{ LOG }} cargo test -p nabled --test "{{ test_name }}" -- --nocapture --show-output
 
 coverage:
-    cargo llvm-cov --html \
+    cargo llvm-cov --workspace --all-targets --html \
      --ignore-filename-regex "(errors|examples).*" \
      --output-dir coverage --open
 
 coverage-json:
-    cargo llvm-cov --json \
+    cargo llvm-cov --workspace --all-targets --json \
     --ignore-filename-regex "(errors|examples|benches).*" \
     --output-path coverage/cov.json
 
 coverage-lcov:
-    cargo llvm-cov --lcov \
+    cargo llvm-cov --workspace --all-targets --lcov \
     --ignore-filename-regex "(errors|examples|benches).*" \
     --output-path coverage/lcov.info
 
 # --- DOCS ---
 docs:
-    cargo doc --open
+    cargo doc --workspace --open
 
 # --- BENCHES ---
 [confirm('Delete all benchmark reports?')]
@@ -43,42 +50,46 @@ clear-benches:
     rm -rf target/criterion/*
 
 bench:
-    RUST_LOG={{ LOG }} cargo bench --profile=release && open ../target/criterion/report/index.html
+    RUST_LOG={{ LOG }} cargo bench -p nabled --profile=release && open target/criterion/report/index.html
 
 bench-lto:
-    RUST_LOG={{ LOG }} cargo bench --profile=release-lto && open ../target/criterion/report/index.html
+    RUST_LOG={{ LOG }} cargo bench -p nabled --profile=release-lto && open target/criterion/report/index.html
 
 bench-one bench:
-    RUST_LOG={{ LOG }} cargo bench \
+    RUST_LOG={{ LOG }} cargo bench -p nabled \
      --profile=release \
      --bench "{{ bench }}" && \
-     open ../target/criterion/report/index.html
+     open target/criterion/report/index.html
 
 bench-one-lto bench:
-    RUST_LOG={{ LOG }} cargo bench \
+    RUST_LOG={{ LOG }} cargo bench -p nabled \
      --profile=release-lto \
      --bench "{{ bench }}" && \
-     open ../target/criterion/report/index.html
+     open target/criterion/report/index.html
 
 bench-smoke:
-    cargo bench --bench svd_benchmarks -- --quick
-    cargo bench --bench qr_benchmarks -- --quick
+    cargo bench -p nabled --bench svd_benchmarks -- --quick
+    cargo bench -p nabled --bench qr_benchmarks -- --quick
+    cargo bench -p nabled --bench triangular_benchmarks -- --quick
+    cargo bench -p nabled --bench matrix_functions_benchmarks -- --quick
 
 bench-smoke-lapack:
-    cargo bench --features lapack-competitors --bench svd_benchmarks -- --quick
-    cargo bench --features lapack-competitors --bench qr_benchmarks -- --quick
+    cargo bench -p nabled --features lapack-competitors --bench svd_benchmarks -- --quick
+    cargo bench -p nabled --features lapack-competitors --bench qr_benchmarks -- --quick
+    cargo bench -p nabled --features lapack-competitors --bench triangular_benchmarks -- --quick
+    cargo bench -p nabled --features lapack-competitors --bench matrix_functions_benchmarks -- --quick
 
 bench-report:
-    cargo run --bin benchmark_report
+    cargo run -p nabled --bin benchmark_report
 
 bench-report-check:
-    cargo run --bin benchmark_report -- --fail-on-regression
+    cargo run -p nabled --bin benchmark_report -- --fail-on-regression
 
 bench-history:
-    cargo run --bin benchmark_history
+    cargo run -p nabled --bin benchmark_history
 
 bench-history-window max_runs:
-    cargo run --bin benchmark_history -- --max-runs "{{ max_runs }}"
+    cargo run -p nabled --bin benchmark_history -- --max-runs "{{ max_runs }}"
 
 bench-baseline-update:
     mkdir -p coverage/benchmarks/baseline
@@ -98,10 +109,10 @@ bench-smoke-check:
 
 # --- BACKEND CAPABILITY REPORTING ---
 backend-capability-report:
-    cargo run --bin backend_capability_report -- --output-dir coverage/backend-capabilities/baseline
+    cargo run -p nabled --bin backend_capability_report -- --output-dir coverage/backend-capabilities/baseline
 
 backend-capability-report-lapack:
-    cargo run --features lapack-kernels --bin backend_capability_report -- --output-dir coverage/backend-capabilities/lapack-linux
+    cargo run -p nabled --features lapack-kernels --bin backend_capability_report -- --output-dir coverage/backend-capabilities/lapack-linux
 
 backend-capability-report-all:
     just -f {{ justfile() }} backend-capability-report
@@ -114,34 +125,35 @@ backend-capability-report-all:
 # --- EXAMPLES ---
 
 debug-profile example:
-    RUSTFLAGS='-g' cargo build --example "{{ example }}"
+    RUSTFLAGS='-g' cargo build -p nabled --example "{{ example }}"
 
 release-debug example:
-    RUSTFLAGS='-g' cargo build --profile=release-with-debug --example "{{ example }}"
+    RUSTFLAGS='-g' cargo build -p nabled --profile=release-with-debug --example "{{ example }}"
     codesign -s - -v -f --entitlements assets/mac.entitlements "target/release-with-debug/examples/{{ example }}"
 
 release-lto example:
-    cargo build --profile=release-lto --example "{{ example }}"
+    cargo build -p nabled --profile=release-lto --example "{{ example }}"
     codesign -s - -v -f --entitlements assets/mac.entitlements "target/release-lto/examples/{{ example }}"
 
 example example:
-    cargo run --example "{{ example }}"
+    cargo run -p nabled --example "{{ example }}"
 
 example-lto example:
-    cargo run --profile=release-lto --example "{{ example }}"
+    cargo run -p nabled --profile=release-lto --example "{{ example }}"
 
 example-release-debug example:
-    cargo run --profile=release-with-debug --example "{{ example }}"
+    cargo run -p nabled --profile=release-with-debug --example "{{ example }}"
 
 examples:
     @for ex in {{ examples }}; do \
         echo "Running example: $ex"; \
-        cargo run --example "$ex"; \
+        cargo run -p nabled --example "$ex"; \
     done
 
 # --- PROFILING ---
 flamegraph example *args='':
     CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --root --flamechart --open \
+     -p nabled \
      --profile=release-with-debug \
      --min-width="0.0001" \
      --example "{{ example }}" -- "{{ args }}"
@@ -155,32 +167,32 @@ samply example *args='': (release-debug example)
 # Check all feature combinations
 check-features *ARGS=features:
     @echo "Checking no features..."
-    cargo clippy --no-default-features --all-targets
+    cargo clippy -p nabled --no-default-features --all-targets
     @echo "Building no features..."
-    cargo check --no-default-features --all-targets
+    cargo check -p nabled --no-default-features --all-targets
     @echo "Checking default features..."
-    cargo clippy --all-targets
+    cargo clippy -p nabled --all-targets
     @echo "Building default features..."
-    cargo check --all-targets
+    cargo check -p nabled --all-targets
     @echo "Checking all features..."
-    cargo clippy --all-features --all-targets
+    cargo clippy -p nabled --all-features --all-targets
     @echo "Building all features..."
-    cargo check --all-features --all-targets
+    cargo check -p nabled --all-features --all-targets
     @echo "Checking each feature..."
     @for feature in {{ ARGS }}; do \
         echo "Checking & Building feature: $feature"; \
-        cargo clippy --no-default-features --features $feature --all-targets; \
-        cargo check --no-default-features --features $feature --all-targets; \
+        cargo clippy -p nabled --no-default-features --features $feature --all-targets; \
+        cargo check -p nabled --no-default-features --features $feature --all-targets; \
     done
     @echo "Checking each feature with defaults..."
     @for feature in {{ ARGS }}; do \
         echo "Checking feature (with defaults): $feature"; \
-        cargo clippy --features $feature --all-targets; \
-        cargo check --features $feature --all-targets; \
+        cargo clippy -p nabled --features $feature --all-targets; \
+        cargo check -p nabled --features $feature --all-targets; \
     done
     @echo "Checking all provided features..."
-    cargo clippy --no-default-features --features "{{ ARGS }}" --all-targets
-    cargo check --no-default-features --features "{{ ARGS }}" --all-targets
+    cargo clippy -p nabled --no-default-features --features "{{ ARGS }}" --all-targets
+    cargo check -p nabled --no-default-features --features "{{ ARGS }}" --all-targets
 
 fmt:
     @echo "Running rustfmt..."
@@ -197,9 +209,9 @@ fix:
 
 # Run checks CI will
 checks:
-    cargo +nightly fmt -- --check
-    cargo +nightly clippy --all-features --all-targets
-    cargo +stable clippy --all-features --all-targets -- -D warnings
+    cargo +nightly fmt --all -- --check
+    cargo +nightly clippy --workspace --all-features --all-targets
+    cargo +stable clippy --workspace --all-features --all-targets -- -D warnings
     just -f {{ justfile() }} test
     just -f {{ justfile() }} check-linux-lapack
     just -f {{ justfile() }} backend-capability-report
@@ -207,7 +219,7 @@ checks:
 # Verify Linux-gated LAPACK code paths compile under stable.
 check-linux-lapack:
     rustup target list --installed | grep -q '^x86_64-unknown-linux-gnu$' || rustup target add --toolchain stable x86_64-unknown-linux-gnu
-    cargo +stable check --features lapack-kernels --target x86_64-unknown-linux-gnu
+    cargo +stable check -p nabled --features lapack-kernels --target x86_64-unknown-linux-gnu
 
 # Initialize development environment for maintainers
 init-dev:
@@ -258,9 +270,8 @@ prepare-release version:
     # Create release branch
     git checkout -b "release-v{{ version }}"
 
-    # Update version in root Cargo.toml (in [package] section)
-    # This uses a more specific pattern to only match the version under [package]
-    awk '/^\[package\]/ {in_package=1} in_package && /^version = / {gsub(/"[^"]*"/, "\"{{ version }}\""); in_package=0} {print}' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
+    # Update version in root Cargo.toml (in [workspace.package] section)
+    awk '/^\[workspace\.package\]/ {in_workspace_package=1} in_workspace_package && /^version = / {gsub(/"[^"]*"/, "\"{{ version }}\""); in_workspace_package=0} {print}' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
 
     # Update nabled version references in README files (if they exist)
     # Look for patterns like: nabled = "0.1.1" or nabled = { version = "0.1.1"

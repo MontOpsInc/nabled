@@ -1,110 +1,58 @@
 # Architecture
 
-This is a linear algebra library written in Rust. It provides dual backends (nalgebra and ndarray) and operates solely on matrix types from those crates. Data formats (Arrow, Lance, etc.) can sit on top via separate integrations in other repositories.
+## Objective
 
-## Module Dependency Diagram
+Build a high-performance, ndarray-native numerical stack with clean composition semantics.
 
-```mermaid
-flowchart TB
-    subgraph External [External Crates]
-        nalgebra[nalgebra]
-        ndarray[ndarray]
-    end
+## Workspace Plan
 
-    subgraph Backend [Internal Backend Kernels]
-        backend_svd[SvdKernel]
-        backend_qr[QrKernel]
-        backend_lu[LuKernel]
-        backend_cholesky[CholeskyKernel]
-        backend_eigen[EigenKernel]
-        backend_schur[SchurKernel]
-        backend_triangular[TriangularSolveKernel]
-        backend_polar[PolarKernel]
-        backend_pca[PcaKernel]
-        backend_regression[RegressionKernel]
-        backend_sylvester[SylvesterKernel]
-        backend_matrix_functions[MatrixFunctionsKernel]
-    end
-
-    subgraph Core [Core Decompositions]
-        svd[SVD]
-        qr[QR]
-        lu[LU]
-        cholesky[Cholesky]
-        eigen[Eigen]
-        schur[Schur]
-    end
-
-    subgraph HigherLevel [Higher-Level Modules]
-        pca[PCA]
-        regression[Regression]
-        polar[Polar]
-        sylvester[Sylvester]
-    end
-
-    subgraph Utils [Utils and Support]
-        stats[Stats]
-        interop[Interop]
-        matrix_functions[Matrix Functions]
-        jacobian[Jacobian]
-        orthogonalization[Orthogonalization]
-        triangular[Triangular]
-        iterative[Iterative]
-    end
-
-    svd --> backend_svd
-    qr --> backend_qr
-    lu --> backend_lu
-    cholesky --> backend_cholesky
-    eigen --> backend_eigen
-    schur --> backend_schur
-    triangular --> backend_triangular
-    polar --> backend_polar
-    matrix_functions --> backend_matrix_functions
-    pca --> backend_pca
-    regression --> backend_regression
-    sylvester --> backend_sylvester
-    backend_pca --> stats
-    backend_pca --> backend_svd
-    backend_regression --> backend_qr
-    backend_sylvester --> backend_schur
+```
+.
+├── Cargo.toml                 # workspace root
+├── crates/
+│   ├── nabled-core/           # shared types, traits, numerics, errors
+│   ├── nabled-linalg/         # decompositions, solves, matrix functions
+│   ├── nabled-ml/             # pca, regression, iterative, jacobian
+│   └── nabled/                # facade/re-export crate
+└── docs/
 ```
 
-## Data Flow
+## Current Reality
 
-Matrices flow from nalgebra (`DMatrix`, `DVector`) or ndarray (`Array2`, `Array1`) into decomposition modules. SVD, QR, LU, Cholesky, Eigen, Schur, triangular solve, polar decomposition, matrix functions, PCA, regression, and Sylvester/Lyapunov solve currently dispatch through internal backend kernel traits before executing backend-specific implementations. Results are returned as nalgebra or ndarray types. The library does not depend on any data format; conversions happen in calling code or in separate integration crates.
+This document describes the target architecture. The repository is currently in transition.
 
-## File Reference
+1. The root manifest is a virtual workspace manifest.
+2. Domain implementation now lives under `crates/nabled-linalg` and `crates/nabled-ml`.
+3. Facade exports and binary/report tooling live under `crates/nabled/src/`.
+4. `docs/STATUS.md` is the authoritative migration-state snapshot.
 
-| Module | Source File |
-|--------|-------------|
-| backend (root) | `src/backend/mod.rs` |
-| backend cholesky kernel | `src/backend/cholesky.rs` |
-| backend eigen kernel | `src/backend/eigen.rs` |
-| backend lu kernel | `src/backend/lu.rs` |
-| backend matrix-functions kernel | `src/backend/matrix_functions.rs` |
-| backend pca kernel | `src/backend/pca.rs` |
-| backend polar kernel | `src/backend/polar.rs` |
-| backend qr kernel | `src/backend/qr.rs` |
-| backend regression kernel | `src/backend/regression.rs` |
-| backend schur kernel | `src/backend/schur.rs` |
-| backend svd kernel | `src/backend/svd.rs` |
-| backend sylvester kernel | `src/backend/sylvester.rs` |
-| backend triangular kernel | `src/backend/triangular.rs` |
-| cholesky | `src/cholesky.rs` |
-| eigen | `src/eigen.rs` |
-| interop | `src/interop.rs` |
-| iterative | `src/iterative.rs` |
-| jacobian | `src/jacobian.rs` |
-| lu | `src/lu.rs` |
-| matrix_functions | `src/matrix_functions.rs` |
-| orthogonalization | `src/orthogonalization.rs` |
-| pca | `src/pca.rs` |
-| polar | `src/polar.rs` |
-| qr | `src/qr.rs` |
-| regression | `src/regression.rs` |
-| schur | `src/schur.rs` |
-| stats | `src/stats.rs` |
-| svd | `src/svd.rs` |
-| sylvester | `src/sylvester.rs` |
-| triangular | `src/triangular.rs` |
+## Layer Responsibilities
+
+1. `nabled-core`
+   1. Numeric trait bounds and shared error categories.
+   2. Array validation helpers and shape checks.
+   3. Common utilities that do not pull higher-level algorithm dependencies.
+2. `nabled-linalg`
+   1. Linear algebra kernels and decompositions.
+   2. Deterministic algorithm behavior and stability checks.
+   3. Matrix/vector operations that are domain primitives for ML.
+3. `nabled-ml`
+   1. Pipeline-oriented algorithms built from `nabled-linalg`.
+   2. Feature engineering and statistical routines.
+   3. APIs for common ML workflows over vectors/matrices.
+4. `nabled`
+   1. Stable user-facing API surface.
+   2. Re-exports from `core`, `linalg`, `ml`.
+
+## API Design Rules
+
+1. Favor view-based inputs where possible.
+2. Offer allocation-optional variants for hot paths.
+3. Keep error semantics explicit and stable.
+4. Avoid backend-specific leakiness in public API signatures.
+
+## Performance Rules
+
+1. No implicit copy-heavy conversion in compute kernels.
+2. Keep data in ndarray-native structures through entire call chains.
+3. Benchmark algorithm kernels independently from orchestration code.

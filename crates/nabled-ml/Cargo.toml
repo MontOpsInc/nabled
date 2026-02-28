@@ -1,0 +1,26 @@
+[package]
+name = "nabled-ml"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+publish.workspace = true
+description = "ML-oriented algorithms built on ndarray-native nabled primitives"
+
+[features]
+default = []
+lapack-kernels = ["nabled-linalg/lapack-kernels"]
+
+[dependencies]
+nabled-core.workspace = true
+nabled-linalg.workspace = true
+ndarray.workspace = true
+num-complex.workspace = true
+num-traits.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

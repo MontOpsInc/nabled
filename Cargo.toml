@@ -1,52 +1,53 @@
-[package]
-name = "nabled"
+[workspace]
+members = [
+    "crates/nabled",
+    "crates/nabled-core",
+    "crates/nabled-linalg",
+    "crates/nabled-ml",
+]
+default-members = [
+    "crates/nabled",
+    "crates/nabled-core",
+    "crates/nabled-linalg",
+    "crates/nabled-ml",
+]
+resolver = "3"
+
+[workspace.package]
 version = "0.0.1"
 edition = "2024"
-description = "A linear algebra library written in Rust. SVD, QR, LU, Cholesky, eigen, PCA, regression, matrix functions, Jacobians, and more."
 authors = ["Niklaus Parcell <nik.parcell@gmail.com>", "George Lee Patterson <patterson.george@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/MontOpsInc/nabled"
 homepage = "https://github.com/MontOpsInc/nabled"
 documentation = "https://docs.rs/nabled"
-readme = "README.md"
-keywords = ["linear-algebra", "svd", "nalgebra", "ndarray", "rust", "mathematics", "decomposition", "pca", "regression"]
-categories = ["mathematics", "science", "algorithms"]
 publish = false
 
-[features]
-default = []
+[workspace.dependencies]
+nabled = { path = "crates/nabled" }
+nabled-core = { path = "crates/nabled-core" }
+nabled-linalg = { path = "crates/nabled-linalg" }
+nabled-ml = { path = "crates/nabled-ml" }
 
-# TODO: placeholder
-test-utils = []
-lapack-kernels = ["dep:nalgebra-lapack", "dep:ndarray-linalg"]
-lapack-competitors = ["lapack-kernels"]
-
-[dependencies]
-nalgebra = { version = "0.34", features = ["serde-serialize"] }
+approx = "0.5"
+criterion = "0.8"
+faer = { version = "0.24", default-features = false, features = ["std", "linalg"] }
 ndarray = { version = "0.17", features = ["serde"] }
+ndarray-linalg = { version = "0.18", default-features = false, features = ["openblas-system"] }
+num-complex = "0.4"
+num-traits = "0.2"
 rand = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-num-traits = "0.2"
-num-complex = "0.4"
-approx = "0.5"
+thiserror = "2"
 
-[target.'cfg(target_os = "linux")'.dependencies]
-nalgebra-lapack = { version = "0.27", optional = true, default-features = false, features = ["lapack-custom"] }
-ndarray-linalg = { version = "0.18", optional = true, default-features = false, features = ["openblas-system"] }
-
-[dev-dependencies]
-criterion = "0.8"
-faer = { version = "0.24", default-features = false, features = ["std", "linalg"] }
-
-[lints.clippy]
+[workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-# Detects large stack-allocated futures that may cause stack overflow crashes (see threshold in clippy.toml)
 large_futures = "warn"
 clone_on_ref_ptr = "warn"
 must_use_candidate = "allow"
 
-[lints.rust]
+[workspace.lints.rust]
 unused_imports = "deny"
 elided_lifetimes_in_paths = "deny"
 explicit_outlives_requirements = "warn"
@@ -60,10 +61,6 @@ unit_bindings = "warn"
 unnameable_types = "warn"
 unreachable_pub = "warn"
 unsafe_op_in_unsafe_fn = "warn"
-# Disabled: False positive for dev-dependencies that are also transitive dependencies
-# (e.g., comfy-table is both a dev-dep for examples and transitive via arrow-cast)
-# See: https://github.com/rust-lang/rust/issues/95513
-# unused_crate_dependencies = "warn"
 unused_import_braces = "warn"
 unused_lifetimes = "warn"
 unused_macro_rules = "warn"
@@ -85,7 +82,7 @@ codegen-units = 1
 inherits = "release"
 debug = "full"
 lto = "off"
-codegen-units = 16       # default
+codegen-units = 16
 opt-level = 2
 debug-assertions = false
 incremental = false
@@ -100,17 +97,8 @@ debug = "full"
 inherits = "dev"
 incremental = false
 
-# ci turns off debug info, etc. for dependencies to allow for smaller binaries making caching more effective
 [profile.ci.package."*"]
 debug = false
 debug-assertions = false
 strip = "debuginfo"
 incremental = false
-
-[[bench]]
-name = "svd_benchmarks"
-harness = false
-
-[[bench]]
-name = "qr_benchmarks"
-harness = false

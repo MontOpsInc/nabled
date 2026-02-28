@@ -1,0 +1,21 @@
+[package]
+name = "nabled-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+publish.workspace = true
+description = "Core ndarray-native types and shared utilities for nabled"
+
+[dependencies]
+ndarray.workspace = true
+num-complex.workspace = true
+num-traits.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

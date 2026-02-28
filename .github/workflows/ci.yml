@@ -71,18 +71,18 @@ jobs:
         sudo apt-get install -y pkg-config libopenblas-dev liblapack-dev
 
     - name: Check formatting
-      run: cargo +nightly fmt -- --check
+      run: cargo +nightly fmt --all -- --check
 
     - name: Run clippy
-      run: cargo +stable clippy --profile ci --all-features --all-targets -- -D warnings
+      run: cargo +stable clippy --workspace --profile ci --all-features --all-targets -- -D warnings
 
     - name: Verify Linux LAPACK kernel path compiles
-      run: cargo +stable check --profile ci --features lapack-kernels --target x86_64-unknown-linux-gnu
+      run: cargo +stable check -p nabled --profile ci --features lapack-kernels --target x86_64-unknown-linux-gnu
 
     - name: Generate backend capability reports
       run: |
-        cargo +stable run --bin backend_capability_report -- --output-dir coverage/backend-capabilities/baseline
-        cargo +stable run --features lapack-kernels --bin backend_capability_report -- --output-dir coverage/backend-capabilities/lapack-linux
+        cargo +stable run -p nabled --bin backend_capability_report -- --output-dir coverage/backend-capabilities/baseline
+        cargo +stable run -p nabled --features lapack-kernels --bin backend_capability_report -- --output-dir coverage/backend-capabilities/lapack-linux
 
     - name: Publish backend capability summary
       run: |
@@ -101,11 +101,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    strategy:
-      matrix:
-        features:
-          # TODO: Remove - (George) This is placeholder, there are not features currently
-          - "test-utils"
     steps:
     - uses: actions/checkout@v6
 
@@ -132,17 +127,13 @@ jobs:
 
     - name: Run unit tests
       run: |
-        cargo test --lib --profile ci -F ${{ matrix.features }} -- --nocapture --show-output
+        cargo test --workspace --lib --profile ci -- --nocapture --show-output
 
   test-integration:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    strategy:
-      matrix:
-        features:
-          - "test-utils"
     steps:
     - uses: actions/checkout@v6
 
@@ -169,7 +160,7 @@ jobs:
 
     - name: Run integration tests
       run: |
-        cargo test --profile ci -F ${{ matrix.features }} --test "integration" -- --nocapture --show-output
+        cargo test -p nabled --profile ci --test "integration" -- --nocapture --show-output
 
     # TODO: Convert doc test to tests and reenable
     # - name: Run doc tests
@@ -192,7 +183,7 @@ jobs:
     - name: Generate code coverage
       run: |
         cargo llvm-cov clean --workspace
-        cargo llvm-cov --lcov --no-report --ignore-filename-regex "(examples).*" -F test-utils
+        cargo llvm-cov --workspace --all-targets --lcov --no-report --ignore-filename-regex "(examples).*"
         cargo llvm-cov report --lcov --output-path lcov.info
 
     - name: Upload coverage to Codecov
@@ -249,7 +240,7 @@ jobs:
 
     - name: Update rolling benchmark history
       run: |
-        cargo run --bin benchmark_history -- \
+        cargo run -p nabled --bin benchmark_history -- \
           --summary coverage/benchmarks/summary.json \
           --history coverage/benchmarks/baseline/history.json \
           --output-md coverage/benchmarks/history.md \
