@@ -4,7 +4,9 @@ use std::fmt;
 
 use ndarray::{Array1, Array2, s};
 
-use crate::internal::{DEFAULT_TOLERANCE, identity, qr_gram_schmidt, validate_finite};
+#[cfg(not(feature = "openblas-system"))]
+use crate::internal::qr_gram_schmidt;
+use crate::internal::{DEFAULT_TOLERANCE, identity, validate_finite};
 
 /// Error types for QR decomposition.
 #[derive(Debug, Clone, PartialEq)]
@@ -75,6 +77,7 @@ fn validate_qr_input(matrix: &Array2<f64>) -> Result<(), QRError> {
     validate_finite(matrix).map_err(|_| QRError::NumericalInstability)
 }
 
+#[cfg(not(feature = "openblas-system"))]
 fn decompose_internal(
     matrix: &Array2<f64>,
     config: &QRConfig<f64>,
@@ -91,8 +94,33 @@ fn decompose_provider(
     matrix: &Array2<f64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<f64>, QRError> {
-    // Provider-specific QR can be introduced here without changing public API shape.
-    decompose_internal(matrix, config)
+    use ndarray_linalg::QR as _;
+
+    validate_qr_input(matrix)?;
+    let (q, r) = matrix.qr().map_err(|_| QRError::ConvergenceFailed)?;
+    let p = config.use_pivoting.then(|| identity(matrix.ncols()));
+
+    let diagonal = r.nrows().min(r.ncols());
+    let rank = (0..diagonal)
+        .filter(|&index| r[[index, index]].abs() > config.rank_tolerance.max(DEFAULT_TOLERANCE))
+        .count();
+
+    Ok(QRResult { q, r, p, rank })
+}
+
+#[cfg(feature = "openblas-system")]
+fn solve_least_squares_provider(
+    matrix: &Array2<f64>,
+    rhs: &Array1<f64>,
+) -> Result<Array1<f64>, QRError> {
+    use ndarray_linalg::LeastSquaresSvd as _;
+
+    let result = matrix.least_squares(rhs).map_err(|_| QRError::ConvergenceFailed)?;
+    let rank = usize::try_from(result.rank).map_err(|_| QRError::ConvergenceFailed)?;
+    if rank < matrix.ncols() {
+        return Err(QRError::SingularMatrix);
+    }
+    Ok(result.solution)
 }
 
 /// Ndarray QR decomposition functions.
@@ -172,36 +200,44 @@ pub mod ndarray_qr {
             ));
         }
 
-        let qr = decompose_reduced(matrix, config)?;
-        let n = matrix.ncols();
-        if qr.rank < n {
-            return Err(QRError::SingularMatrix);
+        #[cfg(feature = "openblas-system")]
+        {
+            let _ = config;
+            solve_least_squares_provider(matrix, rhs)
         }
-
-        let mut y = Array1::<f64>::zeros(n);
-        for i in 0..n {
-            let mut dot = 0.0_f64;
-            for row in 0..matrix.nrows() {
-                dot += qr.q[[row, i]] * rhs[row];
-            }
-            y[i] = dot;
-        }
-
-        let mut x = Array1::<f64>::zeros(n);
-        for i_rev in 0..n {
-            let i = n - 1 - i_rev;
-            let mut sum = y[i];
-            for j in (i + 1)..n {
-                sum -= qr.r[[i, j]] * x[j];
-            }
-            let diagonal = qr.r[[i, i]];
-            if diagonal.abs() <= config.rank_tolerance.max(DEFAULT_TOLERANCE) {
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            let qr = decompose_reduced(matrix, config)?;
+            let n = matrix.ncols();
+            if qr.rank < n {
                 return Err(QRError::SingularMatrix);
             }
-            x[i] = sum / diagonal;
-        }
 
-        Ok(x)
+            let mut y = Array1::<f64>::zeros(n);
+            for i in 0..n {
+                let mut dot = 0.0_f64;
+                for row in 0..matrix.nrows() {
+                    dot += qr.q[[row, i]] * rhs[row];
+                }
+                y[i] = dot;
+            }
+
+            let mut x = Array1::<f64>::zeros(n);
+            for i_rev in 0..n {
+                let i = n - 1 - i_rev;
+                let mut sum = y[i];
+                for j in (i + 1)..n {
+                    sum -= qr.r[[i, j]] * x[j];
+                }
+                let diagonal = qr.r[[i, i]];
+                if diagonal.abs() <= config.rank_tolerance.max(DEFAULT_TOLERANCE) {
+                    return Err(QRError::SingularMatrix);
+                }
+                x[i] = sum / diagonal;
+            }
+
+            Ok(x)
+        }
     }
 
     /// Reconstruct matrix `Q * R`.

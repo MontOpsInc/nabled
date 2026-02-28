@@ -41,14 +41,19 @@ Use this file to resume work quickly after context compaction without re-auditin
 13. `D-013`: Explicit allocation/workspace API pattern established (`*_into`, reusable workspace structs).
 14. `D-014`: Tier-A benchmark suites expanded (LU, Cholesky, Eigen, Vector).
 15. `D-015`: Benchmark reporting/classification updated for expanded domain coverage.
+16. `D-016`: Dense provider paths are now native for QR/LU/Cholesky/Eigen hot operations (no provider stubs in those paths).
+17. `D-017`: `_into` + reusable workspace APIs expanded across `matrix_functions`, `schur`, and `sylvester`.
+18. `D-018`: Sparse baseline landed with `CSR` primitives (`matvec`, `matvec_into`) and Jacobi sparse solve.
+19. `D-019`: Complex-number parity baseline added for vector kernels (`dot_hermitian`, complex norm/cosine).
+20. `D-020`: First-order optimization primitives added in `nabled-ml` (Armijo backtracking, gradient descent, Adam).
 
 ## Next
 
-1. `N-006` (P0): Replace provider fallback stubs with provider-native kernels for QR/LU/Cholesky/Eigen.
-2. `N-007` (P0): Expand `_into`/workspace APIs through remaining heavy domains (`matrix_functions`, `schur`, `sylvester`).
-3. `N-008` (P0): Add sparse primitives and solvers baseline (`sparse matrix/vector`, sparse solves).
-4. `N-009` (P0): Add complex-number parity for Tier-A kernels.
-5. `N-010` (P0): Add optimization primitives beyond CG/GMRES (line search + first-order optimizers).
+1. `N-011` (P0): Add dedicated benchmark suites for new domains (`sparse`, `schur`, `sylvester`, `optimization`) and fold them into bench reporting.
+2. `N-012` (P0): Extend complex parity beyond vector kernels into Tier-A decomposition APIs where numerically sound/provider-supported.
+3. `N-013` (P0): Expand sparse roadmap beyond CSR/Jacobi (format policy + additional sparse solvers).
+4. `N-014` (P0): Execute view-first API pass (`ArrayView*`) across hot public APIs to reduce caller-side cloning.
+5. `N-015` (P0): Consolidate cross-domain error taxonomy and conversion story in `nabled-core`.
 
 ## Needed
 

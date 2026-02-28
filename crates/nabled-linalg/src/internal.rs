@@ -107,6 +107,7 @@ pub(crate) fn lu_decompose(matrix: &Array2<f64>) -> Result<LuDecomposition, &'st
 }
 
 #[allow(clippy::many_single_char_names)]
+#[cfg(not(feature = "openblas-system"))]
 pub(crate) fn lu_solve(
     l: &Array2<f64>,
     u: &Array2<f64>,
@@ -150,6 +151,7 @@ pub(crate) fn lu_solve(
 }
 
 #[allow(clippy::many_single_char_names)]
+#[cfg(not(feature = "openblas-system"))]
 pub(crate) fn inverse_from_lu(
     l: &Array2<f64>,
     u: &Array2<f64>,

@@ -1,6 +1,7 @@
 //! Vector-first primitives for embedding-style workloads.
 
 use ndarray::{Array1, Array2};
+use num_complex::Complex64;
 use thiserror::Error;
 
 /// Errors for vector primitives.
@@ -69,6 +70,23 @@ pub mod ndarray_vector {
         Ok(a.iter().zip(b.iter()).map(|(x, y)| x * y).sum())
     }
 
+    /// Compute Hermitian dot product `a^H b` for complex vectors.
+    ///
+    /// # Errors
+    /// Returns an error when vector lengths mismatch or either input is empty.
+    pub fn dot_hermitian(
+        a: &Array1<Complex64>,
+        b: &Array1<Complex64>,
+    ) -> Result<Complex64, VectorError> {
+        if a.is_empty() || b.is_empty() {
+            return Err(VectorError::EmptyInput);
+        }
+        if a.len() != b.len() {
+            return Err(VectorError::DimensionMismatch);
+        }
+        Ok(a.iter().zip(b.iter()).map(|(x, y)| x.conj() * y).sum())
+    }
+
     /// Compute L2 norm of a vector.
     ///
     /// # Errors
@@ -80,6 +98,17 @@ pub mod ndarray_vector {
         Ok(v.iter().map(|value| value * value).sum::<f64>().sqrt())
     }
 
+    /// Compute L2 norm of a complex vector.
+    ///
+    /// # Errors
+    /// Returns an error if the vector is empty.
+    pub fn l2_norm_complex(v: &Array1<Complex64>) -> Result<f64, VectorError> {
+        if v.is_empty() {
+            return Err(VectorError::EmptyInput);
+        }
+        Ok(v.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt())
+    }
+
     /// Compute cosine similarity of two vectors.
     ///
     /// # Errors
@@ -88,6 +117,24 @@ pub mod ndarray_vector {
         let dot_value = dot(a, b)?;
         let norm_a = l2_norm(a)?;
         let norm_b = l2_norm(b)?;
+        let denominator = norm_a * norm_b;
+        if denominator <= f64::EPSILON {
+            return Err(VectorError::ZeroNorm);
+        }
+        Ok(dot_value / denominator)
+    }
+
+    /// Compute cosine similarity for complex vectors.
+    ///
+    /// # Errors
+    /// Returns an error for invalid dimensions, empty inputs, or zero-norm vectors.
+    pub fn cosine_similarity_complex(
+        a: &Array1<Complex64>,
+        b: &Array1<Complex64>,
+    ) -> Result<Complex64, VectorError> {
+        let dot_value = dot_hermitian(a, b)?;
+        let norm_a = l2_norm_complex(a)?;
+        let norm_b = l2_norm_complex(b)?;
         let denominator = norm_a * norm_b;
         if denominator <= f64::EPSILON {
             return Err(VectorError::ZeroNorm);
@@ -283,6 +330,7 @@ pub mod ndarray_vector {
 #[cfg(test)]
 mod tests {
     use ndarray::{arr1, arr2};
+    use num_complex::Complex64;
 
     use super::{PairwiseCosineWorkspace, VectorError, ndarray_vector};
 
@@ -351,5 +399,17 @@ mod tests {
             ndarray_vector::pairwise_l2_distance(&a, &b),
             Err(VectorError::DimensionMismatch)
         ));
+    }
+
+    #[test]
+    fn complex_dot_and_cosine_work() {
+        let a = arr1(&[Complex64::new(1.0, 1.0), Complex64::new(2.0, -1.0)]);
+        let b = arr1(&[Complex64::new(0.5, -0.5), Complex64::new(-1.0, 3.0)]);
+
+        let dot = ndarray_vector::dot_hermitian(&a, &b).unwrap();
+        let cosine = ndarray_vector::cosine_similarity_complex(&a, &b).unwrap();
+
+        assert!(dot.norm() > 0.0);
+        assert!(cosine.norm() <= 1.0 + 1e-12);
     }
 }

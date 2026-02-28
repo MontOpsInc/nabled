@@ -5,8 +5,10 @@ use std::fmt;
 use ndarray::{Array1, Array2};
 
 use crate::cholesky::ndarray_cholesky;
+#[cfg(not(feature = "openblas-system"))]
+use crate::internal::jacobi_eigen_symmetric;
 use crate::internal::{
-    DEFAULT_TOLERANCE, is_symmetric, jacobi_eigen_symmetric, sort_eigenpairs_desc, validate_finite,
+    DEFAULT_TOLERANCE, is_symmetric, sort_eigenpairs_desc, validate_finite,
     validate_square_non_empty,
 };
 
@@ -81,6 +83,7 @@ fn validate_symmetric_input(matrix: &Array2<f64>) -> Result<(), EigenError> {
     Ok(())
 }
 
+#[cfg(not(feature = "openblas-system"))]
 fn symmetric_internal(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError> {
     validate_symmetric_input(matrix)?;
     let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(matrix, DEFAULT_TOLERANCE, 256)
@@ -91,10 +94,16 @@ fn symmetric_internal(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenE
 
 #[cfg(feature = "openblas-system")]
 fn symmetric_provider(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError> {
-    // Provider-specific symmetric eigensolvers can be introduced here without changing API shape.
-    symmetric_internal(matrix)
+    use ndarray_linalg::{Eigh as _, UPLO};
+
+    validate_symmetric_input(matrix)?;
+    let (eigenvalues, eigenvectors) =
+        matrix.eigh(UPLO::Lower).map_err(|_| EigenError::ConvergenceFailed)?;
+    let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
+    Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
 }
 
+#[cfg(not(feature = "openblas-system"))]
 fn generalized_internal(
     matrix_a: &Array2<f64>,
     matrix_b: &Array2<f64>,
@@ -127,8 +136,24 @@ fn generalized_provider(
     matrix_a: &Array2<f64>,
     matrix_b: &Array2<f64>,
 ) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
-    // Provider-specific generalized eigensolvers can be introduced here without changing API shape.
-    generalized_internal(matrix_a, matrix_b)
+    validate_symmetric_input(matrix_a)?;
+    validate_symmetric_input(matrix_b)?;
+    if matrix_a.dim() != matrix_b.dim() {
+        return Err(EigenError::InvalidDimensions);
+    }
+
+    // Reduce generalized SPD problem A x = lambda B x to a standard symmetric
+    // problem via B^{-1}A, while reusing provider-backed Cholesky inverse.
+    let b_inverse = ndarray_cholesky::inverse(matrix_b).map_err(|error| match error {
+        crate::cholesky::CholeskyError::NotPositiveDefinite => EigenError::NotPositiveDefinite,
+        crate::cholesky::CholeskyError::EmptyMatrix => EigenError::EmptyMatrix,
+        crate::cholesky::CholeskyError::NotSquare => EigenError::NotSquare,
+        _ => EigenError::NumericalInstability,
+    })?;
+    let c = b_inverse.dot(matrix_a);
+    let symmetric_c = (&c + &c.t()) * 0.5;
+    let NdarrayEigenResult { eigenvalues, eigenvectors } = symmetric_provider(&symmetric_c)?;
+    Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
 /// Ndarray eigen decomposition functions.

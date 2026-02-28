@@ -5,9 +5,10 @@ use std::fmt;
 use ndarray::{Array1, Array2};
 
 use crate::internal::{
-    DEFAULT_TOLERANCE, inverse_from_lu, lu_decompose, lu_solve, validate_finite,
-    validate_square_non_empty,
+    DEFAULT_TOLERANCE, lu_decompose, validate_finite, validate_square_non_empty,
 };
+#[cfg(not(feature = "openblas-system"))]
+use crate::internal::{inverse_from_lu, lu_solve};
 
 /// Result of LU decomposition.
 #[derive(Debug, Clone)]
@@ -72,9 +73,30 @@ fn decompose_internal(matrix: &Array2<f64>) -> Result<(NdarrayLUResult, Vec<usiz
 }
 
 #[cfg(feature = "openblas-system")]
-fn decompose_provider(matrix: &Array2<f64>) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
-    // Provider-specific LU can be introduced here without changing public API shape.
-    decompose_internal(matrix)
+fn solve_provider(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, LUError> {
+    use ndarray_linalg::Solve as _;
+
+    validate_square_non_empty(matrix).map_err(map_lu_error)?;
+    validate_finite(matrix).map_err(map_lu_error)?;
+    matrix.solve(rhs).map_err(|_| LUError::SingularMatrix)
+}
+
+#[cfg(feature = "openblas-system")]
+fn inverse_provider(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> {
+    use ndarray_linalg::Inverse as _;
+
+    validate_square_non_empty(matrix).map_err(map_lu_error)?;
+    validate_finite(matrix).map_err(map_lu_error)?;
+    matrix.inv().map_err(|_| LUError::SingularMatrix)
+}
+
+#[cfg(feature = "openblas-system")]
+fn determinant_provider(matrix: &Array2<f64>) -> Result<f64, LUError> {
+    use ndarray_linalg::Determinant as _;
+
+    validate_square_non_empty(matrix).map_err(map_lu_error)?;
+    validate_finite(matrix).map_err(map_lu_error)?;
+    matrix.det().map_err(|_| LUError::SingularMatrix)
 }
 
 /// Ndarray LU functions.
@@ -84,14 +106,7 @@ pub mod ndarray_lu {
     fn decompose_with_metadata(
         matrix: &Array2<f64>,
     ) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
-        #[cfg(feature = "openblas-system")]
-        {
-            decompose_provider(matrix)
-        }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            decompose_internal(matrix)
-        }
+        decompose_internal(matrix)
     }
 
     /// Compute LU decomposition with partial pivoting.
@@ -116,8 +131,15 @@ pub mod ndarray_lu {
             ));
         }
 
-        let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
-        lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs).map_err(map_lu_error)
+        #[cfg(feature = "openblas-system")]
+        {
+            solve_provider(matrix, rhs)
+        }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+            lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs).map_err(map_lu_error)
+        }
     }
 
     /// Compute matrix inverse via LU decomposition.
@@ -125,8 +147,15 @@ pub mod ndarray_lu {
     /// # Errors
     /// Returns an error if matrix is singular.
     pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> {
-        let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
-        inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error)
+        #[cfg(feature = "openblas-system")]
+        {
+            inverse_provider(matrix)
+        }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+            inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error)
+        }
     }
 
     /// Compute determinant via LU decomposition.
@@ -134,15 +163,22 @@ pub mod ndarray_lu {
     /// # Errors
     /// Returns an error if decomposition fails.
     pub fn determinant(matrix: &Array2<f64>) -> Result<f64, LUError> {
-        let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
-        let mut determinant = f64::from(sign);
-        for i in 0..decomposition.u.nrows() {
-            determinant *= decomposition.u[[i, i]];
+        #[cfg(feature = "openblas-system")]
+        {
+            determinant_provider(matrix)
         }
-        if !determinant.is_finite() {
-            return Err(LUError::NumericalInstability);
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
+            let mut determinant = f64::from(sign);
+            for i in 0..decomposition.u.nrows() {
+                determinant *= decomposition.u[[i, i]];
+            }
+            if !determinant.is_finite() {
+                return Err(LUError::NumericalInstability);
+            }
+            Ok(determinant)
         }
-        Ok(determinant)
     }
 
     /// Compute signed log-determinant via LU decomposition.

@@ -45,6 +45,20 @@ impl fmt::Display for MatrixFunctionError {
 
 impl std::error::Error for MatrixFunctionError {}
 
+/// Reusable workspace for matrix-function `_into` kernels.
+#[derive(Debug, Clone, Default)]
+pub struct MatrixFunctionWorkspace {
+    scratch: Array2<f64>,
+}
+
+impl MatrixFunctionWorkspace {
+    fn ensure_square(&mut self, n: usize) {
+        if self.scratch.dim() != (n, n) {
+            self.scratch = Array2::<f64>::zeros((n, n));
+        }
+    }
+}
+
 fn validate_square(matrix: &Array2<f64>) -> Result<(), MatrixFunctionError> {
     validate_square_non_empty(matrix).map_err(|error| match error {
         "empty" => MatrixFunctionError::EmptyMatrix,
@@ -90,6 +104,18 @@ fn taylor_matrix_exp(
 pub mod ndarray_matrix_functions {
     use super::*;
 
+    fn validate_output_shape(
+        matrix: &Array2<f64>,
+        output: &Array2<f64>,
+    ) -> Result<(), MatrixFunctionError> {
+        if output.dim() != matrix.dim() {
+            return Err(MatrixFunctionError::InvalidInput(
+                "output shape must match input matrix shape".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Compute matrix exponential via Taylor series.
     ///
     /// # Errors
@@ -100,6 +126,39 @@ pub mod ndarray_matrix_functions {
         tolerance: f64,
     ) -> Result<Array2<f64>, MatrixFunctionError> {
         taylor_matrix_exp(matrix, max_terms, tolerance)
+    }
+
+    /// Compute matrix exponential into `output`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_exp_into(
+        matrix: &Array2<f64>,
+        max_terms: usize,
+        tolerance: f64,
+        output: &mut Array2<f64>,
+    ) -> Result<(), MatrixFunctionError> {
+        let mut workspace = MatrixFunctionWorkspace::default();
+        matrix_exp_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
+    }
+
+    /// Compute matrix exponential into `output` using reusable `workspace`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_exp_with_workspace_into(
+        matrix: &Array2<f64>,
+        max_terms: usize,
+        tolerance: f64,
+        output: &mut Array2<f64>,
+        workspace: &mut MatrixFunctionWorkspace,
+    ) -> Result<(), MatrixFunctionError> {
+        validate_output_shape(matrix, output)?;
+        workspace.ensure_square(matrix.nrows());
+        let result = matrix_exp(matrix, max_terms, tolerance)?;
+        workspace.scratch.assign(&result);
+        output.assign(&workspace.scratch);
+        Ok(())
     }
 
     /// Compute matrix exponential via eigen decomposition when symmetric.
@@ -152,6 +211,39 @@ pub mod ndarray_matrix_functions {
         Ok(result)
     }
 
+    /// Compute matrix logarithm via Taylor expansion into `output`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_log_taylor_into(
+        matrix: &Array2<f64>,
+        max_terms: usize,
+        tolerance: f64,
+        output: &mut Array2<f64>,
+    ) -> Result<(), MatrixFunctionError> {
+        let mut workspace = MatrixFunctionWorkspace::default();
+        matrix_log_taylor_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
+    }
+
+    /// Compute matrix logarithm via Taylor expansion into `output` with reusable `workspace`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_log_taylor_with_workspace_into(
+        matrix: &Array2<f64>,
+        max_terms: usize,
+        tolerance: f64,
+        output: &mut Array2<f64>,
+        workspace: &mut MatrixFunctionWorkspace,
+    ) -> Result<(), MatrixFunctionError> {
+        validate_output_shape(matrix, output)?;
+        workspace.ensure_square(matrix.nrows());
+        let result = matrix_log_taylor(matrix, max_terms, tolerance)?;
+        workspace.scratch.assign(&result);
+        output.assign(&workspace.scratch);
+        Ok(())
+    }
+
     /// Compute matrix logarithm via eigen decomposition (symmetric PSD matrices).
     ///
     /// # Errors
@@ -173,6 +265,35 @@ pub mod ndarray_matrix_functions {
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
     }
 
+    /// Compute matrix logarithm via eigen decomposition into `output`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_log_eigen_into(
+        matrix: &Array2<f64>,
+        output: &mut Array2<f64>,
+    ) -> Result<(), MatrixFunctionError> {
+        let mut workspace = MatrixFunctionWorkspace::default();
+        matrix_log_eigen_with_workspace_into(matrix, output, &mut workspace)
+    }
+
+    /// Compute matrix logarithm via eigen decomposition into `output` with reusable `workspace`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_log_eigen_with_workspace_into(
+        matrix: &Array2<f64>,
+        output: &mut Array2<f64>,
+        workspace: &mut MatrixFunctionWorkspace,
+    ) -> Result<(), MatrixFunctionError> {
+        validate_output_shape(matrix, output)?;
+        workspace.ensure_square(matrix.nrows());
+        let result = matrix_log_eigen(matrix)?;
+        workspace.scratch.assign(&result);
+        output.assign(&workspace.scratch);
+        Ok(())
+    }
+
     /// Compute matrix logarithm via SVD.
     ///
     /// # Errors
@@ -187,6 +308,35 @@ pub mod ndarray_matrix_functions {
 
         let log_sigma = diagonal_from(&svd.singular_values.map(|value| value.ln()));
         Ok(svd.u.dot(&log_sigma).dot(&svd.vt))
+    }
+
+    /// Compute matrix logarithm via SVD into `output`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_log_svd_into(
+        matrix: &Array2<f64>,
+        output: &mut Array2<f64>,
+    ) -> Result<(), MatrixFunctionError> {
+        let mut workspace = MatrixFunctionWorkspace::default();
+        matrix_log_svd_with_workspace_into(matrix, output, &mut workspace)
+    }
+
+    /// Compute matrix logarithm via SVD into `output` with reusable `workspace`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_log_svd_with_workspace_into(
+        matrix: &Array2<f64>,
+        output: &mut Array2<f64>,
+        workspace: &mut MatrixFunctionWorkspace,
+    ) -> Result<(), MatrixFunctionError> {
+        validate_output_shape(matrix, output)?;
+        workspace.ensure_square(matrix.nrows());
+        let result = matrix_log_svd(matrix)?;
+        workspace.scratch.assign(&result);
+        output.assign(&workspace.scratch);
+        Ok(())
     }
 
     /// Compute matrix power via eigen decomposition (symmetric matrices).
@@ -207,6 +357,37 @@ pub mod ndarray_matrix_functions {
         let powered_values = eigen.eigenvalues.map(|value| value.powf(power));
         let diagonal = diagonal_from(&powered_values);
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
+    }
+
+    /// Compute matrix power into `output`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_power_into(
+        matrix: &Array2<f64>,
+        power: f64,
+        output: &mut Array2<f64>,
+    ) -> Result<(), MatrixFunctionError> {
+        let mut workspace = MatrixFunctionWorkspace::default();
+        matrix_power_with_workspace_into(matrix, power, output, &mut workspace)
+    }
+
+    /// Compute matrix power into `output` using reusable `workspace`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_power_with_workspace_into(
+        matrix: &Array2<f64>,
+        power: f64,
+        output: &mut Array2<f64>,
+        workspace: &mut MatrixFunctionWorkspace,
+    ) -> Result<(), MatrixFunctionError> {
+        validate_output_shape(matrix, output)?;
+        workspace.ensure_square(matrix.nrows());
+        let result = matrix_power(matrix, power)?;
+        workspace.scratch.assign(&result);
+        output.assign(&workspace.scratch);
+        Ok(())
     }
 
     /// Compute matrix sign via eigen decomposition (symmetric matrices).
@@ -233,13 +414,42 @@ pub mod ndarray_matrix_functions {
         let diagonal = diagonal_from(&sign_values);
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
     }
+
+    /// Compute matrix sign into `output`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_sign_into(
+        matrix: &Array2<f64>,
+        output: &mut Array2<f64>,
+    ) -> Result<(), MatrixFunctionError> {
+        let mut workspace = MatrixFunctionWorkspace::default();
+        matrix_sign_with_workspace_into(matrix, output, &mut workspace)
+    }
+
+    /// Compute matrix sign into `output` using reusable `workspace`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs or output shape mismatch.
+    pub fn matrix_sign_with_workspace_into(
+        matrix: &Array2<f64>,
+        output: &mut Array2<f64>,
+        workspace: &mut MatrixFunctionWorkspace,
+    ) -> Result<(), MatrixFunctionError> {
+        validate_output_shape(matrix, output)?;
+        workspace.ensure_square(matrix.nrows());
+        let result = matrix_sign(matrix)?;
+        workspace.scratch.assign(&result);
+        output.assign(&workspace.scratch);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
 
-    use super::{MatrixFunctionError, ndarray_matrix_functions};
+    use super::{MatrixFunctionError, MatrixFunctionWorkspace, ndarray_matrix_functions};
 
     #[test]
     fn exp_and_log_roundtrip_for_spd() {
@@ -258,5 +468,27 @@ mod tests {
         let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 0.0, 1.0]).unwrap();
         let result = ndarray_matrix_functions::matrix_log_eigen(&matrix);
         assert!(matches!(result, Err(MatrixFunctionError::NotSymmetric)));
+    }
+
+    #[test]
+    fn matrix_power_into_matches_allocating_path() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 1.0, 3.0]).unwrap();
+        let expected = ndarray_matrix_functions::matrix_power(&matrix, 0.5).unwrap();
+
+        let mut output = Array2::<f64>::zeros((2, 2));
+        let mut workspace = MatrixFunctionWorkspace::default();
+        ndarray_matrix_functions::matrix_power_with_workspace_into(
+            &matrix,
+            0.5,
+            &mut output,
+            &mut workspace,
+        )
+        .unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8);
+            }
+        }
     }
 }

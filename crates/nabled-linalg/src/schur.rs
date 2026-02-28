@@ -45,6 +45,24 @@ pub struct NdarraySchurResult {
     pub t: Array2<f64>,
 }
 
+/// Reusable workspace for Schur decomposition `_into` kernels.
+#[derive(Debug, Clone, Default)]
+pub struct SchurWorkspace {
+    q_scratch: Array2<f64>,
+    t_scratch: Array2<f64>,
+}
+
+impl SchurWorkspace {
+    fn ensure_square(&mut self, n: usize) {
+        if self.q_scratch.dim() != (n, n) {
+            self.q_scratch = Array2::<f64>::zeros((n, n));
+        }
+        if self.t_scratch.dim() != (n, n) {
+            self.t_scratch = Array2::<f64>::zeros((n, n));
+        }
+    }
+}
+
 fn off_diagonal_norm(matrix: &Array2<f64>) -> f64 {
     let n = matrix.nrows();
     let mut sum = 0.0_f64;
@@ -60,6 +78,20 @@ fn off_diagonal_norm(matrix: &Array2<f64>) -> f64 {
 /// Ndarray Schur functions.
 pub mod ndarray_schur {
     use super::*;
+
+    fn validate_output_shapes(
+        matrix: &Array2<f64>,
+        output_q: &Array2<f64>,
+        output_t: &Array2<f64>,
+    ) -> Result<(), SchurError> {
+        let expected = (matrix.nrows(), matrix.ncols());
+        if output_q.dim() != expected || output_t.dim() != expected {
+            return Err(SchurError::InvalidInput(
+                "output_q/output_t shapes must match input matrix shape".to_string(),
+            ));
+        }
+        Ok(())
+    }
 
     /// Compute Schur decomposition `A = Q T Q^T`.
     ///
@@ -96,13 +128,47 @@ pub mod ndarray_schur {
 
         Ok(NdarraySchurResult { q: q_total, t })
     }
+
+    /// Compute Schur decomposition into caller-provided outputs.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs, output shapes, or convergence failure.
+    pub fn compute_schur_into(
+        matrix: &Array2<f64>,
+        output_q: &mut Array2<f64>,
+        output_t: &mut Array2<f64>,
+    ) -> Result<(), SchurError> {
+        let mut workspace = SchurWorkspace::default();
+        compute_schur_with_workspace_into(matrix, output_q, output_t, &mut workspace)
+    }
+
+    /// Compute Schur decomposition into caller-provided outputs using reusable `workspace`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs, output shapes, or convergence failure.
+    pub fn compute_schur_with_workspace_into(
+        matrix: &Array2<f64>,
+        output_q: &mut Array2<f64>,
+        output_t: &mut Array2<f64>,
+        workspace: &mut SchurWorkspace,
+    ) -> Result<(), SchurError> {
+        validate_output_shapes(matrix, output_q, output_t)?;
+        workspace.ensure_square(matrix.nrows());
+
+        let result = compute_schur(matrix)?;
+        workspace.q_scratch.assign(&result.q);
+        workspace.t_scratch.assign(&result.t);
+        output_q.assign(&workspace.q_scratch);
+        output_t.assign(&workspace.t_scratch);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
 
-    use super::ndarray_schur;
+    use super::{SchurWorkspace, ndarray_schur};
 
     #[test]
     fn schur_reconstructs_matrix() {
@@ -112,6 +178,25 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-6);
+            }
+        }
+    }
+
+    #[test]
+    fn schur_into_matches_allocating_path() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![5.0, 2.0, 1.0, 4.0]).unwrap();
+        let expected = ndarray_schur::compute_schur(&matrix).unwrap();
+
+        let mut q = Array2::<f64>::zeros((2, 2));
+        let mut t = Array2::<f64>::zeros((2, 2));
+        let mut workspace = SchurWorkspace::default();
+        ndarray_schur::compute_schur_with_workspace_into(&matrix, &mut q, &mut t, &mut workspace)
+            .unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((q[[i, j]] - expected.q[[i, j]]).abs() < 1e-8);
+                assert!((t[[i, j]] - expected.t[[i, j]]).abs() < 1e-8);
             }
         }
     }

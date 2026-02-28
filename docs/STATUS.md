@@ -15,6 +15,9 @@ Workspace migration for library domains is complete.
 7. Vector primitives are available in `nabled-linalg::vector` with pairwise and batched APIs.
 8. Explicit allocation paths (`*_into`) and reusable workspace pattern are in place for key hot paths.
 9. Tier-A benchmark surface expanded beyond four suites (LU/Cholesky/Eigen/Vector added).
+10. Sparse baseline is now present (`CSR`, sparse matvec, Jacobi sparse solve).
+11. Complex-number vector parity is now present (Hermitian dot, complex norm/cosine).
+12. First-order optimization primitives are now present (line search, gradient descent, Adam).
 
 ## Current Code Ownership
 
@@ -49,11 +52,11 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Implement native provider kernels (not fallback stubs) for QR/LU/Cholesky/Eigen.
-2. Expand allocation-controlled APIs to remaining heavy kernels (`matrix_functions`, `schur`, `sylvester`).
-3. Add sparse/vectorized batch domains per `docs/CAPABILITY_MATRIX.md`.
-4. Continue benchmark/regression hardening by domain and operation class.
-5. Track active execution state in `docs/EXECUTION_TRACKER.md`.
+1. Add benchmark suites for newly landed sparse/schur/sylvester/optimization domains.
+2. Expand complex-number parity from vector kernels into decomposition kernels.
+3. Expand sparse formats/solvers beyond CSR+Jacobi baseline.
+4. Run view-first API pass (`ArrayView*`) for allocation discipline.
+5. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration
 

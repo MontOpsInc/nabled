@@ -4,7 +4,9 @@ use std::fmt;
 
 use ndarray::{Array1, Array2};
 
-use crate::internal::{DEFAULT_TOLERANCE, validate_finite, validate_square_non_empty};
+#[cfg(not(feature = "openblas-system"))]
+use crate::internal::DEFAULT_TOLERANCE;
+use crate::internal::{validate_finite, validate_square_non_empty};
 
 /// Result of Cholesky decomposition.
 #[derive(Debug, Clone)]
@@ -53,6 +55,7 @@ fn map_validation_error(error: &'static str) -> CholeskyError {
     }
 }
 
+#[cfg(not(feature = "openblas-system"))]
 fn decompose_internal(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
     validate_square_non_empty(matrix).map_err(map_validation_error)?;
     validate_finite(matrix).map_err(map_validation_error)?;
@@ -87,8 +90,30 @@ fn decompose_internal(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError
 
 #[cfg(feature = "openblas-system")]
 fn decompose_provider(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
-    // Provider-specific Cholesky can be introduced here without changing public API shape.
-    decompose_internal(matrix)
+    use ndarray_linalg::{Cholesky as _, UPLO};
+
+    validate_square_non_empty(matrix).map_err(map_validation_error)?;
+    validate_finite(matrix).map_err(map_validation_error)?;
+
+    matrix.cholesky(UPLO::Lower).map_err(|_| CholeskyError::NotPositiveDefinite)
+}
+
+#[cfg(feature = "openblas-system")]
+fn solve_provider(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, CholeskyError> {
+    use ndarray_linalg::SolveC as _;
+
+    validate_square_non_empty(matrix).map_err(map_validation_error)?;
+    validate_finite(matrix).map_err(map_validation_error)?;
+    matrix.solvec(rhs).map_err(|_| CholeskyError::NotPositiveDefinite)
+}
+
+#[cfg(feature = "openblas-system")]
+fn inverse_provider(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+    use ndarray_linalg::InverseC as _;
+
+    validate_square_non_empty(matrix).map_err(map_validation_error)?;
+    validate_finite(matrix).map_err(map_validation_error)?;
+    matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
 fn decompose_dispatch(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
@@ -120,9 +145,16 @@ pub mod ndarray_cholesky {
     /// # Errors
     /// Returns an error for invalid dimensions or non-SPD matrix.
     pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, CholeskyError> {
-        let mut output = Array1::<f64>::zeros(rhs.len());
-        solve_into(matrix, rhs, &mut output)?;
-        Ok(output)
+        #[cfg(feature = "openblas-system")]
+        {
+            solve_provider(matrix, rhs)
+        }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            let mut output = Array1::<f64>::zeros(rhs.len());
+            solve_into(matrix, rhs, &mut output)?;
+            Ok(output)
+        }
     }
 
     /// Solve `Ax=b` into `output` using Cholesky decomposition.
@@ -146,28 +178,37 @@ pub mod ndarray_cholesky {
             ));
         }
 
-        let l = decompose_dispatch(matrix)?;
-        let n = l.nrows();
-
-        let mut y = Array1::<f64>::zeros(n);
-        for i in 0..n {
-            let mut sum = rhs[i];
-            for j in 0..i {
-                sum -= l[[i, j]] * y[j];
-            }
-            y[i] = sum / l[[i, i]];
+        #[cfg(feature = "openblas-system")]
+        {
+            let solution = solve_provider(matrix, rhs)?;
+            output.assign(&solution);
+            Ok(())
         }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            let l = decompose_dispatch(matrix)?;
+            let n = l.nrows();
 
-        for i_rev in 0..n {
-            let i = n - 1 - i_rev;
-            let mut sum = y[i];
-            for j in (i + 1)..n {
-                sum -= l[[j, i]] * output[j];
+            let mut y = Array1::<f64>::zeros(n);
+            for i in 0..n {
+                let mut sum = rhs[i];
+                for j in 0..i {
+                    sum -= l[[i, j]] * y[j];
+                }
+                y[i] = sum / l[[i, i]];
             }
-            output[i] = sum / l[[i, i]];
-        }
 
-        Ok(())
+            for i_rev in 0..n {
+                let i = n - 1 - i_rev;
+                let mut sum = y[i];
+                for j in (i + 1)..n {
+                    sum -= l[[j, i]] * output[j];
+                }
+                output[i] = sum / l[[i, i]];
+            }
+
+            Ok(())
+        }
     }
 
     /// Compute inverse via Cholesky decomposition.
@@ -175,21 +216,28 @@ pub mod ndarray_cholesky {
     /// # Errors
     /// Returns an error if matrix is not SPD.
     pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
-        let l = decompose_dispatch(matrix)?;
-        let n = l.nrows();
-        let mut inverse = Array2::<f64>::zeros((n, n));
-
-        for col in 0..n {
-            let mut e = Array1::<f64>::zeros(n);
-            e[col] = 1.0;
-            let mut solution = Array1::<f64>::zeros(n);
-            solve_into(matrix, &e, &mut solution)?;
-            for row in 0..n {
-                inverse[[row, col]] = solution[row];
-            }
+        #[cfg(feature = "openblas-system")]
+        {
+            inverse_provider(matrix)
         }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            let l = decompose_dispatch(matrix)?;
+            let n = l.nrows();
+            let mut inverse = Array2::<f64>::zeros((n, n));
 
-        Ok(inverse)
+            for col in 0..n {
+                let mut e = Array1::<f64>::zeros(n);
+                e[col] = 1.0;
+                let mut solution = Array1::<f64>::zeros(n);
+                solve_into(matrix, &e, &mut solution)?;
+                for row in 0..n {
+                    inverse[[row, col]] = solution[row];
+                }
+            }
+
+            Ok(inverse)
+        }
     }
 }
 

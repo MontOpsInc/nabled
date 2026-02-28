@@ -32,19 +32,42 @@ impl fmt::Display for SylvesterError {
 
 impl std::error::Error for SylvesterError {}
 
+/// Reusable workspace for Sylvester/Lyapunov solves.
+#[derive(Debug, Clone, Default)]
+pub struct SylvesterWorkspace {
+    coefficient: Array2<f64>,
+    rhs:         Array1<f64>,
+    solution:    Array1<f64>,
+}
+
+impl SylvesterWorkspace {
+    fn ensure_dims(&mut self, rows: usize, cols: usize) {
+        let system_size = rows * cols;
+        if self.coefficient.dim() == (system_size, system_size) {
+            self.coefficient.fill(0.0);
+        } else {
+            self.coefficient = Array2::<f64>::zeros((system_size, system_size));
+        }
+        if self.rhs.len() == system_size {
+            self.rhs.fill(0.0);
+        } else {
+            self.rhs = Array1::<f64>::zeros(system_size);
+        }
+        if self.solution.len() != system_size {
+            self.solution = Array1::<f64>::zeros(system_size);
+        }
+    }
+}
+
 /// Ndarray Sylvester/Lyapunov functions.
 pub mod ndarray_sylvester {
     use super::*;
 
-    /// Solve Sylvester equation `A X + X B = C`.
-    ///
-    /// # Errors
-    /// Returns an error if dimensions are invalid or system is singular.
-    pub fn solve_sylvester(
+    fn validate_sylvester_dims(
         matrix_a: &Array2<f64>,
         matrix_b: &Array2<f64>,
         matrix_c: &Array2<f64>,
-    ) -> Result<Array2<f64>, SylvesterError> {
+    ) -> Result<(usize, usize), SylvesterError> {
         if matrix_a.is_empty() || matrix_b.is_empty() || matrix_c.is_empty() {
             return Err(SylvesterError::EmptyMatrix);
         }
@@ -57,38 +80,88 @@ pub mod ndarray_sylvester {
         if matrix_c.dim() != (n, m) {
             return Err(SylvesterError::DimensionMismatch);
         }
+        Ok((n, m))
+    }
 
-        let system_size = n * m;
-        let mut coefficient = Array2::<f64>::zeros((system_size, system_size));
-        let mut rhs = Array1::<f64>::zeros(system_size);
+    /// Solve Sylvester equation `A X + X B = C`.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are invalid or system is singular.
+    pub fn solve_sylvester(
+        matrix_a: &Array2<f64>,
+        matrix_b: &Array2<f64>,
+        matrix_c: &Array2<f64>,
+    ) -> Result<Array2<f64>, SylvesterError> {
+        let (n, m) = validate_sylvester_dims(matrix_a, matrix_b, matrix_c)?;
+        let mut workspace = SylvesterWorkspace::default();
+        let mut output = Array2::<f64>::zeros((n, m));
+        solve_sylvester_with_workspace_into(
+            matrix_a,
+            matrix_b,
+            matrix_c,
+            &mut output,
+            &mut workspace,
+        )?;
+        Ok(output)
+    }
+
+    /// Solve Sylvester equation `A X + X B = C` into `output`.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are invalid or system is singular.
+    pub fn solve_sylvester_into(
+        matrix_a: &Array2<f64>,
+        matrix_b: &Array2<f64>,
+        matrix_c: &Array2<f64>,
+        output: &mut Array2<f64>,
+    ) -> Result<(), SylvesterError> {
+        let mut workspace = SylvesterWorkspace::default();
+        solve_sylvester_with_workspace_into(matrix_a, matrix_b, matrix_c, output, &mut workspace)
+    }
+
+    /// Solve Sylvester equation `A X + X B = C` into `output` with reusable `workspace`.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are invalid, output shape mismatches, or system is singular.
+    pub fn solve_sylvester_with_workspace_into(
+        matrix_a: &Array2<f64>,
+        matrix_b: &Array2<f64>,
+        matrix_c: &Array2<f64>,
+        output: &mut Array2<f64>,
+        workspace: &mut SylvesterWorkspace,
+    ) -> Result<(), SylvesterError> {
+        let (n, m) = validate_sylvester_dims(matrix_a, matrix_b, matrix_c)?;
+        if output.dim() != (n, m) {
+            return Err(SylvesterError::DimensionMismatch);
+        }
+
+        workspace.ensure_dims(n, m);
 
         for i in 0..n {
             for j in 0..m {
                 let row = i * m + j;
-                rhs[row] = matrix_c[[i, j]];
+                workspace.rhs[row] = matrix_c[[i, j]];
 
                 for p in 0..n {
                     let col = p * m + j;
-                    coefficient[[row, col]] += matrix_a[[i, p]];
+                    workspace.coefficient[[row, col]] += matrix_a[[i, p]];
                 }
                 for q in 0..m {
                     let col = i * m + q;
-                    coefficient[[row, col]] += matrix_b[[q, j]];
+                    workspace.coefficient[[row, col]] += matrix_b[[q, j]];
                 }
             }
         }
 
-        let solution =
-            ndarray_lu::solve(&coefficient, &rhs).map_err(|_| SylvesterError::SingularSystem)?;
+        workspace.solution = ndarray_lu::solve(&workspace.coefficient, &workspace.rhs)
+            .map_err(|_| SylvesterError::SingularSystem)?;
 
-        let mut x = Array2::<f64>::zeros((n, m));
         for i in 0..n {
             for j in 0..m {
-                x[[i, j]] = solution[i * m + j];
+                output[[i, j]] = workspace.solution[i * m + j];
             }
         }
-
-        Ok(x)
+        Ok(())
     }
 
     /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0`.
@@ -102,13 +175,29 @@ pub mod ndarray_sylvester {
         let neg_q = -q;
         solve_sylvester(a, &a.t().to_owned(), &neg_q)
     }
+
+    /// Solve continuous Lyapunov equation into `output`.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are invalid, output shape mismatches, or system is singular.
+    pub fn solve_lyapunov_into(
+        a: &Array2<f64>,
+        q: &Array2<f64>,
+        output: &mut Array2<f64>,
+    ) -> Result<(), SylvesterError> {
+        if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
+            return Err(SylvesterError::DimensionMismatch);
+        }
+        let neg_q = -q;
+        solve_sylvester_into(a, &a.t().to_owned(), &neg_q, output)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
 
-    use super::ndarray_sylvester;
+    use super::{SylvesterWorkspace, ndarray_sylvester};
 
     #[test]
     fn solves_diagonal_sylvester() {
@@ -118,6 +207,27 @@ mod tests {
 
         let x = ndarray_sylvester::solve_sylvester(&a, &b, &c).unwrap();
         let residual = a.dot(&x) + x.dot(&b) - c;
+        assert!(residual.iter().map(|value| value.abs()).fold(0.0_f64, f64::max) < 1e-8);
+    }
+
+    #[test]
+    fn solves_diagonal_sylvester_into_with_workspace() {
+        let a = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 3.0]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![4.0, 0.0, 0.0, 5.0]).unwrap();
+        let c = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 6.0, 4.0]).unwrap();
+
+        let mut output = Array2::<f64>::zeros((2, 2));
+        let mut workspace = SylvesterWorkspace::default();
+        ndarray_sylvester::solve_sylvester_with_workspace_into(
+            &a,
+            &b,
+            &c,
+            &mut output,
+            &mut workspace,
+        )
+        .unwrap();
+
+        let residual = a.dot(&output) + output.dot(&b) - c;
         assert!(residual.iter().map(|value| value.abs()).fold(0.0_f64, f64::max) < 1e-8);
     }
 }
