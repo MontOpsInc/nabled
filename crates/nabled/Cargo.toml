@@ -16,8 +16,8 @@ categories = ["mathematics", "science", "algorithms"]
 [features]
 default = []
 test-utils = []
-lapack-kernels = ["nabled-linalg/lapack-kernels", "nabled-ml/lapack-kernels"]
-lapack-competitors = ["lapack-kernels"]
+blas = ["nabled-linalg/blas", "nabled-ml/blas"]
+openblas-system = ["blas", "nabled-linalg/openblas-system", "nabled-ml/openblas-system"]
 
 [dependencies]
 nabled-core.workspace = true

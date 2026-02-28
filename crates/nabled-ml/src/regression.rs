@@ -109,16 +109,6 @@ pub mod ndarray_regression {
 
         Ok(NdarrayRegressionResult { coefficients, fitted_values, residuals, r_squared })
     }
-
-    /// Solve linear regression using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn linear_regression_lapack(
-        x: &Array2<f64>,
-        y: &Array1<f64>,
-        add_intercept: bool,
-    ) -> Result<NdarrayRegressionResult, RegressionError> {
-        linear_regression(x, y, add_intercept)
-    }
 }
 
 #[cfg(test)]

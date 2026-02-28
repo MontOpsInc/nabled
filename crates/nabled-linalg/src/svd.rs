@@ -5,7 +5,7 @@ use std::fmt;
 use ndarray::{Array1, Array2, s};
 
 use crate::internal::{
-    DEFAULT_TOLERANCE, jacobi_eigen_symmetric, sort_eigenpairs_desc, usize_to_f64, validate_finite,
+    DEFAULT_TOLERANCE, jacobi_eigen_symmetric, sort_eigenpairs_desc, usize_to_f64,
 };
 
 /// SVD result for ndarray matrices.
@@ -52,11 +52,13 @@ pub struct PseudoInverseConfig {
     pub tolerance: Option<f64>,
 }
 
+#[cfg(not(feature = "openblas-system"))]
 fn compute_svd_impl(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
-    validate_finite(matrix).map_err(|_| SVDError::InvalidInput("matrix must be finite".into()))?;
+    crate::internal::validate_finite(matrix)
+        .map_err(|_| SVDError::InvalidInput("matrix must be finite".into()))?;
 
     let (rows, cols) = matrix.dim();
     let k = rows.min(cols);
@@ -95,17 +97,8 @@ fn compute_svd_impl(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
 pub mod ndarray_svd {
     use super::*;
 
-    /// Compute the SVD of `matrix`.
-    ///
-    /// # Errors
-    /// Returns an error if the matrix is empty, non-finite, or decomposition fails.
-    pub fn compute_svd(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
-        compute_svd_impl(matrix)
-    }
-
-    /// Compute SVD using LAPACK-backed ndarray kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_svd_lapack(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
+    #[cfg(feature = "openblas-system")]
+    fn compute_svd_provider(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
         use ndarray_linalg::SVD as _;
 
         if matrix.is_empty() {
@@ -116,6 +109,21 @@ pub mod ndarray_svd {
         let u = u_opt.ok_or(SVDError::ConvergenceFailed)?;
         let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
         Ok(NdarraySVD { u, singular_values, vt })
+    }
+
+    /// Compute the SVD of `matrix`.
+    ///
+    /// # Errors
+    /// Returns an error if the matrix is empty, non-finite, or decomposition fails.
+    pub fn compute_svd(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
+        #[cfg(feature = "openblas-system")]
+        {
+            compute_svd_provider(matrix)
+        }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            compute_svd_impl(matrix)
+        }
     }
 
     /// Compute SVD and zero out singular values below `tolerance`.

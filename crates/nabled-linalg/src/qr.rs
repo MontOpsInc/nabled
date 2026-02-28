@@ -203,34 +203,6 @@ pub mod ndarray_qr {
         }
         if min_diagonal.is_finite() { max_diagonal / min_diagonal } else { f64::INFINITY }
     }
-
-    /// Compute QR using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_qr_lapack(
-        matrix: &Array2<f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<QRResult<f64>, QRError> {
-        compute_qr(matrix, config)
-    }
-
-    /// Compute reduced QR using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_reduced_qr_lapack(
-        matrix: &Array2<f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<QRResult<f64>, QRError> {
-        compute_reduced_qr(matrix, config)
-    }
-
-    /// Solve least squares using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn solve_least_squares_lapack(
-        matrix: &Array2<f64>,
-        rhs: &Array1<f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<Array1<f64>, QRError> {
-        solve_least_squares(matrix, rhs, config)
-    }
 }
 
 #[cfg(test)]

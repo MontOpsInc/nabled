@@ -233,43 +233,6 @@ pub mod ndarray_matrix_functions {
         let diagonal = diagonal_from(&sign_values);
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
     }
-
-    /// LAPACK-backed matrix exponential.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn matrix_exp_eigen_lapack(
-        matrix: &Array2<f64>,
-    ) -> Result<Array2<f64>, MatrixFunctionError> {
-        matrix_exp_eigen(matrix)
-    }
-
-    /// LAPACK-backed matrix logarithm (eigen).
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn matrix_log_eigen_lapack(
-        matrix: &Array2<f64>,
-    ) -> Result<Array2<f64>, MatrixFunctionError> {
-        matrix_log_eigen(matrix)
-    }
-
-    /// LAPACK-backed matrix logarithm (SVD).
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn matrix_log_svd_lapack(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
-        matrix_log_svd(matrix)
-    }
-
-    /// LAPACK-backed matrix power.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn matrix_power_lapack(
-        matrix: &Array2<f64>,
-        power: f64,
-    ) -> Result<Array2<f64>, MatrixFunctionError> {
-        matrix_power(matrix, power)
-    }
-
-    /// LAPACK-backed matrix sign.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn matrix_sign_lapack(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
-        matrix_sign(matrix)
-    }
 }
 
 #[cfg(test)]

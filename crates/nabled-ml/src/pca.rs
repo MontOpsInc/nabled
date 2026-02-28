@@ -126,15 +126,6 @@ pub mod ndarray_pca {
         }
         reconstructed
     }
-
-    /// Compute PCA using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_pca_lapack(
-        matrix: &Array2<f64>,
-        n_components: Option<usize>,
-    ) -> Result<NdarrayPCAResult, PCAError> {
-        compute_pca(matrix, n_components)
-    }
 }
 
 #[cfg(test)]

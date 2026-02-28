@@ -46,6 +46,8 @@ fn main() -> Result<(), nabled::svd::SVDError> {
 just checks
 ```
 
+On macOS, provider-enabled `just` recipes automatically set `PKG_CONFIG_PATH` and `OPENBLAS_DIR` for Homebrew OpenBLAS (`/opt/homebrew/opt/openblas`). No manual env export is required for those recipes.
+
 ## Benchmarks
 
 ```bash

@@ -29,7 +29,20 @@ Exit criteria:
 3. Rework examples/tests/benchmarks to ndarray-first usage.
 4. Keep root-to-crate re-exports explicit and minimal.
 
-## Phase 3: Kernel Realignment
+## Phase 3: Backend Feature Contract and Dispatch Cleanup
+
+1. Introduce and stabilize feature contract:
+   - `blas` baseline
+   - provider feature(s), starting with `openblas-system`.
+2. Remove hardcoded OS gates from LAPACK paths; prefer feature-gated selection.
+3. Unify public API entrypoints so backend choice is internal (no public `*_lapack` duplication).
+4. Apply one consistent module pattern for internal/provider implementation splits.
+
+Current status:
+1. Feature contract and API surface cleanup are complete.
+2. Remaining work is structural consistency across all domains.
+
+## Phase 4: Kernel Realignment
 
 1. Port each domain to ndarray-native compute paths.
 2. Eliminate hidden conversion paths in algorithm implementations.
@@ -40,14 +53,14 @@ Suggested order:
 2. `schur`, `sylvester`, `polar`, `matrix_functions`
 3. `pca`, `regression`, `iterative`, `jacobian`
 
-## Phase 4: Production Hardening
+## Phase 5: Production Hardening
 
 1. Stabilize error model and API contracts.
 2. Expand property/invariant tests and adversarial cases.
 3. Establish performance baselines and regression thresholds by domain.
 4. Preserve coverage >= 90% with meaningful tests.
 
-## Phase 5: Readiness
+## Phase 6: Readiness
 
 1. Final docs pass for end users and contributors.
 2. Publish readiness checklist and release criteria.

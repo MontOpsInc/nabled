@@ -74,12 +74,6 @@ pub mod ndarray_polar {
 
         Ok(NdarrayPolarResult { u: orthogonal_factor, p: psd_factor })
     }
-
-    /// Compute polar decomposition using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_polar_lapack(matrix: &Array2<f64>) -> Result<NdarrayPolarResult, PolarError> {
-        compute_polar(matrix)
-    }
 }
 
 #[cfg(test)]

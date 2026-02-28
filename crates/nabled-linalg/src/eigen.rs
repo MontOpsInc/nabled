@@ -128,23 +128,6 @@ pub mod ndarray_eigen {
 
         Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
     }
-
-    /// Compute symmetric eigen decomposition using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_symmetric_eigen_lapack(
-        matrix: &Array2<f64>,
-    ) -> Result<NdarrayEigenResult, EigenError> {
-        compute_symmetric_eigen(matrix)
-    }
-
-    /// Compute generalized eigen decomposition using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_generalized_eigen_lapack(
-        matrix_a: &Array2<f64>,
-        matrix_b: &Array2<f64>,
-    ) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
-        compute_generalized_eigen(matrix_a, matrix_b)
-    }
 }
 
 #[cfg(test)]

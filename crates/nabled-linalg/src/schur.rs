@@ -96,12 +96,6 @@ pub mod ndarray_schur {
 
         Ok(NdarraySchurResult { q: q_total, t })
     }
-
-    /// Compute Schur decomposition using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_schur_lapack(matrix: &Array2<f64>) -> Result<NdarraySchurResult, SchurError> {
-        compute_schur(matrix)
-    }
 }
 
 #[cfg(test)]

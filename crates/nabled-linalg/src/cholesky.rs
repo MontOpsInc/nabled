@@ -155,29 +155,6 @@ pub mod ndarray_cholesky {
 
         Ok(inverse)
     }
-
-    /// Compute Cholesky decomposition using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_cholesky_lapack(
-        matrix: &Array2<f64>,
-    ) -> Result<NdarrayCholeskyResult, CholeskyError> {
-        compute_cholesky(matrix)
-    }
-
-    /// Solve using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn solve_lapack(
-        matrix: &Array2<f64>,
-        rhs: &Array1<f64>,
-    ) -> Result<Array1<f64>, CholeskyError> {
-        solve(matrix, rhs)
-    }
-
-    /// Compute inverse using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn inverse_lapack(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
-        inverse(matrix)
-    }
 }
 
 #[cfg(test)]

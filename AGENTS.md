@@ -16,11 +16,17 @@ Before making architectural or broad refactor changes, read these in order:
 
 1. `docs/README.md`
 2. `docs/DECISIONS.md`
-3. `docs/architecture.md`
-4. `docs/ROADMAP.md`
-5. `docs/STATUS.md`
+3. `docs/CAPABILITY_MATRIX.md`
+4. `docs/EXECUTION_TRACKER.md`
+5. `docs/architecture.md`
+6. `docs/ROADMAP.md`
+7. `docs/STATUS.md`
 
-Do not infer status from memory. Use `docs/STATUS.md` as the source of truth.
+Do not infer status from memory. Use:
+1. `docs/STATUS.md` for current migration state.
+2. `docs/CAPABILITY_MATRIX.md` for scope gaps and sufficiency.
+3. `docs/EXECUTION_TRACKER.md` for `Done / Next / Needed` execution state.
+4. Resume from highest-priority open `N-*` item in `docs/EXECUTION_TRACKER.md` unless explicitly redirected.
 
 ## Non-Negotiable Constraints
 
@@ -29,6 +35,7 @@ Do not infer status from memory. Use `docs/STATUS.md` as the source of truth.
 3. No hidden copy-heavy conversions in hot paths.
 4. Public APIs stay pure numerical APIs over ndarray types.
 5. `nabled` has no Arrow-aware API surface.
+6. No legacy compatibility shims for unreleased APIs; prefer clean replacements over aliases/wrappers.
 
 ## Workspace Migration Rules
 
@@ -36,7 +43,7 @@ Do not infer status from memory. Use `docs/STATUS.md` as the source of truth.
 2. New algorithm implementations belong in `crates/nabled-linalg` or `crates/nabled-ml`, not `crates/nabled/src/`.
 3. Keep behavior stable while relocating or reshaping modules:
    - preserve tests/examples/benches coverage for touched domains,
-   - keep public API compatibility unless an explicit change is requested.
+   - prefer removing outdated names and compatibility wrappers instead of preserving them.
 4. Update `docs/STATUS.md` in the same change set when migration state changes.
 
 ## Quality Gates
@@ -64,5 +71,6 @@ When architecture or behavior changes, update docs in the same change set:
 
 1. `README.md` for user-visible behavior.
 2. `docs/STATUS.md` for migration truth.
-3. `docs/ROADMAP.md` if sequencing changes.
-4. Relevant rustdoc comments for API contract changes.
+3. `docs/EXECUTION_TRACKER.md` for execution progression (`Done / Next / Needed`).
+4. `docs/ROADMAP.md` if sequencing changes.
+5. Relevant rustdoc comments for API contract changes.

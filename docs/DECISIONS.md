@@ -8,6 +8,10 @@
 4. Workspace structure is required for long-term scale.
 5. No hidden data conversion in hot compute paths.
 6. Quality gates remain strict: pedantic linting, CI parity, and coverage >= 90%.
+7. Backend selection is compile-time only; no runtime backend dispatch.
+8. Default execution path is internal ndarray-native implementations.
+9. Backend-specific behavior must not leak into public API names.
+10. No legacy/backward-compatibility shims for unreleased APIs.
 
 ## API Purity Model
 
@@ -29,3 +33,12 @@
 3. Arrow integration inside `nabled`.
 
 These are deferred until the ndarray-first core is complete and stable.
+
+## Backend Feature Contract
+
+1. `blas` is a baseline feature for enabling BLAS-accelerated ndarray paths where available.
+2. LAPACK acceleration is provider-driven, not a separate runtime backend layer.
+3. Initial provider scope is intentionally narrow: `openblas-system` first.
+4. Provider features imply `blas` so users do not have to compose low-level flags manually.
+5. LAPACK-accelerated code should be gated by feature selection, not by hardcoded `target_os` branching.
+6. Current platform intent is macOS and Linux first; Windows support is deferred.

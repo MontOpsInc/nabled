@@ -147,24 +147,6 @@ pub mod ndarray_triangular {
     {
         super::solve_upper(matrix, rhs).map_err(map_triangular_error)
     }
-
-    /// Solve `Lx=b` using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn solve_lower_lapack(
-        matrix: &Array2<f64>,
-        rhs: &Array1<f64>,
-    ) -> Result<Array1<f64>, TriangularError> {
-        solve_lower(matrix, rhs)
-    }
-
-    /// Solve `Ux=b` using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn solve_upper_lapack(
-        matrix: &Array2<f64>,
-        rhs: &Array1<f64>,
-    ) -> Result<Array1<f64>, TriangularError> {
-        solve_upper(matrix, rhs)
-    }
 }
 
 #[cfg(test)]

@@ -12,7 +12,8 @@ description = "ML-oriented algorithms built on ndarray-native nabled primitives"
 
 [features]
 default = []
-lapack-kernels = ["nabled-linalg/lapack-kernels"]
+blas = ["nabled-linalg/blas"]
+openblas-system = ["blas", "nabled-linalg/openblas-system"]
 
 [dependencies]
 nabled-core.workspace = true

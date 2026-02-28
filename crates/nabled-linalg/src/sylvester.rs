@@ -102,25 +102,6 @@ pub mod ndarray_sylvester {
         let neg_q = -q;
         solve_sylvester(a, &a.t().to_owned(), &neg_q)
     }
-
-    /// Solve Sylvester using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn solve_sylvester_lapack(
-        matrix_a: &Array2<f64>,
-        matrix_b: &Array2<f64>,
-        matrix_c: &Array2<f64>,
-    ) -> Result<Array2<f64>, SylvesterError> {
-        solve_sylvester(matrix_a, matrix_b, matrix_c)
-    }
-
-    /// Solve Lyapunov using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn solve_lyapunov_lapack(
-        a: &Array2<f64>,
-        q: &Array2<f64>,
-    ) -> Result<Array2<f64>, SylvesterError> {
-        solve_lyapunov(a, q)
-    }
 }
 
 #[cfg(test)]

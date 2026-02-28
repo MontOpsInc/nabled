@@ -1,5 +1,8 @@
 LOG := env('RUST_LOG', '')
-features := ''
+features := 'blas openblas-system'
+provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
+provider_features := 'openblas-system'
+provider_bench_features := 'openblas-system'
 
 # List of Examples
 
@@ -12,6 +15,10 @@ default:
 test:
     just -f {{ justfile() }} test-unit
     just -f {{ justfile() }} test-integration integration
+
+test-provider:
+    {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test --workspace --lib --features {{ provider_features }} -- --nocapture --show-output
+    {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test -p nabled --features {{ provider_features }} --test integration -- --nocapture --show-output
 
 test-unit:
     RUST_LOG={{ LOG }} cargo test --workspace --lib -- --nocapture --show-output
@@ -73,11 +80,11 @@ bench-smoke:
     cargo bench -p nabled --bench triangular_benchmarks -- --quick
     cargo bench -p nabled --bench matrix_functions_benchmarks -- --quick
 
-bench-smoke-lapack:
-    cargo bench -p nabled --features lapack-competitors --bench svd_benchmarks -- --quick
-    cargo bench -p nabled --features lapack-competitors --bench qr_benchmarks -- --quick
-    cargo bench -p nabled --features lapack-competitors --bench triangular_benchmarks -- --quick
-    cargo bench -p nabled --features lapack-competitors --bench matrix_functions_benchmarks -- --quick
+bench-smoke-provider:
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench svd_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench qr_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench triangular_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench matrix_functions_benchmarks -- --quick
 
 bench-report:
     cargo run -p nabled --bin benchmark_report
@@ -99,8 +106,8 @@ bench-smoke-report:
     just -f {{ justfile() }} bench-smoke
     just -f {{ justfile() }} bench-report
 
-bench-smoke-report-lapack:
-    just -f {{ justfile() }} bench-smoke-lapack
+bench-smoke-report-provider:
+    just -f {{ justfile() }} bench-smoke-provider
     just -f {{ justfile() }} bench-report
 
 bench-smoke-check:
@@ -111,16 +118,12 @@ bench-smoke-check:
 backend-capability-report:
     cargo run -p nabled --bin backend_capability_report -- --output-dir coverage/backend-capabilities/baseline
 
-backend-capability-report-lapack:
-    cargo run -p nabled --features lapack-kernels --bin backend_capability_report -- --output-dir coverage/backend-capabilities/lapack-linux
+backend-capability-report-provider:
+    {{ provider_env_prefix }} cargo run -p nabled --features {{ provider_features }} --bin backend_capability_report -- --output-dir coverage/backend-capabilities/provider
 
 backend-capability-report-all:
     just -f {{ justfile() }} backend-capability-report
-    if [[ "$(uname -s)" == "Linux" ]]; then \
-      just -f {{ justfile() }} backend-capability-report-lapack; \
-    else \
-      echo "Skipping LAPACK capability report on non-Linux host."; \
-    fi
+    just -f {{ justfile() }} backend-capability-report-provider
 
 # --- EXAMPLES ---
 
@@ -167,31 +170,31 @@ samply example *args='': (release-debug example)
 # Check all feature combinations
 check-features *ARGS=features:
     @echo "Checking no features..."
-    cargo clippy -p nabled --no-default-features --all-targets
+    cargo clippy -p nabled --no-default-features --all-targets -- -D warnings
     @echo "Building no features..."
     cargo check -p nabled --no-default-features --all-targets
     @echo "Checking default features..."
-    cargo clippy -p nabled --all-targets
+    cargo clippy -p nabled --all-targets -- -D warnings
     @echo "Building default features..."
     cargo check -p nabled --all-targets
     @echo "Checking all features..."
-    cargo clippy -p nabled --all-features --all-targets
+    cargo clippy -p nabled --all-features --all-targets -- -D warnings
     @echo "Building all features..."
     cargo check -p nabled --all-features --all-targets
     @echo "Checking each feature..."
     @for feature in {{ ARGS }}; do \
         echo "Checking & Building feature: $feature"; \
-        cargo clippy -p nabled --no-default-features --features $feature --all-targets; \
+        cargo clippy -p nabled --no-default-features --features $feature --all-targets -- -D warnings; \
         cargo check -p nabled --no-default-features --features $feature --all-targets; \
     done
     @echo "Checking each feature with defaults..."
     @for feature in {{ ARGS }}; do \
         echo "Checking feature (with defaults): $feature"; \
-        cargo clippy -p nabled --features $feature --all-targets; \
+        cargo clippy -p nabled --features $feature --all-targets -- -D warnings; \
         cargo check -p nabled --features $feature --all-targets; \
     done
     @echo "Checking all provided features..."
-    cargo clippy -p nabled --no-default-features --features "{{ ARGS }}" --all-targets
+    cargo clippy -p nabled --no-default-features --features "{{ ARGS }}" --all-targets -- -D warnings
     cargo check -p nabled --no-default-features --features "{{ ARGS }}" --all-targets
 
 fmt:
@@ -209,17 +212,25 @@ fix:
 
 # Run checks CI will
 checks:
-    cargo +nightly fmt --all -- --check
-    cargo +nightly clippy --workspace --all-features --all-targets
+    cargo +nightly fmt --all -- --check --config-path ./rustfmt.toml
+    cargo +nightly clippy --workspace --no-default-features --all-targets -- -D warnings
+    cargo +nightly clippy --workspace --all-features --all-targets -- -D warnings
+    cargo +stable clippy --workspace --no-default-features --all-targets -- -D warnings
     cargo +stable clippy --workspace --all-features --all-targets -- -D warnings
+    just -f {{ justfile() }} check-provider-clippy
     just -f {{ justfile() }} test
-    just -f {{ justfile() }} check-linux-lapack
+    just -f {{ justfile() }} test-provider
+    just -f {{ justfile() }} check-provider
     just -f {{ justfile() }} backend-capability-report
 
-# Verify Linux-gated LAPACK code paths compile under stable.
-check-linux-lapack:
-    rustup target list --installed | grep -q '^x86_64-unknown-linux-gnu$' || rustup target add --toolchain stable x86_64-unknown-linux-gnu
-    cargo +stable check -p nabled --features lapack-kernels --target x86_64-unknown-linux-gnu
+# Verify provider-gated lint paths are checked locally.
+check-provider-clippy:
+    {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features {{ provider_features }} --all-targets -- -D warnings
+
+# Verify provider-enabled code paths compile under stable.
+check-provider:
+    just -f {{ justfile() }} check-provider-clippy
+    {{ provider_env_prefix }} cargo +stable check --workspace --features {{ provider_features }} --all-targets
 
 # Initialize development environment for maintainers
 init-dev:

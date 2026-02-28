@@ -133,32 +133,6 @@ pub mod ndarray_lu {
         let sign = if determinant.is_sign_positive() { 1 } else { -1 };
         Ok(LogDetResult { sign, ln_abs_det: determinant.abs().ln() })
     }
-
-    /// Compute LU decomposition using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn compute_lu_lapack(matrix: &Array2<f64>) -> Result<NdarrayLUResult, LUError> {
-        compute_lu(matrix)
-    }
-
-    /// Solve `Ax=b` using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn solve_lapack(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, LUError> {
-        solve(matrix, rhs)
-    }
-
-    /// Compute inverse using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn inverse_lapack(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> { inverse(matrix) }
-
-    /// Compute determinant using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn determinant_lapack(matrix: &Array2<f64>) -> Result<f64, LUError> { determinant(matrix) }
-
-    /// Compute log-determinant using LAPACK-backed kernels.
-    #[cfg(all(feature = "lapack-kernels", target_os = "linux"))]
-    pub fn log_determinant_lapack(matrix: &Array2<f64>) -> Result<LogDetResult<f64>, LUError> {
-        log_determinant(matrix)
-    }
 }
 
 #[cfg(test)]
