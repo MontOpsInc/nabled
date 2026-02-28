@@ -1,6 +1,6 @@
 //! Vector-first primitives for embedding-style workloads.
 
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -70,6 +70,20 @@ pub mod ndarray_vector {
         Ok(a.iter().zip(b.iter()).map(|(x, y)| x * y).sum())
     }
 
+    /// Compute dot product of two vector views.
+    ///
+    /// # Errors
+    /// Returns an error when vector lengths mismatch or either input is empty.
+    pub fn dot_view(a: &ArrayView1<'_, f64>, b: &ArrayView1<'_, f64>) -> Result<f64, VectorError> {
+        if a.is_empty() || b.is_empty() {
+            return Err(VectorError::EmptyInput);
+        }
+        if a.len() != b.len() {
+            return Err(VectorError::DimensionMismatch);
+        }
+        Ok(a.iter().zip(b.iter()).map(|(x, y)| x * y).sum())
+    }
+
     /// Compute Hermitian dot product `a^H b` for complex vectors.
     ///
     /// # Errors
@@ -117,6 +131,24 @@ pub mod ndarray_vector {
         let dot_value = dot(a, b)?;
         let norm_a = l2_norm(a)?;
         let norm_b = l2_norm(b)?;
+        let denominator = norm_a * norm_b;
+        if denominator <= f64::EPSILON {
+            return Err(VectorError::ZeroNorm);
+        }
+        Ok(dot_value / denominator)
+    }
+
+    /// Compute cosine similarity of two vector views.
+    ///
+    /// # Errors
+    /// Returns an error for invalid dimensions, empty inputs, or zero-norm vectors.
+    pub fn cosine_similarity_view(
+        a: &ArrayView1<'_, f64>,
+        b: &ArrayView1<'_, f64>,
+    ) -> Result<f64, VectorError> {
+        let dot_value = dot_view(a, b)?;
+        let norm_a = a.iter().map(|value| value * value).sum::<f64>().sqrt();
+        let norm_b = b.iter().map(|value| value * value).sum::<f64>().sqrt();
         let denominator = norm_a * norm_b;
         if denominator <= f64::EPSILON {
             return Err(VectorError::ZeroNorm);
@@ -174,6 +206,36 @@ pub mod ndarray_vector {
     ) -> Result<(), VectorError> {
         validate_pairwise_inputs(left, right)?;
         if output.dim() != (left.nrows(), right.nrows()) {
+            return Err(VectorError::DimensionMismatch);
+        }
+
+        for i in 0..left.nrows() {
+            for j in 0..right.nrows() {
+                let mut sum = 0.0_f64;
+                for k in 0..left.ncols() {
+                    let delta = left[[i, k]] - right[[j, k]];
+                    sum += delta * delta;
+                }
+                output[[i, j]] = sum.sqrt();
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Compute pairwise L2 distances from matrix views into `output`.
+    ///
+    /// # Errors
+    /// Returns an error for invalid dimensions or empty inputs.
+    pub fn pairwise_l2_distance_view_into(
+        left: &ArrayView2<'_, f64>,
+        right: &ArrayView2<'_, f64>,
+        output: &mut Array2<f64>,
+    ) -> Result<(), VectorError> {
+        if left.is_empty() || right.is_empty() {
+            return Err(VectorError::EmptyInput);
+        }
+        if left.ncols() != right.ncols() || output.dim() != (left.nrows(), right.nrows()) {
             return Err(VectorError::DimensionMismatch);
         }
 
@@ -411,5 +473,62 @@ mod tests {
 
         assert!(dot.norm() > 0.0);
         assert!(cosine.norm() <= 1.0 + 1e-12);
+    }
+
+    #[test]
+    fn view_first_apis_match_owned() {
+        let a = arr1(&[1.0_f64, 2.0, 3.0]);
+        let b = arr1(&[4.0_f64, 5.0, 6.0]);
+        let dot_owned = ndarray_vector::dot(&a, &b).unwrap();
+        let a_view = a.view();
+        let b_view = b.view();
+        let dot_view = ndarray_vector::dot_view(&a_view, &b_view).unwrap();
+        assert!((dot_owned - dot_view).abs() < 1e-12);
+
+        let left = arr2(&[[0.0_f64, 0.0], [1.0, 1.0]]);
+        let right = arr2(&[[1.0_f64, 0.0], [2.0, 2.0]]);
+        let mut output = ndarray::Array2::<f64>::zeros((2, 2));
+        let left_view = left.view();
+        let right_view = right.view();
+        ndarray_vector::pairwise_l2_distance_view_into(&left_view, &right_view, &mut output)
+            .unwrap();
+        let expected = ndarray_vector::pairwise_l2_distance(&left, &right).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn cosine_view_matches_owned_and_batched_dot_into_works() {
+        let a = arr1(&[1.0_f64, 2.0, 3.0]);
+        let b = arr1(&[4.0_f64, 5.0, 6.0]);
+        let owned = ndarray_vector::cosine_similarity(&a, &b).unwrap();
+        let a_view = a.view();
+        let b_view = b.view();
+        let viewed = ndarray_vector::cosine_similarity_view(&a_view, &b_view).unwrap();
+        assert!((owned - viewed).abs() < 1e-12);
+
+        let left = arr2(&[[1.0_f64, 2.0], [3.0, 4.0]]);
+        let right = arr2(&[[5.0_f64, 6.0], [7.0, 8.0]]);
+        let mut out = ndarray::Array1::<f64>::zeros(2);
+        ndarray_vector::batched_dot_into(&left, &right, &mut out).unwrap();
+        assert!((out[0] - 17.0).abs() < 1e-12);
+        assert!((out[1] - 53.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn pairwise_cosine_into_matches_allocating_path() {
+        let left = arr2(&[[1.0_f64, 0.0], [0.0, 1.0]]);
+        let right = arr2(&[[1.0_f64, 0.0], [1.0, 1.0]]);
+        let expected = ndarray_vector::pairwise_cosine_similarity(&left, &right).unwrap();
+        let mut output = ndarray::Array2::<f64>::zeros((2, 2));
+        ndarray_vector::pairwise_cosine_similarity_into(&left, &right, &mut output).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-12);
+            }
+        }
     }
 }

@@ -230,4 +230,22 @@ mod tests {
         let residual = a.dot(&output) + output.dot(&b) - c;
         assert!(residual.iter().map(|value| value.abs()).fold(0.0_f64, f64::max) < 1e-8);
     }
+
+    #[test]
+    fn solves_lyapunov_equation() {
+        let a = Array2::from_shape_vec((2, 2), vec![-2.0, 0.0, 0.0, -3.0]).unwrap();
+        let q = Array2::eye(2);
+        let x = ndarray_sylvester::solve_lyapunov(&a, &q).unwrap();
+        let residual = a.dot(&x) + x.dot(&a.t().to_owned()) + q;
+        assert!(residual.iter().map(|value| value.abs()).fold(0.0_f64, f64::max) < 1e-8);
+    }
+
+    #[test]
+    fn lyapunov_into_rejects_bad_output_shape() {
+        let a = Array2::eye(2);
+        let q = Array2::eye(2);
+        let mut output = Array2::<f64>::zeros((1, 1));
+        let result = ndarray_sylvester::solve_lyapunov_into(&a, &q, &mut output);
+        assert!(matches!(result, Err(super::SylvesterError::DimensionMismatch)));
+    }
 }

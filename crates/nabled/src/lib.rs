@@ -2,10 +2,11 @@
 //!
 //! Workspace facade crate for ndarray-first numerical modules.
 
+pub use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 pub use nabled_core::prelude;
 pub use nabled_linalg::{
-    CholeskyError, CsrMatrix, EigenError, LUError, LogDetResult, MatrixFunctionError,
-    MatrixFunctionWorkspace, NdarrayCholeskyResult, NdarrayEigenResult,
+    CholeskyError, CooMatrix, CsrMatrix, EigenError, LUError, LogDetResult, MatrixFunctionError,
+    MatrixFunctionWorkspace, NdarrayCholeskyResult, NdarrayComplexSVD, NdarrayEigenResult,
     NdarrayGeneralizedEigenResult, NdarrayLUResult, NdarrayPolarResult, NdarraySVD,
     NdarraySchurResult, OrthogonalizationError, PairwiseCosineWorkspace, PolarError,
     PseudoInverseConfig, QRConfig, QRError, QRResult, SVDError, SchurError, SchurWorkspace,

@@ -168,7 +168,7 @@ pub mod ndarray_schur {
 mod tests {
     use ndarray::Array2;
 
-    use super::{SchurWorkspace, ndarray_schur};
+    use super::{SchurError, SchurWorkspace, ndarray_schur};
 
     #[test]
     fn schur_reconstructs_matrix() {
@@ -199,5 +199,31 @@ mod tests {
                 assert!((t[[i, j]] - expected.t[[i, j]]).abs() < 1e-8);
             }
         }
+    }
+
+    #[test]
+    fn schur_rejects_invalid_inputs() {
+        let empty = Array2::<f64>::zeros((0, 0));
+        assert!(matches!(ndarray_schur::compute_schur(&empty), Err(SchurError::EmptyMatrix)));
+
+        let non_square = Array2::<f64>::zeros((2, 3));
+        assert!(matches!(ndarray_schur::compute_schur(&non_square), Err(SchurError::NotSquare)));
+
+        let non_finite = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();
+        assert!(matches!(
+            ndarray_schur::compute_schur(&non_finite),
+            Err(SchurError::NumericalInstability)
+        ));
+    }
+
+    #[test]
+    fn schur_into_rejects_bad_output_shapes() {
+        let matrix = Array2::eye(2);
+        let mut bad_q = Array2::<f64>::zeros((1, 2));
+        let mut bad_t = Array2::<f64>::zeros((2, 2));
+        assert!(matches!(
+            ndarray_schur::compute_schur_into(&matrix, &mut bad_q, &mut bad_t),
+            Err(SchurError::InvalidInput(_))
+        ));
     }
 }

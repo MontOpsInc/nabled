@@ -71,4 +71,23 @@ mod tests {
         assert!((qtq[[1, 1]] - 1.0).abs() < 1e-8);
         assert!(qtq[[0, 1]].abs() < 1e-8);
     }
+
+    #[test]
+    fn classical_variant_matches_modified() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 2.0, 1.0, 0.5, -1.0]).unwrap();
+        let modified = ndarray_orthogonalization::gram_schmidt(&matrix).unwrap();
+        let classical = ndarray_orthogonalization::gram_schmidt_classic(&matrix).unwrap();
+        for i in 0..modified.nrows() {
+            for j in 0..modified.ncols() {
+                assert!((modified[[i, j]] - classical[[i, j]]).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn orthogonalization_rejects_empty_input() {
+        let empty = Array2::<f64>::zeros((0, 0));
+        let result = ndarray_orthogonalization::gram_schmidt(&empty);
+        assert!(matches!(result, Err(super::OrthogonalizationError::EmptyMatrix)));
+    }
 }

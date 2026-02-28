@@ -23,7 +23,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Area | Capability | Package/Module | Status | Benchmark Coverage | Notes |
 |---|---|---|---|---|---|
 | Core validation | shape checks for matrix/system inputs | `nabled-core::validation` | Implemented | No | Shared helpers exist; error model still minimal. |
-| Core errors | common shape errors | `nabled-core::errors` | Implemented | No | Domain errors are still distributed per module. |
+| Core errors | common shape errors + shared taxonomy (`NabledError`) | `nabled-core::errors` | Implemented | No | Domain errors remain local, but normalization path exists via `IntoNabledError`. |
 | Cholesky | factorization, solve, inverse | `nabled-linalg::cholesky::ndarray_cholesky` | Implemented | Yes | Bench exists (`cholesky_benchmarks`). |
 | Eigen | symmetric + generalized SPD-B eigen | `nabled-linalg::eigen::ndarray_eigen` | Partial | Yes | No general non-symmetric dense eigensolver API. |
 | LU | factorization, solve, inverse, det/logdet | `nabled-linalg::lu::ndarray_lu` | Implemented | Yes | Bench exists (`lu_benchmarks`). |
@@ -31,13 +31,14 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | SVD | full/truncated/toleranced SVD, rank, cond, pinv, null space | `nabled-linalg::svd::ndarray_svd` | Implemented | Yes | Bench exists (`svd_benchmarks`). |
 | Triangular solves | lower/upper substitution | `nabled-linalg::triangular` / `ndarray_triangular` | Implemented | Yes | Includes allocation-controlled `*_into` paths. |
 | Vector primitives | dot/norm/cosine/pairwise/batched dot (+ complex vector baseline) | `nabled-linalg::vector::ndarray_vector` | Implemented | Yes | Bench exists (`vector_benchmarks`); complex Hermitian dot/norm/cosine landed. |
-| Schur | Schur decomposition | `nabled-linalg::schur::ndarray_schur` | Implemented | No | No dedicated benchmark yet. |
+| Schur | Schur decomposition | `nabled-linalg::schur::ndarray_schur` | Implemented | Yes | Bench exists (`schur_benchmarks`). |
 | Polar | polar decomposition | `nabled-linalg::polar::ndarray_polar` | Implemented | No | No dedicated benchmark yet. |
-| Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester::ndarray_sylvester` | Implemented | No | No dedicated benchmark yet. |
+| Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester::ndarray_sylvester` | Implemented | Yes | Bench exists (`sylvester_benchmarks`). |
 | Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions::ndarray_matrix_functions` | Implemented | Yes | Bench exists (`matrix_functions_benchmarks`). |
 | Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization::ndarray_orthogonalization` | Implemented | No | No dedicated benchmark yet. |
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative::ndarray_iterative` | Implemented | No | Good foundation for larger optimization stack. |
-| Optimization | line search, gradient descent, Adam | `nabled-ml::optimization::ndarray_optimization` | Implemented | No | Baseline first-order primitives landed; more optimizers still possible. |
+| Sparse kernels | CSR/COO primitives, sparse matvec, Jacobi + Gauss-Seidel | `nabled-linalg::sparse::ndarray_sparse` | Implemented | Yes | Bench exists (`sparse_benchmarks`). |
+| Optimization | line search, gradient descent, Adam | `nabled-ml::optimization::ndarray_optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`). |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian::ndarray_jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca::ndarray_pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression::ndarray_regression` | Implemented | No | |
@@ -53,7 +54,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Vector-first primitives for embeddings workflows | Implemented | Dot/norm/cosine/pairwise distance/batched dot are available; sparse and higher-rank follow-ons remain. |
 | Matrix-vector and matrix-matrix pipeline primitives | Partial | Relying on ndarray directly today; nabled-level APIs/compositional helpers are missing. |
 | Unified error taxonomy and API contracts | Partial | Domain-local errors exist; core shared error architecture is not consolidated yet. |
-| Performance-contract APIs (explicit allocations/workspaces) | Partial | `*_into` and workspace patterns now include vector/triangular/cholesky/svd/qr/matrix_functions/schur/sylvester; remaining domains still need pass. |
+| Performance-contract APIs (explicit allocations/workspaces) | Partial | `*_into` and workspace patterns now include vector/triangular/cholesky/svd/qr/matrix_functions/schur/sylvester; view-first (`ArrayView*`) pass is underway. |
 | Numeric robustness controls | Partial | Tolerances exist in places; policy and consistency are not unified across domains. |
 | Benchmark coverage for all Tier-A kernels | Partial | Coverage expanded with LU/Cholesky/Eigen/Vector; Schur/Polar/Sylvester/ML domains still need dedicated suites. |
 

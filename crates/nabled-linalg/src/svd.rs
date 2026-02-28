@@ -2,7 +2,8 @@
 
 use std::fmt;
 
-use ndarray::{Array1, Array2, s};
+use ndarray::{Array1, Array2, ArrayView2, s};
+use num_complex::Complex64;
 
 use crate::internal::{
     DEFAULT_TOLERANCE, jacobi_eigen_symmetric, sort_eigenpairs_desc, usize_to_f64,
@@ -17,6 +18,17 @@ pub struct NdarraySVD {
     pub singular_values: Array1<f64>,
     /// Right singular vectors transposed (`k x n`).
     pub vt:              Array2<f64>,
+}
+
+/// Complex SVD result for ndarray matrices.
+#[derive(Debug, Clone)]
+pub struct NdarrayComplexSVD {
+    /// Left singular vectors (`m x k`).
+    pub u:               Array2<Complex64>,
+    /// Singular values (`k`).
+    pub singular_values: Array1<f64>,
+    /// Right singular vectors transposed (`k x n`).
+    pub vt:              Array2<Complex64>,
 }
 
 /// Error types for SVD computation.
@@ -168,6 +180,50 @@ pub mod ndarray_svd {
         }
     }
 
+    /// Compute the SVD of `matrix` from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if decomposition fails.
+    pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
+        decompose(&matrix.to_owned())
+    }
+
+    /// Compute the SVD of a complex matrix.
+    ///
+    /// # Errors
+    /// Returns an error if provider support is unavailable or decomposition fails.
+    pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD, SVDError> {
+        if matrix.is_empty() {
+            return Err(SVDError::EmptyMatrix);
+        }
+
+        #[cfg(feature = "openblas-system")]
+        {
+            use ndarray_linalg::SVD as _;
+            let (u_opt, singular_values, vt_opt) =
+                matrix.clone().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
+            let u = u_opt.ok_or(SVDError::ConvergenceFailed)?;
+            let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
+            Ok(NdarrayComplexSVD { u, singular_values, vt })
+        }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            Err(SVDError::InvalidInput(
+                "complex SVD requires `openblas-system` feature".to_string(),
+            ))
+        }
+    }
+
+    /// Compute complex SVD from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if provider support is unavailable or decomposition fails.
+    pub fn decompose_complex_view(
+        matrix: &ArrayView2<'_, Complex64>,
+    ) -> Result<NdarrayComplexSVD, SVDError> {
+        decompose_complex(&matrix.to_owned())
+    }
+
     /// Compute SVD and zero out singular values below `tolerance`.
     ///
     /// # Errors
@@ -207,6 +263,19 @@ pub mod ndarray_svd {
     /// Reconstruct the original matrix from SVD components.
     #[must_use]
     pub fn reconstruct_matrix(svd: &NdarraySVD) -> Array2<f64> {
+        let cols = svd.vt.ncols();
+        let mut sigma_vt = svd.vt.clone();
+        for i in 0..svd.singular_values.len().min(svd.u.ncols()) {
+            for j in 0..cols {
+                sigma_vt[[i, j]] *= svd.singular_values[i];
+            }
+        }
+        svd.u.dot(&sigma_vt)
+    }
+
+    /// Reconstruct a complex matrix from SVD components.
+    #[must_use]
+    pub fn reconstruct_matrix_complex(svd: &NdarrayComplexSVD) -> Array2<Complex64> {
         let cols = svd.vt.ncols();
         let mut sigma_vt = svd.vt.clone();
         for i in 0..svd.singular_values.len().min(svd.u.ncols()) {
@@ -354,6 +423,7 @@ pub mod ndarray_svd {
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
+    use num_complex::Complex64;
 
     use super::{PseudoInverseConfig, SVDError, ndarray_svd};
 
@@ -392,5 +462,117 @@ mod tests {
         assert_eq!(basis.ncols(), 1);
         let residual = matrix.dot(&basis.column(0).to_owned());
         assert!(residual.iter().all(|value| value.abs() < 1e-6));
+    }
+
+    #[test]
+    fn decompose_view_matches_owned() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 1.0, 3.0]).unwrap();
+        let from_owned = ndarray_svd::decompose(&matrix).unwrap();
+        let matrix_view = matrix.view();
+        let from_view = ndarray_svd::decompose_view(&matrix_view).unwrap();
+        assert_eq!(from_owned.singular_values.len(), from_view.singular_values.len());
+    }
+
+    #[cfg(feature = "openblas-system")]
+    #[test]
+    fn complex_svd_reconstructs_input() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(0.5, 0.25),
+            Complex64::new(-1.0, 2.0),
+        ])
+        .unwrap();
+        let svd = ndarray_svd::decompose_complex(&matrix).unwrap();
+        let reconstructed = ndarray_svd::reconstruct_matrix_complex(&svd);
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((reconstructed[[i, j]] - matrix[[i, j]]).norm() < 1e-8);
+            }
+        }
+    }
+
+    #[cfg(not(feature = "openblas-system"))]
+    #[test]
+    fn complex_svd_without_provider_errors() {
+        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
+        let result = ndarray_svd::decompose_complex(&matrix);
+        assert!(matches!(result, Err(SVDError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn tolerance_rank_and_condition_number_paths() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 0.0, 0.0, 1.0]).unwrap();
+        let svd = ndarray_svd::decompose_with_tolerance(&matrix, 2.0).unwrap();
+        assert!(svd.singular_values[1].abs() < 1e-12);
+        assert!(ndarray_svd::condition_number(&svd).is_finite());
+        assert_eq!(ndarray_svd::rank(&svd, Some(1e-8)), 1);
+    }
+
+    #[test]
+    fn reconstruct_into_and_pseudo_inverse_into_paths() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 4.0]).unwrap();
+        let svd = ndarray_svd::decompose(&matrix).unwrap();
+        let mut reconstructed = Array2::<f64>::zeros((2, 2));
+        ndarray_svd::reconstruct_matrix_into(&svd, &mut reconstructed).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((reconstructed[[i, j]] - matrix[[i, j]]).abs() < 1e-8);
+            }
+        }
+
+        let mut pinv = Array2::<f64>::zeros((2, 2));
+        ndarray_svd::pseudo_inverse_into(&matrix, &PseudoInverseConfig::default(), &mut pinv)
+            .unwrap();
+        let identity = matrix.dot(&pinv);
+        assert!((identity[[0, 0]] - 1.0).abs() < 1e-8);
+        assert!((identity[[1, 1]] - 1.0).abs() < 1e-8);
+    }
+
+    #[test]
+    fn reconstruct_into_rejects_bad_output_shape() {
+        let matrix = Array2::eye(2);
+        let svd = ndarray_svd::decompose(&matrix).unwrap();
+        let mut bad = Array2::<f64>::zeros((1, 1));
+        let result = ndarray_svd::reconstruct_matrix_into(&svd, &mut bad);
+        assert!(matches!(result, Err(SVDError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn decompose_rejects_empty_input() {
+        let empty = Array2::<f64>::zeros((0, 0));
+        assert!(matches!(ndarray_svd::decompose(&empty), Err(SVDError::EmptyMatrix)));
+    }
+
+    #[cfg(not(feature = "openblas-system"))]
+    #[test]
+    fn internal_decompose_rejects_non_finite_input() {
+        let non_finite = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();
+        assert!(matches!(ndarray_svd::decompose(&non_finite), Err(SVDError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn pseudo_inverse_into_rejects_empty_and_bad_output_shape() {
+        let empty = Array2::<f64>::zeros((0, 0));
+        let mut output = Array2::<f64>::zeros((0, 0));
+        assert!(matches!(
+            ndarray_svd::pseudo_inverse_into(&empty, &PseudoInverseConfig::default(), &mut output),
+            Err(SVDError::EmptyMatrix)
+        ));
+
+        let matrix = Array2::eye(2);
+        let mut bad = Array2::<f64>::zeros((1, 2));
+        assert!(matches!(
+            ndarray_svd::pseudo_inverse_into(&matrix, &PseudoInverseConfig::default(), &mut bad),
+            Err(SVDError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn null_space_of_full_rank_matrix_is_empty() {
+        let matrix = Array2::eye(3);
+        let basis = ndarray_svd::null_space(&matrix, None).unwrap();
+        assert_eq!(basis.ncols(), 0);
+        assert_eq!(basis.nrows(), 3);
     }
 }

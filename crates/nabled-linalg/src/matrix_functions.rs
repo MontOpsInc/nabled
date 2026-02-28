@@ -491,4 +491,145 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn exp_into_and_workspace_match_allocating_path() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![0.2, 0.1, 0.0, 0.3]).unwrap();
+        let expected = ndarray_matrix_functions::matrix_exp(&matrix, 64, 1e-12).unwrap();
+
+        let mut output = Array2::<f64>::zeros((2, 2));
+        ndarray_matrix_functions::matrix_exp_into(&matrix, 64, 1e-12, &mut output).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn log_taylor_into_matches_allocating_path() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.1, 0.0, 0.0, 0.9]).unwrap();
+        let expected = ndarray_matrix_functions::matrix_log_taylor(&matrix, 128, 1e-12).unwrap();
+
+        let mut output = Array2::<f64>::zeros((2, 2));
+        ndarray_matrix_functions::matrix_log_taylor_into(&matrix, 128, 1e-12, &mut output).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn into_rejects_bad_output_shape() {
+        let matrix = Array2::eye(2);
+        let mut bad = Array2::<f64>::zeros((1, 1));
+        let err = ndarray_matrix_functions::matrix_log_eigen_into(&matrix, &mut bad).unwrap_err();
+        assert!(matches!(err, MatrixFunctionError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn log_svd_rejects_singular_input() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 0.0]).unwrap();
+        let result = ndarray_matrix_functions::matrix_log_svd(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::NotPositiveDefinite)));
+    }
+
+    #[test]
+    fn power_and_sign_reject_non_symmetric_input() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 0.0, 1.0]).unwrap();
+        assert!(matches!(
+            ndarray_matrix_functions::matrix_power(&matrix, 2.0),
+            Err(MatrixFunctionError::NotSymmetric)
+        ));
+        assert!(matches!(
+            ndarray_matrix_functions::matrix_sign(&matrix),
+            Err(MatrixFunctionError::NotSymmetric)
+        ));
+    }
+
+    #[test]
+    fn sign_into_matches_allocating_path() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, -3.0]).unwrap();
+        let expected = ndarray_matrix_functions::matrix_sign(&matrix).unwrap();
+
+        let mut output = Array2::<f64>::zeros((2, 2));
+        ndarray_matrix_functions::matrix_sign_into(&matrix, &mut output).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn exp_eigen_falls_back_for_non_symmetric_input() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![0.0, 1.0, 0.0, 0.0]).unwrap();
+        let eigen_path = ndarray_matrix_functions::matrix_exp_eigen(&matrix).unwrap();
+        let taylor_path = ndarray_matrix_functions::matrix_exp(&matrix, 128, 1e-12).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((eigen_path[[i, j]] - taylor_path[[i, j]]).abs() < 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn matrix_functions_reject_non_finite_input() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();
+        let result = ndarray_matrix_functions::matrix_exp(&matrix, 32, 1e-8);
+        assert!(matches!(result, Err(MatrixFunctionError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn into_variants_reject_bad_output_shape() {
+        let matrix = Array2::eye(2);
+        let mut bad = Array2::<f64>::zeros((1, 1));
+        assert!(matches!(
+            ndarray_matrix_functions::matrix_exp_into(&matrix, 32, 1e-8, &mut bad),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            ndarray_matrix_functions::matrix_log_svd_into(&matrix, &mut bad),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            ndarray_matrix_functions::matrix_power_into(&matrix, 0.5, &mut bad),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            ndarray_matrix_functions::matrix_sign_into(&matrix, &mut bad),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn matrix_log_eigen_rejects_non_positive_eigenvalues() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 0.0]).unwrap();
+        let result = ndarray_matrix_functions::matrix_log_eigen(&matrix);
+        assert!(matches!(result, Err(MatrixFunctionError::NotPositiveDefinite)));
+    }
+
+    #[test]
+    fn matrix_sign_handles_negative_positive_and_zero_spectrum() {
+        let matrix =
+            Array2::from_shape_vec((3, 3), vec![2.0, 0.0, 0.0, 0.0, -4.0, 0.0, 0.0, 0.0, 0.0])
+                .unwrap();
+        let sign = ndarray_matrix_functions::matrix_sign(&matrix).unwrap();
+        assert!((sign[[0, 0]] - 1.0).abs() < 1e-10);
+        assert!((sign[[1, 1]] + 1.0).abs() < 1e-10);
+        assert!(sign[[2, 2]].abs() < 1e-10);
+    }
+
+    #[test]
+    fn zero_max_terms_is_clamped_to_single_iteration() {
+        let matrix = Array2::eye(2);
+        let exp = ndarray_matrix_functions::matrix_exp(&matrix, 0, 1e-12).unwrap();
+        assert!(exp[[0, 0]].is_finite());
+        assert!(exp[[1, 1]].is_finite());
+
+        let log = ndarray_matrix_functions::matrix_log_taylor(&matrix, 0, 1e-12).unwrap();
+        assert!(log[[0, 0]].abs() < 1e-12);
+        assert!(log[[1, 1]].abs() < 1e-12);
+    }
 }

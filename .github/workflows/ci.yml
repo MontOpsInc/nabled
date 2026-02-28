@@ -203,7 +203,8 @@ jobs:
     - name: Generate code coverage
       run: |
         cargo llvm-cov clean --workspace
-        cargo llvm-cov --workspace --all-targets --lcov --no-report --ignore-filename-regex "(examples).*"
+        cargo llvm-cov --workspace --lib --tests --lcov --no-report --ignore-filename-regex "(errors|examples|benches|src/bin).*"
+        cargo llvm-cov report --summary-only --fail-under-lines 90 --ignore-filename-regex "(errors|examples|benches|src/bin).*"
         cargo llvm-cov report --lcov --output-path lcov.info
 
     - name: Upload coverage to Codecov

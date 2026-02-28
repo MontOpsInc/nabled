@@ -224,4 +224,39 @@ mod tests {
         let rhs = Array1::from_vec(vec![1.0, 2.0]);
         assert!(matches!(ndarray_lu::solve(&singular, &rhs), Err(LUError::SingularMatrix)));
     }
+
+    #[test]
+    fn inverse_multiplied_by_matrix_is_identity() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 7.0, 2.0, 6.0]).unwrap();
+        let inverse = ndarray_lu::inverse(&matrix).unwrap();
+        let product = matrix.dot(&inverse);
+        assert!((product[[0, 0]] - 1.0).abs() < 1e-8);
+        assert!((product[[1, 1]] - 1.0).abs() < 1e-8);
+        assert!(product[[0, 1]].abs() < 1e-8);
+        assert!(product[[1, 0]].abs() < 1e-8);
+    }
+
+    #[test]
+    fn log_determinant_has_expected_sign_and_value() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, -3.0]).unwrap();
+        let result = ndarray_lu::log_determinant(&matrix).unwrap();
+        assert_eq!(result.sign, -1);
+        assert!((result.ln_abs_det - (6.0_f64).ln()).abs() < 1e-10);
+    }
+
+    #[test]
+    fn solve_rejects_bad_rhs_length() {
+        let matrix = Array2::eye(2);
+        let rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        let result = ndarray_lu::solve(&matrix, &rhs);
+        assert!(matches!(result, Err(LUError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn decompose_exposes_factors() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 4.0, 3.0]).unwrap();
+        let lu = ndarray_lu::decompose(&matrix).unwrap();
+        assert_eq!(lu.l.dim(), (2, 2));
+        assert_eq!(lu.u.dim(), (2, 2));
+    }
 }

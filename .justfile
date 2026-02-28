@@ -3,6 +3,8 @@ features := 'blas openblas-system'
 provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
 provider_features := 'openblas-system'
 provider_bench_features := 'openblas-system'
+coverage_ignore_regex := "(errors|examples|benches|src/bin).*"
+coverage_line_threshold := "90"
 
 # List of Examples
 
@@ -33,19 +35,24 @@ test-integration test_name:
     RUST_LOG={{ LOG }} cargo test -p nabled --test "{{ test_name }}" -- --nocapture --show-output
 
 coverage:
-    cargo llvm-cov --workspace --all-targets --html \
-     --ignore-filename-regex "(errors|examples).*" \
+    cargo llvm-cov --workspace --lib --tests --html \
+     --ignore-filename-regex "{{ coverage_ignore_regex }}" \
      --output-dir coverage --open
 
 coverage-json:
-    cargo llvm-cov --workspace --all-targets --json \
-    --ignore-filename-regex "(errors|examples|benches).*" \
+    cargo llvm-cov --workspace --lib --tests --json \
+    --ignore-filename-regex "{{ coverage_ignore_regex }}" \
     --output-path coverage/cov.json
 
 coverage-lcov:
-    cargo llvm-cov --workspace --all-targets --lcov \
-    --ignore-filename-regex "(errors|examples|benches).*" \
+    cargo llvm-cov --workspace --lib --tests --lcov \
+    --ignore-filename-regex "{{ coverage_ignore_regex }}" \
     --output-path coverage/lcov.info
+
+coverage-check:
+    cargo llvm-cov --workspace --lib --tests --summary-only \
+    --fail-under-lines {{ coverage_line_threshold }} \
+    --ignore-filename-regex "{{ coverage_ignore_regex }}"
 
 # --- DOCS ---
 docs:
@@ -83,6 +90,10 @@ bench-smoke:
     cargo bench -p nabled --bench cholesky_benchmarks -- --quick
     cargo bench -p nabled --bench eigen_benchmarks -- --quick
     cargo bench -p nabled --bench vector_benchmarks -- --quick
+    cargo bench -p nabled --bench sparse_benchmarks -- --quick
+    cargo bench -p nabled --bench schur_benchmarks -- --quick
+    cargo bench -p nabled --bench sylvester_benchmarks -- --quick
+    cargo bench -p nabled --bench optimization_benchmarks -- --quick
 
 bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench svd_benchmarks -- --quick
@@ -93,6 +104,10 @@ bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench cholesky_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench eigen_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench vector_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sparse_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench schur_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sylvester_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench optimization_benchmarks -- --quick
 
 bench-report:
     cargo run -p nabled --bin benchmark_report
@@ -228,6 +243,7 @@ checks:
     just -f {{ justfile() }} check-provider-clippy
     just -f {{ justfile() }} test
     just -f {{ justfile() }} test-provider
+    just -f {{ justfile() }} coverage-check
     just -f {{ justfile() }} check-provider
     just -f {{ justfile() }} backend-capability-report
 

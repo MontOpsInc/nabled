@@ -115,7 +115,7 @@ pub mod ndarray_regression {
 mod tests {
     use ndarray::{Array1, Array2};
 
-    use super::ndarray_regression;
+    use super::{RegressionError, ndarray_regression};
 
     #[test]
     fn linear_regression_fits_known_line() {
@@ -125,5 +125,48 @@ mod tests {
         assert!((result.coefficients[0] - 1.0).abs() < 1e-8);
         assert!((result.coefficients[1] - 2.0).abs() < 1e-8);
         assert!(result.r_squared > 0.999_999);
+    }
+
+    #[test]
+    fn regression_without_intercept_fits_origin_line() {
+        let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let y = Array1::from_vec(vec![2.0, 4.0, 6.0, 8.0]);
+        let result = ndarray_regression::linear_regression(&x, &y, false).unwrap();
+        assert_eq!(result.coefficients.len(), 1);
+        assert!((result.coefficients[0] - 2.0).abs() < 1e-8);
+    }
+
+    #[test]
+    fn regression_rejects_dimension_mismatch() {
+        let x = Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap();
+        let y = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        let result = ndarray_regression::linear_regression(&x, &y, true);
+        assert!(matches!(result, Err(RegressionError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn regression_rejects_empty_inputs() {
+        let x = Array2::<f64>::zeros((0, 0));
+        let y = Array1::<f64>::zeros(0);
+        let result = ndarray_regression::linear_regression(&x, &y, true);
+        assert!(matches!(result, Err(RegressionError::EmptyInput)));
+    }
+
+    #[test]
+    fn regression_reports_singular_system() {
+        let x = Array2::from_shape_vec((3, 1), vec![1.0, 1.0, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        let result = ndarray_regression::linear_regression(&x, &y, true);
+        assert!(matches!(result, Err(RegressionError::Singular)));
+    }
+
+    #[test]
+    fn regression_constant_response_has_unit_r_squared() {
+        let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let y = Array1::from_vec(vec![3.0, 3.0, 3.0, 3.0]);
+        let result = ndarray_regression::linear_regression(&x, &y, true).unwrap();
+        assert!((result.r_squared - 1.0).abs() < 1e-12);
+        assert_eq!(result.fitted_values.len(), y.len());
+        assert_eq!(result.residuals.len(), y.len());
     }
 }

@@ -219,4 +219,31 @@ mod tests {
         assert!((reconstructed[0] - rhs[0]).abs() < 1e-8);
         assert!((reconstructed[1] - rhs[1]).abs() < 1e-8);
     }
+
+    #[test]
+    fn cg_rejects_dimension_mismatch() {
+        let matrix = Array2::eye(2);
+        let rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        let result =
+            ndarray_iterative::conjugate_gradient(&matrix, &rhs, &IterativeConfig::default());
+        assert!(matches!(result, Err(super::IterativeError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn gmres_rejects_empty_input() {
+        let matrix = Array2::<f64>::zeros((0, 0));
+        let rhs = Array1::<f64>::zeros(0);
+        let result = ndarray_iterative::gmres(&matrix, &rhs, &IterativeConfig::default());
+        assert!(matches!(result, Err(super::IterativeError::EmptyMatrix)));
+    }
+
+    #[test]
+    fn cg_returns_zero_for_zero_rhs() {
+        let matrix = Array2::eye(2);
+        let rhs = Array1::from_vec(vec![0.0, 0.0]);
+        let solution =
+            ndarray_iterative::conjugate_gradient(&matrix, &rhs, &IterativeConfig::default())
+                .unwrap();
+        assert!(solution.iter().all(|value| value.abs() < 1e-12));
+    }
 }

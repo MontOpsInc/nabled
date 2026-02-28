@@ -93,4 +93,11 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn polar_rejects_non_square_input() {
+        let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let result = ndarray_polar::compute_polar(&matrix);
+        assert!(matches!(result, Err(super::PolarError::NotSquare)));
+    }
 }

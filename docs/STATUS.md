@@ -16,8 +16,12 @@ Workspace migration for library domains is complete.
 8. Explicit allocation paths (`*_into`) and reusable workspace pattern are in place for key hot paths.
 9. Tier-A benchmark surface expanded beyond four suites (LU/Cholesky/Eigen/Vector added).
 10. Sparse baseline is now present (`CSR`, sparse matvec, Jacobi sparse solve).
-11. Complex-number vector parity is now present (Hermitian dot, complex norm/cosine).
-12. First-order optimization primitives are now present (line search, gradient descent, Adam).
+11. Sparse baseline expanded with `COO` + COO→CSR conversion and Gauss-Seidel solve.
+12. New benchmark suites now cover `sparse`, `schur`, `sylvester`, and `optimization`.
+13. Complex decomposition parity started (`QR` complex path and provider-backed complex SVD).
+14. Shared cross-domain taxonomy exists via `nabled-core::errors::NabledError`.
+15. Complex-number vector parity is now present (Hermitian dot, complex norm/cosine).
+16. First-order optimization primitives are now present (line search, gradient descent, Adam).
 
 ## Current Code Ownership
 
@@ -47,15 +51,16 @@ Workspace migration for library domains is complete.
 1. On macOS, provider-enabled `just` recipes now inject Homebrew OpenBLAS env (`PKG_CONFIG_PATH`, `OPENBLAS_DIR`) automatically.
 2. This avoids per-shell setup drift for common local quality/bench workflows.
 3. Quality gates run both internal mode and provider-enabled mode in local `just checks` and CI.
+4. Coverage is scoped to library surfaces (`--lib --tests`) with non-library exclusions (`errors|examples|benches|src/bin`) and now hard-fails below `90%` lines.
 
 ## Next Required Milestone
 
 Harden workspace contracts and release readiness:
 
-1. Add benchmark suites for newly landed sparse/schur/sylvester/optimization domains.
-2. Expand complex-number parity from vector kernels into decomposition kernels.
-3. Expand sparse formats/solvers beyond CSR+Jacobi baseline.
-4. Run view-first API pass (`ArrayView*`) for allocation discipline.
+1. Expand view-first API pass (`ArrayView*`) across remaining heavy public APIs.
+2. Expand complex-number parity beyond QR/SVD and vector kernels.
+3. Add explicit tests for `IntoNabledError` mappings and maintain mapping stability.
+4. Add benchmark competitor baselines for newly added benchmark domains.
 5. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration

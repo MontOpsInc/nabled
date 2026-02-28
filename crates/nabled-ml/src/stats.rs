@@ -102,7 +102,7 @@ pub mod ndarray_stats {
 mod tests {
     use ndarray::Array2;
 
-    use super::ndarray_stats;
+    use super::{StatsError, ndarray_stats};
 
     #[test]
     fn covariance_and_correlation_are_well_formed() {
@@ -112,5 +112,50 @@ mod tests {
         let correlation = ndarray_stats::correlation_matrix(&matrix).unwrap();
         assert_eq!(covariance.dim(), (2, 2));
         assert_eq!(correlation.dim(), (2, 2));
+    }
+
+    #[test]
+    fn stats_rejects_empty_and_insufficient_inputs() {
+        let empty = Array2::<f64>::zeros((0, 0));
+        assert!(matches!(ndarray_stats::covariance_matrix(&empty), Err(StatsError::EmptyMatrix)));
+
+        let one_row = Array2::from_shape_vec((1, 2), vec![1.0, 2.0]).unwrap();
+        assert!(matches!(
+            ndarray_stats::covariance_matrix(&one_row),
+            Err(StatsError::InsufficientSamples)
+        ));
+    }
+
+    #[test]
+    fn center_columns_zeroes_means() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 2.0, 3.0, 3.0, 4.0]).unwrap();
+        let centered = ndarray_stats::center_columns(&matrix);
+        let means = ndarray_stats::column_means(&centered);
+        assert!(means.iter().all(|value| value.abs() < 1e-12));
+    }
+
+    #[test]
+    fn column_means_handles_empty_input() {
+        let matrix = Array2::<f64>::zeros((0, 3));
+        let means = ndarray_stats::column_means(&matrix);
+        assert_eq!(means.len(), 3);
+        assert!(means.iter().all(|value| *value == 0.0));
+    }
+
+    #[test]
+    fn covariance_reports_numerical_instability() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![f64::MAX, 0.0, -f64::MAX, 0.0]).unwrap();
+        let result = ndarray_stats::covariance_matrix(&matrix);
+        assert!(matches!(result, Err(StatsError::NumericalInstability)));
+    }
+
+    #[test]
+    fn correlation_handles_zero_variance_column() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 10.0, 1.0, 20.0, 1.0, 30.0]).unwrap();
+        let correlation = ndarray_stats::correlation_matrix(&matrix).unwrap();
+        assert!(correlation[[0, 0]].is_finite());
+        assert!(correlation[[0, 1]].is_finite());
+        assert!(correlation[[1, 0]].is_finite());
+        assert!(correlation[[1, 1]].is_finite());
     }
 }

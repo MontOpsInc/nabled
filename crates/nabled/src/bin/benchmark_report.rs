@@ -80,20 +80,7 @@ fn main() -> io::Result<()> {
         candidate_roots.iter().copied().filter(|root| root.exists()).collect::<Vec<_>>();
 
     if criterion_roots.is_empty() {
-        eprintln!("No Criterion output found in known target directories.");
-        eprintln!("Checked:");
-        for root in candidate_roots {
-            eprintln!("  {}", root.display());
-        }
-        eprintln!("Run benches first, for example:");
-        eprintln!("  cargo bench --bench svd_benchmarks -- --quick");
-        eprintln!("  cargo bench --bench qr_benchmarks -- --quick");
-        eprintln!("  cargo bench --bench triangular_benchmarks -- --quick");
-        eprintln!("  cargo bench --bench matrix_functions_benchmarks -- --quick");
-        eprintln!("  cargo bench --bench lu_benchmarks -- --quick");
-        eprintln!("  cargo bench --bench cholesky_benchmarks -- --quick");
-        eprintln!("  cargo bench --bench eigen_benchmarks -- --quick");
-        eprintln!("  cargo bench --bench vector_benchmarks -- --quick");
+        print_missing_criterion_message(&candidate_roots);
         return Ok(());
     }
 
@@ -182,6 +169,27 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+fn print_missing_criterion_message(candidate_roots: &[&Path]) {
+    eprintln!("No Criterion output found in known target directories.");
+    eprintln!("Checked:");
+    for root in candidate_roots {
+        eprintln!("  {}", root.display());
+    }
+    eprintln!("Run benches first, for example:");
+    eprintln!("  cargo bench --bench svd_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench qr_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench triangular_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench matrix_functions_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench lu_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench cholesky_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench eigen_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench vector_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench sparse_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench schur_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench sylvester_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench optimization_benchmarks -- --quick");
+}
+
 fn now_unix_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_secs())
 }
@@ -259,6 +267,14 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "eigen"
     } else if group_id.starts_with("vector_") {
         "vector"
+    } else if group_id.starts_with("sparse_") {
+        "sparse"
+    } else if group_id.starts_with("schur_") {
+        "schur"
+    } else if group_id.starts_with("sylvester_") {
+        "sylvester"
+    } else if group_id.starts_with("optimization_") {
+        "optimization"
     } else {
         "unknown"
     };
@@ -271,7 +287,11 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         | "lu_nabled_ndarray"
         | "cholesky_nabled_ndarray"
         | "eigen_nabled_ndarray"
-        | "vector_nabled_ndarray" => ("ndarray", "none"),
+        | "vector_nabled_ndarray"
+        | "sparse_nabled_ndarray"
+        | "schur_nabled_ndarray"
+        | "sylvester_nabled_ndarray"
+        | "optimization_nabled_ndarray" => ("ndarray", "none"),
         "svd_competitor_faer_direct" | "qr_competitor_faer_direct" => {
             ("faer_direct", "faer_direct")
         }

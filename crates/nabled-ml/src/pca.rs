@@ -147,4 +147,21 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn pca_rejects_zero_components() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
+        let result = ndarray_pca::compute_pca(&matrix, Some(0));
+        assert!(matches!(result, Err(super::PCAError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn explained_variance_ratio_sums_to_one() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
+        let pca = ndarray_pca::compute_pca(&matrix, Some(2)).unwrap();
+        let sum = pca.explained_variance_ratio.iter().sum::<f64>();
+        assert!((sum - 1.0).abs() < 1e-10);
+    }
 }

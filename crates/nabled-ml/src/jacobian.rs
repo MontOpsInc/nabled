@@ -284,4 +284,52 @@ mod tests {
         assert!((gradient[1] - 4.0).abs() < 1e-4);
         assert!((gradient[2] - 6.0).abs() < 1e-4);
     }
+
+    #[test]
+    fn central_jacobian_matches_forward_for_linear_map() {
+        let f = |x: &Array1<f64>| -> Result<Array1<f64>, super::JacobianError> {
+            Ok(array![2.0 * x[0] + x[1], -x[0] + 3.0 * x[1]])
+        };
+        let x = array![0.5, -1.0];
+        let config = JacobianConfig::default();
+        let forward = ndarray_jacobian::numerical_jacobian(&f, &x, &config).unwrap();
+        let central = ndarray_jacobian::numerical_jacobian_central(&f, &x, &config).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((forward[[i, j]] - central[[i, j]]).abs() < 1e-4);
+            }
+        }
+    }
+
+    #[test]
+    fn hessian_of_quadratic_is_constant() {
+        let f = |x: &Array1<f64>| -> Result<f64, super::JacobianError> {
+            Ok(2.0 * x[0] * x[0] + 3.0 * x[0] * x[1] + 4.0 * x[1] * x[1])
+        };
+        let x = array![0.7, -1.2];
+        let hessian =
+            ndarray_jacobian::numerical_hessian(&f, &x, &JacobianConfig::default()).unwrap();
+        assert!((hessian[[0, 0]] - 4.0).abs() < 1e-3);
+        assert!((hessian[[0, 1]] - 3.0).abs() < 1e-3);
+        assert!((hessian[[1, 0]] - 3.0).abs() < 1e-3);
+        assert!((hessian[[1, 1]] - 8.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn config_validation_rejects_invalid_values() {
+        assert!(JacobianConfig::new(0.0, 1e-8, 10).is_err());
+        assert!(JacobianConfig::new(1e-6, -1.0, 10).is_err());
+        assert!(JacobianConfig::new(1e-6, 1e-8, 0).is_err());
+    }
+
+    #[test]
+    fn central_jacobian_detects_dimension_mismatch() {
+        let f = |x: &Array1<f64>| -> Result<Array1<f64>, super::JacobianError> {
+            if x[0] > 1.0 { Ok(array![1.0, 2.0, 3.0]) } else { Ok(array![1.0, 2.0]) }
+        };
+        let x = array![1.0, 2.0];
+        let result =
+            ndarray_jacobian::numerical_jacobian_central(&f, &x, &JacobianConfig::default());
+        assert!(matches!(result, Err(super::JacobianError::DimensionMismatch)));
+    }
 }

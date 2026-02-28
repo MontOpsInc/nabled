@@ -59,8 +59,9 @@ Run and pass before finalizing:
 
 Coverage expectation:
 
-1. Keep line coverage >= 90%.
-2. Prefer meaningful coverage over synthetic assertions.
+1. Keep line coverage > 90% as a hard gate for merge/push.
+2. If coverage drops below this threshold, add meaningful tests before finalizing.
+3. Prefer meaningful coverage over synthetic assertions.
 
 ## Test Placement
 

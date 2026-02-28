@@ -46,14 +46,21 @@ Use this file to resume work quickly after context compaction without re-auditin
 18. `D-018`: Sparse baseline landed with `CSR` primitives (`matvec`, `matvec_into`) and Jacobi sparse solve.
 19. `D-019`: Complex-number parity baseline added for vector kernels (`dot_hermitian`, complex norm/cosine).
 20. `D-020`: First-order optimization primitives added in `nabled-ml` (Armijo backtracking, gradient descent, Adam).
+21. `D-021`: Benchmark suites expanded for `sparse`, `schur`, `sylvester`, and `optimization`; smoke recipes and benchmark classifier updated.
+22. `D-022`: Complex parity extended into decomposition APIs (`QR` complex decomposition and provider-backed complex SVD).
+23. `D-023`: Sparse roadmap advanced with `COO` support, COO→CSR conversion, and Gauss-Seidel sparse solve.
+24. `D-024`: View-first API pass started on hot paths (`vector`, `qr`, `svd`) via `ArrayView*` entrypoints.
+25. `D-025`: Cross-domain error taxonomy consolidated in `nabled-core` via `NabledError` + `IntoNabledError` mappings in linalg/ml crates.
+26. `D-026`: Scoped line coverage restored above gate (`90.63%`) with targeted tests across linalg/ml/core low-coverage paths.
+27. `D-027`: Coverage policy aligned in local/CI: shared ignore regex (`errors|examples|benches|src/bin`), `--lib --tests` scope, and hard `>=90%` gate.
 
 ## Next
 
-1. `N-011` (P0): Add dedicated benchmark suites for new domains (`sparse`, `schur`, `sylvester`, `optimization`) and fold them into bench reporting.
-2. `N-012` (P0): Extend complex parity beyond vector kernels into Tier-A decomposition APIs where numerically sound/provider-supported.
-3. `N-013` (P0): Expand sparse roadmap beyond CSR/Jacobi (format policy + additional sparse solvers).
-4. `N-014` (P0): Execute view-first API pass (`ArrayView*`) across hot public APIs to reduce caller-side cloning.
-5. `N-015` (P0): Consolidate cross-domain error taxonomy and conversion story in `nabled-core`.
+1. `N-017` (P0): Expand view-first signatures from initial hot paths to remaining heavy public APIs.
+2. `N-018` (P0): Extend complex parity to additional decomposition/solver domains beyond QR/SVD.
+3. `N-019` (P0): Add dedicated tests for `IntoNabledError` conversion coverage and mapping stability.
+4. `N-020` (P0): Add benchmark competitor baselines for new benchmark suites where practical.
+5. `N-021` (P1): Incrementally raise low per-file coverage in `eigen`, `lu`, `orthogonalization`, and `polar` while keeping API behavior unchanged.
 
 ## Needed
 

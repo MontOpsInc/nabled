@@ -291,7 +291,7 @@ pub mod ndarray_optimization {
 mod tests {
     use ndarray::arr1;
 
-    use super::{AdamConfig, LineSearchConfig, SGDConfig, ndarray_optimization};
+    use super::{AdamConfig, LineSearchConfig, OptimizationError, SGDConfig, ndarray_optimization};
 
     fn objective(x: &ndarray::Array1<f64>) -> f64 {
         let delta = x[0] - 3.0;
@@ -330,5 +330,55 @@ mod tests {
         let solution =
             ndarray_optimization::adam(&x0, objective, gradient, &AdamConfig::default()).unwrap();
         assert!((solution[0] - 3.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn line_search_rejects_invalid_config_and_dimension_mismatch() {
+        let x = arr1(&[0.0_f64]);
+        let direction = arr1(&[1.0_f64, 2.0_f64]);
+        let result = ndarray_optimization::backtracking_line_search(
+            &x,
+            &direction,
+            objective,
+            gradient,
+            &LineSearchConfig::default(),
+        );
+        assert!(matches!(result, Err(OptimizationError::DimensionMismatch)));
+
+        let bad_config = LineSearchConfig { contraction: 1.0, ..LineSearchConfig::default() };
+        let result = ndarray_optimization::backtracking_line_search(
+            &x,
+            &arr1(&[1.0_f64]),
+            objective,
+            gradient,
+            &bad_config,
+        );
+        assert!(matches!(result, Err(OptimizationError::InvalidConfig)));
+    }
+
+    #[test]
+    fn gradient_descent_and_adam_cover_error_paths() {
+        let x0 = arr1(&[0.0_f64]);
+
+        let bad_gradient = |_x: &ndarray::Array1<f64>| arr1(&[f64::NAN]);
+        let gd_non_finite = ndarray_optimization::gradient_descent(
+            &x0,
+            objective,
+            bad_gradient,
+            &SGDConfig::default(),
+        );
+        assert!(matches!(gd_non_finite, Err(OptimizationError::NonFiniteInput)));
+
+        let gd_stall =
+            ndarray_optimization::gradient_descent(&x0, objective, gradient, &SGDConfig {
+                learning_rate:  1e-12,
+                max_iterations: 1,
+                tolerance:      0.0,
+            });
+        assert!(matches!(gd_stall, Err(OptimizationError::MaxIterationsExceeded)));
+
+        let bad_adam = AdamConfig { beta1: 1.0, ..AdamConfig::default() };
+        let adam_invalid = ndarray_optimization::adam(&x0, objective, gradient, &bad_adam);
+        assert!(matches!(adam_invalid, Err(OptimizationError::InvalidConfig)));
     }
 }

@@ -221,4 +221,60 @@ mod tests {
         let result = ndarray_eigen::symmetric(&matrix);
         assert!(matches!(result, Err(EigenError::NotSymmetric)));
     }
+
+    #[test]
+    fn generalized_eigen_solves_spd_pair() {
+        let a = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 1.0]).unwrap();
+        let result = ndarray_eigen::generalized(&a, &b).unwrap();
+        assert_eq!(result.eigenvalues.len(), 2);
+        assert_eq!(result.eigenvectors.dim(), (2, 2));
+    }
+
+    #[test]
+    fn generalized_eigen_rejects_dimension_mismatch() {
+        let a = Array2::eye(2);
+        let b = Array2::eye(3);
+        let result = ndarray_eigen::generalized(&a, &b);
+        assert!(matches!(result, Err(EigenError::InvalidDimensions)));
+    }
+
+    #[test]
+    fn generalized_eigen_rejects_non_spd_b() {
+        let a = Array2::eye(2);
+        let b = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, -1.0]).unwrap();
+        let result = ndarray_eigen::generalized(&a, &b);
+        assert!(matches!(result, Err(EigenError::NotPositiveDefinite)));
+    }
+
+    #[test]
+    fn symmetric_eigen_rejects_empty_not_square_and_non_finite() {
+        let empty = Array2::<f64>::zeros((0, 0));
+        assert!(matches!(ndarray_eigen::symmetric(&empty), Err(EigenError::EmptyMatrix)));
+
+        let non_square = Array2::<f64>::zeros((2, 3));
+        assert!(matches!(ndarray_eigen::symmetric(&non_square), Err(EigenError::NotSquare)));
+
+        let non_finite =
+            Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, f64::NAN, 2.0]).unwrap();
+        assert!(matches!(
+            ndarray_eigen::symmetric(&non_finite),
+            Err(EigenError::NumericalInstability)
+        ));
+    }
+
+    #[test]
+    fn generalized_eigen_rejects_non_symmetric_a() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 0.0, 1.0]).unwrap();
+        let b = Array2::eye(2);
+        let result = ndarray_eigen::generalized(&a, &b);
+        assert!(matches!(result, Err(EigenError::NotSymmetric)));
+    }
+
+    #[test]
+    fn symmetric_eigenvalues_are_sorted_descending() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 5.0]).unwrap();
+        let eigen = ndarray_eigen::symmetric(&matrix).unwrap();
+        assert!(eigen.eigenvalues[0] >= eigen.eigenvalues[1]);
+    }
 }
