@@ -114,8 +114,8 @@ pub mod ndarray_matrix_functions {
             return matrix_exp(matrix, 128, 1e-12);
         }
 
-        let eigen = ndarray_eigen::compute_symmetric_eigen(matrix)
-            .map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+        let eigen =
+            ndarray_eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
         let exp_values = eigen.eigenvalues.map(|value| value.exp());
         let diagonal = diagonal_from(&exp_values);
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
@@ -162,8 +162,8 @@ pub mod ndarray_matrix_functions {
             return Err(MatrixFunctionError::NotSymmetric);
         }
 
-        let eigen = ndarray_eigen::compute_symmetric_eigen(matrix)
-            .map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+        let eigen =
+            ndarray_eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
         if eigen.eigenvalues.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
             return Err(MatrixFunctionError::NotPositiveDefinite);
         }
@@ -180,7 +180,7 @@ pub mod ndarray_matrix_functions {
     pub fn matrix_log_svd(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
         validate_square(matrix)?;
         let svd =
-            ndarray_svd::compute_svd(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+            ndarray_svd::decompose(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
         if svd.singular_values.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
             return Err(MatrixFunctionError::NotPositiveDefinite);
         }
@@ -202,8 +202,8 @@ pub mod ndarray_matrix_functions {
             return Err(MatrixFunctionError::NotSymmetric);
         }
 
-        let eigen = ndarray_eigen::compute_symmetric_eigen(matrix)
-            .map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+        let eigen =
+            ndarray_eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
         let powered_values = eigen.eigenvalues.map(|value| value.powf(power));
         let diagonal = diagonal_from(&powered_values);
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
@@ -219,8 +219,8 @@ pub mod ndarray_matrix_functions {
             return Err(MatrixFunctionError::NotSymmetric);
         }
 
-        let eigen = ndarray_eigen::compute_symmetric_eigen(matrix)
-            .map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+        let eigen =
+            ndarray_eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
         let sign_values = eigen.eigenvalues.map(|value| {
             if *value > DEFAULT_TOLERANCE {
                 1.0

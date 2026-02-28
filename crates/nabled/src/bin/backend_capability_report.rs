@@ -152,8 +152,14 @@ fn tier_a_domains() -> Vec<DomainCapability> {
             domain:           "triangular_solve",
             baseline_kernels: true,
             provider_path:    ProviderPath::Native,
-            notes:            "crates/nabled-linalg/src/triangular.rs (ndarray-native baseline + \
-                               ndarray-linalg LAPACK)",
+            notes:            "crates/nabled-linalg/src/triangular.rs",
+        },
+        DomainCapability {
+            tier:             "tier_a",
+            domain:           "vector_primitives",
+            baseline_kernels: true,
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/vector.rs",
         },
     ]
 }

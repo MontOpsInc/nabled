@@ -79,12 +79,20 @@ bench-smoke:
     cargo bench -p nabled --bench qr_benchmarks -- --quick
     cargo bench -p nabled --bench triangular_benchmarks -- --quick
     cargo bench -p nabled --bench matrix_functions_benchmarks -- --quick
+    cargo bench -p nabled --bench lu_benchmarks -- --quick
+    cargo bench -p nabled --bench cholesky_benchmarks -- --quick
+    cargo bench -p nabled --bench eigen_benchmarks -- --quick
+    cargo bench -p nabled --bench vector_benchmarks -- --quick
 
 bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench svd_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench qr_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench triangular_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench matrix_functions_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench lu_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench cholesky_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench eigen_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench vector_benchmarks -- --quick
 
 bench-report:
     cargo run -p nabled --bin benchmark_report

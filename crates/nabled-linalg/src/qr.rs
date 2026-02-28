@@ -75,6 +75,26 @@ fn validate_qr_input(matrix: &Array2<f64>) -> Result<(), QRError> {
     validate_finite(matrix).map_err(|_| QRError::NumericalInstability)
 }
 
+fn decompose_internal(
+    matrix: &Array2<f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    validate_qr_input(matrix)?;
+
+    let (q, r, rank) = qr_gram_schmidt(matrix, config.rank_tolerance.max(DEFAULT_TOLERANCE));
+    let p = config.use_pivoting.then(|| identity(matrix.ncols()));
+    Ok(QRResult { q, r, p, rank })
+}
+
+#[cfg(feature = "openblas-system")]
+fn decompose_provider(
+    matrix: &Array2<f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    // Provider-specific QR can be introduced here without changing public API shape.
+    decompose_internal(matrix, config)
+}
+
 /// Ndarray QR decomposition functions.
 pub mod ndarray_qr {
     use super::*;
@@ -83,26 +103,29 @@ pub mod ndarray_qr {
     ///
     /// # Errors
     /// Returns an error if the matrix is empty or non-finite.
-    pub fn compute_qr(
+    pub fn decompose(
         matrix: &Array2<f64>,
         config: &QRConfig<f64>,
     ) -> Result<QRResult<f64>, QRError> {
-        validate_qr_input(matrix)?;
-
-        let (q, r, rank) = qr_gram_schmidt(matrix, config.rank_tolerance.max(DEFAULT_TOLERANCE));
-        let p = config.use_pivoting.then(|| identity(matrix.ncols()));
-        Ok(QRResult { q, r, p, rank })
+        #[cfg(feature = "openblas-system")]
+        {
+            decompose_provider(matrix, config)
+        }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            decompose_internal(matrix, config)
+        }
     }
 
     /// Compute reduced (economy) QR decomposition.
     ///
     /// # Errors
     /// Returns an error if the matrix is empty or non-finite.
-    pub fn compute_reduced_qr(
+    pub fn decompose_reduced(
         matrix: &Array2<f64>,
         config: &QRConfig<f64>,
     ) -> Result<QRResult<f64>, QRError> {
-        let full = compute_qr(matrix, config)?;
+        let full = decompose(matrix, config)?;
         let keep = matrix.nrows().min(matrix.ncols());
         Ok(QRResult {
             q:    full.q.slice(s![.., ..keep]).to_owned(),
@@ -119,13 +142,13 @@ pub mod ndarray_qr {
     ///
     /// # Errors
     /// Returns an error if decomposition fails.
-    pub fn compute_qr_with_pivoting(
+    pub fn decompose_with_pivoting(
         matrix: &Array2<f64>,
         config: &QRConfig<f64>,
     ) -> Result<QRResult<f64>, QRError> {
         let mut adjusted = config.clone();
         adjusted.use_pivoting = true;
-        compute_qr(matrix, &adjusted)
+        decompose(matrix, &adjusted)
     }
 
     /// Solve least squares `argmin ||Ax - b||_2`.
@@ -149,7 +172,7 @@ pub mod ndarray_qr {
             ));
         }
 
-        let qr = compute_reduced_qr(matrix, config)?;
+        let qr = decompose_reduced(matrix, config)?;
         let n = matrix.ncols();
         if qr.rank < n {
             return Err(QRError::SingularMatrix);
@@ -185,12 +208,44 @@ pub mod ndarray_qr {
     #[must_use]
     pub fn reconstruct_matrix(qr: &QRResult<f64>) -> Array2<f64> { qr.q.dot(&qr.r) }
 
+    /// Reconstruct matrix `Q * R` into `output`.
+    ///
+    /// # Errors
+    /// Returns an error if output dimensions do not match `Q * R`.
+    pub fn reconstruct_matrix_into(
+        qr: &QRResult<f64>,
+        output: &mut Array2<f64>,
+    ) -> Result<(), QRError> {
+        if qr.q.ncols() != qr.r.nrows() {
+            return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+        }
+        if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
+            return Err(QRError::InvalidDimensions(
+                "output shape must match q.rows x r.cols".to_string(),
+            ));
+        }
+
+        output.fill(0.0);
+        for i in 0..qr.q.nrows() {
+            for j in 0..qr.r.ncols() {
+                let mut sum = 0.0_f64;
+                for p in 0..qr.q.ncols() {
+                    sum += qr.q[[i, p]] * qr.r[[p, j]];
+                }
+                output[[i, j]] = sum;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Estimate condition number from the `R` diagonal.
     #[must_use]
     pub fn condition_number(qr: &QRResult<f64>) -> f64 {
         if qr.r.is_empty() {
             return 0.0;
         }
+
         let n = qr.r.nrows().min(qr.r.ncols());
         let mut max_diagonal = 0.0_f64;
         let mut min_diagonal = f64::INFINITY;
@@ -201,6 +256,7 @@ pub mod ndarray_qr {
                 min_diagonal = min_diagonal.min(value);
             }
         }
+
         if min_diagonal.is_finite() { max_diagonal / min_diagonal } else { f64::INFINITY }
     }
 }
@@ -214,7 +270,7 @@ mod tests {
     #[test]
     fn qr_reconstructs_input() {
         let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
-        let qr = ndarray_qr::compute_qr(&matrix, &QRConfig::default()).unwrap();
+        let qr = ndarray_qr::decompose(&matrix, &QRConfig::default()).unwrap();
         let reconstructed = ndarray_qr::reconstruct_matrix(&qr);
         for i in 0..3 {
             for j in 0..2 {

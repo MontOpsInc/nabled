@@ -11,18 +11,19 @@ use nabled::stats::ndarray_stats;
 use nabled::svd::{SVDError, ndarray_svd};
 use nabled::sylvester::ndarray_sylvester;
 use nabled::triangular::ndarray_triangular;
+use nabled::vector::{PairwiseCosineWorkspace, ndarray_vector};
 use ndarray::{Array1, Array2};
 
 #[test]
 fn test_svd_identity_matrix() {
     let identity = Array2::<f64>::eye(3);
-    let svd = ndarray_svd::compute_svd(&identity).unwrap();
+    let svd = ndarray_svd::decompose(&identity).unwrap();
 
     for &sv in &svd.singular_values {
         assert_relative_eq!(sv, 1.0, epsilon = 1e-10);
     }
     assert_relative_eq!(ndarray_svd::condition_number(&svd), 1.0, epsilon = 1e-10);
-    assert_eq!(ndarray_svd::matrix_rank(&svd, None), 3);
+    assert_eq!(ndarray_svd::rank(&svd, None), 3);
 }
 
 #[test]
@@ -30,7 +31,7 @@ fn test_svd_reconstruction() {
     let matrix =
         Array2::from_shape_vec((3, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]).unwrap();
 
-    let svd = ndarray_svd::compute_svd(&matrix).unwrap();
+    let svd = ndarray_svd::decompose(&matrix).unwrap();
     let reconstructed = ndarray_svd::reconstruct_matrix(&svd);
 
     for i in 0..matrix.nrows() {
@@ -43,10 +44,10 @@ fn test_svd_reconstruction() {
 #[test]
 fn test_truncated_svd_and_errors() {
     let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-    let truncated = ndarray_svd::compute_truncated_svd(&matrix, 1).unwrap();
+    let truncated = ndarray_svd::decompose_truncated(&matrix, 1).unwrap();
     assert_eq!(truncated.singular_values.len(), 1);
 
-    let invalid = ndarray_svd::compute_truncated_svd(&matrix, 0);
+    let invalid = ndarray_svd::decompose_truncated(&matrix, 0);
     assert!(matches!(invalid, Err(SVDError::InvalidInput(_))));
 }
 
@@ -120,4 +121,31 @@ fn test_regression_pca_orthogonalization_and_sylvester() {
     let c = Array2::from_shape_vec((2, 2), vec![1.0, 1.0, 1.0, 1.0]).unwrap();
     let x = ndarray_sylvester::solve_sylvester(&a, &b, &c).unwrap();
     assert_eq!(x.dim(), (2, 2));
+}
+
+#[test]
+fn test_vector_primitives_and_workspace_paths() {
+    let a = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+    let b = Array1::from_vec(vec![4.0, 5.0, 6.0]);
+    let dot = ndarray_vector::dot(&a, &b).unwrap();
+    assert_relative_eq!(dot, 32.0, epsilon = 1e-10);
+
+    let left = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 1.0, 1.0, 0.0]).unwrap();
+    let right = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
+
+    let mut cosine = Array2::<f64>::zeros((left.nrows(), right.nrows()));
+    let mut workspace = PairwiseCosineWorkspace::default();
+    ndarray_vector::pairwise_cosine_similarity_with_workspace_into(
+        &left,
+        &right,
+        &mut cosine,
+        &mut workspace,
+    )
+    .unwrap();
+    assert_relative_eq!(cosine[[0, 0]], 1.0, epsilon = 1e-10);
+    assert_relative_eq!(cosine[[0, 1]], 0.0, epsilon = 1e-10);
+
+    let mut l2 = Array2::<f64>::zeros((left.nrows(), right.nrows()));
+    ndarray_vector::pairwise_l2_distance_into(&left, &right, &mut l2).unwrap();
+    assert_relative_eq!(l2[[0, 0]], 0.0, epsilon = 1e-10);
 }

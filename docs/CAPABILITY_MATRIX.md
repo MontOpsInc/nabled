@@ -24,12 +24,13 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 |---|---|---|---|---|---|
 | Core validation | shape checks for matrix/system inputs | `nabled-core::validation` | Implemented | No | Shared helpers exist; error model still minimal. |
 | Core errors | common shape errors | `nabled-core::errors` | Implemented | No | Domain errors are still distributed per module. |
-| Cholesky | factorization, solve, inverse | `nabled-linalg::cholesky::ndarray_cholesky` | Implemented | No | f64-oriented API. |
-| Eigen | symmetric + generalized SPD-B eigen | `nabled-linalg::eigen::ndarray_eigen` | Partial | No | No general non-symmetric dense eigensolver API. |
-| LU | factorization, solve, inverse, det/logdet | `nabled-linalg::lu::ndarray_lu` | Implemented | No | f64-oriented API. |
+| Cholesky | factorization, solve, inverse | `nabled-linalg::cholesky::ndarray_cholesky` | Implemented | Yes | Bench exists (`cholesky_benchmarks`). |
+| Eigen | symmetric + generalized SPD-B eigen | `nabled-linalg::eigen::ndarray_eigen` | Partial | Yes | No general non-symmetric dense eigensolver API. |
+| LU | factorization, solve, inverse, det/logdet | `nabled-linalg::lu::ndarray_lu` | Implemented | Yes | Bench exists (`lu_benchmarks`). |
 | QR | full/reduced QR, pivoting, least-squares | `nabled-linalg::qr::ndarray_qr` | Implemented | Yes | Bench exists (`qr_benchmarks`). |
 | SVD | full/truncated/toleranced SVD, rank, cond, pinv, null space | `nabled-linalg::svd::ndarray_svd` | Implemented | Yes | Bench exists (`svd_benchmarks`). |
-| Triangular solves | lower/upper substitution | `nabled-linalg::triangular` / `ndarray_triangular` | Partial | Yes | Duplicate compatibility wrapper still present. |
+| Triangular solves | lower/upper substitution | `nabled-linalg::triangular` / `ndarray_triangular` | Implemented | Yes | Includes allocation-controlled `*_into` paths. |
+| Vector primitives | dot/norm/cosine/pairwise/batched dot | `nabled-linalg::vector::ndarray_vector` | Implemented | Yes | Bench exists (`vector_benchmarks`). |
 | Schur | Schur decomposition | `nabled-linalg::schur::ndarray_schur` | Implemented | No | No dedicated benchmark yet. |
 | Polar | polar decomposition | `nabled-linalg::polar::ndarray_polar` | Implemented | No | No dedicated benchmark yet. |
 | Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester::ndarray_sylvester` | Implemented | No | No dedicated benchmark yet. |
@@ -47,19 +48,19 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 
 | Capability Group | Current Status | Gap |
 |---|---|---|
-| Stable ndarray-first dense decomposition suite | Partial | Existing coverage is strong, but APIs need view/`_into`/workspace paths and consistent contracts. |
-| Vector-first primitives for embeddings workflows | Missing | Need canonical vector ops module: dot, norms, cosine similarity/distance, pairwise distance, batched distance/similarity. |
+| Stable ndarray-first dense decomposition suite | Partial | API contract is normalized; provider-native kernels are still pending for several domains. |
+| Vector-first primitives for embeddings workflows | Implemented | Dot/norm/cosine/pairwise distance/batched dot are available; sparse and higher-rank follow-ons remain. |
 | Matrix-vector and matrix-matrix pipeline primitives | Partial | Relying on ndarray directly today; nabled-level APIs/compositional helpers are missing. |
 | Unified error taxonomy and API contracts | Partial | Domain-local errors exist; core shared error architecture is not consolidated yet. |
-| Performance-contract APIs (explicit allocations/workspaces) | Missing | Most APIs allocate outputs internally with no reusable scratch-path equivalents. |
+| Performance-contract APIs (explicit allocations/workspaces) | Partial | `*_into` and workspace patterns exist in vector/triangular/cholesky/svd/qr, but not all heavy kernels yet. |
 | Numeric robustness controls | Partial | Tolerances exist in places; policy and consistency are not unified across domains. |
-| Benchmark coverage for all Tier-A kernels | Partial | Benchmarks cover SVD/QR/Triangular/MatrixFunctions only. |
+| Benchmark coverage for all Tier-A kernels | Partial | Coverage expanded with LU/Cholesky/Eigen/Vector; Schur/Polar/Sylvester/ML domains still need dedicated suites. |
 
 ### P1: Required for broader "go-to" linalg/ML scope
 
 | Capability Group | Current Status | Gap |
 |---|---|---|
-| Batched operations over many vectors/matrices | Missing | Needed for realistic embedding and pipeline workloads. |
+| Batched operations over many vectors/matrices | Partial | Vector batched dot and pairwise kernels exist; matrix-batch and sparse-batch APIs still missing. |
 | Sparse linear algebra primitives | Missing | No sparse matrix/vector types or sparse solvers yet. |
 | Complex-number parity across major algorithms | Partial | Complex types are exported in prelude, but most kernels are f64-only. |
 | Non-symmetric dense eigen coverage | Partial | Symmetric/generalized-SPD available; broader eigen support missing. |
@@ -78,18 +79,18 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 `nabled` is sufficient as a strong ndarray-native dense-core base, but not yet sufficient for the full target scope described for embedding-centric and broad production workflows.
 
 Concretely, the largest missing pieces are:
-1. Vector-first embedding primitives.
-2. Explicit performance-contract APIs (`*_into`, workspace reuse).
-3. Batched and sparse capabilities.
-4. Broader benchmark/perf coverage outside current four bench modules.
+1. Provider-native (non-fallback) accelerated kernels for additional dense domains.
+2. Sparse capabilities and broader batch semantics beyond current vector baseline.
+3. Explicit performance-contract APIs across the full heavy-kernel surface.
+4. Broader benchmark/perf coverage in Schur/Polar/Sylvester/ML domains.
 
 ## Execution Order Driven by This Matrix
 
-1. API contract pass on existing dense kernels.
-2. Add vector primitives module and batch-friendly APIs.
-3. Add explicit allocation/workspace API variants to Tier-A hot paths.
-4. Expand benchmark suite to all Tier-A kernels.
-5. Introduce sparse + broader optimizer capabilities.
+1. Replace provider fallback stubs with provider-native implementations in dense kernels.
+2. Expand `_into`/workspace APIs across remaining heavy domains.
+3. Introduce sparse + broader batch capabilities.
+4. Add complex-number and broader dense eigen parity.
+5. Expand optimization primitives and domain benchmarks.
 
 ## Definition of Done for This Document
 

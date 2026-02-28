@@ -11,6 +11,10 @@ Workspace migration for library domains is complete.
 3. `crates/nabled/src/` contains facade/library entrypoint and binary tooling only.
 4. Backend/feature model now uses `blas` + provider features (`openblas-system` first).
 5. Public `*_lapack` compatibility wrappers have been removed.
+6. Dense-kernel APIs are normalized around `decompose`/domain-specific operation naming.
+7. Vector primitives are available in `nabled-linalg::vector` with pairwise and batched APIs.
+8. Explicit allocation paths (`*_into`) and reusable workspace pattern are in place for key hot paths.
+9. Tier-A benchmark surface expanded beyond four suites (LU/Cholesky/Eigen/Vector added).
 
 ## Current Code Ownership
 
@@ -19,7 +23,7 @@ Workspace migration for library domains is complete.
 2. `crates/nabled-linalg`
    - decomposition, solver, and matrix-function domains:
      `svd`, `qr`, `lu`, `cholesky`, `eigen`, `schur`, `polar`, `sylvester`,
-     `matrix_functions`, `orthogonalization`, `triangular`.
+     `matrix_functions`, `orthogonalization`, `triangular`, `vector`.
 3. `crates/nabled-ml`
    - ML/statistics-oriented domains:
      `iterative`, `jacobian`, `pca`, `regression`, `stats`.
@@ -45,10 +49,11 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Standardize internal/provider module structure across linalg domains.
-2. Continue benchmark/regression hardening by domain.
-3. Execute against `docs/CAPABILITY_MATRIX.md` gaps in priority order.
-4. Track active execution state in `docs/EXECUTION_TRACKER.md`.
+1. Implement native provider kernels (not fallback stubs) for QR/LU/Cholesky/Eigen.
+2. Expand allocation-controlled APIs to remaining heavy kernels (`matrix_functions`, `schur`, `sylvester`).
+3. Add sparse/vectorized batch domains per `docs/CAPABILITY_MATRIX.md`.
+4. Continue benchmark/regression hardening by domain and operation class.
+5. Track active execution state in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration
 

@@ -40,7 +40,8 @@ Exit criteria:
 
 Current status:
 1. Feature contract and API surface cleanup are complete.
-2. Remaining work is structural consistency across all domains.
+2. Dense module dispatch and naming consistency pass is complete for Tier-A kernels.
+3. Remaining work is provider-native implementation depth for non-SVD dense kernels.
 
 ## Phase 4: Kernel Realignment
 
@@ -49,7 +50,7 @@ Current status:
 3. Validate numerical correctness with targeted regression tests.
 
 Suggested order:
-1. `svd`, `qr`, `lu`, `cholesky`, `eigen`, `triangular`
+1. `svd`, `qr`, `lu`, `cholesky`, `eigen`, `triangular` ✅ API contract/alignment complete
 2. `schur`, `sylvester`, `polar`, `matrix_functions`
 3. `pca`, `regression`, `iterative`, `jacobian`
 

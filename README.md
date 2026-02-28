@@ -25,6 +25,7 @@ See [`docs/README.md`](docs/README.md) for current architecture and roadmap.
 4. PCA, regression, iterative solvers
 5. Numerical Jacobian/gradient/Hessian
 6. Statistics utilities
+7. Vector primitives (dot/norm/cosine/pairwise/batched)
 
 ## Quick Example
 
@@ -34,7 +35,7 @@ use nabled::svd::ndarray_svd;
 
 fn main() -> Result<(), nabled::svd::SVDError> {
     let a = arr2(&[[1.0_f64, 2.0], [3.0, 4.0]]);
-    let svd = ndarray_svd::compute_svd(&a)?;
+    let svd = ndarray_svd::decompose(&a)?;
     println!("singular values = {:?}", svd.singular_values);
     Ok(())
 }

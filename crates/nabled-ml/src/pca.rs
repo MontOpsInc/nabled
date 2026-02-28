@@ -74,7 +74,7 @@ pub mod ndarray_pca {
         n_components: Option<usize>,
     ) -> Result<NdarrayPCAResult, PCAError> {
         let (centered, mean) = center_columns(matrix)?;
-        let svd = ndarray_svd::compute_svd(&centered).map_err(|_| PCAError::DecompositionFailed)?;
+        let svd = ndarray_svd::decompose(&centered).map_err(|_| PCAError::DecompositionFailed)?;
 
         let max_components = centered.nrows().min(centered.ncols());
         let keep = n_components.unwrap_or(max_components).min(max_components);

@@ -27,7 +27,7 @@ fn benchmark_ndarray_qr(c: &mut Criterion) {
         let rhs = generate_random_vector(size);
 
         _ = group.bench_with_input(BenchmarkId::new("qr", size), &size, |b, _| {
-            b.iter(|| ndarray_qr::compute_qr(black_box(&matrix), black_box(&config)));
+            b.iter(|| ndarray_qr::decompose(black_box(&matrix), black_box(&config)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("least_squares", size), &size, |b, _| {

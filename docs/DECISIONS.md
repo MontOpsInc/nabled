@@ -12,6 +12,8 @@
 8. Default execution path is internal ndarray-native implementations.
 9. Backend-specific behavior must not leak into public API names.
 10. No legacy/backward-compatibility shims for unreleased APIs.
+11. Decomposition-style APIs use concise domain naming (for example, `ndarray_svd::decompose`).
+12. Performance-critical kernels expose explicit allocation-control APIs (`*_into`) and optional reusable workspace types.
 
 ## API Purity Model
 

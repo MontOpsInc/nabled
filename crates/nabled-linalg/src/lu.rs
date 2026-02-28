@@ -66,17 +66,41 @@ fn map_lu_error(error: &'static str) -> LUError {
     }
 }
 
+fn decompose_internal(matrix: &Array2<f64>) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
+    let (l, u, pivots, sign) = lu_decompose(matrix).map_err(map_lu_error)?;
+    Ok((NdarrayLUResult { l, u }, pivots, sign))
+}
+
+#[cfg(feature = "openblas-system")]
+fn decompose_provider(matrix: &Array2<f64>) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
+    // Provider-specific LU can be introduced here without changing public API shape.
+    decompose_internal(matrix)
+}
+
 /// Ndarray LU functions.
 pub mod ndarray_lu {
     use super::*;
+
+    fn decompose_with_metadata(
+        matrix: &Array2<f64>,
+    ) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
+        #[cfg(feature = "openblas-system")]
+        {
+            decompose_provider(matrix)
+        }
+        #[cfg(not(feature = "openblas-system"))]
+        {
+            decompose_internal(matrix)
+        }
+    }
 
     /// Compute LU decomposition with partial pivoting.
     ///
     /// # Errors
     /// Returns an error if input is invalid or decomposition fails.
-    pub fn compute_lu(matrix: &Array2<f64>) -> Result<NdarrayLUResult, LUError> {
-        let (l, u, _, _) = lu_decompose(matrix).map_err(map_lu_error)?;
-        Ok(NdarrayLUResult { l, u })
+    pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayLUResult, LUError> {
+        let (result, _, _) = decompose_with_metadata(matrix)?;
+        Ok(result)
     }
 
     /// Solve `Ax=b` using LU decomposition.
@@ -92,8 +116,8 @@ pub mod ndarray_lu {
             ));
         }
 
-        let (l, u, pivots, _) = lu_decompose(matrix).map_err(map_lu_error)?;
-        lu_solve(&l, &u, &pivots, rhs).map_err(map_lu_error)
+        let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+        lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs).map_err(map_lu_error)
     }
 
     /// Compute matrix inverse via LU decomposition.
@@ -101,8 +125,8 @@ pub mod ndarray_lu {
     /// # Errors
     /// Returns an error if matrix is singular.
     pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> {
-        let (l, u, pivots, _) = lu_decompose(matrix).map_err(map_lu_error)?;
-        inverse_from_lu(&l, &u, &pivots).map_err(map_lu_error)
+        let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+        inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error)
     }
 
     /// Compute determinant via LU decomposition.
@@ -110,10 +134,10 @@ pub mod ndarray_lu {
     /// # Errors
     /// Returns an error if decomposition fails.
     pub fn determinant(matrix: &Array2<f64>) -> Result<f64, LUError> {
-        let (_, u, _, sign) = lu_decompose(matrix).map_err(map_lu_error)?;
+        let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
         let mut determinant = f64::from(sign);
-        for i in 0..u.nrows() {
-            determinant *= u[[i, i]];
+        for i in 0..decomposition.u.nrows() {
+            determinant *= decomposition.u[[i, i]];
         }
         if !determinant.is_finite() {
             return Err(LUError::NumericalInstability);

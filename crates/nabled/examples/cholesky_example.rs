@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let x = ndarray_cholesky::solve(&a, &b)?;
     println!("solution: {x:?}");
 
-    let decomp = ndarray_cholesky::compute_cholesky(&a)?;
+    let decomp = ndarray_cholesky::decompose(&a)?;
     println!("L:\n{:?}", decomp.l);
 
     Ok(())

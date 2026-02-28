@@ -19,11 +19,11 @@ fn benchmark_ndarray_svd(c: &mut Criterion) {
         let matrix = generate_random_matrix(size, size);
 
         _ = group.bench_with_input(BenchmarkId::new("full_svd", size), &size, |b, _| {
-            b.iter(|| ndarray_svd::compute_svd(black_box(&matrix)));
+            b.iter(|| ndarray_svd::decompose(black_box(&matrix)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("truncated_svd", size), &size, |b, _| {
-            b.iter(|| ndarray_svd::compute_truncated_svd(black_box(&matrix), black_box(size / 2)));
+            b.iter(|| ndarray_svd::decompose_truncated(black_box(&matrix), black_box(size / 2)));
         });
     }
 

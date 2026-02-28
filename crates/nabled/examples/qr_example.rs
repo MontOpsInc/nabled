@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Array2::from_shape_vec((3, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0])?;
     let config = QRConfig::default();
 
-    let qr = ndarray_qr::compute_qr(&matrix, &config)?;
+    let qr = ndarray_qr::decompose(&matrix, &config)?;
     println!("rank: {}", qr.rank);
 
     let reconstructed = ndarray_qr::reconstruct_matrix(&qr);
@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("least squares solution: {x:?}");
 
     let empty = Array2::<f64>::zeros((0, 0));
-    match ndarray_qr::compute_qr(&empty, &config) {
+    match ndarray_qr::decompose(&empty, &config) {
         Err(QRError::EmptyMatrix) => println!("caught empty matrix error"),
         _ => println!("unexpected result"),
     }

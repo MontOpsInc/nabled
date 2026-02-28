@@ -36,6 +36,8 @@ Do not infer status from memory. Use:
 4. Public APIs stay pure numerical APIs over ndarray types.
 5. `nabled` has no Arrow-aware API surface.
 6. No legacy compatibility shims for unreleased APIs; prefer clean replacements over aliases/wrappers.
+7. Use concise domain API naming (for example, decomposition modules expose `decompose`).
+8. Performance-sensitive kernels should provide explicit allocation-control paths (`*_into`) and reusable workspace types when beneficial.
 
 ## Workspace Migration Rules
 

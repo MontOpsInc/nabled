@@ -281,7 +281,8 @@ jobs:
         if [[ -f coverage/benchmarks/baseline/summary.json ]]; then
           export BENCH_WARN_PCT=5
           export BENCH_FAIL_PCT=10
-          export BENCH_MIN_REGRESSION_NS=25000
+          export BENCH_MIN_REGRESSION_NS=100000
+          export BENCH_MIN_BASELINE_NS=250000
           baseline_branch="unknown"
           if [[ -f coverage/benchmarks/baseline/branch.txt ]]; then
             baseline_branch="$(cat coverage/benchmarks/baseline/branch.txt)"

@@ -81,7 +81,7 @@ pub mod ndarray_schur {
         let mut converged = false;
         for _ in 0..config.max_iterations.max(128) {
             let qr =
-                ndarray_qr::compute_qr(&t, &config).map_err(|_| SchurError::ConvergenceFailed)?;
+                ndarray_qr::decompose(&t, &config).map_err(|_| SchurError::ConvergenceFailed)?;
             t = qr.r.dot(&qr.q);
             q_total = q_total.dot(&qr.q);
             if off_diagonal_norm(&t) < config.rank_tolerance.max(DEFAULT_TOLERANCE) {

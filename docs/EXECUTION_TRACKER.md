@@ -36,25 +36,30 @@ Use this file to resume work quickly after context compaction without re-auditin
 8. `D-008`: Provider code paths are now feature-gated without hardcoded OS cfg branches.
 9. `D-009`: Public `*_lapack` API duplication removed; backend choice stays internal.
 10. `D-010`: `just checks` and CI now validate internal mode and provider-enabled mode.
+11. `D-011`: Dense kernels (`svd`, `qr`, `lu`, `cholesky`, `eigen`) now share one dispatch contract and normalized API names.
+12. `D-012`: `nabled-linalg::vector` introduced with dot/norm/cosine/pairwise/batched primitives.
+13. `D-013`: Explicit allocation/workspace API pattern established (`*_into`, reusable workspace structs).
+14. `D-014`: Tier-A benchmark suites expanded (LU, Cholesky, Eigen, Vector).
+15. `D-015`: Benchmark reporting/classification updated for expanded domain coverage.
 
 ## Next
 
-1. `N-001` (P0): Set and apply one consistent internal/provider implementation structure per module.
-2. `N-002` (P0): API contract pass for dense kernels (`svd`, `qr`, `lu`, `cholesky`, `eigen`, `triangular`).
-3. `N-003` (P0): Introduce vector-first primitives needed for embedding workloads.
-4. `N-004` (P0): Define explicit allocation/workspace API pattern (`*_into`, optional reusable workspace).
-5. `N-005` (P0): Expand benchmark coverage across Tier-A kernels beyond current four benches.
+1. `N-006` (P0): Replace provider fallback stubs with provider-native kernels for QR/LU/Cholesky/Eigen.
+2. `N-007` (P0): Expand `_into`/workspace APIs through remaining heavy domains (`matrix_functions`, `schur`, `sylvester`).
+3. `N-008` (P0): Add sparse primitives and solvers baseline (`sparse matrix/vector`, sparse solves).
+4. `N-009` (P0): Add complex-number parity for Tier-A kernels.
+5. `N-010` (P0): Add optimization primitives beyond CG/GMRES (line search + first-order optimizers).
 
 ## Needed
 
 1. `K-001`: Final API shape decision for view-first signatures (`ArrayView*`) versus owned-only signatures.
 2. `K-002`: Decision on standardized workspace type pattern (per-domain workspace vs shared core workspace).
-3. `K-003`: Priority order inside vector primitives scope (cosine similarity/distance, norms/dot, pairwise/batched distance APIs).
-4. `K-004`: Decide exact provider expansion policy after `openblas-system` baseline is stable.
+3. `K-003`: Priority order for sparse matrix formats and sparse solver entrypoints.
+4. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
 
 ## Backlog (From Capability Matrix)
 
-1. `B-P1-001`: Batched operations over many vectors/matrices.
+1. `B-P1-001`: Batched operations over many vectors/matrices (beyond current vector-kernel baseline).
 2. `B-P1-002`: Sparse matrix/vector primitives and solver coverage.
 3. `B-P1-003`: Complex-number parity across major algorithms.
 4. `B-P1-004`: Broader non-symmetric dense eigen capabilities.

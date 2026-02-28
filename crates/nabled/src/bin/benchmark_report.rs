@@ -67,25 +67,43 @@ struct RegressionPolicy {
     warn_pct:          f64,
     fail_pct:          f64,
     min_regression_ns: f64,
+    min_baseline_ns:   f64,
 }
 
 fn main() -> io::Result<()> {
     let fail_on_regression = env::args().any(|arg| arg == "--fail-on-regression");
     let regression_policy = regression_policy_from_env();
-    let criterion_root = Path::new("target/criterion");
     let output_root = Path::new("coverage/benchmarks");
+    let candidate_roots =
+        [Path::new("target/criterion"), Path::new("crates/nabled/target/criterion")];
+    let criterion_roots =
+        candidate_roots.iter().copied().filter(|root| root.exists()).collect::<Vec<_>>();
 
-    if !criterion_root.exists() {
-        eprintln!("No Criterion output found at {}", criterion_root.display());
+    if criterion_roots.is_empty() {
+        eprintln!("No Criterion output found in known target directories.");
+        eprintln!("Checked:");
+        for root in candidate_roots {
+            eprintln!("  {}", root.display());
+        }
         eprintln!("Run benches first, for example:");
         eprintln!("  cargo bench --bench svd_benchmarks -- --quick");
         eprintln!("  cargo bench --bench qr_benchmarks -- --quick");
         eprintln!("  cargo bench --bench triangular_benchmarks -- --quick");
         eprintln!("  cargo bench --bench matrix_functions_benchmarks -- --quick");
+        eprintln!("  cargo bench --bench lu_benchmarks -- --quick");
+        eprintln!("  cargo bench --bench cholesky_benchmarks -- --quick");
+        eprintln!("  cargo bench --bench eigen_benchmarks -- --quick");
+        eprintln!("  cargo bench --bench vector_benchmarks -- --quick");
         return Ok(());
     }
 
-    let benchmark_files = collect_benchmark_json_files(criterion_root)?;
+    let mut benchmark_files = Vec::new();
+    for root in &criterion_roots {
+        benchmark_files.extend(collect_benchmark_json_files(root)?);
+    }
+    benchmark_files.sort();
+    benchmark_files.dedup();
+
     let mut entries = Vec::new();
 
     for benchmark_path in benchmark_files {
@@ -129,7 +147,11 @@ fn main() -> io::Result<()> {
         generated_at_unix: now_unix_secs(),
         git_sha: command_output("git", &["rev-parse", "--short", "HEAD"]),
         rustc_version: command_output("rustc", &["-V"]),
-        source: criterion_root.display().to_string(),
+        source: criterion_roots
+            .iter()
+            .map(|root| root.display().to_string())
+            .collect::<Vec<_>>()
+            .join(","),
         entries,
     };
 
@@ -229,6 +251,14 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "triangular"
     } else if group_id.starts_with("matrix_functions_") {
         "matrix_functions"
+    } else if group_id.starts_with("lu_") {
+        "lu"
+    } else if group_id.starts_with("cholesky_") {
+        "cholesky"
+    } else if group_id.starts_with("eigen_") {
+        "eigen"
+    } else if group_id.starts_with("vector_") {
+        "vector"
     } else {
         "unknown"
     };
@@ -237,7 +267,11 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "svd_nabled_ndarray"
         | "qr_nabled_ndarray"
         | "triangular_nabled_ndarray"
-        | "matrix_functions_nabled_ndarray" => ("ndarray", "none"),
+        | "matrix_functions_nabled_ndarray"
+        | "lu_nabled_ndarray"
+        | "cholesky_nabled_ndarray"
+        | "eigen_nabled_ndarray"
+        | "vector_nabled_ndarray" => ("ndarray", "none"),
         "svd_competitor_faer_direct" | "qr_competitor_faer_direct" => {
             ("faer_direct", "faer_direct")
         }
@@ -313,6 +347,10 @@ fn write_regressions_md(
         "- Thresholds: warn >{:.1}% and +{:.0}ns, fail >{:.1}% and +{:.0}ns.",
         policy.warn_pct, policy.min_regression_ns, policy.fail_pct, policy.min_regression_ns
     ));
+    lines.push(format!(
+        "- Noise floor filter: baseline median must be >= {:.0}ns.",
+        policy.min_baseline_ns
+    ));
     lines.push(String::new());
 
     if !baseline_path.exists() {
@@ -347,6 +385,14 @@ fn write_regressions_md(
             continue;
         }
         if let Some(baseline_ns) = baseline_map.get(&entry.full_id) {
+            if *baseline_ns < policy.min_baseline_ns {
+                lines.push(format!(
+                    "| `{}` | {:.3} | {:.3} | n/a | SKIP_NOISE_FLOOR |",
+                    entry.full_id, entry.median_ns, baseline_ns
+                ));
+                continue;
+            }
+
             compared_cases += 1;
             let delta_ns = entry.median_ns - baseline_ns;
             let delta_pct =
@@ -388,6 +434,7 @@ fn regression_policy_from_env() -> RegressionPolicy {
         warn_pct:          env_f64("BENCH_WARN_PCT", 5.0),
         fail_pct:          env_f64("BENCH_FAIL_PCT", 10.0),
         min_regression_ns: env_f64("BENCH_MIN_REGRESSION_NS", 25_000.0),
+        min_baseline_ns:   env_f64("BENCH_MIN_BASELINE_NS", 0.0),
     }
 }
 

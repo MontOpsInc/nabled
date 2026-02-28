@@ -9,6 +9,7 @@ use nabled::qr::{QRConfig, ndarray_qr};
 use nabled::schur::ndarray_schur;
 use nabled::svd::ndarray_svd;
 use nabled::triangular::ndarray_triangular;
+use nabled::vector::ndarray_vector;
 use ndarray::{Array1, Array2};
 
 fn symmetric_matrix() -> Array2<f64> {
@@ -17,31 +18,28 @@ fn symmetric_matrix() -> Array2<f64> {
 
 #[test]
 fn test_tier_a_svd_baseline() {
-    assert_eq!(ndarray_svd::compute_svd(&symmetric_matrix()).unwrap().singular_values.len(), 2);
+    assert_eq!(ndarray_svd::decompose(&symmetric_matrix()).unwrap().singular_values.len(), 2);
 }
 
 #[test]
 fn test_tier_a_qr_baseline() {
     let config = QRConfig::default();
-    assert_eq!(ndarray_qr::compute_qr(&symmetric_matrix(), &config).unwrap().rank, 2);
+    assert_eq!(ndarray_qr::decompose(&symmetric_matrix(), &config).unwrap().rank, 2);
 }
 
 #[test]
 fn test_tier_a_lu_baseline() {
-    assert_eq!(ndarray_lu::compute_lu(&symmetric_matrix()).unwrap().l.dim(), (2, 2));
+    assert_eq!(ndarray_lu::decompose(&symmetric_matrix()).unwrap().l.dim(), (2, 2));
 }
 
 #[test]
 fn test_tier_a_cholesky_baseline() {
-    assert_eq!(ndarray_cholesky::compute_cholesky(&symmetric_matrix()).unwrap().l.dim(), (2, 2));
+    assert_eq!(ndarray_cholesky::decompose(&symmetric_matrix()).unwrap().l.dim(), (2, 2));
 }
 
 #[test]
 fn test_tier_a_eigen_baseline() {
-    assert_eq!(
-        ndarray_eigen::compute_symmetric_eigen(&symmetric_matrix()).unwrap().eigenvalues.len(),
-        2
-    );
+    assert_eq!(ndarray_eigen::symmetric(&symmetric_matrix()).unwrap().eigenvalues.len(), 2);
 }
 
 #[test]
@@ -56,38 +54,42 @@ fn test_tier_a_triangular_baseline() {
     assert_eq!(ndarray_triangular::solve_lower(&lower, &rhs).unwrap().len(), 2);
 }
 
+#[test]
+fn test_tier_a_vector_baseline() {
+    let left = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
+    let right = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 1.0, 1.0]).unwrap();
+    assert_eq!(ndarray_vector::pairwise_l2_distance(&left, &right).unwrap().dim(), (2, 2));
+}
+
 #[cfg(feature = "openblas-system")]
 #[test]
 fn test_tier_a_svd_provider() {
-    assert_eq!(ndarray_svd::compute_svd(&symmetric_matrix()).unwrap().singular_values.len(), 2);
+    assert_eq!(ndarray_svd::decompose(&symmetric_matrix()).unwrap().singular_values.len(), 2);
 }
 
 #[cfg(feature = "openblas-system")]
 #[test]
 fn test_tier_a_qr_provider() {
     let config = QRConfig::default();
-    assert_eq!(ndarray_qr::compute_qr(&symmetric_matrix(), &config).unwrap().rank, 2);
+    assert_eq!(ndarray_qr::decompose(&symmetric_matrix(), &config).unwrap().rank, 2);
 }
 
 #[cfg(feature = "openblas-system")]
 #[test]
 fn test_tier_a_lu_provider() {
-    assert_eq!(ndarray_lu::compute_lu(&symmetric_matrix()).unwrap().l.dim(), (2, 2));
+    assert_eq!(ndarray_lu::decompose(&symmetric_matrix()).unwrap().l.dim(), (2, 2));
 }
 
 #[cfg(feature = "openblas-system")]
 #[test]
 fn test_tier_a_cholesky_provider() {
-    assert_eq!(ndarray_cholesky::compute_cholesky(&symmetric_matrix()).unwrap().l.dim(), (2, 2));
+    assert_eq!(ndarray_cholesky::decompose(&symmetric_matrix()).unwrap().l.dim(), (2, 2));
 }
 
 #[cfg(feature = "openblas-system")]
 #[test]
 fn test_tier_a_eigen_provider() {
-    assert_eq!(
-        ndarray_eigen::compute_symmetric_eigen(&symmetric_matrix()).unwrap().eigenvalues.len(),
-        2
-    );
+    assert_eq!(ndarray_eigen::symmetric(&symmetric_matrix()).unwrap().eigenvalues.len(), 2);
 }
 
 #[cfg(feature = "openblas-system")]
@@ -102,6 +104,14 @@ fn test_tier_a_triangular_provider() {
     let lower = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 1.0, 3.0]).unwrap();
     let rhs = Array1::from_vec(vec![4.0, 8.0]);
     assert_eq!(ndarray_triangular::solve_lower(&lower, &rhs).unwrap().len(), 2);
+}
+
+#[cfg(feature = "openblas-system")]
+#[test]
+fn test_tier_a_vector_provider() {
+    let left = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
+    let right = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 1.0, 1.0]).unwrap();
+    assert_eq!(ndarray_vector::pairwise_l2_distance(&left, &right).unwrap().dim(), (2, 2));
 }
 
 #[cfg(feature = "openblas-system")]

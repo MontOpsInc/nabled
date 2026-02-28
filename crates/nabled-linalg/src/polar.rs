@@ -57,7 +57,7 @@ pub mod ndarray_polar {
         })?;
         validate_finite(matrix).map_err(|_| PolarError::NumericalInstability)?;
 
-        let svd = ndarray_svd::compute_svd(matrix).map_err(|_| PolarError::DecompositionFailed)?;
+        let svd = ndarray_svd::decompose(matrix).map_err(|_| PolarError::DecompositionFailed)?;
 
         let orthogonal_factor = svd.u.dot(&svd.vt);
 

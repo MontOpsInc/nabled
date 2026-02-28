@@ -15,6 +15,7 @@ pub mod schur;
 pub mod svd;
 pub mod sylvester;
 pub mod triangular;
+pub mod vector;
 
 pub use cholesky::{CholeskyError, NdarrayCholeskyResult};
 pub use eigen::{EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult};
@@ -27,3 +28,4 @@ pub use schur::{NdarraySchurResult, SchurError};
 pub use svd::{NdarraySVD, PseudoInverseConfig, SVDError};
 pub use sylvester::SylvesterError;
 pub use triangular::TriangularError;
+pub use vector::{PairwiseCosineWorkspace, VectorError};
