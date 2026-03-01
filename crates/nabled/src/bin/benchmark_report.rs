@@ -184,7 +184,9 @@ fn print_missing_criterion_message(candidate_roots: &[&Path]) {
     eprintln!("  cargo bench --bench cholesky_benchmarks -- --quick");
     eprintln!("  cargo bench --bench eigen_benchmarks -- --quick");
     eprintln!("  cargo bench --bench vector_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench matrix_benchmarks -- --quick");
     eprintln!("  cargo bench --bench sparse_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench tensor_benchmarks -- --quick");
     eprintln!("  cargo bench --bench schur_benchmarks -- --quick");
     eprintln!("  cargo bench --bench sylvester_benchmarks -- --quick");
     eprintln!("  cargo bench --bench optimization_benchmarks -- --quick");
@@ -269,8 +271,12 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "eigen"
     } else if group_id.starts_with("vector_") {
         "vector"
+    } else if group_id.starts_with("matrix_") {
+        "matrix"
     } else if group_id.starts_with("sparse_") {
         "sparse"
+    } else if group_id.starts_with("tensor_") {
+        "tensor"
     } else if group_id.starts_with("schur_") {
         "schur"
     } else if group_id.starts_with("sylvester_") {
@@ -294,7 +300,9 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         | "cholesky_nabled_ndarray"
         | "eigen_nabled_ndarray"
         | "vector_nabled_ndarray"
+        | "matrix_nabled_ndarray"
         | "sparse_nabled_ndarray"
+        | "tensor_nabled_ndarray"
         | "schur_nabled_ndarray"
         | "sylvester_nabled_ndarray"
         | "optimization_nabled_ndarray"
@@ -306,10 +314,11 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "svd_competitor_ndarray_linalg" | "qr_competitor_ndarray_linalg" => {
             ("ndarray_linalg", "ndarray_linalg")
         }
-        "vector_competitor_ndarray" | "sparse_competitor_ndarray" => {
+        "vector_competitor_ndarray" | "sparse_competitor_ndarray" | "matrix_competitor_ndarray" => {
             ("ndarray_baseline", "ndarray_baseline")
         }
         "optimization_competitor_manual"
+        | "tensor_competitor_manual"
         | "schur_competitor_manual"
         | "sylvester_competitor_manual" => ("manual_baseline", "manual_baseline"),
         _ => ("unknown", "unknown"),

@@ -24,6 +24,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 3. Capability matrix exists and is the scope/gap source of truth.
 4. macOS OpenBLAS environment wiring is centralized in `.justfile` for provider-enabled recipes.
 5. Quality gates continue to pass in both internal and provider-enabled modes after capability expansion.
+6. Benchmark smoke/report coverage now includes matrix/tensor suites in addition to prior dense/sparse suites.
 
 ## Done
 
@@ -80,13 +81,18 @@ Use this file to resume work quickly after context compaction without re-auditin
 51. `D-051`: Non-symmetric eigen support broadened with provider-backed `Eig` paths and stabilized internal complex small-matrix handling.
 52. `D-052`: P2 baselines landed: `nabled-linalg::tensor` (cube primitives) and `nabled-linalg::accelerator` (compile-time backend contracts).
 53. `D-053`: Shared taxonomy and facade/integration coverage updated for new matrix/sparse/tensor/accelerator capabilities.
+54. `D-054`: Copy-elision pass advanced in ML domains: `stats`, `regression`, and `pca` view APIs now route through view-native internals without hidden `to_owned()` materialization in key paths.
+55. `D-055`: Sparse depth expanded with Jacobi preconditioning and `PCG` solve (`jacobi_preconditioner`, `apply_jacobi_preconditioner`, `pcg_solve`) plus coverage.
+56. `D-056`: Tensor breadth expanded from rank-3 baseline with higher-rank `ArrayD` last-axis operations (`sum`, `l2_norm`, `normalize`, `batched_dot`) plus coverage.
+57. `D-057`: Accelerator domain now includes explicit serial matmat and feature-gated accelerated matmat kernel (`accelerator-rayon`) with stable error mapping and integration coverage.
+58. `D-058`: Benchmark/report pipeline expanded with `matrix_benchmarks` and `tensor_benchmarks`, sparse benchmark additions, and benchmark-report classifier mappings for new suites.
 
 ## Next
 
-1. `N-054` (P0/P1): Continue copy-elision pass for convenience/view APIs that still materialize owned allocations in hot paths.
-2. `N-055` (P1): Expand sparse depth beyond baseline primitives (preconditioning and factorization-grade sparse workflows).
-3. `N-056` (P2): Expand tensor APIs from rank-3 baseline toward broader higher-rank (`ArrayD`) operations.
-4. `N-057` (P2): Convert accelerator contracts into concrete GPU/distributed kernels.
+1. `N-059` (P2): Convert accelerator contracts from CPU/feature-gated parallel baseline into concrete GPU/distributed kernels.
+2. `N-060` (P1): Expand sparse depth beyond iterative/preconditioned baseline into factorization-grade sparse workflows.
+3. `N-061` (P0/P1): Continue copy-elision pass for remaining convenience/view wrappers that still materialize owned allocations.
+4. `N-062` (P2): Expand tensor APIs beyond current last-axis `ArrayD` operations into richer higher-rank algebra/contraction workflows.
 
 ## Needed
 

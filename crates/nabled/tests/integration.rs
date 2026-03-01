@@ -318,6 +318,18 @@ fn test_matrix_sparse_and_nonsymmetric_eigen_paths() {
     let batched_mm = matrix::batched_matmat(&left_batches, &right_batches).unwrap();
     assert_eq!(batched_mm.dim(), (2, 2, 2));
 
+    assert_sparse_tensor_and_accelerator_paths(&dense, &dense_rhs);
+
+    let rotation = Array2::from_shape_vec((2, 2), vec![0.0, -1.0, 1.0, 0.0]).unwrap();
+    let nonsymmetric = eigen::nonsymmetric(&rotation).unwrap();
+    assert_eq!(nonsymmetric.eigenvalues.len(), 2);
+
+    let bad_vector = Array1::from_vec(vec![1.0]);
+    let matrix_error = matrix::matvec(&dense, &bad_vector).unwrap_err().into_nabled_error();
+    assert!(matches!(matrix_error, NabledError::Shape(nabled::ShapeError::DimensionMismatch)));
+}
+
+fn assert_sparse_tensor_and_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
     let sparse_matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
         4.0, 1.0, 1.0, 3.0, 1.0, 1.0, 2.0,
     ])
@@ -356,6 +368,14 @@ fn test_matrix_sparse_and_nonsymmetric_eigen_paths() {
         assert_relative_eq!(reconstructed_bicgstab[i], rhs[i], epsilon = 1e-5);
     }
 
+    let jacobi = sparse::jacobi_preconditioner(&sparse_matrix).unwrap();
+    assert_eq!(jacobi.inverse_diagonal.len(), rhs.len());
+    let pcg = sparse::pcg_solve(&sparse_matrix, &rhs, 1e-10, 2000).unwrap();
+    let reconstructed_pcg = sparse::matvec(&sparse_matrix, &pcg).unwrap();
+    for i in 0..rhs.len() {
+        assert_relative_eq!(reconstructed_pcg[i], rhs[i], epsilon = 1e-6);
+    }
+
     let cube = Array3::from_shape_vec((2, 2, 3), vec![
         1.0, 2.0, 3.0, 0.0, 1.0, 1.0, 2.0, -1.0, 0.5, 3.0, 0.0, 2.0,
     ])
@@ -366,16 +386,31 @@ fn test_matrix_sparse_and_nonsymmetric_eigen_paths() {
     let flat = tensor::flatten_cubes(&cube).unwrap();
     assert_eq!(flat.dim(), (2, 6));
 
+    let tensor_dyn = ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&[2, 2, 3]), vec![
+        1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
+    ])
+    .unwrap();
+    let tensor_sum = tensor::sum_last_axis(&tensor_dyn).unwrap();
+    assert_eq!(tensor_sum.shape(), &[2, 2]);
+    let tensor_norm = tensor::l2_norm_last_axis(&tensor_dyn).unwrap();
+    assert_eq!(tensor_norm.shape(), &[2, 2]);
+    let normalized = tensor::normalize_last_axis(&tensor_dyn).unwrap();
+    let normalized_norm = tensor::l2_norm_last_axis(&normalized).unwrap();
+    for value in &normalized_norm {
+        assert_relative_eq!(*value, 1.0, epsilon = 1e-10);
+    }
+
     let cpu_result = accelerator::execute::<CpuBackend, _, _>(|| 21 + 21).unwrap();
     assert_eq!(cpu_result, 42);
     let cuda_result = accelerator::execute::<CudaBackend, _, _>(|| 1);
     assert!(cuda_result.is_err());
-
-    let rotation = Array2::from_shape_vec((2, 2), vec![0.0, -1.0, 1.0, 0.0]).unwrap();
-    let nonsymmetric = eigen::nonsymmetric(&rotation).unwrap();
-    assert_eq!(nonsymmetric.eigenvalues.len(), 2);
-
-    let bad_vector = Array1::from_vec(vec![1.0]);
-    let matrix_error = matrix::matvec(&dense, &bad_vector).unwrap_err().into_nabled_error();
-    assert!(matches!(matrix_error, NabledError::Shape(nabled::ShapeError::DimensionMismatch)));
+    let accelerated = accelerator::matmat_accelerated(dense, dense_rhs);
+    #[cfg(feature = "accelerator-rayon")]
+    {
+        assert!(accelerated.is_ok());
+    }
+    #[cfg(not(feature = "accelerator-rayon"))]
+    {
+        assert!(matches!(accelerated, Err(nabled::AcceleratorError::FeatureNotEnabled)));
+    }
 }

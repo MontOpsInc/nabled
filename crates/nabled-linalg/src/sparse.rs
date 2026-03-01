@@ -194,6 +194,13 @@ impl CscMatrix {
     }
 }
 
+/// Diagonal (Jacobi) preconditioner for iterative sparse solvers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JacobiPreconditioner {
+    /// Inverse diagonal values.
+    pub inverse_diagonal: Array1<f64>,
+}
+
 impl CooMatrix {
     /// Construct a COO matrix after validating structure.
     ///
@@ -379,6 +386,49 @@ pub fn matvec_csc(matrix: &CscMatrix, vector: &Array1<f64>) -> Result<Array1<f64
             let row = matrix.indices[entry];
             output[row] += matrix.data[entry] * x;
         }
+    }
+    Ok(output)
+}
+
+/// Build Jacobi preconditioner from sparse matrix diagonal.
+///
+/// # Errors
+/// Returns an error if matrix is not square or diagonal contains zeros.
+pub fn jacobi_preconditioner(matrix: &CsrMatrix) -> Result<JacobiPreconditioner, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    let mut inverse_diagonal = Array1::<f64>::zeros(matrix.nrows);
+    for row in 0..matrix.nrows {
+        let mut diagonal = 0.0_f64;
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            if matrix.indices[entry] == row {
+                diagonal = matrix.data[entry];
+                break;
+            }
+        }
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        inverse_diagonal[row] = 1.0 / diagonal;
+    }
+    Ok(JacobiPreconditioner { inverse_diagonal })
+}
+
+/// Apply Jacobi preconditioner to a vector.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible.
+pub fn apply_jacobi_preconditioner(
+    preconditioner: &JacobiPreconditioner,
+    vector: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    if preconditioner.inverse_diagonal.len() != vector.len() {
+        return Err(SparseError::DimensionMismatch);
+    }
+    let mut output = Array1::<f64>::zeros(vector.len());
+    for i in 0..vector.len() {
+        output[i] = preconditioner.inverse_diagonal[i] * vector[i];
     }
     Ok(output)
 }
@@ -724,6 +774,70 @@ pub fn conjugate_gradient_solve(
     Err(SparseError::MaxIterationsExceeded)
 }
 
+/// Solve sparse linear system `A x = b` with preconditioned conjugate gradient.
+///
+/// This routine assumes an SPD matrix `A` and uses a Jacobi preconditioner.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular breakdown, or non-convergence.
+pub fn pcg_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let preconditioner = jacobi_preconditioner(matrix)?;
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+    let mut solution = Array1::<f64>::zeros(matrix.ncols);
+    let mut residual = rhs.clone();
+    let mut preconditioned_residual = apply_jacobi_preconditioner(&preconditioner, &residual)?;
+    let mut direction = preconditioned_residual.clone();
+    let mut rho = dot(&residual, &preconditioned_residual)?;
+
+    if rho.sqrt() <= tolerance {
+        return Ok(solution);
+    }
+
+    for _ in 0..max_iterations.max(1) {
+        let matrix_direction = matvec(matrix, &direction)?;
+        let denominator = dot(&direction, &matrix_direction)?;
+        if denominator.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        let alpha = rho / denominator;
+        for i in 0..solution.len() {
+            solution[i] += alpha * direction[i];
+            residual[i] -= alpha * matrix_direction[i];
+        }
+
+        let residual_norm = dot(&residual, &residual)?.sqrt();
+        if residual_norm <= tolerance {
+            return Ok(solution);
+        }
+
+        preconditioned_residual = apply_jacobi_preconditioner(&preconditioner, &residual)?;
+        let rho_next = dot(&residual, &preconditioned_residual)?;
+        let beta = rho_next / rho;
+        for i in 0..direction.len() {
+            direction[i] = preconditioned_residual[i] + beta * direction[i];
+        }
+        rho = rho_next;
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
 /// Solve sparse linear system `A x = b` with `BiCGSTAB` iteration.
 ///
 /// This routine supports general non-symmetric matrices.
@@ -962,6 +1076,33 @@ mod tests {
         let matrix = toy_matrix();
         let rhs = arr1(&[1.0_f64, 2.0, 3.0]);
         let solution = conjugate_gradient_solve(&matrix, &rhs, 1e-10, 2000).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn jacobi_preconditioner_builds_and_applies() {
+        let matrix = toy_matrix();
+        let preconditioner = jacobi_preconditioner(&matrix).unwrap();
+        assert_eq!(preconditioner.inverse_diagonal.len(), 3);
+        assert!((preconditioner.inverse_diagonal[0] - 0.25).abs() < 1e-12);
+        assert!((preconditioner.inverse_diagonal[1] - (1.0 / 3.0)).abs() < 1e-12);
+        assert!((preconditioner.inverse_diagonal[2] - 0.5).abs() < 1e-12);
+
+        let rhs = arr1(&[4.0_f64, 6.0, 2.0]);
+        let transformed = apply_jacobi_preconditioner(&preconditioner, &rhs).unwrap();
+        assert!((transformed[0] - 1.0).abs() < 1e-12);
+        assert!((transformed[1] - 2.0).abs() < 1e-12);
+        assert!((transformed[2] - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn pcg_solves_spd_system() {
+        let matrix = toy_matrix();
+        let rhs = arr1(&[1.0_f64, 2.0, 3.0]);
+        let solution = pcg_solve(&matrix, &rhs, 1e-10, 2000).unwrap();
         let reconstructed = matvec(&matrix, &solution).unwrap();
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);

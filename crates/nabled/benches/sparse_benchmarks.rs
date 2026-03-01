@@ -53,6 +53,7 @@ fn benchmark_sparse(c: &mut Criterion) {
             let matrix = make_diagonally_dominant_tridiagonal(size);
             let rhs = random_vector(size);
             let mut output = Array1::<f64>::zeros(size);
+            let dense_rhs = Array2::<f64>::ones((size, 8));
             let id = format!("square-{size}x{size}");
 
             _ = group.bench_with_input(BenchmarkId::new("csr_matvec", &id), &size, |bench, _| {
@@ -83,6 +84,48 @@ fn benchmark_sparse(c: &mut Criterion) {
                     )
                 });
             });
+
+            _ = group.bench_with_input(BenchmarkId::new("pcg_solve", &id), &size, |bench, _| {
+                bench.iter(|| {
+                    sparse::pcg_solve(
+                        black_box(&matrix),
+                        black_box(&rhs),
+                        black_box(1e-8),
+                        black_box(10_000),
+                    )
+                });
+            });
+
+            _ = group.bench_with_input(
+                BenchmarkId::new("bicgstab_solve", &id),
+                &size,
+                |bench, _| {
+                    bench.iter(|| {
+                        sparse::bicgstab_solve(
+                            black_box(&matrix),
+                            black_box(&rhs),
+                            black_box(1e-8),
+                            black_box(10_000),
+                        )
+                    });
+                },
+            );
+
+            _ = group.bench_with_input(
+                BenchmarkId::new("csr_matmat_dense", &id),
+                &size,
+                |bench, _| {
+                    bench.iter(|| sparse::matmat_dense(black_box(&matrix), black_box(&dense_rhs)));
+                },
+            );
+
+            _ = group.bench_with_input(
+                BenchmarkId::new("csr_matmat_sparse", &id),
+                &size,
+                |bench, _| {
+                    bench.iter(|| sparse::matmat_sparse(black_box(&matrix), black_box(&matrix)));
+                },
+            );
         }
         group.finish();
     }

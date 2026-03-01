@@ -2,7 +2,10 @@
 
 use std::fmt;
 
-use ndarray::{Array2, Array3, ArrayView2, ArrayView3, ArrayViewMut2, ArrayViewMut3};
+use ndarray::{
+    Array2, Array3, ArrayD, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2, ArrayViewMut3, Axis,
+    IxDyn,
+};
 
 /// Error type for tensor/cube operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +37,16 @@ fn validate_cube_non_empty(cube: &ArrayView3<'_, f64>) -> Result<(), TensorError
 fn validate_matrix_non_empty(matrix: &ArrayView2<'_, f64>) -> Result<(), TensorError> {
     if matrix.is_empty() {
         return Err(TensorError::EmptyInput);
+    }
+    Ok(())
+}
+
+fn validate_tensor_nd_non_empty(tensor: &ArrayViewD<'_, f64>) -> Result<(), TensorError> {
+    if tensor.is_empty() {
+        return Err(TensorError::EmptyInput);
+    }
+    if tensor.ndim() == 0 {
+        return Err(TensorError::DimensionMismatch);
     }
     Ok(())
 }
@@ -211,9 +224,92 @@ pub fn flatten_cubes(cube: &Array3<f64>) -> Result<Array2<f64>, TensorError> {
     Ok(output)
 }
 
+/// Reduce a tensor along its last axis by summation.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn sum_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty(&tensor_view)?;
+    let axis = Axis(tensor_view.ndim() - 1);
+    let reduced = tensor_view.sum_axis(axis);
+    Ok(reduced.into_dyn())
+}
+
+/// Compute L2 norm along the last axis of a tensor.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn l2_norm_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty(&tensor_view)?;
+
+    let axis = Axis(tensor_view.ndim() - 1);
+    let mut output_shape = tensor_view.shape().to_vec();
+    let _ = output_shape.pop();
+    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    for (out_value, lane) in output.iter_mut().zip(tensor_view.lanes(axis)) {
+        let sum_sq = lane.iter().map(|value| value * value).sum::<f64>();
+        *out_value = sum_sq.sqrt();
+    }
+    Ok(output)
+}
+
+/// Normalize tensor values along the last axis.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn normalize_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty(&tensor_view)?;
+
+    let mut output = tensor.clone();
+    let axis = Axis(tensor_view.ndim() - 1);
+    for mut lane in output.lanes_mut(axis) {
+        let norm = lane.iter().map(|value| value * value).sum::<f64>().sqrt();
+        let denominator = norm.max(f64::EPSILON);
+        for value in &mut lane {
+            *value /= denominator;
+        }
+    }
+    Ok(output)
+}
+
+/// Compute batched dot products along the last axis of two tensors.
+///
+/// The input tensors must have identical shape and `ndim >= 1`.
+/// Output shape is the input shape without the last axis.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_dot_last_axis(
+    left: &ArrayD<f64>,
+    right: &ArrayD<f64>,
+) -> Result<ArrayD<f64>, TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    if left_view.shape() != right_view.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let axis = Axis(left_view.ndim() - 1);
+    let mut output_shape = left_view.shape().to_vec();
+    let _ = output_shape.pop();
+    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    for ((out_value, left_lane), right_lane) in
+        output.iter_mut().zip(left_view.lanes(axis)).zip(right_view.lanes(axis))
+    {
+        let dot = left_lane.iter().zip(right_lane.iter()).map(|(lhs, rhs)| lhs * rhs).sum::<f64>();
+        *out_value = dot;
+    }
+    Ok(output)
+}
+
 #[cfg(test)]
 mod tests {
-    use ndarray::{Array2, Array3};
+    use ndarray::{Array2, Array3, ArrayD, IxDyn};
 
     use super::*;
 
@@ -284,5 +380,61 @@ mod tests {
 
         let empty = Array3::<f64>::zeros((0, 0, 0));
         assert!(matches!(flatten_cubes(&empty), Err(TensorError::EmptyInput)));
+    }
+
+    #[test]
+    fn arrayd_last_axis_ops_match_expected() {
+        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
+            1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
+        ])
+        .unwrap();
+
+        let sum = sum_last_axis(&tensor).unwrap();
+        assert_eq!(sum.shape(), &[2, 2]);
+        assert!((sum[[0, 0]] - 6.0).abs() < 1e-12);
+        assert!((sum[[0, 1]] - 4.0).abs() < 1e-12);
+
+        let norms = l2_norm_last_axis(&tensor).unwrap();
+        assert_eq!(norms.shape(), &[2, 2]);
+        assert!((norms[[0, 0]] - (14.0_f64).sqrt()).abs() < 1e-12);
+        assert!((norms[[0, 1]] - 4.0).abs() < 1e-12);
+
+        let normalized = normalize_last_axis(&tensor).unwrap();
+        let normalized_norms = l2_norm_last_axis(&normalized).unwrap();
+        for value in &normalized_norms {
+            assert!((value - 1.0).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn batched_dot_last_axis_matches_manual() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
+            1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
+            0.5, 1.0, -1.0, 0.0, 2.0, 3.0, 1.0, 1.0, 1.0, 2.0, 0.0, 1.0,
+        ])
+        .unwrap();
+
+        let dots = batched_dot_last_axis(&left, &right).unwrap();
+        assert_eq!(dots.shape(), &[2, 2]);
+        assert!((dots[[0, 0]] - (0.5 + 2.0 - 3.0)).abs() < 1e-12);
+        assert!((dots[[0, 1]] - 0.0).abs() < 1e-12);
+        assert!((dots[[1, 0]] - 7.0).abs() < 1e-12);
+        assert!((dots[[1, 1]] - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn arrayd_ops_reject_invalid_dimensions() {
+        let scalar = ArrayD::from_shape_vec(IxDyn(&[]), vec![1.0]).unwrap();
+        assert!(matches!(sum_last_axis(&scalar), Err(TensorError::DimensionMismatch)));
+
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![1.0; 12]).unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![1.0; 8]).unwrap();
+        assert!(matches!(
+            batched_dot_last_axis(&left, &right),
+            Err(TensorError::DimensionMismatch)
+        ));
     }
 }

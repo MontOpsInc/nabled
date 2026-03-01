@@ -39,7 +39,7 @@ pub use schur::{
     NdarrayComplexSchurResult, NdarraySchurResult, SchurComplexWorkspace, SchurError,
     SchurWorkspace,
 };
-pub use sparse::{CooMatrix, CscMatrix, CsrMatrix, SparseError};
+pub use sparse::{CooMatrix, CscMatrix, CsrMatrix, JacobiPreconditioner, SparseError};
 pub use svd::{NdarrayComplexSVD, NdarraySVD, PseudoInverseConfig, SVDError};
 pub use sylvester::{SylvesterComplexWorkspace, SylvesterError, SylvesterWorkspace};
 pub use tensor::TensorError;
@@ -54,6 +54,12 @@ impl IntoNabledError for AcceleratorError {
             }
             AcceleratorError::InvalidChunkSize => {
                 NabledError::InvalidInput("chunk size must be greater than zero".to_string())
+            }
+            AcceleratorError::DimensionMismatch => {
+                NabledError::Shape(ShapeError::DimensionMismatch)
+            }
+            AcceleratorError::FeatureNotEnabled => {
+                NabledError::Other("feature `accelerator-rayon` is not enabled".to_string())
             }
         }
     }
@@ -358,6 +364,14 @@ mod tests {
         assert!(matches!(
             AcceleratorError::InvalidChunkSize.into_nabled_error(),
             NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            AcceleratorError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            AcceleratorError::FeatureNotEnabled.into_nabled_error(),
+            NabledError::Other(_)
         ));
     }
 

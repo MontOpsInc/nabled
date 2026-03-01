@@ -40,8 +40,8 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Good foundation for larger optimization stack. |
 | Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/BiCGSTAB | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion and sparse-sparse multiplication. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
 | Optimization | line search, gradient descent, Adam, momentum, RMSProp | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
-| Tensor/cube primitives | batched cube matvec/matmat + flattening | `nabled-linalg::tensor` | Partial | No | Baseline rank-3 APIs are now present with owned/view/into variants. |
-| Accelerator contracts | compile-time backend trait + CPU execution/chunking + unsupported CUDA/distributed placeholders | `nabled-linalg::accelerator` | Partial | No | Establishes compile-time backend seam without runtime backend dispatch. |
+| Tensor/cube primitives | batched cube kernels + higher-rank last-axis `ArrayD` ops | `nabled-linalg::tensor` | Partial | Yes | Rank-3 APIs are present with owned/view/into variants; higher-rank baseline now includes last-axis reductions/normalization/batched dot. |
+| Accelerator contracts | compile-time backend trait + CPU execution/chunking + feature-gated accelerated matmat + unsupported CUDA/distributed placeholders | `nabled-linalg::accelerator` | Partial | No | Establishes compile-time backend seam; accelerated CPU path (`accelerator-rayon`) exists, concrete GPU/distributed kernels remain open. |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
@@ -57,7 +57,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Vector-first primitives for embeddings workflows | Implemented | Dot/norm/cosine/pairwise distance/batched dot are available; sparse and higher-rank follow-ons remain. |
 | Matrix-vector and matrix-matrix pipeline primitives | Implemented | First-class `nabled-linalg::matrix` APIs now cover matvec/matmat and batched matrix operations with owned/view/into variants. |
 | Unified error taxonomy and API contracts | Implemented | Shared taxonomy + stable mapping tests now include newly added matrix/tensor/accelerator/sparse breadth paths. |
-| Performance-contract APIs (explicit allocations/workspaces) | Partial | `*_into` and workspace patterns now include vector/triangular/cholesky/svd/qr/matrix_functions/schur/sylvester; allocation transparency for convenience wrappers is now documented, with further copy-elision still open. |
+| Performance-contract APIs (explicit allocations/workspaces) | Partial | `*_into` and workspace patterns now include vector/triangular/cholesky/svd/qr/matrix_functions/schur/sylvester; copy-elision has advanced in ML view paths (`stats`/`regression`/`pca`) with remaining convenience wrappers still open. |
 | Numeric robustness controls | Implemented | Dense-kernel tolerance and iteration defaults are centralized via `internal::DenseKernelPolicy`; additional domain-specific tuning can layer on top. |
 | Benchmark coverage for all Tier-A kernels | Implemented | Dedicated suites now include polar/orthogonalization, with practical manual competitor baselines in schur/sylvester. |
 
@@ -75,8 +75,8 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 
 | Capability Group | Current Status | Gap |
 |---|---|---|
-| Tensor/cube-focused higher-rank APIs | Partial | Rank-3 cube primitives are present; broader `ArrayD`/higher-rank tensor algebra is still missing. |
-| GPU/distributed kernels | Partial | Compile-time accelerator backend contracts are present; concrete GPU/distributed kernels are not yet implemented. |
+| Tensor/cube-focused higher-rank APIs | Partial | Rank-3 cube primitives plus baseline last-axis `ArrayD` operations are present; broader tensor algebra/contraction depth is still missing. |
+| GPU/distributed kernels | Partial | Compile-time accelerator contracts and feature-gated accelerated CPU matmat are present; concrete GPU/distributed kernels are not yet implemented. |
 | Arrow-aware API surface in `nabled` | Intentionally omitted | Per project decision, Arrow interop belongs to downstream crates. |
 
 ## Sufficiency Verdict
@@ -85,15 +85,15 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 
 Concretely, the largest missing pieces are now:
 1. Further copy-elision/performance-contract hardening across remaining convenience/view wrappers.
-2. Sparse depth beyond the current baseline (preconditioners/factorization-grade sparse workflows).
+2. Sparse depth beyond the current iterative/preconditioned baseline (factorization-grade sparse workflows).
 3. Concrete accelerator/tensor depth beyond the new baseline seams (actual GPU/distributed kernels and broader higher-rank tensor algebra).
 
 ## Execution Order Driven by This Matrix
 
 1. Continue replacing allocating convenience wrappers with no-copy view-aware kernels where feasible.
-2. Expand sparse depth from baseline primitives into preconditioned/factorization-oriented workflows.
-3. Expand tensor APIs from rank-3 baseline toward broader higher-rank (`ArrayD`) semantics.
-4. Convert accelerator contracts into concrete GPU/distributed kernel implementations.
+2. Expand sparse depth from baseline primitives into factorization-oriented workflows.
+3. Expand tensor APIs beyond current rank-3 + last-axis `ArrayD` baseline toward broader higher-rank semantics.
+4. Convert accelerator contracts from CPU/feature-gated baseline into concrete GPU/distributed kernels.
 
 ## Definition of Done for This Document
 

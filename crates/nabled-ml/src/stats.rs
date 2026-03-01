@@ -31,50 +31,40 @@ impl std::error::Error for StatsError {}
 
 fn usize_to_f64(value: usize) -> f64 { u32::try_from(value).map_or(f64::from(u32::MAX), f64::from) }
 
-/// Compute column means.
-#[must_use]
-pub fn column_means(matrix: &Array2<f64>) -> Array1<f64> {
+fn column_means_impl(matrix: &ArrayView2<'_, f64>) -> Array1<f64> {
     matrix.mean_axis(Axis(0)).unwrap_or_else(|| Array1::zeros(matrix.ncols()))
 }
 
-/// Compute column means from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`column_means`].
+/// Compute column means.
 #[must_use]
-pub fn column_means_view(matrix: &ArrayView2<'_, f64>) -> Array1<f64> {
-    column_means(&matrix.to_owned())
-}
+pub fn column_means(matrix: &Array2<f64>) -> Array1<f64> { column_means_impl(&matrix.view()) }
 
-/// Center columns by subtracting their means.
+/// Compute column means from a matrix view.
 #[must_use]
-pub fn center_columns(matrix: &Array2<f64>) -> Array2<f64> {
-    let means = column_means(matrix);
-    let mut centered = matrix.clone();
+pub fn column_means_view(matrix: &ArrayView2<'_, f64>) -> Array1<f64> { column_means_impl(matrix) }
+
+fn center_columns_impl(matrix: &ArrayView2<'_, f64>) -> Array2<f64> {
+    let means = column_means_impl(matrix);
+    let mut centered = Array2::<f64>::zeros((matrix.nrows(), matrix.ncols()));
     for row in 0..matrix.nrows() {
         for col in 0..matrix.ncols() {
-            centered[[row, col]] -= means[col];
+            centered[[row, col]] = matrix[[row, col]] - means[col];
         }
     }
     centered
 }
 
+/// Center columns by subtracting their means.
+#[must_use]
+pub fn center_columns(matrix: &Array2<f64>) -> Array2<f64> { center_columns_impl(&matrix.view()) }
+
 /// Center columns by subtracting their means from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`center_columns`].
 #[must_use]
 pub fn center_columns_view(matrix: &ArrayView2<'_, f64>) -> Array2<f64> {
-    center_columns(&matrix.to_owned())
+    center_columns_impl(matrix)
 }
 
-/// Compute sample covariance matrix.
-///
-/// # Errors
-/// Returns an error for empty input or fewer than two samples.
-pub fn covariance_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError> {
+fn covariance_matrix_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
     if matrix.is_empty() {
         return Err(StatsError::EmptyMatrix);
     }
@@ -82,7 +72,7 @@ pub fn covariance_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError
         return Err(StatsError::InsufficientSamples);
     }
 
-    let centered = center_columns(matrix);
+    let centered = center_columns_impl(matrix);
     let covariance = centered.t().dot(&centered) / usize_to_f64(matrix.nrows() - 1);
 
     if covariance.iter().any(|value| !value.is_finite()) {
@@ -92,24 +82,24 @@ pub fn covariance_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError
     Ok(covariance)
 }
 
-/// Compute sample covariance matrix from a matrix view.
+/// Compute sample covariance matrix.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`covariance_matrix`].
+/// # Errors
+/// Returns an error for empty input or fewer than two samples.
+pub fn covariance_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError> {
+    covariance_matrix_impl(&matrix.view())
+}
+
+/// Compute sample covariance matrix from a matrix view.
 ///
 /// # Errors
 /// Returns an error for empty input or fewer than two samples.
 pub fn covariance_matrix_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
-    covariance_matrix(&matrix.to_owned())
+    covariance_matrix_impl(matrix)
 }
 
-/// Compute correlation matrix.
-///
-/// # Errors
-/// Returns an error if covariance computation fails.
-pub fn correlation_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError> {
-    let covariance = covariance_matrix(matrix)?;
+fn correlation_matrix_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
+    let covariance = covariance_matrix_impl(matrix)?;
     let n = covariance.nrows();
     let mut correlation = Array2::<f64>::zeros((n, n));
 
@@ -125,16 +115,20 @@ pub fn correlation_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsErro
     Ok(correlation)
 }
 
-/// Compute correlation matrix from a matrix view.
+/// Compute correlation matrix.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`correlation_matrix`].
+/// # Errors
+/// Returns an error if covariance computation fails.
+pub fn correlation_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError> {
+    correlation_matrix_impl(&matrix.view())
+}
+
+/// Compute correlation matrix from a matrix view.
 ///
 /// # Errors
 /// Returns an error if covariance computation fails.
 pub fn correlation_matrix_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
-    correlation_matrix(&matrix.to_owned())
+    correlation_matrix_impl(matrix)
 }
 
 #[cfg(test)]

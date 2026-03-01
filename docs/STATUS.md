@@ -36,6 +36,11 @@ Workspace migration for library domains is complete.
 28. Optimization breadth now includes momentum descent and `RMSProp`.
 29. Non-symmetric dense eigen paths now run in both internal and provider-enabled modes.
 30. Initial P2 foundations now exist: `nabled-linalg::tensor` (cube primitives) and `nabled-linalg::accelerator` (compile-time backend contracts).
+31. ML copy-elision improved in hot view paths (`stats`, `regression`, `pca` transform/inverse transform) by routing through view-native internals.
+32. Sparse breadth now includes Jacobi preconditioning and preconditioned conjugate gradient (`PCG`).
+33. Tensor breadth now includes higher-rank `ArrayD` last-axis operations (`sum`, norm, normalize, batched dot).
+34. Accelerator domain now includes explicit serial matmat and feature-gated accelerated matmat (`accelerator-rayon`) with strict error mapping.
+35. Benchmark/report coverage now includes new matrix/tensor suites and expanded sparse cases, with classifier support in reporting tooling.
 
 ## Current Code Ownership
 
@@ -72,9 +77,9 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Remove avoidable copies in selected convenience/view APIs where feasible.
-2. Expand sparse depth beyond current baseline into preconditioned/factorization workflows.
-3. Expand tensor operations beyond rank-3 baseline and move accelerator contracts toward concrete kernels.
+1. Continue copy-elision pass for remaining convenience/view wrappers that still allocate hidden owned buffers.
+2. Expand sparse depth from iterative/preconditioned baseline into factorization-grade sparse workflows.
+3. Expand tensor beyond current last-axis `ArrayD` baseline and advance accelerator from CPU parallel baseline toward concrete GPU/distributed kernels.
 4. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration

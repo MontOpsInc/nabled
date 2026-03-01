@@ -61,6 +61,26 @@ fn center_columns(matrix: &Array2<f64>) -> Result<(Array2<f64>, Array1<f64>), PC
     Ok((centered, mean))
 }
 
+fn transform_impl(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+    let mut centered = Array2::<f64>::zeros((matrix.nrows(), matrix.ncols()));
+    for row in 0..matrix.nrows() {
+        for col in 0..matrix.ncols() {
+            centered[[row, col]] = matrix[[row, col]] - pca.mean[col];
+        }
+    }
+    centered.dot(&pca.components.t())
+}
+
+fn inverse_transform_impl(scores: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+    let mut reconstructed = scores.dot(&pca.components);
+    for row in 0..reconstructed.nrows() {
+        for col in 0..reconstructed.ncols() {
+            reconstructed[[row, col]] += pca.mean[col];
+        }
+    }
+    reconstructed
+}
+
 /// Compute principal component analysis.
 ///
 /// # Errors
@@ -111,45 +131,25 @@ pub fn compute_pca_view(
 /// Project data to PCA score space.
 #[must_use]
 pub fn transform(matrix: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
-    let mut centered = matrix.clone();
-    for row in 0..matrix.nrows() {
-        for col in 0..matrix.ncols() {
-            centered[[row, col]] -= pca.mean[col];
-        }
-    }
-    centered.dot(&pca.components.t())
+    transform_impl(&matrix.view(), pca)
 }
 
 /// Project data to PCA score space from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`transform`].
 #[must_use]
 pub fn transform_view(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
-    transform(&matrix.to_owned(), pca)
+    transform_impl(matrix, pca)
 }
 
 /// Reconstruct from PCA scores.
 #[must_use]
 pub fn inverse_transform(scores: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
-    let mut reconstructed = scores.dot(&pca.components);
-    for row in 0..reconstructed.nrows() {
-        for col in 0..reconstructed.ncols() {
-            reconstructed[[row, col]] += pca.mean[col];
-        }
-    }
-    reconstructed
+    inverse_transform_impl(&scores.view(), pca)
 }
 
 /// Reconstruct from PCA scores provided as a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`inverse_transform`].
 #[must_use]
 pub fn inverse_transform_view(scores: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
-    inverse_transform(&scores.to_owned(), pca)
+    inverse_transform_impl(scores, pca)
 }
 
 #[cfg(test)]

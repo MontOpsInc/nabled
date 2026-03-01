@@ -1,5 +1,5 @@
 LOG := env('RUST_LOG', '')
-features := 'blas openblas-system'
+features := 'blas openblas-system accelerator-rayon'
 provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
 provider_features := 'openblas-system'
 provider_bench_features := 'openblas-system'
@@ -90,7 +90,9 @@ bench-smoke:
     cargo bench -p nabled --bench cholesky_benchmarks -- --quick
     cargo bench -p nabled --bench eigen_benchmarks -- --quick
     cargo bench -p nabled --bench vector_benchmarks -- --quick
+    cargo bench -p nabled --bench matrix_benchmarks -- --quick
     cargo bench -p nabled --bench sparse_benchmarks -- --quick
+    cargo bench -p nabled --bench tensor_benchmarks -- --quick
     cargo bench -p nabled --bench schur_benchmarks -- --quick
     cargo bench -p nabled --bench sylvester_benchmarks -- --quick
     cargo bench -p nabled --bench optimization_benchmarks -- --quick
@@ -106,7 +108,9 @@ bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench cholesky_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench eigen_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench vector_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench matrix_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sparse_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench tensor_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench schur_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sylvester_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench optimization_benchmarks -- --quick

@@ -55,13 +55,9 @@ fn map_lu_error(error: LUError) -> RegressionError {
     }
 }
 
-/// Solve linear regression with optional intercept.
-///
-/// # Errors
-/// Returns an error for invalid dimensions or singular design matrix.
-pub fn linear_regression(
-    x: &Array2<f64>,
-    y: &Array1<f64>,
+fn linear_regression_impl(
+    x: &ArrayView2<'_, f64>,
+    y: &ArrayView1<'_, f64>,
     add_intercept: bool,
 ) -> Result<NdarrayRegressionResult, RegressionError> {
     if x.is_empty() || y.is_empty() {
@@ -71,7 +67,7 @@ pub fn linear_regression(
         return Err(RegressionError::DimensionMismatch);
     }
 
-    let design = if add_intercept {
+    let maybe_design = if add_intercept {
         let mut with_intercept = Array2::<f64>::zeros((x.nrows(), x.ncols() + 1));
         for row in 0..x.nrows() {
             with_intercept[[row, 0]] = 1.0;
@@ -79,10 +75,11 @@ pub fn linear_regression(
                 with_intercept[[row, col + 1]] = x[[row, col]];
             }
         }
-        with_intercept
+        Some(with_intercept)
     } else {
-        x.clone()
+        None
     };
+    let design = maybe_design.as_ref().map_or_else(|| x.view(), |owned| owned.view());
 
     let xt = design.t();
     let normal_matrix = xt.dot(&design);
@@ -90,7 +87,7 @@ pub fn linear_regression(
     let coefficients = lu::solve(&normal_matrix, &normal_rhs).map_err(map_lu_error)?;
 
     let fitted_values = design.dot(&coefficients);
-    let residuals = y - &fitted_values;
+    let residuals = y.to_owned() - &fitted_values;
 
     let y_mean = y.iter().sum::<f64>() / usize_to_f64(y.len());
     let ss_total = y
@@ -106,11 +103,19 @@ pub fn linear_regression(
     Ok(NdarrayRegressionResult { coefficients, fitted_values, residuals, r_squared })
 }
 
-/// Solve linear regression with optional intercept from matrix/vector views.
+/// Solve linear regression with optional intercept.
 ///
-/// # Performance
-/// This convenience wrapper materializes owned inputs via `to_owned()`
-/// before dispatching to [`linear_regression`].
+/// # Errors
+/// Returns an error for invalid dimensions or singular design matrix.
+pub fn linear_regression(
+    x: &Array2<f64>,
+    y: &Array1<f64>,
+    add_intercept: bool,
+) -> Result<NdarrayRegressionResult, RegressionError> {
+    linear_regression_impl(&x.view(), &y.view(), add_intercept)
+}
+
+/// Solve linear regression with optional intercept from matrix/vector views.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
@@ -119,7 +124,7 @@ pub fn linear_regression_view(
     y: &ArrayView1<'_, f64>,
     add_intercept: bool,
 ) -> Result<NdarrayRegressionResult, RegressionError> {
-    linear_regression(&x.to_owned(), &y.to_owned(), add_intercept)
+    linear_regression_impl(x, y, add_intercept)
 }
 
 #[cfg(test)]
