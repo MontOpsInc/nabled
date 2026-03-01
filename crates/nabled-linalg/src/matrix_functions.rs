@@ -3,6 +3,7 @@
 use std::fmt;
 
 use ndarray::{Array1, Array2, ArrayView2};
+use num_complex::Complex64;
 
 use crate::internal::{
     DEFAULT_TOLERANCE, identity, is_symmetric, usize_to_f64, validate_finite,
@@ -58,6 +59,20 @@ impl MatrixFunctionWorkspace {
     }
 }
 
+/// Reusable workspace for complex matrix-function `_into` kernels.
+#[derive(Debug, Clone, Default)]
+pub struct MatrixFunctionComplexWorkspace {
+    scratch: Array2<Complex64>,
+}
+
+impl MatrixFunctionComplexWorkspace {
+    fn ensure_square(&mut self, n: usize) {
+        if self.scratch.dim() != (n, n) {
+            self.scratch = Array2::<Complex64>::zeros((n, n));
+        }
+    }
+}
+
 fn validate_square(matrix: &Array2<f64>) -> Result<(), MatrixFunctionError> {
     validate_square_non_empty(matrix).map_err(|error| match error {
         "empty" => MatrixFunctionError::EmptyMatrix,
@@ -68,11 +83,33 @@ fn validate_square(matrix: &Array2<f64>) -> Result<(), MatrixFunctionError> {
     Ok(())
 }
 
+fn validate_square_complex(matrix: &Array2<Complex64>) -> Result<(), MatrixFunctionError> {
+    if matrix.is_empty() {
+        return Err(MatrixFunctionError::EmptyMatrix);
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(MatrixFunctionError::NotSquare);
+    }
+    if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
+        return Err(MatrixFunctionError::InvalidInput("matrix must be finite".to_string()));
+    }
+    Ok(())
+}
+
 fn diagonal_from(values: &Array1<f64>) -> Array2<f64> {
     let n = values.len();
     let mut diagonal = Array2::<f64>::zeros((n, n));
     for i in 0..n {
         diagonal[[i, i]] = values[i];
+    }
+    diagonal
+}
+
+fn diagonal_from_real_complex(values: &Array1<f64>) -> Array2<Complex64> {
+    let n = values.len();
+    let mut diagonal = Array2::<Complex64>::zeros((n, n));
+    for i in 0..n {
+        diagonal[[i, i]] = Complex64::new(values[i], 0.0);
     }
     diagonal
 }
@@ -99,9 +136,47 @@ fn taylor_matrix_exp(
     Ok(result)
 }
 
+fn taylor_matrix_exp_complex(
+    matrix: &Array2<Complex64>,
+    max_terms: usize,
+    tolerance: f64,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    validate_square_complex(matrix)?;
+    let n = matrix.nrows();
+    let mut result = Array2::<Complex64>::zeros((n, n));
+    let mut term = Array2::<Complex64>::zeros((n, n));
+    for i in 0..n {
+        result[[i, i]] = Complex64::new(1.0, 0.0);
+        term[[i, i]] = Complex64::new(1.0, 0.0);
+    }
+
+    for k in 1..=max_terms.max(1) {
+        term = term.dot(matrix) / usize_to_f64(k);
+        result = &result + &term;
+        let delta = term.iter().map(|value| value.norm()).fold(0.0_f64, f64::max);
+        if delta <= tolerance.max(DEFAULT_TOLERANCE) {
+            return Ok(result);
+        }
+    }
+
+    Ok(result)
+}
+
 fn validate_output_shape(
     matrix: &Array2<f64>,
     output: &Array2<f64>,
+) -> Result<(), MatrixFunctionError> {
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_output_shape_complex(
+    matrix: &Array2<Complex64>,
+    output: &Array2<Complex64>,
 ) -> Result<(), MatrixFunctionError> {
     if output.dim() != matrix.dim() {
         return Err(MatrixFunctionError::InvalidInput(
@@ -123,6 +198,18 @@ pub fn matrix_exp(
     taylor_matrix_exp(matrix, max_terms, tolerance)
 }
 
+/// Compute complex matrix exponential via Taylor series.
+///
+/// # Errors
+/// Returns an error for invalid input.
+pub fn matrix_exp_complex(
+    matrix: &Array2<Complex64>,
+    max_terms: usize,
+    tolerance: f64,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    taylor_matrix_exp_complex(matrix, max_terms, tolerance)
+}
+
 /// Compute matrix exponential via Taylor series from a matrix view.
 ///
 /// # Performance
@@ -139,6 +226,22 @@ pub fn matrix_exp_view(
     matrix_exp(&matrix.to_owned(), max_terms, tolerance)
 }
 
+/// Compute complex matrix exponential via Taylor series from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_exp_complex`].
+///
+/// # Errors
+/// Returns an error for invalid input.
+pub fn matrix_exp_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    max_terms: usize,
+    tolerance: f64,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_exp_complex(&matrix.to_owned(), max_terms, tolerance)
+}
+
 /// Compute matrix exponential into `output`.
 ///
 /// # Errors
@@ -151,6 +254,20 @@ pub fn matrix_exp_into(
 ) -> Result<(), MatrixFunctionError> {
     let mut workspace = MatrixFunctionWorkspace::default();
     matrix_exp_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
+}
+
+/// Compute complex matrix exponential into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_complex_into(
+    matrix: &Array2<Complex64>,
+    max_terms: usize,
+    tolerance: f64,
+    output: &mut Array2<Complex64>,
+) -> Result<(), MatrixFunctionError> {
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_exp_complex_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
 }
 
 /// Compute matrix exponential into `output` using reusable `workspace`.
@@ -167,6 +284,25 @@ pub fn matrix_exp_with_workspace_into(
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_exp(matrix, max_terms, tolerance)?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute complex matrix exponential into `output` using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_complex_with_workspace_into(
+    matrix: &Array2<Complex64>,
+    max_terms: usize,
+    tolerance: f64,
+    output: &mut Array2<Complex64>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError> {
+    validate_output_shape_complex(matrix, output)?;
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_exp_complex(matrix, max_terms, tolerance)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -364,6 +500,28 @@ pub fn matrix_log_svd(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctio
     Ok(svd.u.dot(&log_sigma).dot(&svd.vt))
 }
 
+/// Compute complex matrix logarithm via SVD.
+///
+/// # Errors
+/// Returns an error if decomposition fails or provider support is unavailable.
+pub fn matrix_log_svd_complex(
+    matrix: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    validate_square_complex(matrix)?;
+    let svd = svd::decompose_complex(matrix).map_err(|error| match error {
+        svd::SVDError::EmptyMatrix => MatrixFunctionError::EmptyMatrix,
+        svd::SVDError::NotSquare => MatrixFunctionError::NotSquare,
+        svd::SVDError::ConvergenceFailed => MatrixFunctionError::ConvergenceFailed,
+        svd::SVDError::InvalidInput(message) => MatrixFunctionError::InvalidInput(message),
+    })?;
+    if svd.singular_values.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
+        return Err(MatrixFunctionError::NotPositiveDefinite);
+    }
+
+    let log_sigma = diagonal_from_real_complex(&svd.singular_values.map(|value| value.ln()));
+    Ok(svd.u.dot(&log_sigma).dot(&svd.vt))
+}
+
 /// Compute matrix logarithm via SVD from a matrix view.
 ///
 /// # Performance
@@ -378,6 +536,20 @@ pub fn matrix_log_svd_view(
     matrix_log_svd(&matrix.to_owned())
 }
 
+/// Compute complex matrix logarithm via SVD from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_log_svd_complex`].
+///
+/// # Errors
+/// Returns an error if decomposition fails or provider support is unavailable.
+pub fn matrix_log_svd_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_log_svd_complex(&matrix.to_owned())
+}
+
 /// Compute matrix logarithm via SVD into `output`.
 ///
 /// # Errors
@@ -388,6 +560,19 @@ pub fn matrix_log_svd_into(
 ) -> Result<(), MatrixFunctionError> {
     let mut workspace = MatrixFunctionWorkspace::default();
     matrix_log_svd_with_workspace_into(matrix, output, &mut workspace)
+}
+
+/// Compute complex matrix logarithm via SVD into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, decomposition
+/// failure, or unavailable provider support.
+pub fn matrix_log_svd_complex_into(
+    matrix: &Array2<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), MatrixFunctionError> {
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_log_svd_complex_with_workspace_into(matrix, output, &mut workspace)
 }
 
 /// Compute matrix logarithm via SVD into `output` with reusable `workspace`.
@@ -402,6 +587,24 @@ pub fn matrix_log_svd_with_workspace_into(
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_log_svd(matrix)?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute complex matrix logarithm via SVD into `output` with reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, decomposition
+/// failure, or unavailable provider support.
+pub fn matrix_log_svd_complex_with_workspace_into(
+    matrix: &Array2<Complex64>,
+    output: &mut Array2<Complex64>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError> {
+    validate_output_shape_complex(matrix, output)?;
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_log_svd_complex(matrix)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -537,6 +740,7 @@ pub fn matrix_sign_with_workspace_into(
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -743,5 +947,130 @@ mod tests {
                 assert!((sign_owned[[i, j]] - sign_view[[i, j]]).abs() < 1e-12);
             }
         }
+    }
+
+    #[test]
+    fn complex_exp_variants_match_and_into_paths_work() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+        ])
+        .unwrap();
+
+        let owned = matrix_exp_complex(&matrix, 32, 1e-12).unwrap();
+        let viewed = matrix_exp_complex_view(&matrix.view(), 32, 1e-12).unwrap();
+
+        let mut output = Array2::<Complex64>::zeros((2, 2));
+        matrix_exp_complex_into(&matrix, 32, 1e-12, &mut output).unwrap();
+
+        let mut workspace = MatrixFunctionComplexWorkspace::default();
+        let mut workspace_output = Array2::<Complex64>::zeros((2, 2));
+        matrix_exp_complex_with_workspace_into(
+            &matrix,
+            32,
+            1e-12,
+            &mut workspace_output,
+            &mut workspace,
+        )
+        .unwrap();
+
+        let expected = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(1.0, 0.0),
+        ])
+        .unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-12);
+                assert!((owned[[i, j]] - output[[i, j]]).norm() < 1e-12);
+                assert!((owned[[i, j]] - workspace_output[[i, j]]).norm() < 1e-12);
+                assert!((owned[[i, j]] - expected[[i, j]]).norm() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn complex_into_rejects_bad_output_shape() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(1.0, 0.0),
+        ])
+        .unwrap();
+        let mut bad = Array2::<Complex64>::zeros((1, 1));
+        assert!(matches!(
+            matrix_exp_complex_into(&matrix, 16, 1e-10, &mut bad),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_log_svd_complex_into(&matrix, &mut bad),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+    }
+
+    #[cfg(feature = "openblas-system")]
+    #[test]
+    fn complex_log_svd_paths_work() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(3.0, 0.0),
+        ])
+        .unwrap();
+
+        let owned = matrix_log_svd_complex(&matrix).unwrap();
+        let viewed = matrix_log_svd_complex_view(&matrix.view()).unwrap();
+        let mut output = Array2::<Complex64>::zeros((2, 2));
+        matrix_log_svd_complex_into(&matrix, &mut output).unwrap();
+        let mut workspace = MatrixFunctionComplexWorkspace::default();
+        let mut workspace_output = Array2::<Complex64>::zeros((2, 2));
+        matrix_log_svd_complex_with_workspace_into(&matrix, &mut workspace_output, &mut workspace)
+            .unwrap();
+
+        assert!((owned[[0, 0]].re - 2.0_f64.ln()).abs() < 1e-10);
+        assert!(owned[[0, 0]].im.abs() < 1e-10);
+        assert!((owned[[1, 1]].re - 3.0_f64.ln()).abs() < 1e-10);
+        assert!(owned[[1, 1]].im.abs() < 1e-10);
+        assert!(owned[[0, 1]].norm() < 1e-10);
+        assert!(owned[[1, 0]].norm() < 1e-10);
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-12);
+                assert!((owned[[i, j]] - output[[i, j]]).norm() < 1e-12);
+                assert!((owned[[i, j]] - workspace_output[[i, j]]).norm() < 1e-12);
+            }
+        }
+    }
+
+    #[cfg(not(feature = "openblas-system"))]
+    #[test]
+    fn complex_log_svd_without_provider_errors() {
+        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
+        assert!(matches!(
+            matrix_log_svd_complex(&matrix),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_log_svd_complex_view(&matrix.view()),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        let mut out = Array2::<Complex64>::zeros((1, 1));
+        assert!(matches!(
+            matrix_log_svd_complex_into(&matrix, &mut out),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        let mut workspace = MatrixFunctionComplexWorkspace::default();
+        assert!(matches!(
+            matrix_log_svd_complex_with_workspace_into(&matrix, &mut out, &mut workspace),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
     }
 }

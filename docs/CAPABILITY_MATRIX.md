@@ -34,7 +34,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Schur | Schur decomposition | `nabled-linalg::schur` | Implemented | Yes | Includes complex provider-backed parity; bench exists (`schur_benchmarks`) with manual competitor baseline. |
 | Polar | polar decomposition (+ complex variant) | `nabled-linalg::polar` | Implemented | Yes | Dedicated benchmark now exists (`polar_benchmarks`). |
 | Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester` | Implemented | Yes | Includes complex provider-backed parity; bench exists (`sylvester_benchmarks`) with manual competitor baseline. |
-| Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Bench exists (`matrix_functions_benchmarks`). |
+| Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Includes complex baseline (`matrix_exp_complex*`, provider-backed `matrix_log_svd_complex*`); bench exists (`matrix_functions_benchmarks`). |
 | Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization` | Implemented | Yes | Dedicated benchmark now exists (`orthogonalization_benchmarks`). |
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Good foundation for larger optimization stack. |
 | Sparse kernels | CSR/COO primitives, sparse matvec, Jacobi + Gauss-Seidel | `nabled-linalg::sparse` | Implemented | Yes | Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
@@ -64,7 +64,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 |---|---|---|
 | Batched operations over many vectors/matrices | Partial | Vector batched dot and pairwise kernels exist; matrix-batch and sparse-batch APIs still missing. |
 | Sparse linear algebra primitives | Partial | CSR baseline exists (`matvec`, `matvec_into`, Jacobi solve); more formats and solver breadth still missing. |
-| Complex-number parity across major algorithms | Partial | Complex parity now includes vector kernels, QR, SVD, LU, Cholesky, Schur, Sylvester/Lyapunov, polar decomposition, and triangular solves; many other domains remain f64-only. |
+| Complex-number parity across major algorithms | Partial | Complex parity now includes vector kernels, QR, SVD, LU, Cholesky, Schur, Sylvester/Lyapunov, selected matrix-functions paths, polar decomposition, and triangular solves; many other domains remain f64-only. |
 | Non-symmetric dense eigen coverage | Partial | Symmetric/generalized-SPD available; broader eigen support missing. |
 | More optimization primitives | Partial | CG/GMRES + line search + gradient descent + Adam exist; constrained/stochastic/advanced second-order breadth is still missing. |
 
@@ -82,7 +82,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 
 Concretely, the largest missing pieces are:
 1. Sparse breadth beyond CSR/Jacobi and broader batch semantics beyond the current vector baseline.
-2. Complex-number parity expansion beyond the currently covered domains (vector/QR/SVD/LU/Cholesky/Schur/Sylvester/polar/triangular).
+2. Complex-number parity expansion beyond the currently covered domains (vector/QR/SVD/LU/Cholesky/Schur/Sylvester/matrix-functions-partial/polar/triangular).
 3. Explicit performance-contract APIs across the remaining heavy-kernel surface (beyond current allocation-transparency documentation).
 
 ## Execution Order Driven by This Matrix

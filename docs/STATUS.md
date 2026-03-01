@@ -24,7 +24,7 @@ Workspace migration for library domains is complete.
 16. First-order optimization primitives are now present (line search, gradient descent, Adam).
 17. View-first (`ArrayView*`) API coverage is expanded across remaining heavy linalg/ml domains with parity tests.
 18. Public API namespaces are flattened; `ndarray_*` wrapper modules are removed in favor of direct domain APIs.
-19. Complex parity now extends beyond QR/SVD into LU, Cholesky, Schur, Sylvester/Lyapunov, polar decomposition, and triangular solves.
+19. Complex parity now extends beyond QR/SVD into LU, Cholesky, Schur, Sylvester/Lyapunov, selected matrix-functions paths, polar decomposition, and triangular solves.
 20. Dedicated `IntoNabledError` mapping-stability tests now exist in `nabled-linalg` and `nabled-ml`.
 21. Benchmark competitor baselines now exist for vector, sparse, optimization, schur, and sylvester suites.
 22. Targeted per-file coverage lift for `eigen`, `lu`, `orthogonalization`, and `polar` is complete.

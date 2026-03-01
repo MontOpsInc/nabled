@@ -22,7 +22,9 @@ pub mod vector;
 pub use cholesky::{CholeskyError, NdarrayCholeskyResult};
 pub use eigen::{EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult};
 pub use lu::{LUError, LogDetResult, NdarrayLUResult};
-pub use matrix_functions::{MatrixFunctionError, MatrixFunctionWorkspace};
+pub use matrix_functions::{
+    MatrixFunctionComplexWorkspace, MatrixFunctionError, MatrixFunctionWorkspace,
+};
 pub use orthogonalization::OrthogonalizationError;
 pub use polar::{NdarrayComplexPolarResult, NdarrayPolarResult, PolarError};
 pub use qr::{QRConfig, QRError, QRResult};
