@@ -44,6 +44,10 @@ fn benchmark_tensor(c: &mut Criterion) {
 
         for size in [32_usize, 64] {
             let tensor_value = random_tensor(&[8, size, size]);
+            let left_contract = random_tensor(&[4, size, size / 2]);
+            let right_contract = random_tensor(&[3, size / 2, size]);
+            let left_batched = random_tensor(&[4, 4, size, size / 2]);
+            let right_batched = random_tensor(&[4, 4, size / 2, size]);
             let id = format!("square-{size}x{size}");
 
             _ = group.bench_with_input(
@@ -62,6 +66,34 @@ fn benchmark_tensor(c: &mut Criterion) {
                         tensor::batched_dot_last_axis(
                             black_box(&tensor_value),
                             black_box(&tensor_value),
+                        )
+                    });
+                },
+            );
+
+            _ = group.bench_with_input(
+                BenchmarkId::new("contract_axes", &id),
+                &size,
+                |bench, _| {
+                    bench.iter(|| {
+                        tensor::contract_axes(
+                            black_box(&left_contract),
+                            black_box(&right_contract),
+                            black_box(&[2]),
+                            black_box(&[1]),
+                        )
+                    });
+                },
+            );
+
+            _ = group.bench_with_input(
+                BenchmarkId::new("batched_matmul_last_two", &id),
+                &size,
+                |bench, _| {
+                    bench.iter(|| {
+                        tensor::batched_matmul_last_two(
+                            black_box(&left_batched),
+                            black_box(&right_batched),
                         )
                     });
                 },

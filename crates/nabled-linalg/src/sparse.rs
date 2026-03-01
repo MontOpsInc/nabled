@@ -270,6 +270,17 @@ pub struct IC0Factorization {
     pub l_transpose: CsrMatrix,
 }
 
+/// Incomplete LDL(0) sparse factorization for symmetric sparse systems.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ILDL0Factorization {
+    /// Unit-lower factor.
+    pub l:           CsrMatrix,
+    /// Diagonal factor.
+    pub d:           Array1<f64>,
+    /// Cached transpose of `l` for backward substitution.
+    pub l_transpose: CsrMatrix,
+}
+
 impl CooMatrix {
     /// Construct a COO matrix after validating structure.
     ///
@@ -512,6 +523,26 @@ fn row_positions(matrix: &CsrMatrix) -> Vec<HashMap<usize, usize>> {
         positions.push(map);
     }
     positions
+}
+
+fn is_symmetric_from_positions(
+    matrix: &CsrMatrix,
+    positions: &[HashMap<usize, usize>],
+    tolerance: f64,
+) -> bool {
+    for row in 0..matrix.nrows {
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            let col = matrix.indices[entry];
+            let value = matrix.data[entry];
+            let Some(&mirror_entry) = positions[col].get(&row) else {
+                return false;
+            };
+            if (value - matrix.data[mirror_entry]).abs() > tolerance {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Compute ILU(0) factorization for a square sparse matrix.
@@ -977,6 +1008,181 @@ pub fn apply_ic0_preconditioner(
     for row_reverse in 0..n {
         let row = n - 1 - row_reverse;
         let mut sum = intermediate[row];
+        let mut diagonal = None;
+        for entry in
+            factorization.l_transpose.indptr[row]..factorization.l_transpose.indptr[row + 1]
+        {
+            let col = factorization.l_transpose.indices[entry];
+            let value = factorization.l_transpose.data[entry];
+            if col > row {
+                sum -= value * output[col];
+            } else if col == row {
+                diagonal = Some(value);
+            }
+        }
+        let Some(diagonal) = diagonal else {
+            return Err(SparseError::SingularMatrix);
+        };
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        output[row] = sum / diagonal;
+    }
+
+    Ok(output)
+}
+
+/// Compute incomplete LDL(0) factorization for a square symmetric sparse matrix.
+///
+/// The non-zero pattern of `L` follows the strictly-lower pattern of `A`
+/// (`level-of-fill = 0`) with unit diagonal in `L` and diagonal terms in `D`.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible, input is non-symmetric,
+/// or factorization breaks down.
+#[allow(clippy::many_single_char_names)]
+pub fn ildl0_factor(matrix: &CsrMatrix) -> Result<ILDL0Factorization, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+
+    let n = matrix.nrows;
+    let positions = row_positions(matrix);
+    if !is_symmetric_from_positions(matrix, &positions, DEFAULT_TOLERANCE) {
+        return Err(SparseError::DimensionMismatch);
+    }
+
+    let mut factors = matrix.data.clone();
+    let mut diagonal = Array1::<f64>::zeros(n);
+
+    for row in 0..n {
+        let mut lower_entries = Vec::<(usize, usize)>::new();
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            let col = matrix.indices[entry];
+            if col < row {
+                lower_entries.push((col, entry));
+            }
+        }
+        lower_entries.sort_unstable_by_key(|&(col, _)| col);
+
+        for idx in 0..lower_entries.len() {
+            let (col_j, row_col_entry) = lower_entries[idx];
+            let mut sum = factors[row_col_entry];
+
+            for &(col_k, row_k_entry) in lower_entries.iter().take(idx) {
+                if let Some(&jk_index) = positions[col_j].get(&col_k) {
+                    sum -= factors[row_k_entry] * diagonal[col_k] * factors[jk_index];
+                }
+            }
+
+            let d_j = diagonal[col_j];
+            if d_j.abs() <= DEFAULT_TOLERANCE {
+                return Err(SparseError::SingularMatrix);
+            }
+            factors[row_col_entry] = sum / d_j;
+        }
+
+        let Some(&row_diagonal_index) = positions[row].get(&row) else {
+            return Err(SparseError::SingularMatrix);
+        };
+        let mut d_i = factors[row_diagonal_index];
+        for &(_, row_col_entry) in &lower_entries {
+            let col_k = matrix.indices[row_col_entry];
+            let l_ik = factors[row_col_entry];
+            d_i -= l_ik * l_ik * diagonal[col_k];
+        }
+        if d_i.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        diagonal[row] = d_i;
+        factors[row_diagonal_index] = d_i;
+    }
+
+    let mut l_indptr = Vec::<usize>::with_capacity(n + 1);
+    let mut l_indices = Vec::<usize>::new();
+    let mut l_data = Vec::<f64>::new();
+    l_indptr.push(0);
+
+    for row in 0..n {
+        let mut row_entries = Vec::<(usize, f64)>::new();
+        row_entries.push((row, 1.0));
+        for (&col, &value) in matrix.indices[matrix.indptr[row]..matrix.indptr[row + 1]]
+            .iter()
+            .zip(factors[matrix.indptr[row]..matrix.indptr[row + 1]].iter())
+        {
+            if col < row {
+                row_entries.push((col, value));
+            }
+        }
+        row_entries.sort_unstable_by_key(|&(col, _)| col);
+        for (col, value) in row_entries {
+            l_indices.push(col);
+            l_data.push(value);
+        }
+        l_indptr.push(l_indices.len());
+    }
+
+    let l = CsrMatrix::new(n, n, l_indptr, l_indices, l_data)?;
+    let l_transpose = transpose(&l)?;
+    Ok(ILDL0Factorization { l, d: diagonal, l_transpose })
+}
+
+/// Apply an ILDL(0) preconditioner to a dense vector.
+///
+/// Solves `L D L^T x = rhs` where factors come from [`ildl0_factor`].
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or factors are singular.
+pub fn apply_ildl0_preconditioner(
+    factorization: &ILDL0Factorization,
+    rhs: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    if factorization.l.nrows != factorization.l.ncols
+        || factorization.l_transpose.nrows != factorization.l_transpose.ncols
+        || factorization.l.nrows != factorization.l_transpose.nrows
+    {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != factorization.l.nrows || factorization.d.len() != rhs.len() {
+        return Err(SparseError::DimensionMismatch);
+    }
+
+    let n = rhs.len();
+    let mut intermediate = Array1::<f64>::zeros(n);
+    for row in 0..n {
+        let mut sum = rhs[row];
+        let mut diagonal = None;
+        for entry in factorization.l.indptr[row]..factorization.l.indptr[row + 1] {
+            let col = factorization.l.indices[entry];
+            let value = factorization.l.data[entry];
+            if col < row {
+                sum -= value * intermediate[col];
+            } else if col == row {
+                diagonal = Some(value);
+            }
+        }
+        let Some(diagonal) = diagonal else {
+            return Err(SparseError::SingularMatrix);
+        };
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        intermediate[row] = sum / diagonal;
+    }
+
+    let mut scaled = Array1::<f64>::zeros(n);
+    for row in 0..n {
+        let diagonal = factorization.d[row];
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        scaled[row] = intermediate[row] / diagonal;
+    }
+
+    let mut output = Array1::<f64>::zeros(n);
+    for row_reverse in 0..n {
+        let row = n - 1 - row_reverse;
+        let mut sum = scaled[row];
         let mut diagonal = None;
         for entry in
             factorization.l_transpose.indptr[row]..factorization.l_transpose.indptr[row + 1]
@@ -1732,6 +1938,155 @@ pub fn gmres_ilut_solve_with_config(
     gmres_ilut_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
 }
 
+/// Solve sparse linear system `A x = b` with ILDL(0)-preconditioned GMRES.
+///
+/// This routine assumes a square symmetric matrix for ILDL(0) factorization.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+#[allow(clippy::many_single_char_names)]
+pub fn gmres_ildl0_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    let factorization = ildl0_factor(matrix)?;
+    gmres_ildl0_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with ILDL(0)-preconditioned GMRES.
+///
+/// Uses a precomputed factorization to avoid repeated setup for multiple RHS solves.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+#[allow(clippy::many_single_char_names)]
+pub fn gmres_ildl0_solve_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILDL0Factorization,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let n = rhs.len();
+    let m = n.min(max_iterations.max(1));
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+
+    let mut basis = Array2::<f64>::zeros((n, m + 1));
+    let mut hessenberg = Array2::<f64>::zeros((m + 1, m));
+
+    let preconditioned_rhs = apply_ildl0_preconditioner(factorization, rhs)?;
+    let beta = dot(&preconditioned_rhs, &preconditioned_rhs)?.sqrt();
+    if beta <= tolerance {
+        return Ok(Array1::<f64>::zeros(n));
+    }
+    for row in 0..n {
+        basis[[row, 0]] = preconditioned_rhs[row] / beta;
+    }
+
+    let mut effective_m = m;
+    for j in 0..m {
+        let mut vj = Array1::<f64>::zeros(n);
+        for row in 0..n {
+            vj[row] = basis[[row, j]];
+        }
+
+        let av = matvec(matrix, &vj)?;
+        let mut w = apply_ildl0_preconditioner(factorization, &av)?;
+
+        for i in 0..=j {
+            let mut hij = 0.0_f64;
+            for row in 0..n {
+                hij += basis[[row, i]] * w[row];
+            }
+            hessenberg[[i, j]] = hij;
+            for row in 0..n {
+                w[row] -= hij * basis[[row, i]];
+            }
+        }
+
+        let norm_w = dot(&w, &w)?.sqrt();
+        hessenberg[[j + 1, j]] = norm_w;
+        if norm_w <= tolerance {
+            effective_m = j + 1;
+            break;
+        }
+        for row in 0..n {
+            basis[[row, j + 1]] = w[row] / norm_w;
+        }
+    }
+
+    let mut h = Array2::<f64>::zeros((effective_m + 1, effective_m));
+    for row in 0..=effective_m {
+        for col in 0..effective_m {
+            h[[row, col]] = hessenberg[[row, col]];
+        }
+    }
+    let ht = h.t();
+    let normal_matrix = ht.dot(&h);
+
+    let mut rhs_ls = Array1::<f64>::zeros(effective_m + 1);
+    rhs_ls[0] = beta;
+    let normal_rhs = ht.dot(&rhs_ls);
+
+    let y =
+        crate::lu::solve(&normal_matrix, &normal_rhs).map_err(|_| SparseError::SingularMatrix)?;
+
+    let mut solution = Array1::<f64>::zeros(n);
+    for row in 0..n {
+        let mut sum = 0.0_f64;
+        for col in 0..effective_m {
+            sum += basis[[row, col]] * y[col];
+        }
+        solution[row] = sum;
+    }
+
+    let residual = rhs - &matvec(matrix, &solution)?;
+    if dot(&residual, &residual)?.sqrt() <= tolerance {
+        Ok(solution)
+    } else {
+        Err(SparseError::MaxIterationsExceeded)
+    }
+}
+
+fn solve_multiple_rhs_with_solver(
+    matrix: &CsrMatrix,
+    rhs: &Array2<f64>,
+    mut solve_column: impl FnMut(&Array1<f64>) -> Result<Array1<f64>, SparseError>,
+) -> Result<Array2<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.nrows() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let mut output = Array2::<f64>::zeros((matrix.ncols, rhs.ncols()));
+    for col in 0..rhs.ncols() {
+        let rhs_column = rhs.column(col).to_owned();
+        let solution = solve_column(&rhs_column)?;
+        if solution.len() != output.nrows() {
+            return Err(SparseError::DimensionMismatch);
+        }
+        output.column_mut(col).assign(&solution);
+    }
+    Ok(output)
+}
+
 /// Solve sparse linear system `A x = b` with `BiCGSTAB` iteration.
 ///
 /// This routine supports general non-symmetric matrices.
@@ -1961,6 +2316,30 @@ pub fn bicgstab_ilu0_solve_with_factorization(
     Err(SparseError::MaxIterationsExceeded)
 }
 
+/// Solve sparse linear systems `A X = B` with ILU(0)-preconditioned `BiCGSTAB`.
+///
+/// Uses a precomputed factorization and solves each right-hand side column independently.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ilu0_solve_multiple_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array2<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILU0Factorization,
+) -> Result<Array2<f64>, SparseError> {
+    solve_multiple_rhs_with_solver(matrix, rhs, |rhs_column| {
+        bicgstab_ilu0_solve_with_factorization(
+            matrix,
+            rhs_column,
+            tolerance,
+            max_iterations,
+            factorization,
+        )
+    })
+}
+
 /// Solve sparse linear system `A x = b` with ILUT-preconditioned `BiCGSTAB`.
 ///
 /// This routine supports general non-symmetric matrices.
@@ -2086,6 +2465,30 @@ pub fn bicgstab_ilut_solve_with_factorization(
     Err(SparseError::MaxIterationsExceeded)
 }
 
+/// Solve sparse linear systems `A X = B` with ILUT-preconditioned `BiCGSTAB`.
+///
+/// Uses a precomputed factorization and solves each right-hand side column independently.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ilut_solve_multiple_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array2<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILUTFactorization,
+) -> Result<Array2<f64>, SparseError> {
+    solve_multiple_rhs_with_solver(matrix, rhs, |rhs_column| {
+        bicgstab_ilut_solve_with_factorization(
+            matrix,
+            rhs_column,
+            tolerance,
+            max_iterations,
+            factorization,
+        )
+    })
+}
+
 /// Solve sparse linear system `A x = b` with ILUT-preconditioned `BiCGSTAB`.
 ///
 /// Uses an [`ILUTConfig`] profile for factorization parameters.
@@ -2103,6 +2506,225 @@ pub fn bicgstab_ilut_solve_with_config(
     bicgstab_ilut_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
 }
 
+/// Solve sparse linear system `A x = b` with ILDL(0)-preconditioned `BiCGSTAB`.
+///
+/// This routine assumes a square symmetric matrix for ILDL(0) factorization.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ildl0_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    let factorization = ildl0_factor(matrix)?;
+    bicgstab_ildl0_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with ILDL(0)-preconditioned `BiCGSTAB`.
+///
+/// Uses a precomputed factorization to avoid repeated setup for multiple RHS solves.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ildl0_solve_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILDL0Factorization,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+    let dimension = rhs.len();
+    let mut solution = Array1::<f64>::zeros(dimension);
+    let mut residual = rhs.clone();
+    let residual_shadow = residual.clone();
+    let mut rho_prev = 1.0_f64;
+    let mut alpha = 1.0_f64;
+    let mut omega = 1.0_f64;
+    let mut krylov_vector = Array1::<f64>::zeros(dimension);
+    let mut search_direction = Array1::<f64>::zeros(dimension);
+
+    if dot(&residual, &residual)?.sqrt() <= tolerance {
+        return Ok(solution);
+    }
+
+    for iteration in 0..max_iterations.max(1) {
+        let rho = dot(&residual_shadow, &residual)?;
+        if rho.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        if iteration == 0 {
+            search_direction.assign(&residual);
+        } else {
+            if omega.abs() <= DEFAULT_TOLERANCE {
+                return Err(SparseError::SingularMatrix);
+            }
+            let beta = (rho / rho_prev) * (alpha / omega);
+            for i in 0..dimension {
+                search_direction[i] =
+                    residual[i] + beta * (search_direction[i] - omega * krylov_vector[i]);
+            }
+        }
+
+        let preconditioned_search = apply_ildl0_preconditioner(factorization, &search_direction)?;
+        krylov_vector = matvec(matrix, &preconditioned_search)?;
+        let denominator = dot(&residual_shadow, &krylov_vector)?;
+        if denominator.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        alpha = rho / denominator;
+
+        let mut auxiliary_residual = residual.clone();
+        for i in 0..dimension {
+            auxiliary_residual[i] -= alpha * krylov_vector[i];
+        }
+
+        if dot(&auxiliary_residual, &auxiliary_residual)?.sqrt() <= tolerance {
+            for i in 0..dimension {
+                solution[i] += alpha * preconditioned_search[i];
+            }
+            return Ok(solution);
+        }
+
+        let preconditioned_auxiliary =
+            apply_ildl0_preconditioner(factorization, &auxiliary_residual)?;
+        let transformed_auxiliary = matvec(matrix, &preconditioned_auxiliary)?;
+        let transformed_norm_sq = dot(&transformed_auxiliary, &transformed_auxiliary)?;
+        if transformed_norm_sq.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        omega = dot(&transformed_auxiliary, &auxiliary_residual)? / transformed_norm_sq;
+        if omega.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        for i in 0..dimension {
+            solution[i] += alpha * preconditioned_search[i] + omega * preconditioned_auxiliary[i];
+        }
+
+        for i in 0..dimension {
+            residual[i] = auxiliary_residual[i] - omega * transformed_auxiliary[i];
+        }
+
+        if dot(&residual, &residual)?.sqrt() <= tolerance {
+            return Ok(solution);
+        }
+
+        rho_prev = rho;
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
+/// Solve sparse linear systems `A X = B` with ILDL(0)-preconditioned `BiCGSTAB`.
+///
+/// Uses a precomputed factorization and solves each right-hand side column independently.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ildl0_solve_multiple_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array2<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILDL0Factorization,
+) -> Result<Array2<f64>, SparseError> {
+    solve_multiple_rhs_with_solver(matrix, rhs, |rhs_column| {
+        bicgstab_ildl0_solve_with_factorization(
+            matrix,
+            rhs_column,
+            tolerance,
+            max_iterations,
+            factorization,
+        )
+    })
+}
+
+/// Solve sparse linear systems `A X = B` with ILU(0)-preconditioned GMRES.
+///
+/// Uses a precomputed factorization and solves each right-hand side column independently.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn gmres_ilu0_solve_multiple_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array2<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILU0Factorization,
+) -> Result<Array2<f64>, SparseError> {
+    solve_multiple_rhs_with_solver(matrix, rhs, |rhs_column| {
+        gmres_ilu0_solve_with_factorization(
+            matrix,
+            rhs_column,
+            tolerance,
+            max_iterations,
+            factorization,
+        )
+    })
+}
+
+/// Solve sparse linear systems `A X = B` with ILUT-preconditioned GMRES.
+///
+/// Uses a precomputed factorization and solves each right-hand side column independently.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn gmres_ilut_solve_multiple_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array2<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILUTFactorization,
+) -> Result<Array2<f64>, SparseError> {
+    solve_multiple_rhs_with_solver(matrix, rhs, |rhs_column| {
+        gmres_ilut_solve_with_factorization(
+            matrix,
+            rhs_column,
+            tolerance,
+            max_iterations,
+            factorization,
+        )
+    })
+}
+
+/// Solve sparse linear systems `A X = B` with ILDL(0)-preconditioned GMRES.
+///
+/// Uses a precomputed factorization and solves each right-hand side column independently.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn gmres_ildl0_solve_multiple_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array2<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILDL0Factorization,
+) -> Result<Array2<f64>, SparseError> {
+    solve_multiple_rhs_with_solver(matrix, rhs, |rhs_column| {
+        gmres_ildl0_solve_with_factorization(
+            matrix,
+            rhs_column,
+            tolerance,
+            max_iterations,
+            factorization,
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::{Array2, arr1};
@@ -2115,6 +2737,16 @@ mod tests {
         // [0 1 2]
         CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
             4.0, 1.0, 1.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap()
+    }
+
+    fn symmetric_indefinite_matrix() -> CsrMatrix {
+        // [4 1 0]
+        // [1 0 1]
+        // [0 1 3]
+        CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 1.0, 0.0, 1.0, 1.0, 3.0,
         ])
         .unwrap()
     }
@@ -2387,6 +3019,47 @@ mod tests {
     }
 
     #[test]
+    fn ildl0_factorization_reconstructs_symmetric_indefinite_matrix() {
+        let matrix = symmetric_indefinite_matrix();
+        let factorization = ildl0_factor(&matrix).unwrap();
+
+        let dense_l = csr_to_dense(&factorization.l);
+        let mut dense_ld = dense_l.clone();
+        for row in 0..dense_ld.nrows() {
+            for col in 0..dense_ld.ncols() {
+                dense_ld[[row, col]] *= factorization.d[col];
+            }
+        }
+        let reconstructed = dense_ld.dot(&dense_l.t());
+        let expected = csr_to_dense(&matrix);
+
+        for row in 0..matrix.nrows {
+            for col in 0..matrix.ncols {
+                assert!((reconstructed[[row, col]] - expected[[row, col]]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn apply_ildl0_preconditioner_rejects_bad_dimensions() {
+        let matrix = symmetric_indefinite_matrix();
+        let factorization = ildl0_factor(&matrix).unwrap();
+        let rhs = arr1(&[1.0_f64, 2.0]);
+        let result = apply_ildl0_preconditioner(&factorization, &rhs);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn ildl0_factorization_rejects_nonsymmetric_input() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let result = ildl0_factor(&matrix);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
     fn pcg_ic0_solves_spd_system() {
         let matrix = toy_matrix();
         let rhs = arr1(&[1.0_f64, 2.0, 3.0]);
@@ -2480,6 +3153,33 @@ mod tests {
     }
 
     #[test]
+    fn bicgstab_ildl0_solves_symmetric_indefinite_system() {
+        let matrix = symmetric_indefinite_matrix();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution = bicgstab_ildl0_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn bicgstab_ildl0_with_factorization_matches_direct() {
+        let matrix = symmetric_indefinite_matrix();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let factorization = ildl0_factor(&matrix).unwrap();
+
+        let direct = bicgstab_ildl0_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
+        let reused =
+            bicgstab_ildl0_solve_with_factorization(&matrix, &rhs, 1e-10, 5000, &factorization)
+                .unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn gmres_ilu0_solves_nonsymmetric_system() {
         let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
             4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
@@ -2544,6 +3244,32 @@ mod tests {
     }
 
     #[test]
+    fn gmres_ildl0_solves_symmetric_indefinite_system() {
+        let matrix = symmetric_indefinite_matrix();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution = gmres_ildl0_solve(&matrix, &rhs, 1e-10, 32).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn gmres_ildl0_with_factorization_matches_direct() {
+        let matrix = symmetric_indefinite_matrix();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let factorization = ildl0_factor(&matrix).unwrap();
+
+        let direct = gmres_ildl0_solve(&matrix, &rhs, 1e-10, 32).unwrap();
+        let reused =
+            gmres_ildl0_solve_with_factorization(&matrix, &rhs, 1e-10, 32, &factorization).unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn gmres_ilut_with_config_solves_nonsymmetric_system() {
         let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
             4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
@@ -2589,6 +3315,195 @@ mod tests {
         let matrix = toy_matrix();
         let rhs = arr1(&[1.0_f64, 2.0]);
         let result = gmres_ilu0_solve(&matrix, &rhs, 1e-8, 10);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn gmres_ildl0_rejects_dimension_mismatch() {
+        let matrix = toy_matrix();
+        let rhs = arr1(&[1.0_f64, 2.0]);
+        let result = gmres_ildl0_solve(&matrix, &rhs, 1e-8, 10);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn bicgstab_ilu0_multi_rhs_matches_single_column_reuse() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, -2.0, 0.5, 3.0, -1.0]).unwrap();
+        let factorization = ilu0_factor(&matrix).unwrap();
+        let multi = bicgstab_ilu0_solve_multiple_with_factorization(
+            &matrix,
+            &rhs,
+            1e-10,
+            5000,
+            &factorization,
+        )
+        .unwrap();
+
+        for col in 0..rhs.ncols() {
+            let single = bicgstab_ilu0_solve_with_factorization(
+                &matrix,
+                &rhs.column(col).to_owned(),
+                1e-10,
+                5000,
+                &factorization,
+            )
+            .unwrap();
+            for row in 0..rhs.nrows() {
+                assert!((multi[[row, col]] - single[row]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn bicgstab_ilut_multi_rhs_matches_single_column_reuse() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = Array2::from_shape_vec((3, 2), vec![1.0, -1.0, -2.0, 2.0, 3.0, 0.0]).unwrap();
+        let factorization = ilut_factor(&matrix, 0.0, 8).unwrap();
+        let multi = bicgstab_ilut_solve_multiple_with_factorization(
+            &matrix,
+            &rhs,
+            1e-10,
+            5000,
+            &factorization,
+        )
+        .unwrap();
+
+        for col in 0..rhs.ncols() {
+            let single = bicgstab_ilut_solve_with_factorization(
+                &matrix,
+                &rhs.column(col).to_owned(),
+                1e-10,
+                5000,
+                &factorization,
+            )
+            .unwrap();
+            for row in 0..rhs.nrows() {
+                assert!((multi[[row, col]] - single[row]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn bicgstab_ildl0_multi_rhs_matches_single_column_reuse() {
+        let matrix = symmetric_indefinite_matrix();
+        let rhs = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, -2.0, 1.5, 3.0, -1.0]).unwrap();
+        let factorization = ildl0_factor(&matrix).unwrap();
+        let multi = bicgstab_ildl0_solve_multiple_with_factorization(
+            &matrix,
+            &rhs,
+            1e-10,
+            5000,
+            &factorization,
+        )
+        .unwrap();
+
+        for col in 0..rhs.ncols() {
+            let single = bicgstab_ildl0_solve_with_factorization(
+                &matrix,
+                &rhs.column(col).to_owned(),
+                1e-10,
+                5000,
+                &factorization,
+            )
+            .unwrap();
+            for row in 0..rhs.nrows() {
+                assert!((multi[[row, col]] - single[row]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn gmres_ilu0_multi_rhs_matches_single_column_reuse() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, -2.0, 0.5, 3.0, -1.0]).unwrap();
+        let factorization = ilu0_factor(&matrix).unwrap();
+        let multi =
+            gmres_ilu0_solve_multiple_with_factorization(&matrix, &rhs, 1e-10, 32, &factorization)
+                .unwrap();
+
+        for col in 0..rhs.ncols() {
+            let single = gmres_ilu0_solve_with_factorization(
+                &matrix,
+                &rhs.column(col).to_owned(),
+                1e-10,
+                32,
+                &factorization,
+            )
+            .unwrap();
+            for row in 0..rhs.nrows() {
+                assert!((multi[[row, col]] - single[row]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn gmres_ilut_multi_rhs_matches_single_column_reuse() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = Array2::from_shape_vec((3, 2), vec![1.0, -1.0, -2.0, 2.0, 3.0, 0.0]).unwrap();
+        let factorization = ilut_factor(&matrix, 0.0, 8).unwrap();
+        let multi =
+            gmres_ilut_solve_multiple_with_factorization(&matrix, &rhs, 1e-10, 32, &factorization)
+                .unwrap();
+
+        for col in 0..rhs.ncols() {
+            let single = gmres_ilut_solve_with_factorization(
+                &matrix,
+                &rhs.column(col).to_owned(),
+                1e-10,
+                32,
+                &factorization,
+            )
+            .unwrap();
+            for row in 0..rhs.nrows() {
+                assert!((multi[[row, col]] - single[row]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn gmres_ildl0_multi_rhs_matches_single_column_reuse() {
+        let matrix = symmetric_indefinite_matrix();
+        let rhs = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, -2.0, 1.5, 3.0, -1.0]).unwrap();
+        let factorization = ildl0_factor(&matrix).unwrap();
+        let multi =
+            gmres_ildl0_solve_multiple_with_factorization(&matrix, &rhs, 1e-10, 32, &factorization)
+                .unwrap();
+
+        for col in 0..rhs.ncols() {
+            let single = gmres_ildl0_solve_with_factorization(
+                &matrix,
+                &rhs.column(col).to_owned(),
+                1e-10,
+                32,
+                &factorization,
+            )
+            .unwrap();
+            for row in 0..rhs.nrows() {
+                assert!((multi[[row, col]] - single[row]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn multi_rhs_rejects_dimension_mismatch() {
+        let matrix = toy_matrix();
+        let rhs = Array2::zeros((2, 2));
+        let factorization = ilu0_factor(&matrix).unwrap();
+        let result =
+            gmres_ilu0_solve_multiple_with_factorization(&matrix, &rhs, 1e-8, 10, &factorization);
         assert!(matches!(result, Err(SparseError::DimensionMismatch)));
     }
 }

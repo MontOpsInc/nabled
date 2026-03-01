@@ -1,6 +1,7 @@
 //! Tensor and cube primitives over ndarray higher-rank arrays.
 
 use std::fmt;
+use std::ops::{AddAssign, Mul};
 
 use ndarray::{
     Array2, Array3, ArrayD, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2, ArrayViewMut3, Axis,
@@ -77,6 +78,187 @@ fn validate_tensor_nd_non_empty_complex(
     if tensor.ndim() == 0 {
         return Err(TensorError::DimensionMismatch);
     }
+    Ok(())
+}
+
+fn validate_permutation(ndim: usize, permutation: &[usize]) -> bool {
+    if permutation.len() != ndim {
+        return false;
+    }
+
+    let mut seen = vec![false; ndim];
+    for &axis in permutation {
+        if axis >= ndim || seen[axis] {
+            return false;
+        }
+        seen[axis] = true;
+    }
+
+    true
+}
+
+fn validate_axes(ndim: usize, axes: &[usize]) -> bool {
+    let mut seen = vec![false; ndim];
+    for &axis in axes {
+        if axis >= ndim || seen[axis] {
+            return false;
+        }
+        seen[axis] = true;
+    }
+    true
+}
+
+fn uncontracted_axes(ndim: usize, contracted: &[usize]) -> Vec<usize> {
+    let mut is_contracted = vec![false; ndim];
+    for &axis in contracted {
+        is_contracted[axis] = true;
+    }
+
+    (0..ndim).filter(|axis| !is_contracted[*axis]).collect()
+}
+
+fn shape_product(shape: &[usize]) -> usize { shape.iter().copied().product::<usize>().max(1) }
+
+fn contract_view_into_impl<T>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+    output: &mut ArrayD<T>,
+) -> Result<(), TensorError>
+where
+    T: Copy + Default + AddAssign + Mul<Output = T>,
+{
+    if left_axes.len() != right_axes.len() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if !validate_axes(left.ndim(), left_axes) || !validate_axes(right.ndim(), right_axes) {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    for (&left_axis, &right_axis) in left_axes.iter().zip(right_axes.iter()) {
+        if left.shape()[left_axis] != right.shape()[right_axis] {
+            return Err(TensorError::DimensionMismatch);
+        }
+    }
+
+    let left_free_axes = uncontracted_axes(left.ndim(), left_axes);
+    let right_free_axes = uncontracted_axes(right.ndim(), right_axes);
+
+    let mut expected_shape =
+        left_free_axes.iter().map(|axis| left.shape()[*axis]).collect::<Vec<_>>();
+    expected_shape.extend(right_free_axes.iter().map(|axis| right.shape()[*axis]));
+    if output.shape() != expected_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut left_order = left_free_axes.clone();
+    left_order.extend_from_slice(left_axes);
+    let mut right_order = right_axes.to_vec();
+    right_order.extend_from_slice(&right_free_axes);
+
+    let left_outer =
+        shape_product(&left_free_axes.iter().map(|axis| left.shape()[*axis]).collect::<Vec<_>>());
+    let right_outer =
+        shape_product(&right_free_axes.iter().map(|axis| right.shape()[*axis]).collect::<Vec<_>>());
+    let contract_size =
+        shape_product(&left_axes.iter().map(|axis| left.shape()[*axis]).collect::<Vec<_>>());
+
+    let left_width = if left_axes.is_empty() { 1 } else { contract_size };
+    let right_height = if right_axes.is_empty() { 1 } else { contract_size };
+
+    let left_permuted = left.view().permuted_axes(left_order).to_owned();
+    let right_permuted = right.view().permuted_axes(right_order).to_owned();
+    let left_standard = left_permuted.as_standard_layout().to_owned();
+    let right_standard = right_permuted.as_standard_layout().to_owned();
+
+    let left_2d = left_standard
+        .view()
+        .into_shape_with_order((left_outer, left_width))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+    let right_2d = right_standard
+        .view()
+        .into_shape_with_order((right_height, right_outer))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+
+    let mut output_2d = output
+        .view_mut()
+        .into_shape_with_order((left_outer, right_outer))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+    output_2d.fill(T::default());
+
+    for i in 0..left_outer {
+        for k in 0..left_width {
+            let lhs = left_2d[[i, k]];
+            for j in 0..right_outer {
+                output_2d[[i, j]] += lhs * right_2d[[k, j]];
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn batched_matmul_last_two_view_into_impl<T>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
+    output: &mut ArrayD<T>,
+) -> Result<(), TensorError>
+where
+    T: Copy + Default + AddAssign + Mul<Output = T>,
+{
+    if left.ndim() < 2 || right.ndim() < 2 || left.ndim() != right.ndim() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let batch_ndim = left.ndim() - 2;
+    if left.shape()[..batch_ndim] != right.shape()[..batch_ndim] {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let rows = left.shape()[left.ndim() - 2];
+    let inner = left.shape()[left.ndim() - 1];
+    let inner_rhs = right.shape()[right.ndim() - 2];
+    let cols = right.shape()[right.ndim() - 1];
+    if inner != inner_rhs {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut expected_shape = left.shape()[..batch_ndim].to_vec();
+    expected_shape.push(rows);
+    expected_shape.push(cols);
+    if output.shape() != expected_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let batches = shape_product(&left.shape()[..batch_ndim]);
+    let left_standard = left.as_standard_layout().to_owned();
+    let right_standard = right.as_standard_layout().to_owned();
+    let left_3d = left_standard
+        .view()
+        .into_shape_with_order((batches, rows, inner))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+    let right_3d = right_standard
+        .view()
+        .into_shape_with_order((batches, inner, cols))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+    let mut output_3d = output
+        .view_mut()
+        .into_shape_with_order((batches, rows, cols))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+    output_3d.fill(T::default());
+
+    for batch in 0..batches {
+        for row in 0..rows {
+            for k in 0..inner {
+                let lhs = left_3d[[batch, row, k]];
+                for col in 0..cols {
+                    output_3d[[batch, row, col]] += lhs * right_3d[[batch, k, col]];
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -490,6 +672,143 @@ pub fn batched_dot_last_axis(
     Ok(output)
 }
 
+/// Permute tensor axes using an explicit axis ordering.
+///
+/// # Errors
+/// Returns an error if the tensor is empty, has zero dimensions, or permutation is invalid.
+pub fn permute_axes(
+    tensor: &ArrayD<f64>,
+    permutation: &[usize],
+) -> Result<ArrayD<f64>, TensorError> {
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty(&tensor_view)?;
+    if !validate_permutation(tensor_view.ndim(), permutation) {
+        return Err(TensorError::DimensionMismatch);
+    }
+    Ok(tensor_view.permuted_axes(permutation.to_vec()).to_owned())
+}
+
+/// Contract two tensors along explicit axis sets.
+///
+/// Output shape is:
+/// - uncontracted axes of `left` (in original order), followed by
+/// - uncontracted axes of `right` (in original order).
+///
+/// # Errors
+/// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
+pub fn contract_axes(
+    left: &ArrayD<f64>,
+    right: &ArrayD<f64>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+) -> Result<ArrayD<f64>, TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+
+    if left_axes.len() != right_axes.len() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if !validate_axes(left_view.ndim(), left_axes) || !validate_axes(right_view.ndim(), right_axes)
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let left_free_axes = uncontracted_axes(left_view.ndim(), left_axes);
+    let right_free_axes = uncontracted_axes(right_view.ndim(), right_axes);
+    let mut output_shape =
+        left_free_axes.iter().map(|axis| left_view.shape()[*axis]).collect::<Vec<_>>();
+    output_shape.extend(right_free_axes.iter().map(|axis| right_view.shape()[*axis]));
+    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, &mut output)?;
+    Ok(output)
+}
+
+/// Contract two tensors along explicit axis sets into `output`.
+///
+/// Output shape must match:
+/// - uncontracted axes of `left` (in original order), followed by
+/// - uncontracted axes of `right` (in original order).
+///
+/// # Errors
+/// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
+pub fn contract_axes_into(
+    left: &ArrayD<f64>,
+    right: &ArrayD<f64>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+    output: &mut ArrayD<f64>,
+) -> Result<(), TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, output)
+}
+
+/// Perform N-D batched matrix multiplication over the last two axes.
+///
+/// Inputs:
+/// - `left`: `[..., m, k]`
+/// - `right`: `[..., k, n]`
+///
+/// Output:
+/// - `[..., m, n]`
+///
+/// # Errors
+/// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
+pub fn batched_matmul_last_two(
+    left: &ArrayD<f64>,
+    right: &ArrayD<f64>,
+) -> Result<ArrayD<f64>, TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    if left_view.ndim() < 2 || right_view.ndim() < 2 {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let batch_ndim = left_view.ndim() - 2;
+    if left_view.ndim() != right_view.ndim()
+        || left_view.shape()[..batch_ndim] != right_view.shape()[..batch_ndim]
+        || left_view.shape()[left_view.ndim() - 1] != right_view.shape()[right_view.ndim() - 2]
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut output_shape = left_view.shape()[..batch_ndim].to_vec();
+    output_shape.push(left_view.shape()[left_view.ndim() - 2]);
+    output_shape.push(right_view.shape()[right_view.ndim() - 1]);
+    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    batched_matmul_last_two_view_into_impl(&left_view, &right_view, &mut output)?;
+    Ok(output)
+}
+
+/// Perform N-D batched matrix multiplication over the last two axes into `output`.
+///
+/// Inputs:
+/// - `left`: `[..., m, k]`
+/// - `right`: `[..., k, n]`
+///
+/// Output:
+/// - `[..., m, n]`
+///
+/// # Errors
+/// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
+pub fn batched_matmul_last_two_into(
+    left: &ArrayD<f64>,
+    right: &ArrayD<f64>,
+    output: &mut ArrayD<f64>,
+) -> Result<(), TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
+}
+
 /// Reduce a complex tensor along its last axis by summation.
 ///
 /// # Errors
@@ -577,6 +896,143 @@ pub fn batched_dot_last_axis_complex(
         *out_value = dot;
     }
     Ok(output)
+}
+
+/// Permute complex tensor axes using an explicit axis ordering.
+///
+/// # Errors
+/// Returns an error if the tensor is empty, has zero dimensions, or permutation is invalid.
+pub fn permute_axes_complex(
+    tensor: &ArrayD<Complex64>,
+    permutation: &[usize],
+) -> Result<ArrayD<Complex64>, TensorError> {
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty_complex(&tensor_view)?;
+    if !validate_permutation(tensor_view.ndim(), permutation) {
+        return Err(TensorError::DimensionMismatch);
+    }
+    Ok(tensor_view.permuted_axes(permutation.to_vec()).to_owned())
+}
+
+/// Contract two complex tensors along explicit axis sets.
+///
+/// Output shape is:
+/// - uncontracted axes of `left` (in original order), followed by
+/// - uncontracted axes of `right` (in original order).
+///
+/// # Errors
+/// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
+pub fn contract_axes_complex(
+    left: &ArrayD<Complex64>,
+    right: &ArrayD<Complex64>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+) -> Result<ArrayD<Complex64>, TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+
+    if left_axes.len() != right_axes.len() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if !validate_axes(left_view.ndim(), left_axes) || !validate_axes(right_view.ndim(), right_axes)
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let left_free_axes = uncontracted_axes(left_view.ndim(), left_axes);
+    let right_free_axes = uncontracted_axes(right_view.ndim(), right_axes);
+    let mut output_shape =
+        left_free_axes.iter().map(|axis| left_view.shape()[*axis]).collect::<Vec<_>>();
+    output_shape.extend(right_free_axes.iter().map(|axis| right_view.shape()[*axis]));
+    let mut output = ArrayD::<Complex64>::zeros(IxDyn(&output_shape));
+    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, &mut output)?;
+    Ok(output)
+}
+
+/// Contract two complex tensors along explicit axis sets into `output`.
+///
+/// Output shape must match:
+/// - uncontracted axes of `left` (in original order), followed by
+/// - uncontracted axes of `right` (in original order).
+///
+/// # Errors
+/// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
+pub fn contract_axes_complex_into(
+    left: &ArrayD<Complex64>,
+    right: &ArrayD<Complex64>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+    output: &mut ArrayD<Complex64>,
+) -> Result<(), TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, output)
+}
+
+/// Perform N-D batched complex matrix multiplication over the last two axes.
+///
+/// Inputs:
+/// - `left`: `[..., m, k]`
+/// - `right`: `[..., k, n]`
+///
+/// Output:
+/// - `[..., m, n]`
+///
+/// # Errors
+/// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
+pub fn batched_matmul_last_two_complex(
+    left: &ArrayD<Complex64>,
+    right: &ArrayD<Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+    if left_view.ndim() < 2 || right_view.ndim() < 2 {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let batch_ndim = left_view.ndim() - 2;
+    if left_view.ndim() != right_view.ndim()
+        || left_view.shape()[..batch_ndim] != right_view.shape()[..batch_ndim]
+        || left_view.shape()[left_view.ndim() - 1] != right_view.shape()[right_view.ndim() - 2]
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut output_shape = left_view.shape()[..batch_ndim].to_vec();
+    output_shape.push(left_view.shape()[left_view.ndim() - 2]);
+    output_shape.push(right_view.shape()[right_view.ndim() - 1]);
+    let mut output = ArrayD::<Complex64>::zeros(IxDyn(&output_shape));
+    batched_matmul_last_two_view_into_impl(&left_view, &right_view, &mut output)?;
+    Ok(output)
+}
+
+/// Perform N-D batched complex matrix multiplication over the last two axes into `output`.
+///
+/// Inputs:
+/// - `left`: `[..., m, k]`
+/// - `right`: `[..., k, n]`
+///
+/// Output:
+/// - `[..., m, n]`
+///
+/// # Errors
+/// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
+pub fn batched_matmul_last_two_complex_into(
+    left: &ArrayD<Complex64>,
+    right: &ArrayD<Complex64>,
+    output: &mut ArrayD<Complex64>,
+) -> Result<(), TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+    batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
 }
 
 #[cfg(test)]
@@ -816,6 +1272,134 @@ mod tests {
     }
 
     #[test]
+    fn permute_axes_reorders_shape_and_values() {
+        let tensor =
+            ArrayD::from_shape_vec(IxDyn(&[2, 3, 4]), (0..24).map(f64::from).collect()).unwrap();
+        let permuted = permute_axes(&tensor, &[1, 0, 2]).unwrap();
+        assert_eq!(permuted.shape(), &[3, 2, 4]);
+        assert!((permuted[[2, 1, 3]] - tensor[[1, 2, 3]]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn contract_axes_matches_matrix_multiply() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 3]), vec![
+            1.0, 2.0, 3.0, //
+            4.0, 5.0, 6.0,
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[3, 2]), vec![
+            7.0, 8.0, //
+            9.0, 10.0, //
+            11.0, 12.0,
+        ])
+        .unwrap();
+
+        let contracted = contract_axes(&left, &right, &[1], &[0]).unwrap();
+        assert_eq!(contracted.shape(), &[2, 2]);
+        assert!((contracted[[0, 0]] - 58.0).abs() < 1e-12);
+        assert!((contracted[[0, 1]] - 64.0).abs() < 1e-12);
+        assert!((contracted[[1, 0]] - 139.0).abs() < 1e-12);
+        assert!((contracted[[1, 1]] - 154.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn contract_axes_into_matches_allocating_path() {
+        let left =
+            ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), (0..12).map(f64::from).collect()).unwrap();
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 4]),
+            (0..24).map(|value| f64::from(value) * 0.5).collect(),
+        )
+        .unwrap();
+
+        let allocating = contract_axes(&left, &right, &[2], &[1]).unwrap();
+        let mut into = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 2, 4]));
+        contract_axes_into(&left, &right, &[2], &[1], &mut into).unwrap();
+
+        assert_eq!(allocating.shape(), into.shape());
+        for (lhs, rhs) in allocating.iter().zip(into.iter()) {
+            assert!((lhs - rhs).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn batched_matmul_last_two_matches_cube_matmat() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
+            1.0, 2.0, 0.0, 0.0, 1.0, 1.0, //
+            2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
+            1.0, 0.0, 2.0, 1.0, 1.0, 3.0, //
+            0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+        ])
+        .unwrap();
+
+        let nd_output = batched_matmul_last_two(&left, &right).unwrap();
+        let cube_output = cube_matmat(
+            &left.clone().into_dimensionality().unwrap(),
+            &right.clone().into_dimensionality().unwrap(),
+        )
+        .unwrap()
+        .into_dyn();
+
+        for (lhs, rhs) in nd_output.iter().zip(cube_output.iter()) {
+            assert!((lhs - rhs).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn batched_matmul_last_two_into_matches_allocating_path() {
+        let left =
+            ArrayD::from_shape_vec(IxDyn(&[2, 2, 2, 3]), (0..24).map(f64::from).collect()).unwrap();
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 3, 2]),
+            (0..24).map(|value| f64::from(value) * 0.25).collect(),
+        )
+        .unwrap();
+
+        let allocating = batched_matmul_last_two(&left, &right).unwrap();
+        let mut into = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 2, 2]));
+        batched_matmul_last_two_into(&left, &right, &mut into).unwrap();
+
+        for (lhs, rhs) in allocating.iter().zip(into.iter()) {
+            assert!((lhs - rhs).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn complex_contract_and_batched_matmul_paths_work() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, -1.0),
+            Complex64::new(1.0, 2.0),
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(-1.0, 1.0),
+        ])
+        .unwrap();
+
+        let contract = contract_axes_complex(&left, &right, &[1], &[0]).unwrap();
+        assert_eq!(contract.shape(), &[2, 2]);
+
+        let left_batch = left.clone().into_shape_with_order(IxDyn(&[1, 2, 2])).unwrap();
+        let right_batch = right.clone().into_shape_with_order(IxDyn(&[1, 2, 2])).unwrap();
+        let matmul = batched_matmul_last_two_complex(&left_batch, &right_batch).unwrap();
+        assert_eq!(matmul.shape(), &[1, 2, 2]);
+
+        let mut into = ArrayD::<Complex64>::zeros(IxDyn(&[1, 2, 2]));
+        batched_matmul_last_two_complex_into(&left_batch, &right_batch, &mut into).unwrap();
+        for (lhs, rhs) in matmul.iter().zip(into.iter()) {
+            assert!((*lhs - *rhs).norm() < 1e-12);
+        }
+    }
+
+    #[test]
     fn arrayd_ops_reject_invalid_dimensions() {
         let scalar = ArrayD::from_shape_vec(IxDyn(&[]), vec![1.0]).unwrap();
         assert!(matches!(sum_last_axis(&scalar), Err(TensorError::DimensionMismatch)));
@@ -826,5 +1410,15 @@ mod tests {
             batched_dot_last_axis(&left, &right),
             Err(TensorError::DimensionMismatch)
         ));
+
+        let bad_permutation = permute_axes(&left, &[0, 0, 1]);
+        assert!(matches!(bad_permutation, Err(TensorError::DimensionMismatch)));
+
+        let bad_contract = contract_axes(&left, &right, &[2], &[1]);
+        assert!(matches!(bad_contract, Err(TensorError::DimensionMismatch)));
+
+        let mut bad_output = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 3]));
+        let matmul_into = batched_matmul_last_two_into(&left, &left, &mut bad_output);
+        assert!(matches!(matmul_into, Err(TensorError::DimensionMismatch)));
     }
 }

@@ -52,6 +52,8 @@ Workspace migration for library domains is complete.
 44. Sparse iterative breadth now also includes ILU(0)-preconditioned GMRES (`gmres_ilu0_solve` and reuse variant), with parity/error tests and benchmark visibility for setup-vs-solve paths.
 45. Copy-elision/performance-contract audit (`N-061`) is complete: remaining avoidable algorithm-internal owned materializations were removed in iterative/QR/SVD paths, and unavoidable allocations are now explicitly documented in `docs/PERFORMANCE_CONTRACTS.md`.
 46. Complex parity across major algorithms is now complete: matrix primitives and orthogonalization gained complex APIs, iterative solvers gained complex CG/GMRES, and tensor gained complex cube and last-axis tensor operations with parity tests.
+47. Sparse factorization depth now includes ILDL(0) and ILDL0-preconditioned GMRES/BiCGSTAB (direct + factorization-reuse APIs), with unit tests and sparse benchmark coverage.
+48. Tensor higher-rank algebra baseline now includes axis permutation, explicit-axis contraction, and N-D batched last-two matmul across real/complex APIs, with unit tests and tensor benchmark coverage.
 
 ## Current Code Ownership
 
@@ -89,7 +91,7 @@ Workspace migration for library domains is complete.
 Harden workspace contracts and release readiness:
 
 1. Expand sparse depth from current ILU(0)+IC(0)+ILUT baseline into broader factorization-grade sparse workflows.
-2. Expand tensor beyond current last-axis `ArrayD` baseline and advance accelerator from CPU parallel baseline toward concrete GPU/distributed kernels.
+2. Expand tensor beyond the new contraction/matmul baseline and advance accelerator from CPU parallel baseline toward concrete GPU/distributed kernels.
 3. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration
