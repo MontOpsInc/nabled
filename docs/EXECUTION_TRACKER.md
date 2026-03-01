@@ -66,6 +66,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 2. `N-023` (P0): Add competitor benchmark baselines for schur/sylvester domains where practical.
 3. `N-024` (P1): Continue complex parity expansion into additional decomposition/solver domains.
 4. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
+5. `N-026` (P0): Complete allocation-transparency pass for `*_view`/convenience APIs (document copies now; remove hidden copies where feasible).
 
 ## Needed
 

@@ -14,6 +14,7 @@
 10. No legacy/backward-compatibility shims for unreleased APIs.
 11. Decomposition-style APIs use concise domain naming (for example, `svd::decompose`).
 12. Performance-critical kernels expose explicit allocation-control APIs (`*_into`) and optional reusable workspace types.
+13. View/convenience APIs must not hide heap allocations without explicit rustdoc disclosure.
 
 ## API Purity Model
 

@@ -66,7 +66,8 @@ Harden workspace contracts and release readiness:
 1. Expand complex-number parity into additional dense/sparse solver domains beyond the current set.
 2. Add dedicated benchmark suites for currently unbenchmarked domains (notably polar and orthogonalization).
 3. Broaden competitor baseline coverage where practical (next: schur/sylvester domains).
-4. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
+4. Complete allocation-transparency cleanup for `*_view` and other convenience wrappers.
+5. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration
 
