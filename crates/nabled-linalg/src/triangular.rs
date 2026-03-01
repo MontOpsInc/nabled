@@ -1,7 +1,6 @@
 //! Ndarray-native triangular solve kernels.
 
 use nabled_core::errors::ShapeError;
-use nabled_core::validation::validate_square_system;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 use num_traits::Float;
@@ -19,14 +18,22 @@ pub enum TriangularError {
 }
 
 fn solve_lower_into_internal<T>(
-    matrix: &Array2<T>,
-    rhs: &Array1<T>,
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
     output: &mut Array1<T>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
 {
-    validate_square_system(matrix, rhs)?;
+    if matrix.is_empty() || rhs.is_empty() {
+        return Err(TriangularError::Shape(ShapeError::EmptyInput));
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(TriangularError::Shape(ShapeError::NotSquare));
+    }
+    if matrix.nrows() != rhs.len() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
     if output.len() != rhs.len() {
         return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
     }
@@ -50,14 +57,22 @@ where
 }
 
 fn solve_upper_into_internal<T>(
-    matrix: &Array2<T>,
-    rhs: &Array1<T>,
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
     output: &mut Array1<T>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
 {
-    validate_square_system(matrix, rhs)?;
+    if matrix.is_empty() || rhs.is_empty() {
+        return Err(TriangularError::Shape(ShapeError::EmptyInput));
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(TriangularError::Shape(ShapeError::NotSquare));
+    }
+    if matrix.nrows() != rhs.len() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
     if output.len() != rhs.len() {
         return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
     }
@@ -81,11 +96,19 @@ where
 }
 
 fn solve_lower_complex_into_internal(
-    matrix: &Array2<Complex64>,
-    rhs: &Array1<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
     output: &mut Array1<Complex64>,
 ) -> Result<(), TriangularError> {
-    validate_square_system(matrix, rhs)?;
+    if matrix.is_empty() || rhs.is_empty() {
+        return Err(TriangularError::Shape(ShapeError::EmptyInput));
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(TriangularError::Shape(ShapeError::NotSquare));
+    }
+    if matrix.nrows() != rhs.len() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
     if output.len() != rhs.len() {
         return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
     }
@@ -109,11 +132,19 @@ fn solve_lower_complex_into_internal(
 }
 
 fn solve_upper_complex_into_internal(
-    matrix: &Array2<Complex64>,
-    rhs: &Array1<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
     output: &mut Array1<Complex64>,
 ) -> Result<(), TriangularError> {
-    validate_square_system(matrix, rhs)?;
+    if matrix.is_empty() || rhs.is_empty() {
+        return Err(TriangularError::Shape(ShapeError::EmptyInput));
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(TriangularError::Shape(ShapeError::NotSquare));
+    }
+    if matrix.nrows() != rhs.len() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
     if output.len() != rhs.len() {
         return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
     }
@@ -145,15 +176,11 @@ where
     T: Float,
 {
     let mut output = Array1::<T>::zeros(rhs.len());
-    solve_lower_into(matrix, rhs, &mut output)?;
+    solve_lower_into_internal(&matrix.view(), &rhs.view(), &mut output)?;
     Ok(output)
 }
 
 /// Solve `Lx = b` with forward substitution from matrix/vector views.
-///
-/// # Performance
-/// This convenience wrapper materializes owned inputs via `to_owned()`
-/// before dispatching to [`solve_lower`].
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
@@ -164,7 +191,9 @@ pub fn solve_lower_view<T>(
 where
     T: Float,
 {
-    solve_lower(&matrix.to_owned(), &rhs.to_owned())
+    let mut output = Array1::<T>::zeros(rhs.len());
+    solve_lower_into_internal(matrix, rhs, &mut output)?;
+    Ok(output)
 }
 
 /// Solve `Lx = b` with forward substitution into `output`.
@@ -179,7 +208,7 @@ pub fn solve_lower_into<T>(
 where
     T: Float,
 {
-    solve_lower_into_internal(matrix, rhs, output)
+    solve_lower_into_internal(&matrix.view(), &rhs.view(), output)
 }
 
 /// Solve `Ux = b` with back substitution.
@@ -191,15 +220,11 @@ where
     T: Float,
 {
     let mut output = Array1::<T>::zeros(rhs.len());
-    solve_upper_into(matrix, rhs, &mut output)?;
+    solve_upper_into_internal(&matrix.view(), &rhs.view(), &mut output)?;
     Ok(output)
 }
 
 /// Solve `Ux = b` with back substitution from matrix/vector views.
-///
-/// # Performance
-/// This convenience wrapper materializes owned inputs via `to_owned()`
-/// before dispatching to [`solve_upper`].
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
@@ -210,7 +235,9 @@ pub fn solve_upper_view<T>(
 where
     T: Float,
 {
-    solve_upper(&matrix.to_owned(), &rhs.to_owned())
+    let mut output = Array1::<T>::zeros(rhs.len());
+    solve_upper_into_internal(matrix, rhs, &mut output)?;
+    Ok(output)
 }
 
 /// Solve `Ux = b` with back substitution into `output`.
@@ -225,7 +252,7 @@ pub fn solve_upper_into<T>(
 where
     T: Float,
 {
-    solve_upper_into_internal(matrix, rhs, output)
+    solve_upper_into_internal(&matrix.view(), &rhs.view(), output)
 }
 
 /// Solve `Lx = b` for complex-valued lower-triangular systems.
@@ -237,15 +264,11 @@ pub fn solve_lower_complex(
     rhs: &Array1<Complex64>,
 ) -> Result<Array1<Complex64>, TriangularError> {
     let mut output = Array1::<Complex64>::zeros(rhs.len());
-    solve_lower_complex_into(matrix, rhs, &mut output)?;
+    solve_lower_complex_into_internal(&matrix.view(), &rhs.view(), &mut output)?;
     Ok(output)
 }
 
 /// Solve `Lx = b` for complex-valued lower-triangular systems from views.
-///
-/// # Performance
-/// This convenience wrapper materializes owned inputs via `to_owned()`
-/// before dispatching to [`solve_lower_complex`].
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
@@ -253,7 +276,9 @@ pub fn solve_lower_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, TriangularError> {
-    solve_lower_complex(&matrix.to_owned(), &rhs.to_owned())
+    let mut output = Array1::<Complex64>::zeros(rhs.len());
+    solve_lower_complex_into_internal(matrix, rhs, &mut output)?;
+    Ok(output)
 }
 
 /// Solve `Lx = b` for complex-valued lower-triangular systems into `output`.
@@ -265,7 +290,7 @@ pub fn solve_lower_complex_into(
     rhs: &Array1<Complex64>,
     output: &mut Array1<Complex64>,
 ) -> Result<(), TriangularError> {
-    solve_lower_complex_into_internal(matrix, rhs, output)
+    solve_lower_complex_into_internal(&matrix.view(), &rhs.view(), output)
 }
 
 /// Solve `Ux = b` for complex-valued upper-triangular systems.
@@ -277,15 +302,11 @@ pub fn solve_upper_complex(
     rhs: &Array1<Complex64>,
 ) -> Result<Array1<Complex64>, TriangularError> {
     let mut output = Array1::<Complex64>::zeros(rhs.len());
-    solve_upper_complex_into(matrix, rhs, &mut output)?;
+    solve_upper_complex_into_internal(&matrix.view(), &rhs.view(), &mut output)?;
     Ok(output)
 }
 
 /// Solve `Ux = b` for complex-valued upper-triangular systems from views.
-///
-/// # Performance
-/// This convenience wrapper materializes owned inputs via `to_owned()`
-/// before dispatching to [`solve_upper_complex`].
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
@@ -293,7 +314,9 @@ pub fn solve_upper_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, TriangularError> {
-    solve_upper_complex(&matrix.to_owned(), &rhs.to_owned())
+    let mut output = Array1::<Complex64>::zeros(rhs.len());
+    solve_upper_complex_into_internal(matrix, rhs, &mut output)?;
+    Ok(output)
 }
 
 /// Solve `Ux = b` for complex-valued upper-triangular systems into `output`.
@@ -305,7 +328,7 @@ pub fn solve_upper_complex_into(
     rhs: &Array1<Complex64>,
     output: &mut Array1<Complex64>,
 ) -> Result<(), TriangularError> {
-    solve_upper_complex_into_internal(matrix, rhs, output)
+    solve_upper_complex_into_internal(&matrix.view(), &rhs.view(), output)
 }
 
 #[cfg(test)]

@@ -8,10 +8,7 @@ use num_complex::Complex64;
 use crate::cholesky;
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::jacobi_eigen_symmetric;
-use crate::internal::{
-    DenseKernelPolicy, is_symmetric, sort_eigenpairs_desc, validate_finite,
-    validate_square_non_empty,
-};
+use crate::internal::{DenseKernelPolicy, sort_eigenpairs_desc};
 #[cfg(not(feature = "openblas-system"))]
 use crate::schur;
 
@@ -77,31 +74,42 @@ impl fmt::Display for EigenError {
 
 impl std::error::Error for EigenError {}
 
-fn map_validation_error(error: &'static str) -> EigenError {
-    match error {
-        "empty" => EigenError::EmptyMatrix,
-        "not_square" => EigenError::NotSquare,
-        "non_finite" => EigenError::NumericalInstability,
-        _ => EigenError::ConvergenceFailed,
+fn validate_symmetric_input(matrix: &ArrayView2<'_, f64>) -> Result<(), EigenError> {
+    if matrix.is_empty() {
+        return Err(EigenError::EmptyMatrix);
     }
-}
-
-fn validate_symmetric_input(matrix: &Array2<f64>) -> Result<(), EigenError> {
-    validate_square_non_empty(matrix).map_err(map_validation_error)?;
-    validate_finite(matrix).map_err(map_validation_error)?;
-    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
-        return Err(EigenError::NotSymmetric);
+    if matrix.nrows() != matrix.ncols() {
+        return Err(EigenError::NotSquare);
+    }
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(EigenError::NumericalInstability);
+    }
+    let tolerance = DenseKernelPolicy::BASE_TOLERANCE;
+    let n = matrix.nrows();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if (matrix[[i, j]] - matrix[[j, i]]).abs() > tolerance {
+                return Err(EigenError::NotSymmetric);
+            }
+        }
     }
     Ok(())
 }
 
-fn validate_nonsymmetric_input(matrix: &Array2<f64>) -> Result<(), EigenError> {
-    validate_square_non_empty(matrix).map_err(map_validation_error)?;
-    validate_finite(matrix).map_err(map_validation_error)?;
+fn validate_nonsymmetric_input(matrix: &ArrayView2<'_, f64>) -> Result<(), EigenError> {
+    if matrix.is_empty() {
+        return Err(EigenError::EmptyMatrix);
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(EigenError::NotSquare);
+    }
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(EigenError::NumericalInstability);
+    }
     Ok(())
 }
 
-fn validate_complex_square_finite(matrix: &Array2<Complex64>) -> Result<(), EigenError> {
+fn validate_complex_square_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), EigenError> {
     if matrix.is_empty() {
         return Err(EigenError::EmptyMatrix);
     }
@@ -115,10 +123,10 @@ fn validate_complex_square_finite(matrix: &Array2<Complex64>) -> Result<(), Eige
 }
 
 #[cfg(not(feature = "openblas-system"))]
-fn symmetric_internal(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError> {
+fn symmetric_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
     validate_symmetric_input(matrix)?;
     let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
-        matrix,
+        &matrix.to_owned(),
         DenseKernelPolicy::BASE_TOLERANCE,
         DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
     )
@@ -128,7 +136,7 @@ fn symmetric_internal(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenE
 }
 
 #[cfg(feature = "openblas-system")]
-fn symmetric_provider(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError> {
+fn symmetric_provider(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
     use ndarray_linalg::{Eigh as _, UPLO};
 
     validate_symmetric_input(matrix)?;
@@ -140,8 +148,8 @@ fn symmetric_provider(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenE
 
 #[cfg(not(feature = "openblas-system"))]
 fn generalized_internal(
-    matrix_a: &Array2<f64>,
-    matrix_b: &Array2<f64>,
+    matrix_a: &ArrayView2<'_, f64>,
+    matrix_b: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
     validate_symmetric_input(matrix_a)?;
     validate_symmetric_input(matrix_b)?;
@@ -149,7 +157,7 @@ fn generalized_internal(
         return Err(EigenError::InvalidDimensions);
     }
 
-    let b_inverse = cholesky::inverse(matrix_b).map_err(|error| match error {
+    let b_inverse = cholesky::inverse_view(matrix_b).map_err(|error| match error {
         cholesky::CholeskyError::NotPositiveDefinite => EigenError::NotPositiveDefinite,
         cholesky::CholeskyError::EmptyMatrix => EigenError::EmptyMatrix,
         cholesky::CholeskyError::NotSquare => EigenError::NotSquare,
@@ -172,8 +180,8 @@ fn generalized_internal(
 
 #[cfg(feature = "openblas-system")]
 fn generalized_provider(
-    matrix_a: &Array2<f64>,
-    matrix_b: &Array2<f64>,
+    matrix_a: &ArrayView2<'_, f64>,
+    matrix_b: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
     validate_symmetric_input(matrix_a)?;
     validate_symmetric_input(matrix_b)?;
@@ -183,7 +191,7 @@ fn generalized_provider(
 
     // Reduce generalized SPD problem A x = lambda B x to a standard symmetric
     // problem via B^{-1}A, while reusing provider-backed Cholesky inverse.
-    let b_inverse = cholesky::inverse(matrix_b).map_err(|error| match error {
+    let b_inverse = cholesky::inverse_view(matrix_b).map_err(|error| match error {
         cholesky::CholeskyError::NotPositiveDefinite => EigenError::NotPositiveDefinite,
         cholesky::CholeskyError::EmptyMatrix => EigenError::EmptyMatrix,
         cholesky::CholeskyError::NotSquare => EigenError::NotSquare,
@@ -191,13 +199,13 @@ fn generalized_provider(
     })?;
     let c = b_inverse.dot(matrix_a);
     let symmetric_c = (&c + &c.t()) * 0.5;
-    let NdarrayEigenResult { eigenvalues, eigenvectors } = symmetric_provider(&symmetric_c)?;
+    let NdarrayEigenResult { eigenvalues, eigenvectors } = symmetric_provider(&symmetric_c.view())?;
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
 #[cfg(not(feature = "openblas-system"))]
 fn nonsymmetric_complex_internal(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
     validate_complex_square_finite(matrix)?;
     let dimension = matrix.nrows();
@@ -239,7 +247,7 @@ fn nonsymmetric_complex_internal(
     }
 
     let decomposition =
-        schur::compute_schur_complex(matrix).map_err(|_| EigenError::ConvergenceFailed)?;
+        schur::compute_schur_complex_view(matrix).map_err(|_| EigenError::ConvergenceFailed)?;
     let mut eigenvalues = Array1::<Complex64>::zeros(dimension);
     for i in 0..dimension {
         eigenvalues[i] = decomposition.t[[i, i]];
@@ -249,7 +257,7 @@ fn nonsymmetric_complex_internal(
 
 #[cfg(feature = "openblas-system")]
 fn nonsymmetric_provider(
-    matrix: &Array2<f64>,
+    matrix: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
     use ndarray_linalg::Eig as _;
 
@@ -261,7 +269,7 @@ fn nonsymmetric_provider(
 
 #[cfg(feature = "openblas-system")]
 fn nonsymmetric_complex_provider(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
     use ndarray_linalg::Eig as _;
 
@@ -276,6 +284,10 @@ fn nonsymmetric_complex_provider(
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
 pub fn symmetric(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError> {
+    symmetric_impl(&matrix.view())
+}
+
+fn symmetric_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
     #[cfg(feature = "openblas-system")]
     {
         symmetric_provider(matrix)
@@ -288,14 +300,10 @@ pub fn symmetric(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError>
 
 /// Compute symmetric eigen decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`symmetric`].
-///
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
 pub fn symmetric_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
-    symmetric(&matrix.to_owned())
+    symmetric_impl(matrix)
 }
 
 /// Compute generalized symmetric eigen decomposition `(A, B)`.
@@ -305,6 +313,13 @@ pub fn symmetric_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult
 pub fn generalized(
     matrix_a: &Array2<f64>,
     matrix_b: &Array2<f64>,
+) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
+    generalized_impl(&matrix_a.view(), &matrix_b.view())
+}
+
+fn generalized_impl(
+    matrix_a: &ArrayView2<'_, f64>,
+    matrix_b: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -318,17 +333,13 @@ pub fn generalized(
 
 /// Compute generalized symmetric eigen decomposition `(A, B)` from matrix views.
 ///
-/// # Performance
-/// This convenience wrapper materializes owned matrices via `to_owned()`
-/// before dispatching to [`generalized`].
-///
 /// # Errors
 /// Returns an error when dimensions are incompatible or `B` is not SPD.
 pub fn generalized_view(
     matrix_a: &ArrayView2<'_, f64>,
     matrix_b: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
-    generalized(&matrix_a.to_owned(), &matrix_b.to_owned())
+    generalized_impl(matrix_a, matrix_b)
 }
 
 /// Compute non-symmetric eigen decomposition via complex Schur reduction.
@@ -336,6 +347,12 @@ pub fn generalized_view(
 /// # Errors
 /// Returns an error for non-square, non-finite, or non-convergent inputs.
 pub fn nonsymmetric(matrix: &Array2<f64>) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    nonsymmetric_impl(&matrix.view())
+}
+
+fn nonsymmetric_impl(
+    matrix: &ArrayView2<'_, f64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
     #[cfg(feature = "openblas-system")]
     {
         nonsymmetric_provider(matrix)
@@ -344,22 +361,18 @@ pub fn nonsymmetric(matrix: &Array2<f64>) -> Result<NdarrayNonsymmetricEigenResu
     {
         validate_nonsymmetric_input(matrix)?;
         let matrix_complex = matrix.mapv(|value| Complex64::new(value, 0.0));
-        nonsymmetric_complex_internal(&matrix_complex)
+        nonsymmetric_complex_internal(&matrix_complex.view())
     }
 }
 
 /// Compute non-symmetric eigen decomposition from a real matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`nonsymmetric`].
 ///
 /// # Errors
 /// Returns an error for non-square, non-finite, or non-convergent inputs.
 pub fn nonsymmetric_view(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
-    nonsymmetric(&matrix.to_owned())
+    nonsymmetric_impl(matrix)
 }
 
 /// Compute non-symmetric eigen decomposition for complex matrices.
@@ -368,6 +381,12 @@ pub fn nonsymmetric_view(
 /// Returns an error for non-square, non-finite, or non-convergent inputs.
 pub fn nonsymmetric_complex(
     matrix: &Array2<Complex64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    nonsymmetric_complex_impl(&matrix.view())
+}
+
+fn nonsymmetric_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -381,16 +400,12 @@ pub fn nonsymmetric_complex(
 
 /// Compute non-symmetric eigen decomposition for complex matrix views.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`nonsymmetric_complex`].
-///
 /// # Errors
 /// Returns an error for non-square, non-finite, or non-convergent inputs.
 pub fn nonsymmetric_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
-    nonsymmetric_complex(&matrix.to_owned())
+    nonsymmetric_complex_impl(matrix)
 }
 
 #[cfg(test)]

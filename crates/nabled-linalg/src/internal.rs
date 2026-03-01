@@ -1,6 +1,8 @@
 //! Internal ndarray-native helpers used across domain modules.
 
-use ndarray::{Array1, Array2};
+#[cfg(not(feature = "openblas-system"))]
+use ndarray::ArrayView1;
+use ndarray::{Array1, Array2, ArrayView2};
 
 pub(crate) const DEFAULT_TOLERANCE: f64 = 1.0e-12;
 pub(crate) type LuDecomposition = (Array2<f64>, Array2<f64>, Vec<usize>, i8);
@@ -73,7 +75,7 @@ pub(crate) fn identity(n: usize) -> Array2<f64> {
     id
 }
 
-pub(crate) fn is_symmetric(matrix: &Array2<f64>, tolerance: f64) -> bool {
+pub(crate) fn is_symmetric(matrix: &ArrayView2<'_, f64>, tolerance: f64) -> bool {
     if matrix.nrows() != matrix.ncols() {
         return false;
     }
@@ -88,13 +90,20 @@ pub(crate) fn is_symmetric(matrix: &Array2<f64>, tolerance: f64) -> bool {
     true
 }
 
-pub(crate) fn lu_decompose(matrix: &Array2<f64>) -> Result<LuDecomposition, &'static str> {
-    validate_square_non_empty(matrix)?;
-    validate_finite(matrix)?;
+pub(crate) fn lu_decompose(matrix: &ArrayView2<'_, f64>) -> Result<LuDecomposition, &'static str> {
+    if matrix.is_empty() {
+        return Err("empty");
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err("not_square");
+    }
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err("non_finite");
+    }
 
     let n = matrix.nrows();
     let mut l = Array2::<f64>::zeros((n, n));
-    let mut u = matrix.clone();
+    let mut u = matrix.to_owned();
     let mut pivots: Vec<usize> = (0..n).collect();
     let mut sign = 1_i8;
 
@@ -150,7 +159,7 @@ pub(crate) fn lu_solve(
     l: &Array2<f64>,
     u: &Array2<f64>,
     pivots: &[usize],
-    rhs: &Array1<f64>,
+    rhs: &ArrayView1<'_, f64>,
 ) -> Result<Array1<f64>, &'static str> {
     let n = l.nrows();
     if rhs.len() != n || u.nrows() != n || u.ncols() != n || l.ncols() != n || pivots.len() != n {
@@ -200,7 +209,7 @@ pub(crate) fn inverse_from_lu(
     for col in 0..n {
         let mut e = Array1::<f64>::zeros(n);
         e[col] = 1.0;
-        let x = lu_solve(l, u, pivots, &e)?;
+        let x = lu_solve(l, u, pivots, &e.view())?;
         for row in 0..n {
             inverse[[row, col]] = x[row];
         }
@@ -209,7 +218,7 @@ pub(crate) fn inverse_from_lu(
 }
 
 pub(crate) fn qr_gram_schmidt(
-    matrix: &Array2<f64>,
+    matrix: &ArrayView2<'_, f64>,
     tolerance: f64,
 ) -> (Array2<f64>, Array2<f64>, usize) {
     let rows = matrix.nrows();
@@ -254,7 +263,7 @@ pub(crate) fn jacobi_eigen_symmetric(
 ) -> Result<(Array1<f64>, Array2<f64>), &'static str> {
     validate_square_non_empty(matrix)?;
     validate_finite(matrix)?;
-    if !is_symmetric(matrix, tolerance.max(DEFAULT_TOLERANCE)) {
+    if !is_symmetric(&matrix.view(), tolerance.max(DEFAULT_TOLERANCE)) {
         return Err("not_symmetric");
     }
 

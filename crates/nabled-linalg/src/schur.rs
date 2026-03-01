@@ -5,7 +5,7 @@ use std::fmt;
 use ndarray::{Array2, ArrayView2};
 use num_complex::Complex64;
 
-use crate::internal::{DenseKernelPolicy, identity, validate_finite, validate_square_non_empty};
+use crate::internal::{DenseKernelPolicy, identity};
 use crate::qr::{self as qr, QRConfig};
 
 /// Error type for Schur decomposition.
@@ -114,7 +114,7 @@ fn off_diagonal_norm_complex(matrix: &Array2<Complex64>) -> f64 {
     sum.sqrt()
 }
 
-fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), SchurError> {
+fn validate_complex_square_non_empty(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SchurError> {
     if matrix.is_empty() {
         return Err(SchurError::EmptyMatrix);
     }
@@ -128,7 +128,7 @@ fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), S
 }
 
 fn validate_output_shapes_complex(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
     output_q: &Array2<Complex64>,
     output_t: &Array2<Complex64>,
 ) -> Result<(), SchurError> {
@@ -150,7 +150,7 @@ fn identity_complex(n: usize) -> Array2<Complex64> {
 }
 
 fn validate_output_shapes(
-    matrix: &Array2<f64>,
+    matrix: &ArrayView2<'_, f64>,
     output_q: &Array2<f64>,
     output_t: &Array2<f64>,
 ) -> Result<(), SchurError> {
@@ -163,21 +163,20 @@ fn validate_output_shapes(
     Ok(())
 }
 
-/// Compute Schur decomposition `A = Q T Q^T`.
-///
-/// # Errors
-/// Returns an error for invalid input or convergence failure.
-pub fn compute_schur(matrix: &Array2<f64>) -> Result<NdarraySchurResult, SchurError> {
-    validate_square_non_empty(matrix).map_err(|error| match error {
-        "empty" => SchurError::EmptyMatrix,
-        "not_square" => SchurError::NotSquare,
-        _ => SchurError::InvalidInput(error.to_string()),
-    })?;
-    validate_finite(matrix).map_err(|_| SchurError::NumericalInstability)?;
+fn compute_schur_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySchurResult, SchurError> {
+    if matrix.is_empty() {
+        return Err(SchurError::EmptyMatrix);
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(SchurError::NotSquare);
+    }
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(SchurError::NumericalInstability);
+    }
 
     let n = matrix.nrows();
     let mut q_total = identity(n);
-    let mut t = matrix.clone();
+    let mut t = matrix.to_owned();
     let config = QRConfig::default();
 
     let mut converged = false;
@@ -198,17 +197,13 @@ pub fn compute_schur(matrix: &Array2<f64>) -> Result<NdarraySchurResult, SchurEr
     Ok(NdarraySchurResult { q: q_total, t })
 }
 
-/// Compute complex Schur decomposition `A = Q T Q^H`.
-///
-/// # Errors
-/// Returns an error for invalid input or convergence failure.
-pub fn compute_schur_complex(
-    matrix: &Array2<Complex64>,
+fn compute_schur_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexSchurResult, SchurError> {
     validate_complex_square_non_empty(matrix)?;
     let n = matrix.nrows();
     let mut q_total = identity_complex(n);
-    let mut t = matrix.clone();
+    let mut t = matrix.to_owned();
     let config = QRConfig::default();
 
     let mut converged = false;
@@ -229,30 +224,40 @@ pub fn compute_schur_complex(
     Ok(NdarrayComplexSchurResult { q: q_total, t })
 }
 
-/// Compute Schur decomposition `A = Q T Q^T` from a matrix view.
+/// Compute Schur decomposition `A = Q T Q^T`.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`compute_schur`].
+/// # Errors
+/// Returns an error for invalid input or convergence failure.
+pub fn compute_schur(matrix: &Array2<f64>) -> Result<NdarraySchurResult, SchurError> {
+    compute_schur_impl(&matrix.view())
+}
+
+/// Compute complex Schur decomposition `A = Q T Q^H`.
+///
+/// # Errors
+/// Returns an error for invalid input or convergence failure.
+pub fn compute_schur_complex(
+    matrix: &Array2<Complex64>,
+) -> Result<NdarrayComplexSchurResult, SchurError> {
+    compute_schur_complex_impl(&matrix.view())
+}
+
+/// Compute Schur decomposition `A = Q T Q^T` from a matrix view.
 ///
 /// # Errors
 /// Returns an error for invalid input or convergence failure.
 pub fn compute_schur_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySchurResult, SchurError> {
-    compute_schur(&matrix.to_owned())
+    compute_schur_impl(matrix)
 }
 
 /// Compute complex Schur decomposition `A = Q T Q^H` from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`compute_schur_complex`].
 ///
 /// # Errors
 /// Returns an error for invalid input or convergence failure.
 pub fn compute_schur_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexSchurResult, SchurError> {
-    compute_schur_complex(&matrix.to_owned())
+    compute_schur_complex_impl(matrix)
 }
 
 /// Compute Schur decomposition into caller-provided outputs.
@@ -283,10 +288,6 @@ pub fn compute_schur_complex_into(
 
 /// Compute Schur decomposition into caller-provided outputs from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`compute_schur_into`].
-///
 /// # Errors
 /// Returns an error for invalid inputs, output shapes, or convergence failure.
 pub fn compute_schur_into_view(
@@ -294,14 +295,14 @@ pub fn compute_schur_into_view(
     output_q: &mut Array2<f64>,
     output_t: &mut Array2<f64>,
 ) -> Result<(), SchurError> {
-    compute_schur_into(&matrix.to_owned(), output_q, output_t)
+    validate_output_shapes(matrix, output_q, output_t)?;
+    let result = compute_schur_impl(matrix)?;
+    output_q.assign(&result.q);
+    output_t.assign(&result.t);
+    Ok(())
 }
 
 /// Compute complex Schur decomposition into caller-provided outputs from a view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`compute_schur_complex_into`].
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shapes, or convergence failure.
@@ -310,7 +311,11 @@ pub fn compute_schur_complex_into_view(
     output_q: &mut Array2<Complex64>,
     output_t: &mut Array2<Complex64>,
 ) -> Result<(), SchurError> {
-    compute_schur_complex_into(&matrix.to_owned(), output_q, output_t)
+    validate_output_shapes_complex(matrix, output_q, output_t)?;
+    let result = compute_schur_complex_impl(matrix)?;
+    output_q.assign(&result.q);
+    output_t.assign(&result.t);
+    Ok(())
 }
 
 /// Compute Schur decomposition into caller-provided outputs using reusable `workspace`.
@@ -323,10 +328,10 @@ pub fn compute_schur_with_workspace_into(
     output_t: &mut Array2<f64>,
     workspace: &mut SchurWorkspace,
 ) -> Result<(), SchurError> {
-    validate_output_shapes(matrix, output_q, output_t)?;
+    validate_output_shapes(&matrix.view(), output_q, output_t)?;
     workspace.ensure_square(matrix.nrows());
 
-    let result = compute_schur(matrix)?;
+    let result = compute_schur_impl(&matrix.view())?;
     workspace.q_scratch.assign(&result.q);
     workspace.t_scratch.assign(&result.t);
     output_q.assign(&workspace.q_scratch);
@@ -344,10 +349,10 @@ pub fn compute_schur_complex_with_workspace_into(
     output_t: &mut Array2<Complex64>,
     workspace: &mut SchurComplexWorkspace,
 ) -> Result<(), SchurError> {
-    validate_output_shapes_complex(matrix, output_q, output_t)?;
+    validate_output_shapes_complex(&matrix.view(), output_q, output_t)?;
     workspace.ensure_square(matrix.nrows());
 
-    let result = compute_schur_complex(matrix)?;
+    let result = compute_schur_complex_impl(&matrix.view())?;
     workspace.q_scratch.assign(&result.q);
     workspace.t_scratch.assign(&result.t);
     output_q.assign(&workspace.q_scratch);

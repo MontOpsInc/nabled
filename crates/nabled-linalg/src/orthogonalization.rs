@@ -4,7 +4,7 @@ use std::fmt;
 
 use ndarray::{Array2, ArrayView2};
 
-use crate::internal::{DEFAULT_TOLERANCE, qr_gram_schmidt, validate_finite};
+use crate::internal::{DEFAULT_TOLERANCE, qr_gram_schmidt};
 
 /// Error type for orthogonalization.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -33,26 +33,28 @@ impl std::error::Error for OrthogonalizationError {}
 /// # Errors
 /// Returns an error for empty or non-finite input.
 pub fn gram_schmidt(matrix: &Array2<f64>) -> Result<Array2<f64>, OrthogonalizationError> {
+    gram_schmidt_impl(&matrix.view())
+}
+
+fn gram_schmidt_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, OrthogonalizationError> {
     if matrix.is_empty() {
         return Err(OrthogonalizationError::EmptyMatrix);
     }
-    validate_finite(matrix).map_err(|_| OrthogonalizationError::NumericalInstability)?;
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(OrthogonalizationError::NumericalInstability);
+    }
     let (q, _, _) = qr_gram_schmidt(matrix, DEFAULT_TOLERANCE);
     Ok(q)
 }
 
 /// Modified Gram-Schmidt orthogonalization from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`gram_schmidt`].
-///
 /// # Errors
 /// Returns an error for empty or non-finite input.
 pub fn gram_schmidt_view(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, OrthogonalizationError> {
-    gram_schmidt(&matrix.to_owned())
+    gram_schmidt_impl(matrix)
 }
 
 /// Classical Gram-Schmidt orthogonalization.
@@ -60,21 +62,17 @@ pub fn gram_schmidt_view(
 /// # Errors
 /// Returns an error for empty or non-finite input.
 pub fn gram_schmidt_classic(matrix: &Array2<f64>) -> Result<Array2<f64>, OrthogonalizationError> {
-    gram_schmidt(matrix)
+    gram_schmidt_impl(&matrix.view())
 }
 
 /// Classical Gram-Schmidt orthogonalization from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`gram_schmidt_classic`].
 ///
 /// # Errors
 /// Returns an error for empty or non-finite input.
 pub fn gram_schmidt_classic_view(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, OrthogonalizationError> {
-    gram_schmidt_classic(&matrix.to_owned())
+    gram_schmidt_impl(matrix)
 }
 
 #[cfg(test)]

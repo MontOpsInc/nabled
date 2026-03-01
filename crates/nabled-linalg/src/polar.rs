@@ -7,7 +7,6 @@ use num_complex::Complex64;
 
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::DenseKernelPolicy;
-use crate::internal::{validate_finite, validate_square_non_empty};
 #[cfg(not(feature = "openblas-system"))]
 use crate::lu;
 use crate::svd;
@@ -56,7 +55,7 @@ impl fmt::Display for PolarError {
 
 impl std::error::Error for PolarError {}
 
-fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), PolarError> {
+fn validate_square_non_empty_view(matrix: &ArrayView2<'_, f64>) -> Result<(), PolarError> {
     if matrix.is_empty() {
         return Err(PolarError::EmptyMatrix);
     }
@@ -66,7 +65,24 @@ fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), P
     Ok(())
 }
 
-fn validate_complex_finite(matrix: &Array2<Complex64>) -> Result<(), PolarError> {
+fn validate_finite_view(matrix: &ArrayView2<'_, f64>) -> Result<(), PolarError> {
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(PolarError::NumericalInstability);
+    }
+    Ok(())
+}
+
+fn validate_complex_square_non_empty(matrix: &ArrayView2<'_, Complex64>) -> Result<(), PolarError> {
+    if matrix.is_empty() {
+        return Err(PolarError::EmptyMatrix);
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(PolarError::NotSquare);
+    }
+    Ok(())
+}
+
+fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), PolarError> {
     if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
         return Err(PolarError::NumericalInstability);
     }
@@ -93,9 +109,9 @@ fn max_abs_diff_complex(left: &Array2<Complex64>, right: &Array2<Complex64>) -> 
 
 #[cfg(not(feature = "openblas-system"))]
 fn compute_polar_complex_internal(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexPolarResult, PolarError> {
-    let mut unitary = matrix.clone();
+    let mut unitary = matrix.to_owned();
     let max_iterations = DenseKernelPolicy::POLAR_MAX_ITERATIONS;
     let tolerance = DenseKernelPolicy::polar_convergence_tolerance();
     let half = Complex64::new(0.5, 0.0);
@@ -134,13 +150,14 @@ fn compute_polar_complex_internal(
 /// # Errors
 /// Returns an error if matrix is invalid or SVD fails.
 pub fn compute_polar(matrix: &Array2<f64>) -> Result<NdarrayPolarResult, PolarError> {
-    validate_square_non_empty(matrix).map_err(|error| match error {
-        "empty" => PolarError::EmptyMatrix,
-        _ => PolarError::NotSquare,
-    })?;
-    validate_finite(matrix).map_err(|_| PolarError::NumericalInstability)?;
+    compute_polar_impl(&matrix.view())
+}
 
-    let svd = svd::decompose(matrix).map_err(|_| PolarError::DecompositionFailed)?;
+fn compute_polar_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarResult, PolarError> {
+    validate_square_non_empty_view(matrix)?;
+    validate_finite_view(matrix)?;
+
+    let svd = svd::decompose_view(matrix).map_err(|_| PolarError::DecompositionFailed)?;
 
     let orthogonal_factor = svd.u.dot(&svd.vt);
 
@@ -151,8 +168,7 @@ pub fn compute_polar(matrix: &Array2<f64>) -> Result<NdarrayPolarResult, PolarEr
         sigma[[i, i]] = svd.singular_values[i];
     }
 
-    let right_vectors = svd.vt.t().to_owned();
-    let psd_factor = right_vectors.dot(&sigma).dot(&svd.vt);
+    let psd_factor = svd.vt.t().dot(&sigma).dot(&svd.vt);
     debug_assert_eq!(psd_factor.nrows(), column_count);
 
     Ok(NdarrayPolarResult { u: orthogonal_factor, p: psd_factor })
@@ -160,14 +176,10 @@ pub fn compute_polar(matrix: &Array2<f64>) -> Result<NdarrayPolarResult, PolarEr
 
 /// Compute polar decomposition using SVD from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`compute_polar`].
-///
 /// # Errors
 /// Returns an error if matrix is invalid or SVD fails.
 pub fn compute_polar_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarResult, PolarError> {
-    compute_polar(&matrix.to_owned())
+    compute_polar_impl(matrix)
 }
 
 /// Compute complex polar decomposition using complex SVD.
@@ -177,11 +189,18 @@ pub fn compute_polar_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarRe
 pub fn compute_polar_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<NdarrayComplexPolarResult, PolarError> {
+    compute_polar_complex_impl(&matrix.view())
+}
+
+fn compute_polar_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayComplexPolarResult, PolarError> {
     validate_complex_square_non_empty(matrix)?;
     validate_complex_finite(matrix)?;
     #[cfg(feature = "openblas-system")]
     {
-        let svd = svd::decompose_complex(matrix).map_err(|_| PolarError::DecompositionFailed)?;
+        let svd =
+            svd::decompose_complex_view(matrix).map_err(|_| PolarError::DecompositionFailed)?;
         let unitary_factor = svd.u.dot(&svd.vt);
 
         let retained_rank = svd.singular_values.len();
@@ -204,16 +223,12 @@ pub fn compute_polar_complex(
 
 /// Compute complex polar decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`compute_polar_complex`].
-///
 /// # Errors
 /// Returns an error if matrix is invalid or complex SVD fails.
 pub fn compute_polar_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexPolarResult, PolarError> {
-    compute_polar_complex(&matrix.to_owned())
+    compute_polar_complex_impl(matrix)
 }
 
 #[cfg(test)]

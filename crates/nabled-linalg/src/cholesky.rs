@@ -7,7 +7,6 @@ use num_complex::Complex64;
 
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::DenseKernelPolicy;
-use crate::internal::{validate_finite, validate_square_non_empty};
 
 /// Result of Cholesky decomposition.
 #[derive(Debug, Clone)]
@@ -54,16 +53,22 @@ impl fmt::Display for CholeskyError {
 
 impl std::error::Error for CholeskyError {}
 
-fn map_validation_error(error: &'static str) -> CholeskyError {
-    match error {
-        "empty" => CholeskyError::EmptyMatrix,
-        "not_square" => CholeskyError::NotSquare,
-        "non_finite" => CholeskyError::NumericalInstability,
-        _ => CholeskyError::InvalidInput(error.to_string()),
+fn validate_square_finite_view(matrix: &ArrayView2<'_, f64>) -> Result<(), CholeskyError> {
+    if matrix.is_empty() {
+        return Err(CholeskyError::EmptyMatrix);
     }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(CholeskyError::NotSquare);
+    }
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(CholeskyError::NumericalInstability);
+    }
+    Ok(())
 }
 
-fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), CholeskyError> {
+fn validate_complex_square_finite_view(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<(), CholeskyError> {
     if matrix.is_empty() {
         return Err(CholeskyError::EmptyMatrix);
     }
@@ -79,9 +84,9 @@ fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), C
 #[cfg(not(feature = "openblas-system"))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
-    validate_complex_square_non_empty(matrix)?;
+    validate_complex_square_finite_view(matrix)?;
 
     let n = matrix.nrows();
     let mut l = Array2::<Complex64>::zeros((n, n));
@@ -114,9 +119,8 @@ fn decompose_complex_internal(
 }
 
 #[cfg(not(feature = "openblas-system"))]
-fn decompose_internal(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
-    validate_square_non_empty(matrix).map_err(map_validation_error)?;
-    validate_finite(matrix).map_err(map_validation_error)?;
+fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
+    validate_square_finite_view(matrix)?;
 
     let n = matrix.nrows();
     let mut l = Array2::<f64>::zeros((n, n));
@@ -147,51 +151,51 @@ fn decompose_internal(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError
 }
 
 #[cfg(feature = "openblas-system")]
-fn decompose_provider(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
     use ndarray_linalg::{Cholesky as _, UPLO};
 
-    validate_square_non_empty(matrix).map_err(map_validation_error)?;
-    validate_finite(matrix).map_err(map_validation_error)?;
+    validate_square_finite_view(matrix)?;
 
     matrix.cholesky(UPLO::Lower).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
 #[cfg(feature = "openblas-system")]
-fn solve_provider(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, CholeskyError> {
+fn solve_provider(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+) -> Result<Array1<f64>, CholeskyError> {
     use ndarray_linalg::SolveC as _;
 
-    validate_square_non_empty(matrix).map_err(map_validation_error)?;
-    validate_finite(matrix).map_err(map_validation_error)?;
+    validate_square_finite_view(matrix)?;
     matrix.solvec(rhs).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
 #[cfg(feature = "openblas-system")]
-fn inverse_provider(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+fn inverse_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
     use ndarray_linalg::InverseC as _;
 
-    validate_square_non_empty(matrix).map_err(map_validation_error)?;
-    validate_finite(matrix).map_err(map_validation_error)?;
+    validate_square_finite_view(matrix)?;
     matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
 #[cfg(feature = "openblas-system")]
 fn decompose_complex_provider(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
     use ndarray_linalg::{Cholesky as _, UPLO};
 
-    validate_complex_square_non_empty(matrix)?;
+    validate_complex_square_finite_view(matrix)?;
     matrix.cholesky(UPLO::Lower).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
 #[cfg(feature = "openblas-system")]
 fn solve_complex_provider(
-    matrix: &Array2<Complex64>,
-    rhs: &Array1<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, CholeskyError> {
     use ndarray_linalg::SolveC as _;
 
-    validate_complex_square_non_empty(matrix)?;
+    validate_complex_square_finite_view(matrix)?;
     if rhs.len() != matrix.nrows() {
         return Err(CholeskyError::InvalidInput(
             "RHS length must match matrix dimensions".to_string(),
@@ -202,11 +206,11 @@ fn solve_complex_provider(
 
 #[cfg(feature = "openblas-system")]
 fn inverse_complex_provider(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
     use ndarray_linalg::InverseC as _;
 
-    validate_complex_square_non_empty(matrix)?;
+    validate_complex_square_finite_view(matrix)?;
     matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
@@ -214,7 +218,7 @@ fn inverse_complex_provider(
 #[allow(clippy::many_single_char_names)]
 fn solve_complex_from_factor(
     lower_factor: &Array2<Complex64>,
-    rhs: &Array1<Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, CholeskyError> {
     let size = lower_factor.nrows();
     if rhs.len() != size {
@@ -253,7 +257,7 @@ fn solve_complex_from_factor(
     Ok(x)
 }
 
-fn decompose_dispatch(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+fn decompose_dispatch(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
     #[cfg(feature = "openblas-system")]
     {
         decompose_provider(matrix)
@@ -269,7 +273,7 @@ fn decompose_dispatch(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError
 /// # Errors
 /// Returns an error if matrix is not SPD.
 pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayCholeskyResult, CholeskyError> {
-    let l = decompose_dispatch(matrix)?;
+    let l = decompose_dispatch(&matrix.view())?;
     Ok(NdarrayCholeskyResult { l })
 }
 
@@ -279,6 +283,12 @@ pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayCholeskyResult, Cholesky
 /// Returns an error if matrix is not Hermitian positive definite.
 pub fn decompose_complex(
     matrix: &Array2<Complex64>,
+) -> Result<NdarrayComplexCholeskyResult, CholeskyError> {
+    decompose_complex_impl(&matrix.view())
+}
+
+fn decompose_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexCholeskyResult, CholeskyError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -294,23 +304,16 @@ pub fn decompose_complex(
 
 /// Compute Cholesky decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`decompose`].
-///
 /// # Errors
 /// Returns an error if matrix is not SPD.
 pub fn decompose_view(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayCholeskyResult, CholeskyError> {
-    decompose(&matrix.to_owned())
+    let l = decompose_dispatch(matrix)?;
+    Ok(NdarrayCholeskyResult { l })
 }
 
 /// Compute complex Cholesky decomposition from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`decompose_complex`].
 ///
 /// # Errors
 /// Returns an error if matrix is not Hermitian positive definite or provider
@@ -318,7 +321,7 @@ pub fn decompose_view(
 pub fn decompose_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexCholeskyResult, CholeskyError> {
-    decompose_complex(&matrix.to_owned())
+    decompose_complex_impl(matrix)
 }
 
 /// Solve `Ax=b` using Cholesky decomposition.
@@ -326,6 +329,13 @@ pub fn decompose_complex_view(
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
 pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, CholeskyError> {
+    solve_impl(&matrix.view(), &rhs.view())
+}
+
+fn solve_impl(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+) -> Result<Array1<f64>, CholeskyError> {
     #[cfg(feature = "openblas-system")]
     {
         solve_provider(matrix, rhs)
@@ -333,7 +343,7 @@ pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, Cho
     #[cfg(not(feature = "openblas-system"))]
     {
         let mut output = Array1::<f64>::zeros(rhs.len());
-        solve_into(matrix, rhs, &mut output)?;
+        solve_into_impl(matrix, rhs, &mut output)?;
         Ok(output)
     }
 }
@@ -345,6 +355,13 @@ pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, Cho
 pub fn solve_complex(
     matrix: &Array2<Complex64>,
     rhs: &Array1<Complex64>,
+) -> Result<Array1<Complex64>, CholeskyError> {
+    solve_complex_impl(&matrix.view(), &rhs.view())
+}
+
+fn solve_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, CholeskyError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -359,24 +376,16 @@ pub fn solve_complex(
 
 /// Solve `Ax=b` using Cholesky decomposition from matrix/vector views.
 ///
-/// # Performance
-/// This convenience wrapper materializes owned inputs via `to_owned()`
-/// before dispatching to [`solve`].
-///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
 pub fn solve_view(
     matrix: &ArrayView2<'_, f64>,
     rhs: &ArrayView1<'_, f64>,
 ) -> Result<Array1<f64>, CholeskyError> {
-    solve(&matrix.to_owned(), &rhs.to_owned())
+    solve_impl(matrix, rhs)
 }
 
 /// Solve complex-valued `Ax=b` from matrix/vector views.
-///
-/// # Performance
-/// This convenience wrapper materializes owned inputs via `to_owned()`
-/// before dispatching to [`solve_complex`].
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-HPD matrix.
@@ -384,7 +393,7 @@ pub fn solve_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, CholeskyError> {
-    solve_complex(&matrix.to_owned(), &rhs.to_owned())
+    solve_complex_impl(matrix, rhs)
 }
 
 /// Solve `Ax=b` into `output` using Cholesky decomposition.
@@ -395,6 +404,15 @@ pub fn solve_complex_view(
 pub fn solve_into(
     matrix: &Array2<f64>,
     rhs: &Array1<f64>,
+    output: &mut Array1<f64>,
+) -> Result<(), CholeskyError> {
+    solve_into_impl(&matrix.view(), &rhs.view(), output)
+}
+
+#[allow(clippy::many_single_char_names)]
+fn solve_into_impl(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
     output: &mut Array1<f64>,
 ) -> Result<(), CholeskyError> {
     if rhs.len() != matrix.nrows() {
@@ -444,6 +462,10 @@ pub fn solve_into(
 /// # Errors
 /// Returns an error if matrix is not SPD.
 pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+    inverse_impl(&matrix.view())
+}
+
+fn inverse_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
     #[cfg(feature = "openblas-system")]
     {
         inverse_provider(matrix)
@@ -458,7 +480,7 @@ pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
             let mut e = Array1::<f64>::zeros(n);
             e[col] = 1.0;
             let mut solution = Array1::<f64>::zeros(n);
-            solve_into(matrix, &e, &mut solution)?;
+            solve_into_impl(matrix, &e.view(), &mut solution)?;
             for row in 0..n {
                 inverse[[row, col]] = solution[row];
             }
@@ -473,6 +495,12 @@ pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
 /// # Errors
 /// Returns an error if matrix is not HPD.
 pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, CholeskyError> {
+    inverse_complex_impl(&matrix.view())
+}
+
+fn inverse_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, CholeskyError> {
     #[cfg(feature = "openblas-system")]
     {
         inverse_complex_provider(matrix)
@@ -486,7 +514,7 @@ pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, 
         for col in 0..size {
             let mut basis = Array1::<Complex64>::zeros(size);
             basis[col] = Complex64::new(1.0, 0.0);
-            let solution = solve_complex_from_factor(&lower_factor, &basis)?;
+            let solution = solve_complex_from_factor(&lower_factor, &basis.view())?;
             for row in 0..size {
                 inverse[[row, col]] = solution[row];
             }
@@ -498,28 +526,20 @@ pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, 
 
 /// Compute inverse via Cholesky decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`inverse`].
-///
 /// # Errors
 /// Returns an error if matrix is not SPD.
 pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
-    inverse(&matrix.to_owned())
+    inverse_impl(matrix)
 }
 
 /// Compute complex inverse from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`inverse_complex`].
 ///
 /// # Errors
 /// Returns an error if matrix is not HPD.
 pub fn inverse_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
-    inverse_complex(&matrix.to_owned())
+    inverse_complex_impl(matrix)
 }
 
 #[cfg(test)]

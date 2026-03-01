@@ -67,12 +67,13 @@ pub struct PseudoInverseConfig {
 }
 
 #[cfg(not(feature = "openblas-system"))]
-fn decompose_internal(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
+fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
-    crate::internal::validate_finite(matrix)
-        .map_err(|_| SVDError::InvalidInput("matrix must be finite".into()))?;
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(SVDError::InvalidInput("matrix must be finite".into()));
+    }
 
     let (rows, cols) = matrix.dim();
     let k = rows.min(cols);
@@ -112,7 +113,7 @@ fn decompose_internal(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
 }
 
 #[cfg(feature = "openblas-system")]
-fn decompose_provider(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
+fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
     use ndarray_linalg::SVD as _;
 
     if matrix.is_empty() {
@@ -120,7 +121,7 @@ fn decompose_provider(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
     }
 
     let (u_opt, singular_values, vt_opt) =
-        matrix.clone().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
+        matrix.to_owned().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
     let u = u_opt.ok_or(SVDError::ConvergenceFailed)?;
     let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
 
@@ -128,7 +129,7 @@ fn decompose_provider(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
 }
 
 #[cfg(not(feature = "openblas-system"))]
-fn validate_complex_finite(matrix: &Array2<Complex64>) -> Result<(), SVDError> {
+fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVDError> {
     if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
         return Err(SVDError::InvalidInput("matrix must be finite".to_string()));
     }
@@ -137,7 +138,9 @@ fn validate_complex_finite(matrix: &Array2<Complex64>) -> Result<(), SVDError> {
 
 #[cfg(not(feature = "openblas-system"))]
 #[allow(clippy::many_single_char_names)]
-fn decompose_complex_internal(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD, SVDError> {
+fn decompose_complex_internal(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayComplexSVD, SVDError> {
     validate_complex_finite(matrix)?;
 
     let (rows, cols) = matrix.dim();
@@ -229,6 +232,10 @@ fn null_space_internal(
 /// # Errors
 /// Returns an error if the matrix is empty, non-finite, or decomposition fails.
 pub fn decompose(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
+    decompose_impl(&matrix.view())
+}
+
+fn decompose_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
     #[cfg(feature = "openblas-system")]
     {
         decompose_provider(matrix)
@@ -241,14 +248,10 @@ pub fn decompose(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
 
 /// Compute the SVD of `matrix` from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`decompose`].
-///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
-    decompose(&matrix.to_owned())
+    decompose_impl(matrix)
 }
 
 /// Compute the SVD of a complex matrix.
@@ -256,6 +259,12 @@ pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDErr
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD, SVDError> {
+    decompose_complex_impl(&matrix.view())
+}
+
+fn decompose_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayComplexSVD, SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
@@ -264,7 +273,7 @@ pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD
     {
         use ndarray_linalg::SVD as _;
         let (u_opt, singular_values, vt_opt) =
-            matrix.clone().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
+            matrix.to_owned().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
         let u = u_opt.ok_or(SVDError::ConvergenceFailed)?;
         let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
         Ok(NdarrayComplexSVD { u, singular_values, vt })
@@ -277,16 +286,12 @@ pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD
 
 /// Compute complex SVD from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`decompose_complex`].
-///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn decompose_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexSVD, SVDError> {
-    decompose_complex(&matrix.to_owned())
+    decompose_complex_impl(matrix)
 }
 
 /// Compute SVD and zero out singular values below `tolerance`.

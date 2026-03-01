@@ -7,7 +7,7 @@ use num_complex::Complex64;
 
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::qr_gram_schmidt;
-use crate::internal::{DenseKernelPolicy, identity, validate_finite};
+use crate::internal::{DenseKernelPolicy, identity};
 
 /// Error types for QR decomposition.
 #[derive(Debug, Clone, PartialEq)]
@@ -83,14 +83,17 @@ fn complex_identity(n: usize) -> Array2<Complex64> {
     identity
 }
 
-fn validate_qr_input(matrix: &Array2<f64>) -> Result<(), QRError> {
+fn validate_qr_input(matrix: &ArrayView2<'_, f64>) -> Result<(), QRError> {
     if matrix.is_empty() {
         return Err(QRError::EmptyMatrix);
     }
-    validate_finite(matrix).map_err(|_| QRError::NumericalInstability)
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(QRError::NumericalInstability);
+    }
+    Ok(())
 }
 
-fn validate_qr_complex_input(matrix: &Array2<Complex64>) -> Result<(), QRError> {
+fn validate_qr_complex_input(matrix: &ArrayView2<'_, Complex64>) -> Result<(), QRError> {
     if matrix.is_empty() {
         return Err(QRError::EmptyMatrix);
     }
@@ -102,7 +105,7 @@ fn validate_qr_complex_input(matrix: &Array2<Complex64>) -> Result<(), QRError> 
 
 #[cfg(not(feature = "openblas-system"))]
 fn decompose_internal(
-    matrix: &Array2<f64>,
+    matrix: &ArrayView2<'_, f64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<f64>, QRError> {
     validate_qr_input(matrix)?;
@@ -115,7 +118,7 @@ fn decompose_internal(
 
 #[cfg(feature = "openblas-system")]
 fn decompose_provider(
-    matrix: &Array2<f64>,
+    matrix: &ArrayView2<'_, f64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<f64>, QRError> {
     use ndarray_linalg::QR as _;
@@ -136,8 +139,8 @@ fn decompose_provider(
 
 #[cfg(feature = "openblas-system")]
 fn solve_least_squares_provider(
-    matrix: &Array2<f64>,
-    rhs: &Array1<f64>,
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
 ) -> Result<Array1<f64>, QRError> {
     use ndarray_linalg::LeastSquaresSvd as _;
 
@@ -151,7 +154,7 @@ fn solve_least_squares_provider(
 
 #[cfg(not(feature = "openblas-system"))]
 fn decompose_complex_internal(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<Complex64>, QRError> {
     validate_qr_complex_input(matrix)?;
@@ -192,7 +195,7 @@ fn decompose_complex_internal(
 
 #[cfg(feature = "openblas-system")]
 fn decompose_complex_provider(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<Complex64>, QRError> {
     use ndarray_linalg::QR as _;
@@ -214,6 +217,13 @@ fn decompose_complex_provider(
 /// # Errors
 /// Returns an error if the matrix is empty or non-finite.
 pub fn decompose(matrix: &Array2<f64>, config: &QRConfig<f64>) -> Result<QRResult<f64>, QRError> {
+    decompose_impl(&matrix.view(), config)
+}
+
+fn decompose_impl(
+    matrix: &ArrayView2<'_, f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
     #[cfg(feature = "openblas-system")]
     {
         decompose_provider(matrix, config)
@@ -226,17 +236,13 @@ pub fn decompose(matrix: &Array2<f64>, config: &QRConfig<f64>) -> Result<QRResul
 
 /// Compute full QR decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper currently materializes an owned matrix via
-/// `to_owned()` before dispatching to [`decompose`].
-///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn decompose_view(
     matrix: &ArrayView2<'_, f64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<f64>, QRError> {
-    decompose(&matrix.to_owned(), config)
+    decompose_impl(matrix, config)
 }
 
 /// Compute full QR decomposition for complex matrices.
@@ -245,6 +251,13 @@ pub fn decompose_view(
 /// Returns an error if decomposition fails.
 pub fn decompose_complex(
     matrix: &Array2<Complex64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<Complex64>, QRError> {
+    decompose_complex_impl(&matrix.view(), config)
+}
+
+fn decompose_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<Complex64>, QRError> {
     #[cfg(feature = "openblas-system")]
@@ -259,17 +272,13 @@ pub fn decompose_complex(
 
 /// Compute full complex QR decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper currently materializes an owned matrix via
-/// `to_owned()` before dispatching to [`decompose_complex`].
-///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn decompose_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<Complex64>, QRError> {
-    decompose_complex(&matrix.to_owned(), config)
+    decompose_complex_impl(matrix, config)
 }
 
 /// Compute reduced (economy) QR decomposition.
@@ -280,7 +289,7 @@ pub fn decompose_reduced(
     matrix: &Array2<f64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<f64>, QRError> {
-    let full = decompose(matrix, config)?;
+    let full = decompose_impl(&matrix.view(), config)?;
     let keep = matrix.nrows().min(matrix.ncols());
     Ok(QRResult {
         q:    full.q.slice(s![.., ..keep]).to_owned(),
@@ -315,6 +324,14 @@ pub fn solve_least_squares(
     rhs: &Array1<f64>,
     config: &QRConfig<f64>,
 ) -> Result<Array1<f64>, QRError> {
+    solve_least_squares_impl(&matrix.view(), &rhs.view(), config)
+}
+
+fn solve_least_squares_impl(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+    config: &QRConfig<f64>,
+) -> Result<Array1<f64>, QRError> {
     validate_qr_input(matrix)?;
     if rhs.len() != matrix.nrows() {
         return Err(QRError::InvalidDimensions("RHS length must equal matrix rows".to_string()));
@@ -332,7 +349,14 @@ pub fn solve_least_squares(
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let qr = decompose_reduced(matrix, config)?;
+        let full = decompose_impl(matrix, config)?;
+        let keep = matrix.nrows().min(matrix.ncols());
+        let qr = QRResult {
+            q:    full.q.slice(s![.., ..keep]).to_owned(),
+            r:    full.r.slice(s![..keep, ..]).to_owned(),
+            p:    full.p,
+            rank: full.rank.min(keep),
+        };
         let n = matrix.ncols();
         if qr.rank < n {
             return Err(QRError::SingularMatrix);
@@ -367,10 +391,6 @@ pub fn solve_least_squares(
 
 /// Solve least squares from matrix/vector views.
 ///
-/// # Performance
-/// This convenience wrapper currently materializes owned inputs via
-/// `to_owned()` before dispatching to [`solve_least_squares`].
-///
 /// # Errors
 /// Returns an error for invalid dimensions or rank-deficient systems.
 pub fn solve_least_squares_view(
@@ -378,7 +398,7 @@ pub fn solve_least_squares_view(
     rhs: &ArrayView1<'_, f64>,
     config: &QRConfig<f64>,
 ) -> Result<Array1<f64>, QRError> {
-    solve_least_squares(&matrix.to_owned(), &rhs.to_owned(), config)
+    solve_least_squares_impl(matrix, rhs, config)
 }
 
 /// Reconstruct matrix `Q * R`.

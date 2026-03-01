@@ -87,11 +87,15 @@ Use this file to resume work quickly after context compaction without re-auditin
 57. `D-057`: Accelerator domain now includes explicit serial matmat and feature-gated accelerated matmat kernel (`accelerator-rayon`) with stable error mapping and integration coverage.
 58. `D-058`: Benchmark/report pipeline expanded with `matrix_benchmarks` and `tensor_benchmarks`, sparse benchmark additions, and benchmark-report classifier mappings for new suites.
 59. `D-059`: Sparse factorization-grade baseline advanced with ILU(0): `ilu0_factor`, `apply_ilu0_preconditioner`, and `bicgstab_ilu0_solve`, plus tests and sparse benchmark coverage.
+60. `D-060`: Copy-elision pass expanded through core linalg view APIs (`orthogonalization`, `qr`, `svd`, `schur`, `sylvester`), with view-native dispatch paths and removed wrapper-level `to_owned()` materialization in no-provider mode.
+61. `D-061`: Copy-elision pass expanded through additional core linalg domains (`lu`, `cholesky`, `eigen`, `triangular`) with view-native validation/dispatch and no wrapper-level `to_owned()` in no-provider view paths.
+62. `D-062`: Copy-elision pass extended through remaining convenience view wrappers in `polar` and `pca`, and provider-side view dispatch in `lu`/`cholesky`/`eigen` now avoids wrapper-level owned materialization.
+63. `D-063`: Sparse factorization depth expanded with IC(0): `ic0_factor`, `apply_ic0_preconditioner`, and `pcg_ic0_solve`, with tests and sparse benchmark coverage.
 
 ## Next
 
-1. `N-060` (P1): Expand sparse depth beyond current ILU(0) baseline into broader factorization-grade workflows.
-2. `N-061` (P0/P1): Continue copy-elision pass for remaining convenience/view wrappers that still materialize owned allocations.
+1. `N-060` (P1): Continue sparse depth expansion beyond ILU(0)+IC(0) baseline into broader factorization-grade workflows.
+2. `N-061` (P0/P1): Complete copy-elision audit for remaining algorithm-internal owned materializations and document/optimize unavoidable cases.
 3. `N-062` (P2): Expand tensor APIs beyond current last-axis `ArrayD` operations into richer higher-rank algebra/contraction workflows.
 4. `N-063` (P2): Convert accelerator contracts from CPU/feature-gated parallel baseline into concrete GPU/distributed kernels.
 

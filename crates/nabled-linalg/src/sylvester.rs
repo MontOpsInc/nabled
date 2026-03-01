@@ -91,9 +91,9 @@ impl SylvesterComplexWorkspace {
 }
 
 fn validate_sylvester_dims(
-    matrix_a: &Array2<f64>,
-    matrix_b: &Array2<f64>,
-    matrix_c: &Array2<f64>,
+    matrix_a: &ArrayView2<'_, f64>,
+    matrix_b: &ArrayView2<'_, f64>,
+    matrix_c: &ArrayView2<'_, f64>,
 ) -> Result<(usize, usize), SylvesterError> {
     if matrix_a.is_empty() || matrix_b.is_empty() || matrix_c.is_empty() {
         return Err(SylvesterError::EmptyMatrix);
@@ -111,9 +111,9 @@ fn validate_sylvester_dims(
 }
 
 fn validate_sylvester_complex_dims(
-    matrix_a: &Array2<Complex64>,
-    matrix_b: &Array2<Complex64>,
-    matrix_c: &Array2<Complex64>,
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView2<'_, Complex64>,
+    matrix_c: &ArrayView2<'_, Complex64>,
 ) -> Result<(usize, usize), SylvesterError> {
     if matrix_a.is_empty() || matrix_b.is_empty() || matrix_c.is_empty() {
         return Err(SylvesterError::EmptyMatrix);
@@ -147,18 +147,20 @@ pub fn solve_sylvester(
     matrix_b: &Array2<f64>,
     matrix_c: &Array2<f64>,
 ) -> Result<Array2<f64>, SylvesterError> {
-    let (n, m) = validate_sylvester_dims(matrix_a, matrix_b, matrix_c)?;
+    let (n, m) = validate_sylvester_dims(&matrix_a.view(), &matrix_b.view(), &matrix_c.view())?;
     let mut workspace = SylvesterWorkspace::default();
     let mut output = Array2::<f64>::zeros((n, m));
-    solve_sylvester_with_workspace_into(matrix_a, matrix_b, matrix_c, &mut output, &mut workspace)?;
+    solve_sylvester_with_workspace_into_impl(
+        &matrix_a.view(),
+        &matrix_b.view(),
+        &matrix_c.view(),
+        &mut output,
+        &mut workspace,
+    )?;
     Ok(output)
 }
 
 /// Solve Sylvester equation `A X + X B = C` from matrix views.
-///
-/// # Performance
-/// This convenience wrapper materializes owned matrices via `to_owned()`
-/// before dispatching to [`solve_sylvester`].
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
@@ -167,7 +169,17 @@ pub fn solve_sylvester_view(
     matrix_b: &ArrayView2<'_, f64>,
     matrix_c: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, SylvesterError> {
-    solve_sylvester(&matrix_a.to_owned(), &matrix_b.to_owned(), &matrix_c.to_owned())
+    let (n, m) = validate_sylvester_dims(matrix_a, matrix_b, matrix_c)?;
+    let mut workspace = SylvesterWorkspace::default();
+    let mut output = Array2::<f64>::zeros((n, m));
+    solve_sylvester_with_workspace_into_impl(
+        matrix_a,
+        matrix_b,
+        matrix_c,
+        &mut output,
+        &mut workspace,
+    )?;
+    Ok(output)
 }
 
 /// Solve Sylvester equation `A X + X B = C` into `output`.
@@ -181,7 +193,13 @@ pub fn solve_sylvester_into(
     output: &mut Array2<f64>,
 ) -> Result<(), SylvesterError> {
     let mut workspace = SylvesterWorkspace::default();
-    solve_sylvester_with_workspace_into(matrix_a, matrix_b, matrix_c, output, &mut workspace)
+    solve_sylvester_with_workspace_into_impl(
+        &matrix_a.view(),
+        &matrix_b.view(),
+        &matrix_c.view(),
+        output,
+        &mut workspace,
+    )
 }
 
 /// Solve Sylvester equation `A X + X B = C` into `output` with reusable `workspace`.
@@ -192,6 +210,22 @@ pub fn solve_sylvester_with_workspace_into(
     matrix_a: &Array2<f64>,
     matrix_b: &Array2<f64>,
     matrix_c: &Array2<f64>,
+    output: &mut Array2<f64>,
+    workspace: &mut SylvesterWorkspace,
+) -> Result<(), SylvesterError> {
+    solve_sylvester_with_workspace_into_impl(
+        &matrix_a.view(),
+        &matrix_b.view(),
+        &matrix_c.view(),
+        output,
+        workspace,
+    )
+}
+
+fn solve_sylvester_with_workspace_into_impl(
+    matrix_a: &ArrayView2<'_, f64>,
+    matrix_b: &ArrayView2<'_, f64>,
+    matrix_c: &ArrayView2<'_, f64>,
     output: &mut Array2<f64>,
     workspace: &mut SylvesterWorkspace,
 ) -> Result<(), SylvesterError> {
@@ -230,9 +264,9 @@ pub fn solve_sylvester_with_workspace_into(
 }
 
 fn solve_sylvester_complex_with_workspace_impl(
-    matrix_a: &Array2<Complex64>,
-    matrix_b: &Array2<Complex64>,
-    matrix_c: &Array2<Complex64>,
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView2<'_, Complex64>,
+    matrix_c: &ArrayView2<'_, Complex64>,
     output: &mut Array2<Complex64>,
     workspace: &mut SylvesterComplexWorkspace,
 ) -> Result<(), SylvesterError> {
@@ -278,13 +312,14 @@ pub fn solve_sylvester_complex(
     matrix_b: &Array2<Complex64>,
     matrix_c: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, SylvesterError> {
-    let (n, m) = validate_sylvester_complex_dims(matrix_a, matrix_b, matrix_c)?;
+    let (n, m) =
+        validate_sylvester_complex_dims(&matrix_a.view(), &matrix_b.view(), &matrix_c.view())?;
     let mut workspace = SylvesterComplexWorkspace::default();
     let mut output = Array2::<Complex64>::zeros((n, m));
-    solve_sylvester_complex_with_workspace_into(
-        matrix_a,
-        matrix_b,
-        matrix_c,
+    solve_sylvester_complex_with_workspace_impl(
+        &matrix_a.view(),
+        &matrix_b.view(),
+        &matrix_c.view(),
         &mut output,
         &mut workspace,
     )?;
@@ -293,10 +328,6 @@ pub fn solve_sylvester_complex(
 
 /// Solve complex Sylvester equation `A X + X B = C` from matrix views.
 ///
-/// # Performance
-/// This convenience wrapper materializes owned matrices via `to_owned()`
-/// before dispatching to [`solve_sylvester_complex`].
-///
 /// # Errors
 /// Returns an error if dimensions are invalid or the linear system is singular.
 pub fn solve_sylvester_complex_view(
@@ -304,7 +335,17 @@ pub fn solve_sylvester_complex_view(
     matrix_b: &ArrayView2<'_, Complex64>,
     matrix_c: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, SylvesterError> {
-    solve_sylvester_complex(&matrix_a.to_owned(), &matrix_b.to_owned(), &matrix_c.to_owned())
+    let (n, m) = validate_sylvester_complex_dims(matrix_a, matrix_b, matrix_c)?;
+    let mut workspace = SylvesterComplexWorkspace::default();
+    let mut output = Array2::<Complex64>::zeros((n, m));
+    solve_sylvester_complex_with_workspace_impl(
+        matrix_a,
+        matrix_b,
+        matrix_c,
+        &mut output,
+        &mut workspace,
+    )?;
+    Ok(output)
 }
 
 /// Solve complex Sylvester equation `A X + X B = C` into `output`.
@@ -319,10 +360,10 @@ pub fn solve_sylvester_complex_into(
     output: &mut Array2<Complex64>,
 ) -> Result<(), SylvesterError> {
     let mut workspace = SylvesterComplexWorkspace::default();
-    solve_sylvester_complex_with_workspace_into(
-        matrix_a,
-        matrix_b,
-        matrix_c,
+    solve_sylvester_complex_with_workspace_impl(
+        &matrix_a.view(),
+        &matrix_b.view(),
+        &matrix_c.view(),
         output,
         &mut workspace,
     )
@@ -340,7 +381,13 @@ pub fn solve_sylvester_complex_with_workspace_into(
     output: &mut Array2<Complex64>,
     workspace: &mut SylvesterComplexWorkspace,
 ) -> Result<(), SylvesterError> {
-    solve_sylvester_complex_with_workspace_impl(matrix_a, matrix_b, matrix_c, output, workspace)
+    solve_sylvester_complex_with_workspace_impl(
+        &matrix_a.view(),
+        &matrix_b.view(),
+        &matrix_c.view(),
+        output,
+        workspace,
+    )
 }
 
 /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0`.
@@ -352,7 +399,7 @@ pub fn solve_lyapunov(a: &Array2<f64>, q: &Array2<f64>) -> Result<Array2<f64>, S
         return Err(SylvesterError::DimensionMismatch);
     }
     let neg_q = -q;
-    solve_sylvester(a, &a.t().to_owned(), &neg_q)
+    solve_sylvester_view(&a.view(), &a.t(), &neg_q.view())
 }
 
 /// Solve complex continuous Lyapunov equation `A X + X A^H + Q = 0`.
@@ -373,24 +420,20 @@ pub fn solve_lyapunov_complex(
 
 /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0` from matrix views.
 ///
-/// # Performance
-/// This convenience wrapper materializes owned matrices via `to_owned()`
-/// before dispatching to [`solve_lyapunov`].
-///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
 pub fn solve_lyapunov_view(
     a: &ArrayView2<'_, f64>,
     q: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, SylvesterError> {
-    solve_lyapunov(&a.to_owned(), &q.to_owned())
+    if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
+        return Err(SylvesterError::DimensionMismatch);
+    }
+    let neg_q = -q;
+    solve_sylvester_view(a, &a.t(), &neg_q.view())
 }
 
 /// Solve complex continuous Lyapunov equation `A X + X A^H + Q = 0` from matrix views.
-///
-/// # Performance
-/// This convenience wrapper materializes owned matrices via `to_owned()`
-/// before dispatching to [`solve_lyapunov_complex`].
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or the linear system is singular.
@@ -398,7 +441,12 @@ pub fn solve_lyapunov_complex_view(
     a: &ArrayView2<'_, Complex64>,
     q: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, SylvesterError> {
-    solve_lyapunov_complex(&a.to_owned(), &q.to_owned())
+    if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
+        return Err(SylvesterError::DimensionMismatch);
+    }
+    let neg_q = -q;
+    let conjugate_transpose = a.t().mapv(|value| value.conj());
+    solve_sylvester_complex_view(a, &conjugate_transpose.view(), &neg_q.view())
 }
 
 /// Solve continuous Lyapunov equation into `output`.
@@ -414,7 +462,14 @@ pub fn solve_lyapunov_into(
         return Err(SylvesterError::DimensionMismatch);
     }
     let neg_q = -q;
-    solve_sylvester_into(a, &a.t().to_owned(), &neg_q, output)
+    let mut workspace = SylvesterWorkspace::default();
+    solve_sylvester_with_workspace_into_impl(
+        &a.view(),
+        &a.t(),
+        &neg_q.view(),
+        output,
+        &mut workspace,
+    )
 }
 
 /// Solve complex continuous Lyapunov equation into `output`.

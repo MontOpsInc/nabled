@@ -45,14 +45,14 @@ impl std::error::Error for PCAError {}
 
 fn usize_to_f64(value: usize) -> f64 { u32::try_from(value).map_or(f64::from(u32::MAX), f64::from) }
 
-fn center_columns(matrix: &Array2<f64>) -> Result<(Array2<f64>, Array1<f64>), PCAError> {
+fn center_columns(matrix: &ArrayView2<'_, f64>) -> Result<(Array2<f64>, Array1<f64>), PCAError> {
     if matrix.is_empty() {
         return Err(PCAError::EmptyMatrix);
     }
     let mean = matrix
         .mean_axis(Axis(0))
         .ok_or_else(|| PCAError::InvalidInput("failed to compute column means".to_string()))?;
-    let mut centered = matrix.clone();
+    let mut centered = matrix.to_owned();
     for row in 0..matrix.nrows() {
         for col in 0..matrix.ncols() {
             centered[[row, col]] -= mean[col];
@@ -89,6 +89,13 @@ pub fn compute_pca(
     matrix: &Array2<f64>,
     n_components: Option<usize>,
 ) -> Result<NdarrayPCAResult, PCAError> {
+    compute_pca_impl(&matrix.view(), n_components)
+}
+
+fn compute_pca_impl(
+    matrix: &ArrayView2<'_, f64>,
+    n_components: Option<usize>,
+) -> Result<NdarrayPCAResult, PCAError> {
     let (centered, mean) = center_columns(matrix)?;
     let svd = svd::decompose(&centered).map_err(|_| PCAError::DecompositionFailed)?;
 
@@ -115,17 +122,13 @@ pub fn compute_pca(
 
 /// Compute principal component analysis from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`compute_pca`].
-///
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
 pub fn compute_pca_view(
     matrix: &ArrayView2<'_, f64>,
     n_components: Option<usize>,
 ) -> Result<NdarrayPCAResult, PCAError> {
-    compute_pca(&matrix.to_owned(), n_components)
+    compute_pca_impl(matrix, n_components)
 }
 
 /// Project data to PCA score space.

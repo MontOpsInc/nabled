@@ -212,6 +212,15 @@ pub struct ILU0Factorization {
     pub u: CsrMatrix,
 }
 
+/// Incomplete Cholesky(0) sparse factorization for SPD systems.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IC0Factorization {
+    /// Lower-triangular factor with diagonal terms.
+    pub l:           CsrMatrix,
+    /// Cached transpose of `l` for backward substitution.
+    pub l_transpose: CsrMatrix,
+}
+
 impl CooMatrix {
     /// Construct a COO matrix after validating structure.
     ///
@@ -619,6 +628,167 @@ pub fn apply_ilu0_preconditioner(
     Ok(output)
 }
 
+/// Compute incomplete Cholesky(0) factorization for an SPD sparse matrix.
+///
+/// The non-zero pattern of `L` follows the lower-triangular pattern of `A`
+/// (`level-of-fill = 0`), including the diagonal.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or factorization breaks down.
+#[allow(clippy::many_single_char_names)]
+pub fn ic0_factor(matrix: &CsrMatrix) -> Result<IC0Factorization, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+
+    let n = matrix.nrows;
+    let positions = row_positions(matrix);
+    let mut factors = matrix.data.clone();
+
+    for row in 0..n {
+        let mut lower_entries = Vec::<(usize, usize)>::new();
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            let col = matrix.indices[entry];
+            if col < row {
+                lower_entries.push((col, entry));
+            }
+        }
+        lower_entries.sort_unstable_by_key(|&(col, _)| col);
+
+        for idx in 0..lower_entries.len() {
+            let (col_j, row_col_entry) = lower_entries[idx];
+            let mut sum = factors[row_col_entry];
+
+            for &(col_k, row_k_entry) in lower_entries.iter().take(idx) {
+                if let Some(&jk_index) = positions[col_j].get(&col_k) {
+                    sum -= factors[row_k_entry] * factors[jk_index];
+                }
+            }
+
+            let Some(&diag_index) = positions[col_j].get(&col_j) else {
+                return Err(SparseError::SingularMatrix);
+            };
+            let diagonal = factors[diag_index];
+            if diagonal.abs() <= DEFAULT_TOLERANCE {
+                return Err(SparseError::SingularMatrix);
+            }
+
+            factors[row_col_entry] = sum / diagonal;
+        }
+
+        let Some(&row_diagonal_index) = positions[row].get(&row) else {
+            return Err(SparseError::SingularMatrix);
+        };
+        let mut diagonal = factors[row_diagonal_index];
+        for &(_, row_col_entry) in &lower_entries {
+            let value = factors[row_col_entry];
+            diagonal -= value * value;
+        }
+        if diagonal <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        factors[row_diagonal_index] = diagonal.sqrt();
+    }
+
+    let mut l_indptr = Vec::<usize>::with_capacity(n + 1);
+    let mut l_indices = Vec::<usize>::new();
+    let mut l_data = Vec::<f64>::new();
+    l_indptr.push(0);
+
+    for row in 0..n {
+        let mut row_entries = Vec::<(usize, f64)>::new();
+        for (&col, &value) in matrix.indices[matrix.indptr[row]..matrix.indptr[row + 1]]
+            .iter()
+            .zip(factors[matrix.indptr[row]..matrix.indptr[row + 1]].iter())
+        {
+            if col <= row {
+                row_entries.push((col, value));
+            }
+        }
+        row_entries.sort_unstable_by_key(|&(col, _)| col);
+        for (col, value) in row_entries {
+            l_indices.push(col);
+            l_data.push(value);
+        }
+        l_indptr.push(l_indices.len());
+    }
+
+    let l = CsrMatrix::new(n, n, l_indptr, l_indices, l_data)?;
+    let l_transpose = transpose(&l)?;
+    Ok(IC0Factorization { l, l_transpose })
+}
+
+/// Apply an IC(0) preconditioner to a dense vector.
+///
+/// Solves `L L^T x = rhs` where `L` comes from [`ic0_factor`].
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or factors are singular.
+pub fn apply_ic0_preconditioner(
+    factorization: &IC0Factorization,
+    rhs: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    if factorization.l.nrows != factorization.l.ncols
+        || factorization.l_transpose.nrows != factorization.l_transpose.ncols
+        || factorization.l.nrows != factorization.l_transpose.nrows
+    {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != factorization.l.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+
+    let n = rhs.len();
+    let mut intermediate = Array1::<f64>::zeros(n);
+    for row in 0..n {
+        let mut sum = rhs[row];
+        let mut diagonal = None;
+        for entry in factorization.l.indptr[row]..factorization.l.indptr[row + 1] {
+            let col = factorization.l.indices[entry];
+            let value = factorization.l.data[entry];
+            if col < row {
+                sum -= value * intermediate[col];
+            } else if col == row {
+                diagonal = Some(value);
+            }
+        }
+        let Some(diagonal) = diagonal else {
+            return Err(SparseError::SingularMatrix);
+        };
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        intermediate[row] = sum / diagonal;
+    }
+
+    let mut output = Array1::<f64>::zeros(n);
+    for row_reverse in 0..n {
+        let row = n - 1 - row_reverse;
+        let mut sum = intermediate[row];
+        let mut diagonal = None;
+        for entry in
+            factorization.l_transpose.indptr[row]..factorization.l_transpose.indptr[row + 1]
+        {
+            let col = factorization.l_transpose.indices[entry];
+            let value = factorization.l_transpose.data[entry];
+            if col > row {
+                sum -= value * output[col];
+            } else if col == row {
+                diagonal = Some(value);
+            }
+        }
+        let Some(diagonal) = diagonal else {
+            return Err(SparseError::SingularMatrix);
+        };
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        output[row] = sum / diagonal;
+    }
+
+    Ok(output)
+}
+
 /// Compute sparse-dense matrix multiplication `Y = A B`.
 ///
 /// `A` is sparse CSR `(m, n)` and `B` is dense `(n, k)`.
@@ -1013,6 +1183,69 @@ pub fn pcg_solve(
         }
 
         preconditioned_residual = apply_jacobi_preconditioner(&preconditioner, &residual)?;
+        let rho_next = dot(&residual, &preconditioned_residual)?;
+        let beta = rho_next / rho;
+        for i in 0..direction.len() {
+            direction[i] = preconditioned_residual[i] + beta * direction[i];
+        }
+        rho = rho_next;
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
+/// Solve sparse linear system `A x = b` with IC(0)-preconditioned conjugate gradient.
+///
+/// This routine assumes an SPD matrix `A`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn pcg_ic0_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let factorization = ic0_factor(matrix)?;
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+    let mut solution = Array1::<f64>::zeros(matrix.ncols);
+    let mut residual = rhs.clone();
+    let mut preconditioned_residual = apply_ic0_preconditioner(&factorization, &residual)?;
+    let mut direction = preconditioned_residual.clone();
+    let mut rho = dot(&residual, &preconditioned_residual)?;
+
+    if rho.sqrt() <= tolerance {
+        return Ok(solution);
+    }
+
+    for _ in 0..max_iterations.max(1) {
+        let matrix_direction = matvec(matrix, &direction)?;
+        let denominator = dot(&direction, &matrix_direction)?;
+        if denominator.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        let alpha = rho / denominator;
+        for i in 0..solution.len() {
+            solution[i] += alpha * direction[i];
+            residual[i] -= alpha * matrix_direction[i];
+        }
+
+        if dot(&residual, &residual)?.sqrt() <= tolerance {
+            return Ok(solution);
+        }
+
+        preconditioned_residual = apply_ic0_preconditioner(&factorization, &residual)?;
         let rho_next = dot(&residual, &preconditioned_residual)?;
         let beta = rho_next / rho;
         for i in 0..direction.len() {
@@ -1467,6 +1700,42 @@ mod tests {
         let rhs = arr1(&[1.0_f64, 2.0]);
         let result = apply_ilu0_preconditioner(&factorization, &rhs);
         assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn ic0_factorization_reconstructs_toy_matrix() {
+        let matrix = toy_matrix();
+        let factorization = ic0_factor(&matrix).unwrap();
+
+        let dense_l = csr_to_dense(&factorization.l);
+        let reconstructed = dense_l.dot(&dense_l.t());
+        let expected = csr_to_dense(&matrix);
+
+        for row in 0..matrix.nrows {
+            for col in 0..matrix.ncols {
+                assert!((reconstructed[[row, col]] - expected[[row, col]]).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn apply_ic0_preconditioner_rejects_bad_dimensions() {
+        let matrix = toy_matrix();
+        let factorization = ic0_factor(&matrix).unwrap();
+        let rhs = arr1(&[1.0_f64, 2.0]);
+        let result = apply_ic0_preconditioner(&factorization, &rhs);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn pcg_ic0_solves_spd_system() {
+        let matrix = toy_matrix();
+        let rhs = arr1(&[1.0_f64, 2.0, 3.0]);
+        let solution = pcg_ic0_solve(&matrix, &rhs, 1e-10, 2000).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
     }
 
     #[test]

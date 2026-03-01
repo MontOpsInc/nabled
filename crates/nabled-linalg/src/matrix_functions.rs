@@ -5,10 +5,7 @@ use std::fmt;
 use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::Complex64;
 
-use crate::internal::{
-    DenseKernelPolicy, identity, is_symmetric, usize_to_f64, validate_finite,
-    validate_square_non_empty,
-};
+use crate::internal::{DenseKernelPolicy, identity, is_symmetric, usize_to_f64};
 #[cfg(not(feature = "openblas-system"))]
 use crate::schur;
 use crate::{eigen, svd};
@@ -75,17 +72,20 @@ impl MatrixFunctionComplexWorkspace {
     }
 }
 
-fn validate_square(matrix: &Array2<f64>) -> Result<(), MatrixFunctionError> {
-    validate_square_non_empty(matrix).map_err(|error| match error {
-        "empty" => MatrixFunctionError::EmptyMatrix,
-        _ => MatrixFunctionError::NotSquare,
-    })?;
-    validate_finite(matrix)
-        .map_err(|_| MatrixFunctionError::InvalidInput("matrix must be finite".into()))?;
+fn validate_square(matrix: &ArrayView2<'_, f64>) -> Result<(), MatrixFunctionError> {
+    if matrix.is_empty() {
+        return Err(MatrixFunctionError::EmptyMatrix);
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(MatrixFunctionError::NotSquare);
+    }
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(MatrixFunctionError::InvalidInput("matrix must be finite".into()));
+    }
     Ok(())
 }
 
-fn validate_square_complex(matrix: &Array2<Complex64>) -> Result<(), MatrixFunctionError> {
+fn validate_square_complex(matrix: &ArrayView2<'_, Complex64>) -> Result<(), MatrixFunctionError> {
     if matrix.is_empty() {
         return Err(MatrixFunctionError::EmptyMatrix);
     }
@@ -117,7 +117,7 @@ fn diagonal_from_real_complex(values: &Array1<f64>) -> Array2<Complex64> {
 }
 
 fn taylor_matrix_exp(
-    matrix: &Array2<f64>,
+    matrix: &ArrayView2<'_, f64>,
     max_terms: usize,
     tolerance: f64,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
@@ -139,7 +139,7 @@ fn taylor_matrix_exp(
 }
 
 fn taylor_matrix_exp_complex(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
     max_terms: usize,
     tolerance: f64,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
@@ -188,7 +188,7 @@ fn validate_output_shape_complex(
     Ok(())
 }
 
-fn is_hermitian(matrix: &Array2<Complex64>, tolerance: f64) -> bool {
+fn is_hermitian(matrix: &ArrayView2<'_, Complex64>, tolerance: f64) -> bool {
     if matrix.nrows() != matrix.ncols() {
         return false;
     }
@@ -205,19 +205,19 @@ fn is_hermitian(matrix: &Array2<Complex64>, tolerance: f64) -> bool {
 
 #[cfg(feature = "openblas-system")]
 fn hermitian_eigen_provider(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<(Array1<f64>, Array2<Complex64>), MatrixFunctionError> {
     use ndarray_linalg::{Eigh as _, UPLO};
 
-    matrix.clone().eigh(UPLO::Lower).map_err(|_| MatrixFunctionError::ConvergenceFailed)
+    matrix.to_owned().eigh(UPLO::Lower).map_err(|_| MatrixFunctionError::ConvergenceFailed)
 }
 
 #[cfg(not(feature = "openblas-system"))]
 fn hermitian_eigen_internal(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<(Array1<f64>, Array2<Complex64>), MatrixFunctionError> {
-    let decomposition =
-        schur::compute_schur_complex(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    let decomposition = schur::compute_schur_complex_view(matrix)
+        .map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     let n = matrix.nrows();
     let mut eigenvalues = Array1::<f64>::zeros(n);
     let imag_tolerance = DenseKernelPolicy::polar_convergence_tolerance();
@@ -234,7 +234,7 @@ fn hermitian_eigen_internal(
 }
 
 fn hermitian_eigen_dispatch(
-    matrix: &Array2<Complex64>,
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<(Array1<f64>, Array2<Complex64>), MatrixFunctionError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -255,7 +255,7 @@ pub fn matrix_exp(
     max_terms: usize,
     tolerance: f64,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
-    taylor_matrix_exp(matrix, max_terms, tolerance)
+    matrix_exp_impl(&matrix.view(), max_terms, tolerance)
 }
 
 /// Compute complex matrix exponential via Taylor series.
@@ -267,14 +267,26 @@ pub fn matrix_exp_complex(
     max_terms: usize,
     tolerance: f64,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_exp_complex_impl(&matrix.view(), max_terms, tolerance)
+}
+
+fn matrix_exp_impl(
+    matrix: &ArrayView2<'_, f64>,
+    max_terms: usize,
+    tolerance: f64,
+) -> Result<Array2<f64>, MatrixFunctionError> {
+    taylor_matrix_exp(matrix, max_terms, tolerance)
+}
+
+fn matrix_exp_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+    max_terms: usize,
+    tolerance: f64,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
     taylor_matrix_exp_complex(matrix, max_terms, tolerance)
 }
 
 /// Compute matrix exponential via Taylor series from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_exp`].
 ///
 /// # Errors
 /// Returns an error for invalid input.
@@ -283,14 +295,10 @@ pub fn matrix_exp_view(
     max_terms: usize,
     tolerance: f64,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
-    matrix_exp(&matrix.to_owned(), max_terms, tolerance)
+    matrix_exp_impl(matrix, max_terms, tolerance)
 }
 
 /// Compute complex matrix exponential via Taylor series from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_exp_complex`].
 ///
 /// # Errors
 /// Returns an error for invalid input.
@@ -299,7 +307,7 @@ pub fn matrix_exp_complex_view(
     max_terms: usize,
     tolerance: f64,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
-    matrix_exp_complex(&matrix.to_owned(), max_terms, tolerance)
+    matrix_exp_complex_impl(matrix, max_terms, tolerance)
 }
 
 /// Compute matrix exponential into `output`.
@@ -343,7 +351,7 @@ pub fn matrix_exp_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_exp(matrix, max_terms, tolerance)?;
+    let result = matrix_exp_impl(&matrix.view(), max_terms, tolerance)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -362,7 +370,7 @@ pub fn matrix_exp_complex_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_exp_complex(matrix, max_terms, tolerance)?;
+    let result = matrix_exp_complex_impl(&matrix.view(), max_terms, tolerance)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -375,16 +383,21 @@ pub fn matrix_exp_complex_with_workspace_into(
 /// # Errors
 /// Returns an error for invalid input.
 pub fn matrix_exp_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+    matrix_exp_eigen_impl(&matrix.view())
+}
+
+fn matrix_exp_eigen_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
     if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
-        return matrix_exp(
+        return matrix_exp_impl(
             matrix,
             DenseKernelPolicy::MATRIX_FUNCTION_SERIES_TERMS,
             DenseKernelPolicy::BASE_TOLERANCE,
         );
     }
 
-    let eigen = eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    let eigen =
+        eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     let exp_values = eigen.eigenvalues.map(|value| value.exp());
     let diagonal = diagonal_from(&exp_values);
     Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
@@ -394,16 +407,12 @@ pub fn matrix_exp_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunct
 ///
 /// Falls back to Taylor series for non-symmetric matrices.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_exp_eigen`].
-///
 /// # Errors
 /// Returns an error for invalid input.
 pub fn matrix_exp_eigen_view(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
-    matrix_exp_eigen(&matrix.to_owned())
+    matrix_exp_eigen_impl(matrix)
 }
 
 /// Compute complex matrix exponential via Hermitian eigen decomposition.
@@ -415,9 +424,15 @@ pub fn matrix_exp_eigen_view(
 pub fn matrix_exp_eigen_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_exp_eigen_complex_impl(&matrix.view())
+}
+
+fn matrix_exp_eigen_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
     if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
-        return matrix_exp_complex(
+        return matrix_exp_complex_impl(
             matrix,
             DenseKernelPolicy::MATRIX_FUNCTION_SERIES_TERMS,
             DenseKernelPolicy::BASE_TOLERANCE,
@@ -435,16 +450,12 @@ pub fn matrix_exp_eigen_complex(
 ///
 /// Falls back to Taylor series for non-Hermitian matrices.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_exp_eigen_complex`].
-///
 /// # Errors
 /// Returns an error for invalid input.
 pub fn matrix_exp_eigen_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
-    matrix_exp_eigen_complex(&matrix.to_owned())
+    matrix_exp_eigen_complex_impl(matrix)
 }
 
 /// Compute matrix logarithm via Taylor expansion around identity.
@@ -453,6 +464,14 @@ pub fn matrix_exp_eigen_complex_view(
 /// Returns an error for invalid input.
 pub fn matrix_log_taylor(
     matrix: &Array2<f64>,
+    max_terms: usize,
+    tolerance: f64,
+) -> Result<Array2<f64>, MatrixFunctionError> {
+    matrix_log_taylor_impl(&matrix.view(), max_terms, tolerance)
+}
+
+fn matrix_log_taylor_impl(
+    matrix: &ArrayView2<'_, f64>,
     max_terms: usize,
     tolerance: f64,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
@@ -480,10 +499,6 @@ pub fn matrix_log_taylor(
 
 /// Compute matrix logarithm via Taylor expansion around identity from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_log_taylor`].
-///
 /// # Errors
 /// Returns an error for invalid input.
 pub fn matrix_log_taylor_view(
@@ -491,7 +506,7 @@ pub fn matrix_log_taylor_view(
     max_terms: usize,
     tolerance: f64,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
-    matrix_log_taylor(&matrix.to_owned(), max_terms, tolerance)
+    matrix_log_taylor_impl(matrix, max_terms, tolerance)
 }
 
 /// Compute matrix logarithm via Taylor expansion into `output`.
@@ -521,7 +536,7 @@ pub fn matrix_log_taylor_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_taylor(matrix, max_terms, tolerance)?;
+    let result = matrix_log_taylor_impl(&matrix.view(), max_terms, tolerance)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -532,12 +547,17 @@ pub fn matrix_log_taylor_with_workspace_into(
 /// # Errors
 /// Returns an error if eigenvalues are non-positive.
 pub fn matrix_log_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+    matrix_log_eigen_impl(&matrix.view())
+}
+
+fn matrix_log_eigen_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
     if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
-    let eigen = eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    let eigen =
+        eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     if eigen.eigenvalues.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
@@ -549,16 +569,12 @@ pub fn matrix_log_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunct
 
 /// Compute matrix logarithm via eigen decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_log_eigen`].
-///
 /// # Errors
 /// Returns an error if eigenvalues are non-positive.
 pub fn matrix_log_eigen_view(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
-    matrix_log_eigen(&matrix.to_owned())
+    matrix_log_eigen_impl(matrix)
 }
 
 /// Compute matrix logarithm via eigen decomposition into `output`.
@@ -584,7 +600,7 @@ pub fn matrix_log_eigen_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_eigen(matrix)?;
+    let result = matrix_log_eigen_impl(&matrix.view())?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -596,6 +612,12 @@ pub fn matrix_log_eigen_with_workspace_into(
 /// Returns an error for non-Hermitian or non-positive-definite inputs.
 pub fn matrix_log_eigen_complex(
     matrix: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_log_eigen_complex_impl(&matrix.view())
+}
+
+fn matrix_log_eigen_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
     if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
@@ -614,16 +636,12 @@ pub fn matrix_log_eigen_complex(
 
 /// Compute complex matrix logarithm via Hermitian eigen decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_log_eigen_complex`].
-///
 /// # Errors
 /// Returns an error for non-Hermitian or non-positive-definite inputs.
 pub fn matrix_log_eigen_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
-    matrix_log_eigen_complex(&matrix.to_owned())
+    matrix_log_eigen_complex_impl(matrix)
 }
 
 /// Compute complex matrix logarithm via Hermitian eigen decomposition into `output`.
@@ -651,7 +669,7 @@ pub fn matrix_log_eigen_complex_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_eigen_complex(matrix)?;
+    let result = matrix_log_eigen_complex_impl(&matrix.view())?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -662,8 +680,12 @@ pub fn matrix_log_eigen_complex_with_workspace_into(
 /// # Errors
 /// Returns an error if SVD fails.
 pub fn matrix_log_svd(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+    matrix_log_svd_impl(&matrix.view())
+}
+
+fn matrix_log_svd_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
-    let svd = svd::decompose(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    let svd = svd::decompose_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     if svd.singular_values.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
@@ -679,8 +701,14 @@ pub fn matrix_log_svd(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctio
 pub fn matrix_log_svd_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_log_svd_complex_impl(&matrix.view())
+}
+
+fn matrix_log_svd_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
-    let svd = svd::decompose_complex(matrix).map_err(|error| match error {
+    let svd = svd::decompose_complex_view(matrix).map_err(|error| match error {
         svd::SVDError::EmptyMatrix => MatrixFunctionError::EmptyMatrix,
         svd::SVDError::NotSquare => MatrixFunctionError::NotSquare,
         svd::SVDError::ConvergenceFailed => MatrixFunctionError::ConvergenceFailed,
@@ -696,30 +724,22 @@ pub fn matrix_log_svd_complex(
 
 /// Compute matrix logarithm via SVD from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_log_svd`].
-///
 /// # Errors
 /// Returns an error if SVD fails.
 pub fn matrix_log_svd_view(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
-    matrix_log_svd(&matrix.to_owned())
+    matrix_log_svd_impl(matrix)
 }
 
 /// Compute complex matrix logarithm via SVD from a matrix view.
-///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_log_svd_complex`].
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn matrix_log_svd_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
-    matrix_log_svd_complex(&matrix.to_owned())
+    matrix_log_svd_complex_impl(matrix)
 }
 
 /// Compute matrix logarithm via SVD into `output`.
@@ -758,7 +778,7 @@ pub fn matrix_log_svd_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_svd(matrix)?;
+    let result = matrix_log_svd_impl(&matrix.view())?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -776,7 +796,7 @@ pub fn matrix_log_svd_complex_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_svd_complex(matrix)?;
+    let result = matrix_log_svd_complex_impl(&matrix.view())?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -787,12 +807,20 @@ pub fn matrix_log_svd_complex_with_workspace_into(
 /// # Errors
 /// Returns an error for non-symmetric inputs.
 pub fn matrix_power(matrix: &Array2<f64>, power: f64) -> Result<Array2<f64>, MatrixFunctionError> {
+    matrix_power_impl(&matrix.view(), power)
+}
+
+fn matrix_power_impl(
+    matrix: &ArrayView2<'_, f64>,
+    power: f64,
+) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
     if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
-    let eigen = eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    let eigen =
+        eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     let powered_values = eigen.eigenvalues.map(|value| value.powf(power));
     let diagonal = diagonal_from(&powered_values);
     Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
@@ -800,17 +828,13 @@ pub fn matrix_power(matrix: &Array2<f64>, power: f64) -> Result<Array2<f64>, Mat
 
 /// Compute matrix power via eigen decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_power`].
-///
 /// # Errors
 /// Returns an error for non-symmetric inputs.
 pub fn matrix_power_view(
     matrix: &ArrayView2<'_, f64>,
     power: f64,
 ) -> Result<Array2<f64>, MatrixFunctionError> {
-    matrix_power(&matrix.to_owned(), power)
+    matrix_power_impl(matrix, power)
 }
 
 /// Compute matrix power into `output`.
@@ -838,7 +862,7 @@ pub fn matrix_power_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_power(matrix, power)?;
+    let result = matrix_power_impl(&matrix.view(), power)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -850,6 +874,13 @@ pub fn matrix_power_with_workspace_into(
 /// Returns an error for non-Hermitian inputs.
 pub fn matrix_power_complex(
     matrix: &Array2<Complex64>,
+    power: f64,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_power_complex_impl(&matrix.view(), power)
+}
+
+fn matrix_power_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
     power: f64,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
@@ -866,17 +897,13 @@ pub fn matrix_power_complex(
 
 /// Compute complex matrix power via Hermitian eigen decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_power_complex`].
-///
 /// # Errors
 /// Returns an error for non-Hermitian inputs.
 pub fn matrix_power_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     power: f64,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
-    matrix_power_complex(&matrix.to_owned(), power)
+    matrix_power_complex_impl(matrix, power)
 }
 
 /// Compute complex matrix power into `output`.
@@ -906,7 +933,7 @@ pub fn matrix_power_complex_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_power_complex(matrix, power)?;
+    let result = matrix_power_complex_impl(&matrix.view(), power)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -917,12 +944,17 @@ pub fn matrix_power_complex_with_workspace_into(
 /// # Errors
 /// Returns an error for non-symmetric inputs.
 pub fn matrix_sign(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+    matrix_sign_impl(&matrix.view())
+}
+
+fn matrix_sign_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
     if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
-    let eigen = eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    let eigen =
+        eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     let sign_values = eigen.eigenvalues.map(|value| {
         if *value > DenseKernelPolicy::BASE_TOLERANCE {
             1.0
@@ -938,14 +970,10 @@ pub fn matrix_sign(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionEr
 
 /// Compute matrix sign via eigen decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_sign`].
-///
 /// # Errors
 /// Returns an error for non-symmetric inputs.
 pub fn matrix_sign_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
-    matrix_sign(&matrix.to_owned())
+    matrix_sign_impl(matrix)
 }
 
 /// Compute matrix sign into `output`.
@@ -971,7 +999,7 @@ pub fn matrix_sign_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_sign(matrix)?;
+    let result = matrix_sign_impl(&matrix.view())?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -983,6 +1011,12 @@ pub fn matrix_sign_with_workspace_into(
 /// Returns an error for non-Hermitian inputs.
 pub fn matrix_sign_complex(
     matrix: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_sign_complex_impl(&matrix.view())
+}
+
+fn matrix_sign_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
     if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
@@ -1006,16 +1040,12 @@ pub fn matrix_sign_complex(
 
 /// Compute complex matrix sign via Hermitian eigen decomposition from a matrix view.
 ///
-/// # Performance
-/// This convenience wrapper materializes an owned matrix via `to_owned()`
-/// before dispatching to [`matrix_sign_complex`].
-///
 /// # Errors
 /// Returns an error for non-Hermitian inputs.
 pub fn matrix_sign_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
-    matrix_sign_complex(&matrix.to_owned())
+    matrix_sign_complex_impl(matrix)
 }
 
 /// Compute complex matrix sign into `output`.
@@ -1043,7 +1073,7 @@ pub fn matrix_sign_complex_with_workspace_into(
 ) -> Result<(), MatrixFunctionError> {
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
-    let result = matrix_sign_complex(matrix)?;
+    let result = matrix_sign_complex_impl(&matrix.view())?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())

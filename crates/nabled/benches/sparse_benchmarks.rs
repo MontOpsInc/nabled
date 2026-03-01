@@ -87,6 +87,17 @@ fn benchmark_sparse_nabled(c: &mut Criterion) {
             });
         });
 
+        _ = group.bench_with_input(BenchmarkId::new("pcg_ic0_solve", &id), &size, |bench, _| {
+            bench.iter(|| {
+                sparse::pcg_ic0_solve(
+                    black_box(&matrix),
+                    black_box(&rhs),
+                    black_box(1e-8),
+                    black_box(10_000),
+                )
+            });
+        });
+
         _ = group.bench_with_input(BenchmarkId::new("bicgstab_solve", &id), &size, |bench, _| {
             bench.iter(|| {
                 sparse::bicgstab_solve(
