@@ -17,6 +17,7 @@
 13. View/convenience APIs must not hide heap allocations without explicit rustdoc disclosure.
 14. Dense-kernel tolerance and iteration defaults are centralized in one shared policy (`nabled-linalg::internal::DenseKernelPolicy`).
 15. Delivery strategy is domain-first vertical slices: each domain is finalized with API, tests, benchmarks, and docs before expanding horizontally.
+16. P2 kickoff is incremental: establish rank-3 tensor/cube APIs and compile-time accelerator contracts first, then add concrete GPU/distributed kernels.
 
 ## API Purity Model
 

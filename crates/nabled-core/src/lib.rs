@@ -3,7 +3,8 @@
 pub mod errors;
 pub mod prelude {
     pub use ndarray::{
-        Array, Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewMut1, ArrayViewMut2,
+        Array, Array1, Array2, Array3, ArrayD, ArrayView1, ArrayView2, ArrayView3, ArrayViewMut1,
+        ArrayViewMut2, ArrayViewMut3,
     };
     pub use num_complex::{Complex32, Complex64};
 }

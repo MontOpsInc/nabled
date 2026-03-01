@@ -1,7 +1,8 @@
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 use nabled_linalg::{
-    CholeskyError, EigenError, LUError, MatrixFunctionError, OrthogonalizationError, PolarError,
-    QRError, SVDError, SchurError, SparseError, SylvesterError, TriangularError, VectorError,
+    AcceleratorError, BackendKind, CholeskyError, EigenError, LUError, MatrixError,
+    MatrixFunctionError, OrthogonalizationError, PolarError, QRError, SVDError, SchurError,
+    SparseError, SylvesterError, TensorError, TriangularError, VectorError,
 };
 
 #[test]
@@ -63,6 +64,14 @@ fn maps_cholesky_eigen_lu_matrix_functions() {
     assert_eq!(
         LUError::NumericalInstability.into_nabled_error(),
         NabledError::NumericalInstability
+    );
+    assert_eq!(
+        MatrixError::EmptyInput.into_nabled_error(),
+        NabledError::Shape(ShapeError::EmptyInput)
+    );
+    assert_eq!(
+        MatrixError::DimensionMismatch.into_nabled_error(),
+        NabledError::Shape(ShapeError::DimensionMismatch)
     );
 
     assert_eq!(
@@ -218,5 +227,23 @@ fn maps_vector_errors() {
         NabledError::InvalidInput(
             "cosine similarity is undefined for zero-norm vectors".to_string()
         )
+    );
+
+    assert_eq!(
+        TensorError::EmptyInput.into_nabled_error(),
+        NabledError::Shape(ShapeError::EmptyInput)
+    );
+    assert_eq!(
+        TensorError::DimensionMismatch.into_nabled_error(),
+        NabledError::Shape(ShapeError::DimensionMismatch)
+    );
+
+    assert_eq!(
+        AcceleratorError::UnsupportedBackend(BackendKind::Cuda).into_nabled_error(),
+        NabledError::Other("backend Cuda is not currently available".to_string())
+    );
+    assert_eq!(
+        AcceleratorError::InvalidChunkSize.into_nabled_error(),
+        NabledError::InvalidInput("chunk size must be greater than zero".to_string())
     );
 }

@@ -4,10 +4,11 @@ use approx::assert_relative_eq;
 use nabled::svd::{self as svd, SVDError};
 use nabled::vector::{self as vector, PairwiseCosineWorkspace};
 use nabled::{
-    IntoNabledError, IterativeConfig, NabledError, cholesky, iterative, lu, matrix_functions,
-    orthogonalization, pca, polar, regression, schur, stats, sylvester, triangular,
+    CpuBackend, CsrMatrix, CudaBackend, IntoNabledError, IterativeConfig, NabledError, accelerator,
+    cholesky, eigen, iterative, lu, matrix, matrix_functions, orthogonalization, pca, polar,
+    regression, schur, sparse, stats, sylvester, tensor, triangular,
 };
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex64;
 
 fn conjugate_transpose(matrix: &Array2<Complex64>) -> Array2<Complex64> {
@@ -287,4 +288,94 @@ fn test_complex_error_mapping_paths() {
         .expect_err("singular solve should error")
         .into_nabled_error();
     assert!(matches!(lu_error, NabledError::SingularMatrix));
+}
+
+#[test]
+fn test_matrix_sparse_and_nonsymmetric_eigen_paths() {
+    let dense = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 0.0, 1.0, 1.0]).unwrap();
+    let input_vector = Array1::from_vec(vec![1.0, 0.0, 2.0]);
+    let dense_y = matrix::matvec(&dense, &input_vector).unwrap();
+    assert_relative_eq!(dense_y[0], 7.0, epsilon = 1e-10);
+    assert_relative_eq!(dense_y[1], 2.0, epsilon = 1e-10);
+
+    let dense_rhs = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
+    let dense_mm = matrix::matmat(&dense, &dense_rhs).unwrap();
+    assert_eq!(dense_mm.dim(), (2, 2));
+
+    let batch_vectors =
+        Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 2.0, 0.5, -1.0, 1.0]).unwrap();
+    let batch_out = matrix::batched_row_matvec(&batch_vectors, &dense).unwrap();
+    assert_eq!(batch_out.dim(), (2, 2));
+
+    let left_batches = Array3::from_shape_vec((2, 2, 3), vec![
+        1.0, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+    ])
+    .unwrap();
+    let right_batches = Array3::from_shape_vec((2, 3, 2), vec![
+        1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+    ])
+    .unwrap();
+    let batched_mm = matrix::batched_matmat(&left_batches, &right_batches).unwrap();
+    assert_eq!(batched_mm.dim(), (2, 2, 2));
+
+    let sparse_matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+        4.0, 1.0, 1.0, 3.0, 1.0, 1.0, 2.0,
+    ])
+    .unwrap();
+    let transposed = sparse::transpose(&sparse_matrix).unwrap();
+    assert_eq!(transposed.nrows, 3);
+    assert_eq!(transposed.ncols, 3);
+
+    let csc = sparse::csr_to_csc(&sparse_matrix).unwrap();
+    let csc_rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+    let csc_matvec = sparse::matvec_csc(&csc, &csc_rhs).unwrap();
+    assert_eq!(csc_matvec.len(), 3);
+
+    let rhs_dense = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
+    let sparse_mm = sparse::matmat_dense(&sparse_matrix, &rhs_dense).unwrap();
+    assert_eq!(sparse_mm.dim(), (3, 2));
+
+    let sparse_sparse = sparse::matmat_sparse(&sparse_matrix, &sparse_matrix).unwrap();
+    assert_eq!(sparse_sparse.nrows, 3);
+    assert_eq!(sparse_sparse.ncols, 3);
+
+    let sparse_batch = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 3.0, 2.0, 1.0]).unwrap();
+    let sparse_batch_out = sparse::batched_matvec(&sparse_matrix, &sparse_batch).unwrap();
+    assert_eq!(sparse_batch_out.dim(), (2, 3));
+
+    let rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+    let cg = sparse::conjugate_gradient_solve(&sparse_matrix, &rhs, 1e-10, 2000).unwrap();
+    let reconstructed = sparse::matvec(&sparse_matrix, &cg).unwrap();
+    for i in 0..rhs.len() {
+        assert_relative_eq!(reconstructed[i], rhs[i], epsilon = 1e-6);
+    }
+
+    let bicgstab = sparse::bicgstab_solve(&sparse_matrix, &rhs, 1e-10, 5000).unwrap();
+    let reconstructed_bicgstab = sparse::matvec(&sparse_matrix, &bicgstab).unwrap();
+    for i in 0..rhs.len() {
+        assert_relative_eq!(reconstructed_bicgstab[i], rhs[i], epsilon = 1e-5);
+    }
+
+    let cube = Array3::from_shape_vec((2, 2, 3), vec![
+        1.0, 2.0, 3.0, 0.0, 1.0, 1.0, 2.0, -1.0, 0.5, 3.0, 0.0, 2.0,
+    ])
+    .unwrap();
+    let cube_vectors = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 2.0, 0.5, -1.0, 1.0]).unwrap();
+    let cube_out = tensor::cube_matvec(&cube, &cube_vectors).unwrap();
+    assert_eq!(cube_out.dim(), (2, 2));
+    let flat = tensor::flatten_cubes(&cube).unwrap();
+    assert_eq!(flat.dim(), (2, 6));
+
+    let cpu_result = accelerator::execute::<CpuBackend, _, _>(|| 21 + 21).unwrap();
+    assert_eq!(cpu_result, 42);
+    let cuda_result = accelerator::execute::<CudaBackend, _, _>(|| 1);
+    assert!(cuda_result.is_err());
+
+    let rotation = Array2::from_shape_vec((2, 2), vec![0.0, -1.0, 1.0, 0.0]).unwrap();
+    let nonsymmetric = eigen::nonsymmetric(&rotation).unwrap();
+    assert_eq!(nonsymmetric.eigenvalues.len(), 2);
+
+    let bad_vector = Array1::from_vec(vec![1.0]);
+    let matrix_error = matrix::matvec(&dense, &bad_vector).unwrap_err().into_nabled_error();
+    assert!(matches!(matrix_error, NabledError::Shape(nabled::ShapeError::DimensionMismatch)));
 }

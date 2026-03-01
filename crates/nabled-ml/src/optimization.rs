@@ -104,6 +104,57 @@ impl Default for AdamConfig {
     }
 }
 
+/// Configuration for momentum gradient descent.
+#[derive(Debug, Clone, Copy)]
+pub struct MomentumConfig {
+    /// Base learning rate.
+    pub learning_rate:  f64,
+    /// Momentum coefficient in `[0, 1)`.
+    pub momentum:       f64,
+    /// Maximum optimization iterations.
+    pub max_iterations: usize,
+    /// Gradient norm tolerance for convergence.
+    pub tolerance:      f64,
+}
+
+impl Default for MomentumConfig {
+    fn default() -> Self {
+        Self {
+            learning_rate:  1e-2,
+            momentum:       0.9,
+            max_iterations: 10_000,
+            tolerance:      1e-8,
+        }
+    }
+}
+
+/// Configuration for `RMSProp` optimizer.
+#[derive(Debug, Clone, Copy)]
+pub struct RMSPropConfig {
+    /// Base learning rate.
+    pub learning_rate:  f64,
+    /// Exponential decay factor for squared gradients in `[0, 1)`.
+    pub rho:            f64,
+    /// Numerical epsilon.
+    pub epsilon:        f64,
+    /// Maximum optimization iterations.
+    pub max_iterations: usize,
+    /// Gradient norm tolerance for convergence.
+    pub tolerance:      f64,
+}
+
+impl Default for RMSPropConfig {
+    fn default() -> Self {
+        Self {
+            learning_rate:  1e-2,
+            rho:            0.9,
+            epsilon:        1e-8,
+            max_iterations: 10_000,
+            tolerance:      1e-8,
+        }
+    }
+}
+
 fn l2_norm(vector: &Array1<f64>) -> f64 {
     vector.iter().map(|value| value * value).sum::<f64>().sqrt()
 }
@@ -140,6 +191,29 @@ fn validate_adam_config(config: &AdamConfig) -> Result<(), OptimizationError> {
     if config.learning_rate <= 0.0
         || !(0.0..1.0).contains(&config.beta1)
         || !(0.0..1.0).contains(&config.beta2)
+        || config.epsilon <= 0.0
+        || config.max_iterations == 0
+        || config.tolerance < 0.0
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_momentum_config(config: &MomentumConfig) -> Result<(), OptimizationError> {
+    if config.learning_rate <= 0.0
+        || !(0.0..1.0).contains(&config.momentum)
+        || config.max_iterations == 0
+        || config.tolerance < 0.0
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_rmsprop_config(config: &RMSPropConfig) -> Result<(), OptimizationError> {
+    if config.learning_rate <= 0.0
+        || !(0.0..1.0).contains(&config.rho)
         || config.epsilon <= 0.0
         || config.max_iterations == 0
         || config.tolerance < 0.0
@@ -282,6 +356,86 @@ where
     Err(OptimizationError::MaxIterationsExceeded)
 }
 
+/// Minimize objective with momentum gradient descent.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn momentum_descent<F, G>(
+    initial: &Array1<f64>,
+    objective: F,
+    gradient: G,
+    config: &MomentumConfig,
+) -> Result<Array1<f64>, OptimizationError>
+where
+    F: Fn(&Array1<f64>) -> f64,
+    G: Fn(&Array1<f64>) -> Array1<f64>,
+{
+    validate_vector(initial)?;
+    validate_momentum_config(config)?;
+
+    let mut x = initial.clone();
+    let mut velocity = Array1::<f64>::zeros(x.len());
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    let _ = objective(&x);
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm(&grad) <= tolerance {
+            return Ok(x);
+        }
+
+        for i in 0..x.len() {
+            velocity[i] = config.momentum * velocity[i] + grad[i];
+            x[i] -= config.learning_rate * velocity[i];
+        }
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with `RMSProp`.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn rmsprop<F, G>(
+    initial: &Array1<f64>,
+    objective: F,
+    gradient: G,
+    config: &RMSPropConfig,
+) -> Result<Array1<f64>, OptimizationError>
+where
+    F: Fn(&Array1<f64>) -> f64,
+    G: Fn(&Array1<f64>) -> Array1<f64>,
+{
+    validate_vector(initial)?;
+    validate_rmsprop_config(config)?;
+
+    let mut x = initial.clone();
+    let mut avg_sq = Array1::<f64>::zeros(x.len());
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    let _ = objective(&x);
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm(&grad) <= tolerance {
+            return Ok(x);
+        }
+
+        for i in 0..x.len() {
+            avg_sq[i] = config.rho * avg_sq[i] + (1.0 - config.rho) * grad[i] * grad[i];
+            x[i] -= config.learning_rate * grad[i] / (avg_sq[i].sqrt() + config.epsilon);
+        }
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::arr1;
@@ -361,5 +515,31 @@ mod tests {
         let bad_adam = AdamConfig { beta1: 1.0, ..AdamConfig::default() };
         let adam_invalid = adam(&x0, objective, gradient, &bad_adam);
         assert!(matches!(adam_invalid, Err(OptimizationError::InvalidConfig)));
+    }
+
+    #[test]
+    fn momentum_and_rmsprop_converge_on_quadratic() {
+        let x0 = arr1(&[-4.0_f64]);
+
+        let momentum_solution =
+            momentum_descent(&x0, objective, gradient, &MomentumConfig::default()).unwrap();
+        assert!((momentum_solution[0] - 3.0).abs() < 1e-3);
+
+        let rmsprop_solution =
+            rmsprop(&x0, objective, gradient, &RMSPropConfig::default()).unwrap();
+        assert!((rmsprop_solution[0] - 3.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn momentum_and_rmsprop_reject_invalid_config() {
+        let x0 = arr1(&[0.0_f64]);
+
+        let bad_momentum = MomentumConfig { momentum: 1.0, ..MomentumConfig::default() };
+        let momentum_invalid = momentum_descent(&x0, objective, gradient, &bad_momentum);
+        assert!(matches!(momentum_invalid, Err(OptimizationError::InvalidConfig)));
+
+        let bad_rmsprop = RMSPropConfig { rho: 1.0, ..RMSPropConfig::default() };
+        let rmsprop_invalid = rmsprop(&x0, objective, gradient, &bad_rmsprop);
+        assert!(matches!(rmsprop_invalid, Err(OptimizationError::InvalidConfig)));
     }
 }

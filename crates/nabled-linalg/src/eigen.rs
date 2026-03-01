@@ -3,6 +3,7 @@
 use std::fmt;
 
 use ndarray::{Array1, Array2, ArrayView2};
+use num_complex::Complex64;
 
 use crate::cholesky;
 #[cfg(not(feature = "openblas-system"))]
@@ -11,6 +12,8 @@ use crate::internal::{
     DenseKernelPolicy, is_symmetric, sort_eigenpairs_desc, validate_finite,
     validate_square_non_empty,
 };
+#[cfg(not(feature = "openblas-system"))]
+use crate::schur;
 
 /// Result of symmetric eigen decomposition.
 #[derive(Debug, Clone)]
@@ -28,6 +31,15 @@ pub struct NdarrayGeneralizedEigenResult {
     pub eigenvalues:  Array1<f64>,
     /// Eigenvectors by column.
     pub eigenvectors: Array2<f64>,
+}
+
+/// Result of non-symmetric eigen decomposition (Schur-based).
+#[derive(Debug, Clone)]
+pub struct NdarrayNonsymmetricEigenResult {
+    /// Eigenvalues.
+    pub eigenvalues:   Array1<Complex64>,
+    /// Schur vectors by column.
+    pub schur_vectors: Array2<Complex64>,
 }
 
 /// Error type for eigen operations.
@@ -79,6 +91,25 @@ fn validate_symmetric_input(matrix: &Array2<f64>) -> Result<(), EigenError> {
     validate_finite(matrix).map_err(map_validation_error)?;
     if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(EigenError::NotSymmetric);
+    }
+    Ok(())
+}
+
+fn validate_nonsymmetric_input(matrix: &Array2<f64>) -> Result<(), EigenError> {
+    validate_square_non_empty(matrix).map_err(map_validation_error)?;
+    validate_finite(matrix).map_err(map_validation_error)?;
+    Ok(())
+}
+
+fn validate_complex_square_finite(matrix: &Array2<Complex64>) -> Result<(), EigenError> {
+    if matrix.is_empty() {
+        return Err(EigenError::EmptyMatrix);
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(EigenError::NotSquare);
+    }
+    if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
+        return Err(EigenError::NumericalInstability);
     }
     Ok(())
 }
@@ -164,6 +195,82 @@ fn generalized_provider(
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
+#[cfg(not(feature = "openblas-system"))]
+fn nonsymmetric_complex_internal(
+    matrix: &Array2<Complex64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    validate_complex_square_finite(matrix)?;
+    let dimension = matrix.nrows();
+
+    if dimension == 1 {
+        let mut eigenvalues = Array1::<Complex64>::zeros(1);
+        eigenvalues[0] = matrix[[0, 0]];
+        let mut schur_vectors = Array2::<Complex64>::zeros((1, 1));
+        schur_vectors[[0, 0]] = Complex64::new(1.0, 0.0);
+        return Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors });
+    }
+
+    // Closed-form quadratic solve stabilizes the common 2x2 path and avoids
+    // relying on iterative Schur convergence for tiny inputs.
+    if dimension == 2 {
+        let m00 = matrix[[0, 0]];
+        let m01 = matrix[[0, 1]];
+        let m10 = matrix[[1, 0]];
+        let m11 = matrix[[1, 1]];
+        let trace = m00 + m11;
+        let determinant = m00 * m11 - m01 * m10;
+        let discriminant = trace * trace - Complex64::new(4.0, 0.0) * determinant;
+        let root = discriminant.sqrt();
+
+        let mut eigenvalues = Array1::<Complex64>::zeros(2);
+        eigenvalues[0] = (trace + root) / 2.0;
+        eigenvalues[1] = (trace - root) / 2.0;
+
+        let mut schur_vectors = Array2::<Complex64>::zeros((2, 2));
+        for i in 0..2 {
+            let lambda = eigenvalues[i];
+            let candidate =
+                if m01.norm() >= m10.norm() { [m01, lambda - m00] } else { [lambda - m11, m10] };
+            let norm = (candidate[0].norm_sqr() + candidate[1].norm_sqr()).sqrt().max(f64::EPSILON);
+            schur_vectors[[0, i]] = candidate[0] / norm;
+            schur_vectors[[1, i]] = candidate[1] / norm;
+        }
+        return Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors });
+    }
+
+    let decomposition =
+        schur::compute_schur_complex(matrix).map_err(|_| EigenError::ConvergenceFailed)?;
+    let mut eigenvalues = Array1::<Complex64>::zeros(dimension);
+    for i in 0..dimension {
+        eigenvalues[i] = decomposition.t[[i, i]];
+    }
+    Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: decomposition.q })
+}
+
+#[cfg(feature = "openblas-system")]
+fn nonsymmetric_provider(
+    matrix: &Array2<f64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    use ndarray_linalg::Eig as _;
+
+    validate_nonsymmetric_input(matrix)?;
+    let (eigenvalues, right_eigenvectors) =
+        matrix.eig().map_err(|_| EigenError::ConvergenceFailed)?;
+    Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
+}
+
+#[cfg(feature = "openblas-system")]
+fn nonsymmetric_complex_provider(
+    matrix: &Array2<Complex64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    use ndarray_linalg::Eig as _;
+
+    validate_complex_square_finite(matrix)?;
+    let (eigenvalues, right_eigenvectors) =
+        matrix.eig().map_err(|_| EigenError::ConvergenceFailed)?;
+    Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
+}
+
 /// Compute symmetric eigen decomposition.
 ///
 /// # Errors
@@ -224,9 +331,72 @@ pub fn generalized_view(
     generalized(&matrix_a.to_owned(), &matrix_b.to_owned())
 }
 
+/// Compute non-symmetric eigen decomposition via complex Schur reduction.
+///
+/// # Errors
+/// Returns an error for non-square, non-finite, or non-convergent inputs.
+pub fn nonsymmetric(matrix: &Array2<f64>) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        nonsymmetric_provider(matrix)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        validate_nonsymmetric_input(matrix)?;
+        let matrix_complex = matrix.mapv(|value| Complex64::new(value, 0.0));
+        nonsymmetric_complex_internal(&matrix_complex)
+    }
+}
+
+/// Compute non-symmetric eigen decomposition from a real matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`nonsymmetric`].
+///
+/// # Errors
+/// Returns an error for non-square, non-finite, or non-convergent inputs.
+pub fn nonsymmetric_view(
+    matrix: &ArrayView2<'_, f64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    nonsymmetric(&matrix.to_owned())
+}
+
+/// Compute non-symmetric eigen decomposition for complex matrices.
+///
+/// # Errors
+/// Returns an error for non-square, non-finite, or non-convergent inputs.
+pub fn nonsymmetric_complex(
+    matrix: &Array2<Complex64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        nonsymmetric_complex_provider(matrix)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        nonsymmetric_complex_internal(matrix)
+    }
+}
+
+/// Compute non-symmetric eigen decomposition for complex matrix views.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`nonsymmetric_complex`].
+///
+/// # Errors
+/// Returns an error for non-square, non-finite, or non-convergent inputs.
+pub fn nonsymmetric_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    nonsymmetric_complex(&matrix.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -319,5 +489,61 @@ mod tests {
         let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 5.0]).unwrap();
         let eigen = symmetric(&matrix).unwrap();
         assert!(eigen.eigenvalues[0] >= eigen.eigenvalues[1]);
+    }
+
+    #[test]
+    fn nonsymmetric_real_eigenvalues_cover_complex_pair() {
+        let rotation = Array2::from_shape_vec((2, 2), vec![0.0, -1.0, 1.0, 0.0]).unwrap();
+        let result = nonsymmetric(&rotation).unwrap();
+        assert_eq!(result.eigenvalues.len(), 2);
+        let mut imag_parts = result.eigenvalues.iter().map(|value| value.im).collect::<Vec<_>>();
+        imag_parts.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap());
+        assert!(imag_parts[0] < -0.9);
+        assert!(imag_parts[1] > 0.9);
+    }
+
+    #[test]
+    fn nonsymmetric_complex_eigenvalues_match_diagonal() {
+        let diagonal = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(2.0, 1.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(-3.0, 0.5),
+        ])
+        .unwrap();
+        let result = nonsymmetric_complex(&diagonal).unwrap();
+        assert_eq!(result.eigenvalues.len(), 2);
+        assert!((result.eigenvalues[0] - Complex64::new(2.0, 1.0)).norm() < 1e-10);
+        assert!((result.eigenvalues[1] - Complex64::new(-3.0, 0.5)).norm() < 1e-10);
+    }
+
+    #[test]
+    fn nonsymmetric_view_variants_match_owned() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, -3.0, 4.0]).unwrap();
+        let owned = nonsymmetric(&matrix).unwrap();
+        let viewed = nonsymmetric_view(&matrix.view()).unwrap();
+        assert_eq!(owned.eigenvalues.len(), viewed.eigenvalues.len());
+        assert_eq!(owned.schur_vectors.dim(), viewed.schur_vectors.dim());
+
+        let complex_matrix = matrix.mapv(|value| Complex64::new(value, 0.25 * value));
+        let complex_owned = nonsymmetric_complex(&complex_matrix).unwrap();
+        let complex_viewed = nonsymmetric_complex_view(&complex_matrix.view()).unwrap();
+        assert_eq!(complex_owned.eigenvalues.len(), complex_viewed.eigenvalues.len());
+        assert_eq!(complex_owned.schur_vectors.dim(), complex_viewed.schur_vectors.dim());
+    }
+
+    #[test]
+    fn nonsymmetric_triangular_matrix_matches_diagonal_eigenvalues() {
+        let upper_triangular =
+            Array2::from_shape_vec((3, 3), vec![4.0, 1.0, 2.0, 0.0, -3.0, 5.0, 0.0, 0.0, 2.5])
+                .unwrap();
+        let result = nonsymmetric(&upper_triangular).unwrap();
+        assert_eq!(result.eigenvalues.len(), 3);
+
+        let mut real_parts = result.eigenvalues.iter().map(|value| value.re).collect::<Vec<_>>();
+        real_parts.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap());
+        assert!((real_parts[0] + 3.0).abs() < 1e-8);
+        assert!((real_parts[1] - 2.5).abs() < 1e-8);
+        assert!((real_parts[2] - 4.0).abs() < 1e-8);
     }
 }

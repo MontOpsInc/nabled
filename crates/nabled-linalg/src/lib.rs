@@ -3,11 +3,13 @@
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 pub use nabled_core::prelude;
 
+pub mod accelerator;
 mod internal;
 
 pub mod cholesky;
 pub mod eigen;
 pub mod lu;
+pub mod matrix;
 pub mod matrix_functions;
 pub mod orthogonalization;
 pub mod polar;
@@ -16,12 +18,17 @@ pub mod schur;
 pub mod sparse;
 pub mod svd;
 pub mod sylvester;
+pub mod tensor;
 pub mod triangular;
 pub mod vector;
 
+pub use accelerator::{AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend};
 pub use cholesky::{CholeskyError, NdarrayCholeskyResult};
-pub use eigen::{EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult};
+pub use eigen::{
+    EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult, NdarrayNonsymmetricEigenResult,
+};
 pub use lu::{LUError, LogDetResult, NdarrayLUResult};
+pub use matrix::MatrixError;
 pub use matrix_functions::{
     MatrixFunctionComplexWorkspace, MatrixFunctionError, MatrixFunctionWorkspace,
 };
@@ -32,11 +39,25 @@ pub use schur::{
     NdarrayComplexSchurResult, NdarraySchurResult, SchurComplexWorkspace, SchurError,
     SchurWorkspace,
 };
-pub use sparse::{CooMatrix, CsrMatrix, SparseError};
+pub use sparse::{CooMatrix, CscMatrix, CsrMatrix, SparseError};
 pub use svd::{NdarrayComplexSVD, NdarraySVD, PseudoInverseConfig, SVDError};
 pub use sylvester::{SylvesterComplexWorkspace, SylvesterError, SylvesterWorkspace};
+pub use tensor::TensorError;
 pub use triangular::TriangularError;
 pub use vector::{PairwiseCosineWorkspace, VectorError};
+
+impl IntoNabledError for AcceleratorError {
+    fn into_nabled_error(self) -> NabledError {
+        match self {
+            AcceleratorError::UnsupportedBackend(kind) => {
+                NabledError::Other(format!("backend {kind:?} is not currently available"))
+            }
+            AcceleratorError::InvalidChunkSize => {
+                NabledError::InvalidInput("chunk size must be greater than zero".to_string())
+            }
+        }
+    }
+}
 
 impl IntoNabledError for CholeskyError {
     fn into_nabled_error(self) -> NabledError {
@@ -72,6 +93,15 @@ impl IntoNabledError for LUError {
             LUError::SingularMatrix => NabledError::SingularMatrix,
             LUError::InvalidInput(message) => NabledError::InvalidInput(message),
             LUError::NumericalInstability => NabledError::NumericalInstability,
+        }
+    }
+}
+
+impl IntoNabledError for MatrixError {
+    fn into_nabled_error(self) -> NabledError {
+        match self {
+            MatrixError::EmptyInput => NabledError::Shape(ShapeError::EmptyInput),
+            MatrixError::DimensionMismatch => NabledError::Shape(ShapeError::DimensionMismatch),
         }
     }
 }
@@ -181,6 +211,15 @@ impl IntoNabledError for TriangularError {
     }
 }
 
+impl IntoNabledError for TensorError {
+    fn into_nabled_error(self) -> NabledError {
+        match self {
+            TensorError::EmptyInput => NabledError::Shape(ShapeError::EmptyInput),
+            TensorError::DimensionMismatch => NabledError::Shape(ShapeError::DimensionMismatch),
+        }
+    }
+}
+
 impl IntoNabledError for VectorError {
     fn into_nabled_error(self) -> NabledError {
         match self {
@@ -229,6 +268,14 @@ mod tests {
         ));
 
         assert!(matches!(LUError::SingularMatrix.into_nabled_error(), NabledError::SingularMatrix));
+        assert!(matches!(
+            MatrixError::EmptyInput.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            MatrixError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
 
         assert!(matches!(
             MatrixFunctionError::ConvergenceFailed.into_nabled_error(),
@@ -254,7 +301,10 @@ mod tests {
             QRError::InvalidInput("y".to_string()).into_nabled_error(),
             NabledError::InvalidInput(_)
         ));
+    }
 
+    #[test]
+    fn linalg_errors_map_to_shared_taxonomy_additional_domains() {
         assert!(matches!(
             SchurError::InvalidInput("x".to_string()).into_nabled_error(),
             NabledError::InvalidInput(_)
@@ -293,6 +343,22 @@ mod tests {
         ));
 
         assert!(matches!(VectorError::ZeroNorm.into_nabled_error(), NabledError::InvalidInput(_)));
+        assert!(matches!(
+            TensorError::EmptyInput.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            TensorError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            AcceleratorError::UnsupportedBackend(BackendKind::Cuda).into_nabled_error(),
+            NabledError::Other(_)
+        ));
+        assert!(matches!(
+            AcceleratorError::InvalidChunkSize.into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
     }
 
     #[test]

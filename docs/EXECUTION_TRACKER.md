@@ -23,6 +23,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 2. CI and local quality gates are workspace-aware and passing.
 3. Capability matrix exists and is the scope/gap source of truth.
 4. macOS OpenBLAS environment wiring is centralized in `.justfile` for provider-enabled recipes.
+5. Quality gates continue to pass in both internal and provider-enabled modes after capability expansion.
 
 ## Done
 
@@ -73,11 +74,19 @@ Use this file to resume work quickly after context compaction without re-auditin
 45. `D-045`: `N-024C` integration coverage landed for complex parity and error mapping in facade integration tests (`test_complex_dense_parity_pipeline`, `test_complex_error_mapping_paths`) and now runs in both internal/provider CI jobs.
 46. `D-046`: `N-024C` benchmark visibility expanded with complex benchmark cases in `svd_benchmarks`, `matrix_functions_benchmarks`, and `polar_benchmarks` (smoke-validated).
 47. `D-047`: `N-025` completed: dense-kernel tolerance/iteration defaults are now centralized in `internal::DenseKernelPolicy` and applied consistently across `svd`, `qr`, `eigen`, `schur`, `polar`, `matrix_functions`, `lu`, and `cholesky` paths.
+48. `D-048`: Dense pipeline module expanded: `nabled-linalg::matrix` now includes batched matrix-matrix kernels with owned/view/into APIs and tests.
+49. `D-049`: Sparse breadth expanded: CSC format + CSR↔CSC conversion, sparse-sparse multiplication, and `BiCGSTAB` solver added with coverage.
+50. `D-050`: Optimization breadth expanded with momentum descent and `RMSProp` (configs, APIs, and tests).
+51. `D-051`: Non-symmetric eigen support broadened with provider-backed `Eig` paths and stabilized internal complex small-matrix handling.
+52. `D-052`: P2 baselines landed: `nabled-linalg::tensor` (cube primitives) and `nabled-linalg::accelerator` (compile-time backend contracts).
+53. `D-053`: Shared taxonomy and facade/integration coverage updated for new matrix/sparse/tensor/accelerator capabilities.
 
 ## Next
 
-1. `N-027` (P1): Remove avoidable copies in convenience/view APIs where feasible (beyond current explicit documentation pass).
-2. `N-026` (P2): Continue sparse format/solver breadth expansion beyond current CSR/COO + Jacobi/Gauss-Seidel baseline.
+1. `N-054` (P0/P1): Continue copy-elision pass for convenience/view APIs that still materialize owned allocations in hot paths.
+2. `N-055` (P1): Expand sparse depth beyond baseline primitives (preconditioning and factorization-grade sparse workflows).
+3. `N-056` (P2): Expand tensor APIs from rank-3 baseline toward broader higher-rank (`ArrayD`) operations.
+4. `N-057` (P2): Convert accelerator contracts into concrete GPU/distributed kernels.
 
 ## Needed
 
@@ -88,11 +97,11 @@ Use this file to resume work quickly after context compaction without re-auditin
 
 ## Backlog (From Capability Matrix)
 
-1. `B-P1-001`: Batched operations over many vectors/matrices (beyond current vector-kernel baseline).
-2. `B-P1-002`: Sparse matrix/vector primitives and solver coverage.
-3. `B-P1-003`: Complex-number parity across major algorithms.
-4. `B-P1-004`: Broader non-symmetric dense eigen capabilities.
-5. `B-P1-005`: Expanded optimization primitives.
+1. `B-P1-001`: Batched decomposition-level APIs and richer broadcast semantics.
+2. `B-P1-002`: Sparse preconditioners and factorization-grade sparse workflows.
+3. `B-P1-003`: Complex-number parity across currently real-only domains.
+4. `B-P1-004`: Left-eigenvector and balancing-depth improvements for non-symmetric eigen APIs.
+5. `B-P1-005`: Advanced optimization breadth (constrained, stochastic variants, quasi-Newton/second-order).
 
 ## Resume Protocol (Compaction-Friendly)
 

@@ -31,6 +31,11 @@ Workspace migration for library domains is complete.
 23. Allocation behavior for allocating view/convenience APIs is now explicitly documented in rustdoc.
 24. Complex parity validation matrix is now integration-anchored at facade level (parity + error mapping tests) and benchmark-visible in complex `svd`, `matrix_functions`, and `polar` smoke suites.
 25. Dense numerical policy is now centralized (`internal::DenseKernelPolicy`) and applied consistently across dense kernel tolerance/iteration defaults.
+26. Dense pipeline primitives are now first-class (`nabled-linalg::matrix`) including batched matrix-matrix APIs.
+27. Sparse breadth now includes CSC format support, CSR↔CSC conversion, sparse-sparse multiplication, and `BiCGSTAB`.
+28. Optimization breadth now includes momentum descent and `RMSProp`.
+29. Non-symmetric dense eigen paths now run in both internal and provider-enabled modes.
+30. Initial P2 foundations now exist: `nabled-linalg::tensor` (cube primitives) and `nabled-linalg::accelerator` (compile-time backend contracts).
 
 ## Current Code Ownership
 
@@ -39,7 +44,8 @@ Workspace migration for library domains is complete.
 2. `crates/nabled-linalg`
    - decomposition, solver, and matrix-function domains:
      `svd`, `qr`, `lu`, `cholesky`, `eigen`, `schur`, `polar`, `sylvester`,
-     `matrix_functions`, `orthogonalization`, `triangular`, `vector`.
+     `matrix_functions`, `orthogonalization`, `triangular`, `vector`, `matrix`,
+     `sparse`, `tensor`, `accelerator`.
 3. `crates/nabled-ml`
    - ML/statistics-oriented domains:
      `iterative`, `jacobian`, `pca`, `regression`, `stats`.
@@ -67,8 +73,9 @@ Workspace migration for library domains is complete.
 Harden workspace contracts and release readiness:
 
 1. Remove avoidable copies in selected convenience/view APIs where feasible.
-2. Expand sparse formats/solvers beyond current CSR/COO + Jacobi/Gauss-Seidel baseline.
-3. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
+2. Expand sparse depth beyond current baseline into preconditioned/factorization workflows.
+3. Expand tensor operations beyond rank-3 baseline and move accelerator contracts toward concrete kernels.
+4. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration
 
