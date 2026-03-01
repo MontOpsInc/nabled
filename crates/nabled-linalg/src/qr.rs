@@ -200,236 +200,224 @@ fn decompose_complex_provider(
     Ok(QRResult { q, r, p, rank })
 }
 
-/// Ndarray QR decomposition functions.
-pub mod ndarray_qr {
-    use super::*;
+/// Compute full QR decomposition.
+///
+/// # Errors
+/// Returns an error if the matrix is empty or non-finite.
+pub fn decompose(matrix: &Array2<f64>, config: &QRConfig<f64>) -> Result<QRResult<f64>, QRError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        decompose_provider(matrix, config)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        decompose_internal(matrix, config)
+    }
+}
 
-    /// Compute full QR decomposition.
-    ///
-    /// # Errors
-    /// Returns an error if the matrix is empty or non-finite.
-    pub fn decompose(
-        matrix: &Array2<f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<QRResult<f64>, QRError> {
-        #[cfg(feature = "openblas-system")]
-        {
-            decompose_provider(matrix, config)
-        }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            decompose_internal(matrix, config)
-        }
+/// Compute full QR decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+pub fn decompose_view(
+    matrix: &ArrayView2<'_, f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    decompose(&matrix.to_owned(), config)
+}
+
+/// Compute full QR decomposition for complex matrices.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+pub fn decompose_complex(
+    matrix: &Array2<Complex64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<Complex64>, QRError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        decompose_complex_provider(matrix, config)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        decompose_complex_internal(matrix, config)
+    }
+}
+
+/// Compute full complex QR decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+pub fn decompose_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<Complex64>, QRError> {
+    decompose_complex(&matrix.to_owned(), config)
+}
+
+/// Compute reduced (economy) QR decomposition.
+///
+/// # Errors
+/// Returns an error if the matrix is empty or non-finite.
+pub fn decompose_reduced(
+    matrix: &Array2<f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    let full = decompose(matrix, config)?;
+    let keep = matrix.nrows().min(matrix.ncols());
+    Ok(QRResult {
+        q:    full.q.slice(s![.., ..keep]).to_owned(),
+        r:    full.r.slice(s![..keep, ..]).to_owned(),
+        p:    full.p,
+        rank: full.rank.min(keep),
+    })
+}
+
+/// Compute QR decomposition with column pivoting.
+///
+/// This implementation currently reuses the non-pivoted decomposition while
+/// returning an identity permutation matrix.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+pub fn decompose_with_pivoting(
+    matrix: &Array2<f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    let mut adjusted = config.clone();
+    adjusted.use_pivoting = true;
+    decompose(matrix, &adjusted)
+}
+
+/// Solve least squares `argmin ||Ax - b||_2`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or rank-deficient systems.
+pub fn solve_least_squares(
+    matrix: &Array2<f64>,
+    rhs: &Array1<f64>,
+    config: &QRConfig<f64>,
+) -> Result<Array1<f64>, QRError> {
+    validate_qr_input(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(QRError::InvalidDimensions("RHS length must equal matrix rows".to_string()));
+    }
+    if matrix.nrows() < matrix.ncols() {
+        return Err(QRError::InvalidDimensions(
+            "Underdetermined systems are not supported in this solver".to_string(),
+        ));
     }
 
-    /// Compute full QR decomposition from a matrix view.
-    ///
-    /// # Errors
-    /// Returns an error if decomposition fails.
-    pub fn decompose_view(
-        matrix: &ArrayView2<'_, f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<QRResult<f64>, QRError> {
-        decompose(&matrix.to_owned(), config)
+    #[cfg(feature = "openblas-system")]
+    {
+        let _ = config;
+        solve_least_squares_provider(matrix, rhs)
     }
-
-    /// Compute full QR decomposition for complex matrices.
-    ///
-    /// # Errors
-    /// Returns an error if decomposition fails.
-    pub fn decompose_complex(
-        matrix: &Array2<Complex64>,
-        config: &QRConfig<f64>,
-    ) -> Result<QRResult<Complex64>, QRError> {
-        #[cfg(feature = "openblas-system")]
-        {
-            decompose_complex_provider(matrix, config)
-        }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            decompose_complex_internal(matrix, config)
-        }
-    }
-
-    /// Compute full complex QR decomposition from a matrix view.
-    ///
-    /// # Errors
-    /// Returns an error if decomposition fails.
-    pub fn decompose_complex_view(
-        matrix: &ArrayView2<'_, Complex64>,
-        config: &QRConfig<f64>,
-    ) -> Result<QRResult<Complex64>, QRError> {
-        decompose_complex(&matrix.to_owned(), config)
-    }
-
-    /// Compute reduced (economy) QR decomposition.
-    ///
-    /// # Errors
-    /// Returns an error if the matrix is empty or non-finite.
-    pub fn decompose_reduced(
-        matrix: &Array2<f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<QRResult<f64>, QRError> {
-        let full = decompose(matrix, config)?;
-        let keep = matrix.nrows().min(matrix.ncols());
-        Ok(QRResult {
-            q:    full.q.slice(s![.., ..keep]).to_owned(),
-            r:    full.r.slice(s![..keep, ..]).to_owned(),
-            p:    full.p,
-            rank: full.rank.min(keep),
-        })
-    }
-
-    /// Compute QR decomposition with column pivoting.
-    ///
-    /// This implementation currently reuses the non-pivoted decomposition while
-    /// returning an identity permutation matrix.
-    ///
-    /// # Errors
-    /// Returns an error if decomposition fails.
-    pub fn decompose_with_pivoting(
-        matrix: &Array2<f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<QRResult<f64>, QRError> {
-        let mut adjusted = config.clone();
-        adjusted.use_pivoting = true;
-        decompose(matrix, &adjusted)
-    }
-
-    /// Solve least squares `argmin ||Ax - b||_2`.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions or rank-deficient systems.
-    pub fn solve_least_squares(
-        matrix: &Array2<f64>,
-        rhs: &Array1<f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<Array1<f64>, QRError> {
-        validate_qr_input(matrix)?;
-        if rhs.len() != matrix.nrows() {
-            return Err(QRError::InvalidDimensions(
-                "RHS length must equal matrix rows".to_string(),
-            ));
-        }
-        if matrix.nrows() < matrix.ncols() {
-            return Err(QRError::InvalidDimensions(
-                "Underdetermined systems are not supported in this solver".to_string(),
-            ));
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        let qr = decompose_reduced(matrix, config)?;
+        let n = matrix.ncols();
+        if qr.rank < n {
+            return Err(QRError::SingularMatrix);
         }
 
-        #[cfg(feature = "openblas-system")]
-        {
-            let _ = config;
-            solve_least_squares_provider(matrix, rhs)
+        let mut y = Array1::<f64>::zeros(n);
+        for i in 0..n {
+            let mut dot = 0.0_f64;
+            for row in 0..matrix.nrows() {
+                dot += qr.q[[row, i]] * rhs[row];
+            }
+            y[i] = dot;
         }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            let qr = decompose_reduced(matrix, config)?;
-            let n = matrix.ncols();
-            if qr.rank < n {
+
+        let mut x = Array1::<f64>::zeros(n);
+        for i_rev in 0..n {
+            let i = n - 1 - i_rev;
+            let mut sum = y[i];
+            for j in (i + 1)..n {
+                sum -= qr.r[[i, j]] * x[j];
+            }
+            let diagonal = qr.r[[i, i]];
+            if diagonal.abs() <= config.rank_tolerance.max(DEFAULT_TOLERANCE) {
                 return Err(QRError::SingularMatrix);
             }
+            x[i] = sum / diagonal;
+        }
 
-            let mut y = Array1::<f64>::zeros(n);
-            for i in 0..n {
-                let mut dot = 0.0_f64;
-                for row in 0..matrix.nrows() {
-                    dot += qr.q[[row, i]] * rhs[row];
-                }
-                y[i] = dot;
+        Ok(x)
+    }
+}
+
+/// Solve least squares from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or rank-deficient systems.
+pub fn solve_least_squares_view(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+    config: &QRConfig<f64>,
+) -> Result<Array1<f64>, QRError> {
+    solve_least_squares(&matrix.to_owned(), &rhs.to_owned(), config)
+}
+
+/// Reconstruct matrix `Q * R`.
+#[must_use]
+pub fn reconstruct_matrix(qr: &QRResult<f64>) -> Array2<f64> { qr.q.dot(&qr.r) }
+
+/// Reconstruct complex matrix `Q * R`.
+#[must_use]
+pub fn reconstruct_matrix_complex(qr: &QRResult<Complex64>) -> Array2<Complex64> { qr.q.dot(&qr.r) }
+
+/// Reconstruct matrix `Q * R` into `output`.
+///
+/// # Errors
+/// Returns an error if output dimensions do not match `Q * R`.
+pub fn reconstruct_matrix_into(
+    qr: &QRResult<f64>,
+    output: &mut Array2<f64>,
+) -> Result<(), QRError> {
+    if qr.q.ncols() != qr.r.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
+        return Err(QRError::InvalidDimensions(
+            "output shape must match q.rows x r.cols".to_string(),
+        ));
+    }
+
+    output.fill(0.0);
+    for i in 0..qr.q.nrows() {
+        for j in 0..qr.r.ncols() {
+            let mut sum = 0.0_f64;
+            for p in 0..qr.q.ncols() {
+                sum += qr.q[[i, p]] * qr.r[[p, j]];
             }
-
-            let mut x = Array1::<f64>::zeros(n);
-            for i_rev in 0..n {
-                let i = n - 1 - i_rev;
-                let mut sum = y[i];
-                for j in (i + 1)..n {
-                    sum -= qr.r[[i, j]] * x[j];
-                }
-                let diagonal = qr.r[[i, i]];
-                if diagonal.abs() <= config.rank_tolerance.max(DEFAULT_TOLERANCE) {
-                    return Err(QRError::SingularMatrix);
-                }
-                x[i] = sum / diagonal;
-            }
-
-            Ok(x)
+            output[[i, j]] = sum;
         }
     }
 
-    /// Solve least squares from matrix/vector views.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions or rank-deficient systems.
-    pub fn solve_least_squares_view(
-        matrix: &ArrayView2<'_, f64>,
-        rhs: &ArrayView1<'_, f64>,
-        config: &QRConfig<f64>,
-    ) -> Result<Array1<f64>, QRError> {
-        solve_least_squares(&matrix.to_owned(), &rhs.to_owned(), config)
+    Ok(())
+}
+
+/// Estimate condition number from the `R` diagonal.
+#[must_use]
+pub fn condition_number(qr: &QRResult<f64>) -> f64 {
+    if qr.r.is_empty() {
+        return 0.0;
     }
 
-    /// Reconstruct matrix `Q * R`.
-    #[must_use]
-    pub fn reconstruct_matrix(qr: &QRResult<f64>) -> Array2<f64> { qr.q.dot(&qr.r) }
-
-    /// Reconstruct complex matrix `Q * R`.
-    #[must_use]
-    pub fn reconstruct_matrix_complex(qr: &QRResult<Complex64>) -> Array2<Complex64> {
-        qr.q.dot(&qr.r)
+    let n = qr.r.nrows().min(qr.r.ncols());
+    let mut max_diagonal = 0.0_f64;
+    let mut min_diagonal = f64::INFINITY;
+    for i in 0..n {
+        let value = qr.r[[i, i]].abs();
+        max_diagonal = max_diagonal.max(value);
+        if value > DEFAULT_TOLERANCE {
+            min_diagonal = min_diagonal.min(value);
+        }
     }
 
-    /// Reconstruct matrix `Q * R` into `output`.
-    ///
-    /// # Errors
-    /// Returns an error if output dimensions do not match `Q * R`.
-    pub fn reconstruct_matrix_into(
-        qr: &QRResult<f64>,
-        output: &mut Array2<f64>,
-    ) -> Result<(), QRError> {
-        if qr.q.ncols() != qr.r.nrows() {
-            return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
-        }
-        if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
-            return Err(QRError::InvalidDimensions(
-                "output shape must match q.rows x r.cols".to_string(),
-            ));
-        }
-
-        output.fill(0.0);
-        for i in 0..qr.q.nrows() {
-            for j in 0..qr.r.ncols() {
-                let mut sum = 0.0_f64;
-                for p in 0..qr.q.ncols() {
-                    sum += qr.q[[i, p]] * qr.r[[p, j]];
-                }
-                output[[i, j]] = sum;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Estimate condition number from the `R` diagonal.
-    #[must_use]
-    pub fn condition_number(qr: &QRResult<f64>) -> f64 {
-        if qr.r.is_empty() {
-            return 0.0;
-        }
-
-        let n = qr.r.nrows().min(qr.r.ncols());
-        let mut max_diagonal = 0.0_f64;
-        let mut min_diagonal = f64::INFINITY;
-        for i in 0..n {
-            let value = qr.r[[i, i]].abs();
-            max_diagonal = max_diagonal.max(value);
-            if value > DEFAULT_TOLERANCE {
-                min_diagonal = min_diagonal.min(value);
-            }
-        }
-
-        if min_diagonal.is_finite() { max_diagonal / min_diagonal } else { f64::INFINITY }
-    }
+    if min_diagonal.is_finite() { max_diagonal / min_diagonal } else { f64::INFINITY }
 }
 
 #[cfg(test)]
@@ -437,13 +425,13 @@ mod tests {
     use ndarray::{Array1, Array2};
     use num_complex::Complex64;
 
-    use super::{QRConfig, QRError, ndarray_qr};
+    use super::*;
 
     #[test]
     fn qr_reconstructs_input() {
         let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
-        let qr = ndarray_qr::decompose(&matrix, &QRConfig::default()).unwrap();
-        let reconstructed = ndarray_qr::reconstruct_matrix(&qr);
+        let qr = decompose(&matrix, &QRConfig::default()).unwrap();
+        let reconstructed = reconstruct_matrix(&qr);
         for i in 0..3 {
             for j in 0..2 {
                 assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8);
@@ -456,7 +444,7 @@ mod tests {
         let matrix =
             Array2::from_shape_vec((4, 2), vec![1.0, 1.0, 1.0, 2.0, 1.0, 3.0, 1.0, 4.0]).unwrap();
         let rhs = Array1::from_vec(vec![2.0, 3.0, 4.0, 5.0]);
-        let x = ndarray_qr::solve_least_squares(&matrix, &rhs, &QRConfig::default()).unwrap();
+        let x = solve_least_squares(&matrix, &rhs, &QRConfig::default()).unwrap();
         assert!((x[0] - 1.0).abs() < 1e-8);
         assert!((x[1] - 1.0).abs() < 1e-8);
     }
@@ -465,7 +453,7 @@ mod tests {
     fn least_squares_rejects_bad_dimensions() {
         let matrix = Array2::eye(2);
         let rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
-        let result = ndarray_qr::solve_least_squares(&matrix, &rhs, &QRConfig::default());
+        let result = solve_least_squares(&matrix, &rhs, &QRConfig::default());
         assert!(matches!(result, Err(QRError::InvalidDimensions(_))));
     }
 
@@ -478,8 +466,8 @@ mod tests {
             Complex64::new(-1.0, 2.0),
         ])
         .unwrap();
-        let qr = ndarray_qr::decompose_complex(&matrix, &QRConfig::default()).unwrap();
-        let reconstructed = ndarray_qr::reconstruct_matrix_complex(&qr);
+        let qr = decompose_complex(&matrix, &QRConfig::default()).unwrap();
+        let reconstructed = reconstruct_matrix_complex(&qr);
         for i in 0..2 {
             for j in 0..2 {
                 assert!((reconstructed[[i, j]] - matrix[[i, j]]).norm() < 1e-8);
@@ -490,9 +478,9 @@ mod tests {
     #[test]
     fn decompose_view_matches_owned() {
         let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
-        let from_owned = ndarray_qr::decompose(&matrix, &QRConfig::default()).unwrap();
+        let from_owned = decompose(&matrix, &QRConfig::default()).unwrap();
         let matrix_view = matrix.view();
-        let from_view = ndarray_qr::decompose_view(&matrix_view, &QRConfig::default()).unwrap();
+        let from_view = decompose_view(&matrix_view, &QRConfig::default()).unwrap();
         assert_eq!(from_owned.rank, from_view.rank);
     }
 
@@ -500,26 +488,26 @@ mod tests {
     fn reduced_and_pivoted_qr_shapes_are_consistent() {
         let matrix =
             Array2::from_shape_vec((4, 2), vec![1.0, 0.0, 2.0, 1.0, 3.0, 1.0, 4.0, 2.0]).unwrap();
-        let reduced = ndarray_qr::decompose_reduced(&matrix, &QRConfig::default()).unwrap();
+        let reduced = decompose_reduced(&matrix, &QRConfig::default()).unwrap();
         assert_eq!(reduced.q.dim(), (4, 2));
         assert_eq!(reduced.r.dim(), (2, 2));
 
-        let pivoted = ndarray_qr::decompose_with_pivoting(&matrix, &QRConfig::default()).unwrap();
+        let pivoted = decompose_with_pivoting(&matrix, &QRConfig::default()).unwrap();
         assert!(pivoted.p.is_some());
     }
 
     #[test]
     fn reconstruct_into_and_condition_number_work() {
         let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 0.0, 2.0]).unwrap();
-        let qr = ndarray_qr::decompose(&matrix, &QRConfig::default()).unwrap();
+        let qr = decompose(&matrix, &QRConfig::default()).unwrap();
         let mut out = Array2::<f64>::zeros((2, 2));
-        ndarray_qr::reconstruct_matrix_into(&qr, &mut out).unwrap();
+        reconstruct_matrix_into(&qr, &mut out).unwrap();
         for i in 0..2 {
             for j in 0..2 {
                 assert!((out[[i, j]] - matrix[[i, j]]).abs() < 1e-8);
             }
         }
-        assert!(ndarray_qr::condition_number(&qr).is_finite());
+        assert!(condition_number(&qr).is_finite());
     }
 
     #[test]
@@ -527,12 +515,11 @@ mod tests {
         let matrix =
             Array2::from_shape_vec((4, 2), vec![1.0, 1.0, 1.0, 2.0, 1.0, 3.0, 1.0, 4.0]).unwrap();
         let rhs = Array1::from_vec(vec![2.0, 3.0, 4.0, 5.0]);
-        let owned = ndarray_qr::solve_least_squares(&matrix, &rhs, &QRConfig::default()).unwrap();
+        let owned = solve_least_squares(&matrix, &rhs, &QRConfig::default()).unwrap();
         let matrix_view = matrix.view();
         let rhs_view = rhs.view();
         let viewed =
-            ndarray_qr::solve_least_squares_view(&matrix_view, &rhs_view, &QRConfig::default())
-                .unwrap();
+            solve_least_squares_view(&matrix_view, &rhs_view, &QRConfig::default()).unwrap();
         assert!((owned[0] - viewed[0]).abs() < 1e-8);
         assert!((owned[1] - viewed[1]).abs() < 1e-8);
     }
@@ -541,22 +528,22 @@ mod tests {
     fn least_squares_rejects_underdetermined_input() {
         let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
         let rhs = Array1::from_vec(vec![1.0, 2.0]);
-        let result = ndarray_qr::solve_least_squares(&matrix, &rhs, &QRConfig::default());
+        let result = solve_least_squares(&matrix, &rhs, &QRConfig::default());
         assert!(matches!(result, Err(QRError::InvalidDimensions(_))));
     }
 
     #[test]
     fn reconstruct_into_rejects_invalid_shapes() {
         let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-        let qr = ndarray_qr::decompose(&matrix, &QRConfig::default()).unwrap();
+        let qr = decompose(&matrix, &QRConfig::default()).unwrap();
 
         let mut bad_out = Array2::<f64>::zeros((1, 1));
         assert!(matches!(
-            ndarray_qr::reconstruct_matrix_into(&qr, &mut bad_out),
+            reconstruct_matrix_into(&qr, &mut bad_out),
             Err(QRError::InvalidDimensions(_))
         ));
 
-        let bad_qr = super::QRResult {
+        let bad_qr = QRResult {
             q:    Array2::<f64>::zeros((2, 3)),
             r:    Array2::<f64>::zeros((2, 2)),
             p:    None,
@@ -564,19 +551,19 @@ mod tests {
         };
         let mut out = Array2::<f64>::zeros((2, 2));
         assert!(matches!(
-            ndarray_qr::reconstruct_matrix_into(&bad_qr, &mut out),
+            reconstruct_matrix_into(&bad_qr, &mut out),
             Err(QRError::InvalidDimensions(_))
         ));
     }
 
     #[test]
     fn condition_number_of_empty_factor_is_zero() {
-        let qr = super::QRResult {
+        let qr = QRResult {
             q:    Array2::<f64>::zeros((0, 0)),
             r:    Array2::<f64>::zeros((0, 0)),
             p:    None,
             rank: 0,
         };
-        assert!(ndarray_qr::condition_number(&qr).abs() < 1e-12);
+        assert!(condition_number(&qr).abs() < 1e-12);
     }
 }

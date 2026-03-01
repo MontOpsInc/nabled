@@ -79,93 +79,88 @@ where
     Ok(())
 }
 
-/// Ndarray triangular solve API.
-pub mod ndarray_triangular {
-    use super::*;
+/// Solve `Lx = b` with forward substitution.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, TriangularError>
+where
+    T: Float,
+{
+    let mut output = Array1::<T>::zeros(rhs.len());
+    solve_lower_into(matrix, rhs, &mut output)?;
+    Ok(output)
+}
 
-    /// Solve `Lx = b` with forward substitution.
-    ///
-    /// # Errors
-    /// Returns an error for shape mismatches or singular pivots.
-    pub fn solve_lower<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, TriangularError>
-    where
-        T: Float,
-    {
-        let mut output = Array1::<T>::zeros(rhs.len());
-        solve_lower_into(matrix, rhs, &mut output)?;
-        Ok(output)
-    }
+/// Solve `Lx = b` with forward substitution from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, TriangularError>
+where
+    T: Float,
+{
+    solve_lower(&matrix.to_owned(), &rhs.to_owned())
+}
 
-    /// Solve `Lx = b` with forward substitution from matrix/vector views.
-    ///
-    /// # Errors
-    /// Returns an error for shape mismatches or singular pivots.
-    pub fn solve_lower_view<T>(
-        matrix: &ArrayView2<'_, T>,
-        rhs: &ArrayView1<'_, T>,
-    ) -> Result<Array1<T>, TriangularError>
-    where
-        T: Float,
-    {
-        solve_lower(&matrix.to_owned(), &rhs.to_owned())
-    }
+/// Solve `Lx = b` with forward substitution into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_into<T>(
+    matrix: &Array2<T>,
+    rhs: &Array1<T>,
+    output: &mut Array1<T>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    solve_lower_into_internal(matrix, rhs, output)
+}
 
-    /// Solve `Lx = b` with forward substitution into `output`.
-    ///
-    /// # Errors
-    /// Returns an error for shape mismatches or singular pivots.
-    pub fn solve_lower_into<T>(
-        matrix: &Array2<T>,
-        rhs: &Array1<T>,
-        output: &mut Array1<T>,
-    ) -> Result<(), TriangularError>
-    where
-        T: Float,
-    {
-        solve_lower_into_internal(matrix, rhs, output)
-    }
+/// Solve `Ux = b` with back substitution.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, TriangularError>
+where
+    T: Float,
+{
+    let mut output = Array1::<T>::zeros(rhs.len());
+    solve_upper_into(matrix, rhs, &mut output)?;
+    Ok(output)
+}
 
-    /// Solve `Ux = b` with back substitution.
-    ///
-    /// # Errors
-    /// Returns an error for shape mismatches or singular pivots.
-    pub fn solve_upper<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, TriangularError>
-    where
-        T: Float,
-    {
-        let mut output = Array1::<T>::zeros(rhs.len());
-        solve_upper_into(matrix, rhs, &mut output)?;
-        Ok(output)
-    }
+/// Solve `Ux = b` with back substitution from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, TriangularError>
+where
+    T: Float,
+{
+    solve_upper(&matrix.to_owned(), &rhs.to_owned())
+}
 
-    /// Solve `Ux = b` with back substitution from matrix/vector views.
-    ///
-    /// # Errors
-    /// Returns an error for shape mismatches or singular pivots.
-    pub fn solve_upper_view<T>(
-        matrix: &ArrayView2<'_, T>,
-        rhs: &ArrayView1<'_, T>,
-    ) -> Result<Array1<T>, TriangularError>
-    where
-        T: Float,
-    {
-        solve_upper(&matrix.to_owned(), &rhs.to_owned())
-    }
-
-    /// Solve `Ux = b` with back substitution into `output`.
-    ///
-    /// # Errors
-    /// Returns an error for shape mismatches or singular pivots.
-    pub fn solve_upper_into<T>(
-        matrix: &Array2<T>,
-        rhs: &Array1<T>,
-        output: &mut Array1<T>,
-    ) -> Result<(), TriangularError>
-    where
-        T: Float,
-    {
-        solve_upper_into_internal(matrix, rhs, output)
-    }
+/// Solve `Ux = b` with back substitution into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_into<T>(
+    matrix: &Array2<T>,
+    rhs: &Array1<T>,
+    output: &mut Array1<T>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    solve_upper_into_internal(matrix, rhs, output)
 }
 
 #[cfg(test)]
@@ -173,15 +168,14 @@ mod tests {
     use nabled_core::errors::ShapeError;
     use ndarray::{arr1, arr2};
 
-    use super::{TriangularError, ndarray_triangular};
+    use super::*;
 
     #[test]
     fn lower_solve_reconstructs_rhs() {
         let lower = arr2(&[[2.0_f64, 0.0], [1.0, 3.0]]);
         let rhs = arr1(&[4.0_f64, 8.0]);
 
-        let solution = ndarray_triangular::solve_lower(&lower, &rhs)
-            .expect("lower triangular solve should succeed");
+        let solution = solve_lower(&lower, &rhs).expect("lower triangular solve should succeed");
         let reconstructed = lower.dot(&solution);
 
         assert!((reconstructed[0] - rhs[0]).abs() < 1e-10);
@@ -193,8 +187,7 @@ mod tests {
         let upper = arr2(&[[2.0_f64, 1.0], [0.0, 3.0]]);
         let rhs = arr1(&[4.0_f64, 9.0]);
 
-        let solution = ndarray_triangular::solve_upper(&upper, &rhs)
-            .expect("upper triangular solve should succeed");
+        let solution = solve_upper(&upper, &rhs).expect("upper triangular solve should succeed");
         let reconstructed = upper.dot(&solution);
 
         assert!((reconstructed[0] - rhs[0]).abs() < 1e-10);
@@ -206,7 +199,7 @@ mod tests {
         let lower = arr2(&[[0.0_f64, 0.0], [1.0, 1.0]]);
         let rhs = arr1(&[1.0_f64, 2.0]);
 
-        let result = ndarray_triangular::solve_lower(&lower, &rhs);
+        let result = solve_lower(&lower, &rhs);
         assert!(matches!(result, Err(TriangularError::Singular)));
     }
 
@@ -215,7 +208,7 @@ mod tests {
         let non_square = arr2(&[[1.0_f64, 0.0]]);
         let rhs = arr1(&[1.0_f64]);
 
-        let result = ndarray_triangular::solve_upper(&non_square, &rhs);
+        let result = solve_upper(&non_square, &rhs);
         assert!(matches!(result, Err(TriangularError::Shape(ShapeError::NotSquare))));
     }
 
@@ -225,10 +218,10 @@ mod tests {
         let upper = arr2(&[[2.0_f64, 1.0], [0.0, 3.0]]);
         let rhs = arr1(&[4.0_f64, 9.0]);
 
-        let lower_owned = ndarray_triangular::solve_lower(&lower, &rhs).unwrap();
-        let lower_view = ndarray_triangular::solve_lower_view(&lower.view(), &rhs.view()).unwrap();
-        let upper_owned = ndarray_triangular::solve_upper(&upper, &rhs).unwrap();
-        let upper_view = ndarray_triangular::solve_upper_view(&upper.view(), &rhs.view()).unwrap();
+        let lower_owned = solve_lower(&lower, &rhs).unwrap();
+        let lower_view = solve_lower_view(&lower.view(), &rhs.view()).unwrap();
+        let upper_owned = solve_upper(&upper, &rhs).unwrap();
+        let upper_view = solve_upper_view(&upper.view(), &rhs.view()).unwrap();
 
         for i in 0..rhs.len() {
             assert!((lower_owned[i] - lower_view[i]).abs() < 1e-12);

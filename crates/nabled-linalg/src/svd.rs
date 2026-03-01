@@ -161,263 +161,249 @@ fn null_space_internal(
     Ok(basis)
 }
 
-/// Ndarray SVD functions.
-pub mod ndarray_svd {
-    use super::*;
+/// Compute the SVD of `matrix`.
+///
+/// # Errors
+/// Returns an error if the matrix is empty, non-finite, or decomposition fails.
+pub fn decompose(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        decompose_provider(matrix)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        decompose_internal(matrix)
+    }
+}
 
-    /// Compute the SVD of `matrix`.
-    ///
-    /// # Errors
-    /// Returns an error if the matrix is empty, non-finite, or decomposition fails.
-    pub fn decompose(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
-        #[cfg(feature = "openblas-system")]
-        {
-            decompose_provider(matrix)
+/// Compute the SVD of `matrix` from a matrix view.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
+    decompose(&matrix.to_owned())
+}
+
+/// Compute the SVD of a complex matrix.
+///
+/// # Errors
+/// Returns an error if provider support is unavailable or decomposition fails.
+pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD, SVDError> {
+    if matrix.is_empty() {
+        return Err(SVDError::EmptyMatrix);
+    }
+
+    #[cfg(feature = "openblas-system")]
+    {
+        use ndarray_linalg::SVD as _;
+        let (u_opt, singular_values, vt_opt) =
+            matrix.clone().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
+        let u = u_opt.ok_or(SVDError::ConvergenceFailed)?;
+        let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
+        Ok(NdarrayComplexSVD { u, singular_values, vt })
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        Err(SVDError::InvalidInput("complex SVD requires `openblas-system` feature".to_string()))
+    }
+}
+
+/// Compute complex SVD from a matrix view.
+///
+/// # Errors
+/// Returns an error if provider support is unavailable or decomposition fails.
+pub fn decompose_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayComplexSVD, SVDError> {
+    decompose_complex(&matrix.to_owned())
+}
+
+/// Compute SVD and zero out singular values below `tolerance`.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+pub fn decompose_with_tolerance(
+    matrix: &Array2<f64>,
+    tolerance: f64,
+) -> Result<NdarraySVD, SVDError> {
+    let mut svd = decompose(matrix)?;
+    for value in &mut svd.singular_values {
+        if *value < tolerance {
+            *value = 0.0;
         }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            decompose_internal(matrix)
+    }
+    Ok(svd)
+}
+
+/// Compute truncated SVD by keeping only the `k` largest singular values.
+///
+/// # Errors
+/// Returns an error if `k == 0` or decomposition fails.
+pub fn decompose_truncated(matrix: &Array2<f64>, k: usize) -> Result<NdarraySVD, SVDError> {
+    if k == 0 {
+        return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
+    }
+
+    let full_svd = decompose(matrix)?;
+    let keep = k.min(full_svd.singular_values.len());
+
+    Ok(NdarraySVD {
+        u:               full_svd.u.slice(s![.., ..keep]).to_owned(),
+        singular_values: full_svd.singular_values.slice(s![..keep]).to_owned(),
+        vt:              full_svd.vt.slice(s![..keep, ..]).to_owned(),
+    })
+}
+
+/// Reconstruct the original matrix from SVD components.
+#[must_use]
+pub fn reconstruct_matrix(svd: &NdarraySVD) -> Array2<f64> {
+    let cols = svd.vt.ncols();
+    let mut sigma_vt = svd.vt.clone();
+    for i in 0..svd.singular_values.len().min(svd.u.ncols()) {
+        for j in 0..cols {
+            sigma_vt[[i, j]] *= svd.singular_values[i];
+        }
+    }
+    svd.u.dot(&sigma_vt)
+}
+
+/// Reconstruct a complex matrix from SVD components.
+#[must_use]
+pub fn reconstruct_matrix_complex(svd: &NdarrayComplexSVD) -> Array2<Complex64> {
+    let cols = svd.vt.ncols();
+    let mut sigma_vt = svd.vt.clone();
+    for i in 0..svd.singular_values.len().min(svd.u.ncols()) {
+        for j in 0..cols {
+            sigma_vt[[i, j]] *= svd.singular_values[i];
+        }
+    }
+    svd.u.dot(&sigma_vt)
+}
+
+/// Reconstruct the original matrix from SVD components into `output`.
+///
+/// # Errors
+/// Returns an error if `output` shape is incompatible with SVD factors.
+pub fn reconstruct_matrix_into(svd: &NdarraySVD, output: &mut Array2<f64>) -> Result<(), SVDError> {
+    let rows = svd.u.nrows();
+    let cols = svd.vt.ncols();
+    let k = svd.u.ncols();
+
+    if output.dim() != (rows, cols) {
+        return Err(SVDError::InvalidInput(
+            "output shape must match reconstructed matrix shape".to_string(),
+        ));
+    }
+    if svd.singular_values.len() != svd.vt.nrows() || svd.singular_values.len() != k {
+        return Err(SVDError::InvalidInput("inconsistent SVD factor dimensions".to_string()));
+    }
+
+    output.fill(0.0);
+    for i in 0..rows {
+        for j in 0..cols {
+            let mut sum = 0.0_f64;
+            for p in 0..k {
+                sum += svd.u[[i, p]] * svd.singular_values[p] * svd.vt[[p, j]];
+            }
+            output[[i, j]] = sum;
         }
     }
 
-    /// Compute the SVD of `matrix` from a matrix view.
-    ///
-    /// # Errors
-    /// Returns an error if decomposition fails.
-    pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
-        decompose(&matrix.to_owned())
+    Ok(())
+}
+
+/// Compute condition number from singular values.
+#[must_use]
+pub fn condition_number(svd: &NdarraySVD) -> f64 {
+    if svd.singular_values.is_empty() {
+        return 0.0;
     }
 
-    /// Compute the SVD of a complex matrix.
-    ///
-    /// # Errors
-    /// Returns an error if provider support is unavailable or decomposition fails.
-    pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD, SVDError> {
-        if matrix.is_empty() {
-            return Err(SVDError::EmptyMatrix);
-        }
+    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+    let min_sv = svd
+        .singular_values
+        .iter()
+        .copied()
+        .filter(|value| *value > DEFAULT_TOLERANCE)
+        .fold(f64::INFINITY, f64::min);
 
-        #[cfg(feature = "openblas-system")]
-        {
-            use ndarray_linalg::SVD as _;
-            let (u_opt, singular_values, vt_opt) =
-                matrix.clone().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
-            let u = u_opt.ok_or(SVDError::ConvergenceFailed)?;
-            let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
-            Ok(NdarrayComplexSVD { u, singular_values, vt })
-        }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            Err(SVDError::InvalidInput(
-                "complex SVD requires `openblas-system` feature".to_string(),
-            ))
-        }
+    if min_sv.is_finite() { max_sv / min_sv } else { f64::INFINITY }
+}
+
+/// Estimate numerical rank from singular values.
+#[must_use]
+pub fn rank(svd: &NdarraySVD, tolerance: Option<f64>) -> usize {
+    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+    let tol = tolerance.unwrap_or(max_sv * usize_to_f64(svd.singular_values.len()) * f64::EPSILON);
+    svd.singular_values.iter().filter(|value| **value > tol).count()
+}
+
+/// Compute Moore-Penrose pseudo-inverse.
+///
+/// # Errors
+/// Returns an error if input is invalid or decomposition fails.
+pub fn pseudo_inverse(
+    matrix: &Array2<f64>,
+    config: &PseudoInverseConfig,
+) -> Result<Array2<f64>, SVDError> {
+    if matrix.is_empty() {
+        return Err(SVDError::EmptyMatrix);
     }
 
-    /// Compute complex SVD from a matrix view.
-    ///
-    /// # Errors
-    /// Returns an error if provider support is unavailable or decomposition fails.
-    pub fn decompose_complex_view(
-        matrix: &ArrayView2<'_, Complex64>,
-    ) -> Result<NdarrayComplexSVD, SVDError> {
-        decompose_complex(&matrix.to_owned())
+    let mut output = Array2::<f64>::zeros((matrix.ncols(), matrix.nrows()));
+    pseudo_inverse_into(matrix, config, &mut output)?;
+    Ok(output)
+}
+
+/// Compute Moore-Penrose pseudo-inverse into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid or decomposition fails.
+pub fn pseudo_inverse_into(
+    matrix: &Array2<f64>,
+    config: &PseudoInverseConfig,
+    output: &mut Array2<f64>,
+) -> Result<(), SVDError> {
+    if matrix.is_empty() {
+        return Err(SVDError::EmptyMatrix);
+    }
+    if output.dim() != (matrix.ncols(), matrix.nrows()) {
+        return Err(SVDError::InvalidInput(
+            "output shape must be (matrix.ncols(), matrix.nrows())".to_string(),
+        ));
     }
 
-    /// Compute SVD and zero out singular values below `tolerance`.
-    ///
-    /// # Errors
-    /// Returns an error if decomposition fails.
-    pub fn decompose_with_tolerance(
-        matrix: &Array2<f64>,
-        tolerance: f64,
-    ) -> Result<NdarraySVD, SVDError> {
-        let mut svd = decompose(matrix)?;
-        for value in &mut svd.singular_values {
-            if *value < tolerance {
-                *value = 0.0;
+    let svd = decompose(matrix)?;
+    let (rows, cols) = matrix.dim();
+    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+    let tolerance = config
+        .tolerance
+        .unwrap_or(max_sv * usize_to_f64(rows.max(cols)) * f64::EPSILON.max(DEFAULT_TOLERANCE));
+
+    output.fill(0.0);
+    let k = svd.singular_values.len();
+    for i in 0..k {
+        let sigma = svd.singular_values[i];
+        if sigma <= tolerance {
+            continue;
+        }
+        let inv_sigma = 1.0 / sigma;
+        for row in 0..cols {
+            for col in 0..rows {
+                output[[row, col]] += svd.vt[[i, row]] * inv_sigma * svd.u[[col, i]];
             }
         }
-        Ok(svd)
     }
 
-    /// Compute truncated SVD by keeping only the `k` largest singular values.
-    ///
-    /// # Errors
-    /// Returns an error if `k == 0` or decomposition fails.
-    pub fn decompose_truncated(matrix: &Array2<f64>, k: usize) -> Result<NdarraySVD, SVDError> {
-        if k == 0 {
-            return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
-        }
+    Ok(())
+}
 
-        let full_svd = decompose(matrix)?;
-        let keep = k.min(full_svd.singular_values.len());
-
-        Ok(NdarraySVD {
-            u:               full_svd.u.slice(s![.., ..keep]).to_owned(),
-            singular_values: full_svd.singular_values.slice(s![..keep]).to_owned(),
-            vt:              full_svd.vt.slice(s![..keep, ..]).to_owned(),
-        })
-    }
-
-    /// Reconstruct the original matrix from SVD components.
-    #[must_use]
-    pub fn reconstruct_matrix(svd: &NdarraySVD) -> Array2<f64> {
-        let cols = svd.vt.ncols();
-        let mut sigma_vt = svd.vt.clone();
-        for i in 0..svd.singular_values.len().min(svd.u.ncols()) {
-            for j in 0..cols {
-                sigma_vt[[i, j]] *= svd.singular_values[i];
-            }
-        }
-        svd.u.dot(&sigma_vt)
-    }
-
-    /// Reconstruct a complex matrix from SVD components.
-    #[must_use]
-    pub fn reconstruct_matrix_complex(svd: &NdarrayComplexSVD) -> Array2<Complex64> {
-        let cols = svd.vt.ncols();
-        let mut sigma_vt = svd.vt.clone();
-        for i in 0..svd.singular_values.len().min(svd.u.ncols()) {
-            for j in 0..cols {
-                sigma_vt[[i, j]] *= svd.singular_values[i];
-            }
-        }
-        svd.u.dot(&sigma_vt)
-    }
-
-    /// Reconstruct the original matrix from SVD components into `output`.
-    ///
-    /// # Errors
-    /// Returns an error if `output` shape is incompatible with SVD factors.
-    pub fn reconstruct_matrix_into(
-        svd: &NdarraySVD,
-        output: &mut Array2<f64>,
-    ) -> Result<(), SVDError> {
-        let rows = svd.u.nrows();
-        let cols = svd.vt.ncols();
-        let k = svd.u.ncols();
-
-        if output.dim() != (rows, cols) {
-            return Err(SVDError::InvalidInput(
-                "output shape must match reconstructed matrix shape".to_string(),
-            ));
-        }
-        if svd.singular_values.len() != svd.vt.nrows() || svd.singular_values.len() != k {
-            return Err(SVDError::InvalidInput("inconsistent SVD factor dimensions".to_string()));
-        }
-
-        output.fill(0.0);
-        for i in 0..rows {
-            for j in 0..cols {
-                let mut sum = 0.0_f64;
-                for p in 0..k {
-                    sum += svd.u[[i, p]] * svd.singular_values[p] * svd.vt[[p, j]];
-                }
-                output[[i, j]] = sum;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Compute condition number from singular values.
-    #[must_use]
-    pub fn condition_number(svd: &NdarraySVD) -> f64 {
-        if svd.singular_values.is_empty() {
-            return 0.0;
-        }
-
-        let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
-        let min_sv = svd
-            .singular_values
-            .iter()
-            .copied()
-            .filter(|value| *value > DEFAULT_TOLERANCE)
-            .fold(f64::INFINITY, f64::min);
-
-        if min_sv.is_finite() { max_sv / min_sv } else { f64::INFINITY }
-    }
-
-    /// Estimate numerical rank from singular values.
-    #[must_use]
-    pub fn rank(svd: &NdarraySVD, tolerance: Option<f64>) -> usize {
-        let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
-        let tol =
-            tolerance.unwrap_or(max_sv * usize_to_f64(svd.singular_values.len()) * f64::EPSILON);
-        svd.singular_values.iter().filter(|value| **value > tol).count()
-    }
-
-    /// Compute Moore-Penrose pseudo-inverse.
-    ///
-    /// # Errors
-    /// Returns an error if input is invalid or decomposition fails.
-    pub fn pseudo_inverse(
-        matrix: &Array2<f64>,
-        config: &PseudoInverseConfig,
-    ) -> Result<Array2<f64>, SVDError> {
-        if matrix.is_empty() {
-            return Err(SVDError::EmptyMatrix);
-        }
-
-        let mut output = Array2::<f64>::zeros((matrix.ncols(), matrix.nrows()));
-        pseudo_inverse_into(matrix, config, &mut output)?;
-        Ok(output)
-    }
-
-    /// Compute Moore-Penrose pseudo-inverse into `output`.
-    ///
-    /// # Errors
-    /// Returns an error if dimensions are invalid or decomposition fails.
-    pub fn pseudo_inverse_into(
-        matrix: &Array2<f64>,
-        config: &PseudoInverseConfig,
-        output: &mut Array2<f64>,
-    ) -> Result<(), SVDError> {
-        if matrix.is_empty() {
-            return Err(SVDError::EmptyMatrix);
-        }
-        if output.dim() != (matrix.ncols(), matrix.nrows()) {
-            return Err(SVDError::InvalidInput(
-                "output shape must be (matrix.ncols(), matrix.nrows())".to_string(),
-            ));
-        }
-
-        let svd = decompose(matrix)?;
-        let (rows, cols) = matrix.dim();
-        let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
-        let tolerance = config
-            .tolerance
-            .unwrap_or(max_sv * usize_to_f64(rows.max(cols)) * f64::EPSILON.max(DEFAULT_TOLERANCE));
-
-        output.fill(0.0);
-        let k = svd.singular_values.len();
-        for i in 0..k {
-            let sigma = svd.singular_values[i];
-            if sigma <= tolerance {
-                continue;
-            }
-            let inv_sigma = 1.0 / sigma;
-            for row in 0..cols {
-                for col in 0..rows {
-                    output[[row, col]] += svd.vt[[i, row]] * inv_sigma * svd.u[[col, i]];
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Compute a basis for the right null-space of `matrix`.
-    ///
-    /// # Errors
-    /// Returns an error if decomposition fails.
-    pub fn null_space(
-        matrix: &Array2<f64>,
-        tolerance: Option<f64>,
-    ) -> Result<Array2<f64>, SVDError> {
-        null_space_internal(matrix, tolerance)
-    }
+/// Compute a basis for the right null-space of `matrix`.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+pub fn null_space(matrix: &Array2<f64>, tolerance: Option<f64>) -> Result<Array2<f64>, SVDError> {
+    null_space_internal(matrix, tolerance)
 }
 
 #[cfg(test)]
@@ -425,13 +411,13 @@ mod tests {
     use ndarray::Array2;
     use num_complex::Complex64;
 
-    use super::{PseudoInverseConfig, SVDError, ndarray_svd};
+    use super::*;
 
     #[test]
     fn svd_reconstructs_small_matrix() {
         let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-        let svd = ndarray_svd::decompose(&matrix).unwrap();
-        let reconstructed = ndarray_svd::reconstruct_matrix(&svd);
+        let svd = decompose(&matrix).unwrap();
+        let reconstructed = reconstruct_matrix(&svd);
         for i in 0..2 {
             for j in 0..2 {
                 assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8);
@@ -442,14 +428,14 @@ mod tests {
     #[test]
     fn truncated_svd_requires_positive_rank() {
         let matrix = Array2::eye(2);
-        let result = ndarray_svd::decompose_truncated(&matrix, 0);
+        let result = decompose_truncated(&matrix, 0);
         assert!(matches!(result, Err(SVDError::InvalidInput(_))));
     }
 
     #[test]
     fn pseudo_inverse_matches_identity_for_diagonal() {
         let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 2.0]).unwrap();
-        let pinv = ndarray_svd::pseudo_inverse(&matrix, &PseudoInverseConfig::default()).unwrap();
+        let pinv = pseudo_inverse(&matrix, &PseudoInverseConfig::default()).unwrap();
         let product = matrix.dot(&pinv);
         assert!((product[[0, 0]] - 1.0).abs() < 1e-8);
         assert!((product[[1, 1]] - 1.0).abs() < 1e-8);
@@ -458,7 +444,7 @@ mod tests {
     #[test]
     fn null_space_detects_rank_deficiency() {
         let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 1.0, 1.0, 1.0]).unwrap();
-        let basis = ndarray_svd::null_space(&matrix, Some(1e-10)).unwrap();
+        let basis = null_space(&matrix, Some(1e-10)).unwrap();
         assert_eq!(basis.ncols(), 1);
         let residual = matrix.dot(&basis.column(0).to_owned());
         assert!(residual.iter().all(|value| value.abs() < 1e-6));
@@ -467,9 +453,9 @@ mod tests {
     #[test]
     fn decompose_view_matches_owned() {
         let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 1.0, 3.0]).unwrap();
-        let from_owned = ndarray_svd::decompose(&matrix).unwrap();
+        let from_owned = decompose(&matrix).unwrap();
         let matrix_view = matrix.view();
-        let from_view = ndarray_svd::decompose_view(&matrix_view).unwrap();
+        let from_view = decompose_view(&matrix_view).unwrap();
         assert_eq!(from_owned.singular_values.len(), from_view.singular_values.len());
     }
 
@@ -483,8 +469,8 @@ mod tests {
             Complex64::new(-1.0, 2.0),
         ])
         .unwrap();
-        let svd = ndarray_svd::decompose_complex(&matrix).unwrap();
-        let reconstructed = ndarray_svd::reconstruct_matrix_complex(&svd);
+        let svd = decompose_complex(&matrix).unwrap();
+        let reconstructed = reconstruct_matrix_complex(&svd);
         for i in 0..2 {
             for j in 0..2 {
                 assert!((reconstructed[[i, j]] - matrix[[i, j]]).norm() < 1e-8);
@@ -496,25 +482,25 @@ mod tests {
     #[test]
     fn complex_svd_without_provider_errors() {
         let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-        let result = ndarray_svd::decompose_complex(&matrix);
+        let result = decompose_complex(&matrix);
         assert!(matches!(result, Err(SVDError::InvalidInput(_))));
     }
 
     #[test]
     fn tolerance_rank_and_condition_number_paths() {
         let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 0.0, 0.0, 1.0]).unwrap();
-        let svd = ndarray_svd::decompose_with_tolerance(&matrix, 2.0).unwrap();
+        let svd = decompose_with_tolerance(&matrix, 2.0).unwrap();
         assert!(svd.singular_values[1].abs() < 1e-12);
-        assert!(ndarray_svd::condition_number(&svd).is_finite());
-        assert_eq!(ndarray_svd::rank(&svd, Some(1e-8)), 1);
+        assert!(condition_number(&svd).is_finite());
+        assert_eq!(rank(&svd, Some(1e-8)), 1);
     }
 
     #[test]
     fn reconstruct_into_and_pseudo_inverse_into_paths() {
         let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 4.0]).unwrap();
-        let svd = ndarray_svd::decompose(&matrix).unwrap();
+        let svd = decompose(&matrix).unwrap();
         let mut reconstructed = Array2::<f64>::zeros((2, 2));
-        ndarray_svd::reconstruct_matrix_into(&svd, &mut reconstructed).unwrap();
+        reconstruct_matrix_into(&svd, &mut reconstructed).unwrap();
         for i in 0..2 {
             for j in 0..2 {
                 assert!((reconstructed[[i, j]] - matrix[[i, j]]).abs() < 1e-8);
@@ -522,8 +508,7 @@ mod tests {
         }
 
         let mut pinv = Array2::<f64>::zeros((2, 2));
-        ndarray_svd::pseudo_inverse_into(&matrix, &PseudoInverseConfig::default(), &mut pinv)
-            .unwrap();
+        pseudo_inverse_into(&matrix, &PseudoInverseConfig::default(), &mut pinv).unwrap();
         let identity = matrix.dot(&pinv);
         assert!((identity[[0, 0]] - 1.0).abs() < 1e-8);
         assert!((identity[[1, 1]] - 1.0).abs() < 1e-8);
@@ -532,23 +517,23 @@ mod tests {
     #[test]
     fn reconstruct_into_rejects_bad_output_shape() {
         let matrix = Array2::eye(2);
-        let svd = ndarray_svd::decompose(&matrix).unwrap();
+        let svd = decompose(&matrix).unwrap();
         let mut bad = Array2::<f64>::zeros((1, 1));
-        let result = ndarray_svd::reconstruct_matrix_into(&svd, &mut bad);
+        let result = reconstruct_matrix_into(&svd, &mut bad);
         assert!(matches!(result, Err(SVDError::InvalidInput(_))));
     }
 
     #[test]
     fn decompose_rejects_empty_input() {
         let empty = Array2::<f64>::zeros((0, 0));
-        assert!(matches!(ndarray_svd::decompose(&empty), Err(SVDError::EmptyMatrix)));
+        assert!(matches!(decompose(&empty), Err(SVDError::EmptyMatrix)));
     }
 
     #[cfg(not(feature = "openblas-system"))]
     #[test]
     fn internal_decompose_rejects_non_finite_input() {
         let non_finite = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();
-        assert!(matches!(ndarray_svd::decompose(&non_finite), Err(SVDError::InvalidInput(_))));
+        assert!(matches!(decompose(&non_finite), Err(SVDError::InvalidInput(_))));
     }
 
     #[test]
@@ -556,14 +541,14 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
         let mut output = Array2::<f64>::zeros((0, 0));
         assert!(matches!(
-            ndarray_svd::pseudo_inverse_into(&empty, &PseudoInverseConfig::default(), &mut output),
+            pseudo_inverse_into(&empty, &PseudoInverseConfig::default(), &mut output),
             Err(SVDError::EmptyMatrix)
         ));
 
         let matrix = Array2::eye(2);
         let mut bad = Array2::<f64>::zeros((1, 2));
         assert!(matches!(
-            ndarray_svd::pseudo_inverse_into(&matrix, &PseudoInverseConfig::default(), &mut bad),
+            pseudo_inverse_into(&matrix, &PseudoInverseConfig::default(), &mut bad),
             Err(SVDError::InvalidInput(_))
         ));
     }
@@ -571,7 +556,7 @@ mod tests {
     #[test]
     fn null_space_of_full_rank_matrix_is_empty() {
         let matrix = Array2::eye(3);
-        let basis = ndarray_svd::null_space(&matrix, None).unwrap();
+        let basis = null_space(&matrix, None).unwrap();
         assert_eq!(basis.ncols(), 0);
         assert_eq!(basis.nrows(), 3);
     }

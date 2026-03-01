@@ -127,159 +127,152 @@ fn decompose_dispatch(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError
     }
 }
 
-/// Ndarray Cholesky functions.
-pub mod ndarray_cholesky {
-    use super::*;
+/// Compute Cholesky decomposition.
+///
+/// # Errors
+/// Returns an error if matrix is not SPD.
+pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayCholeskyResult, CholeskyError> {
+    let l = decompose_dispatch(matrix)?;
+    Ok(NdarrayCholeskyResult { l })
+}
 
-    /// Compute Cholesky decomposition.
-    ///
-    /// # Errors
-    /// Returns an error if matrix is not SPD.
-    pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayCholeskyResult, CholeskyError> {
+/// Compute Cholesky decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if matrix is not SPD.
+pub fn decompose_view(
+    matrix: &ArrayView2<'_, f64>,
+) -> Result<NdarrayCholeskyResult, CholeskyError> {
+    decompose(&matrix.to_owned())
+}
+
+/// Solve `Ax=b` using Cholesky decomposition.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-SPD matrix.
+pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, CholeskyError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        solve_provider(matrix, rhs)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        let mut output = Array1::<f64>::zeros(rhs.len());
+        solve_into(matrix, rhs, &mut output)?;
+        Ok(output)
+    }
+}
+
+/// Solve `Ax=b` using Cholesky decomposition from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-SPD matrix.
+pub fn solve_view(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+) -> Result<Array1<f64>, CholeskyError> {
+    solve(&matrix.to_owned(), &rhs.to_owned())
+}
+
+/// Solve `Ax=b` into `output` using Cholesky decomposition.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-SPD matrix.
+#[allow(clippy::many_single_char_names)]
+pub fn solve_into(
+    matrix: &Array2<f64>,
+    rhs: &Array1<f64>,
+    output: &mut Array1<f64>,
+) -> Result<(), CholeskyError> {
+    if rhs.len() != matrix.nrows() {
+        return Err(CholeskyError::InvalidInput(
+            "RHS length must match matrix dimensions".to_string(),
+        ));
+    }
+    if output.len() != rhs.len() {
+        return Err(CholeskyError::InvalidInput("output length must match rhs length".to_string()));
+    }
+
+    #[cfg(feature = "openblas-system")]
+    {
+        let solution = solve_provider(matrix, rhs)?;
+        output.assign(&solution);
+        Ok(())
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
         let l = decompose_dispatch(matrix)?;
-        Ok(NdarrayCholeskyResult { l })
-    }
+        let n = l.nrows();
 
-    /// Compute Cholesky decomposition from a matrix view.
-    ///
-    /// # Errors
-    /// Returns an error if matrix is not SPD.
-    pub fn decompose_view(
-        matrix: &ArrayView2<'_, f64>,
-    ) -> Result<NdarrayCholeskyResult, CholeskyError> {
-        decompose(&matrix.to_owned())
-    }
-
-    /// Solve `Ax=b` using Cholesky decomposition.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions or non-SPD matrix.
-    pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, CholeskyError> {
-        #[cfg(feature = "openblas-system")]
-        {
-            solve_provider(matrix, rhs)
-        }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            let mut output = Array1::<f64>::zeros(rhs.len());
-            solve_into(matrix, rhs, &mut output)?;
-            Ok(output)
-        }
-    }
-
-    /// Solve `Ax=b` using Cholesky decomposition from matrix/vector views.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions or non-SPD matrix.
-    pub fn solve_view(
-        matrix: &ArrayView2<'_, f64>,
-        rhs: &ArrayView1<'_, f64>,
-    ) -> Result<Array1<f64>, CholeskyError> {
-        solve(&matrix.to_owned(), &rhs.to_owned())
-    }
-
-    /// Solve `Ax=b` into `output` using Cholesky decomposition.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions or non-SPD matrix.
-    #[allow(clippy::many_single_char_names)]
-    pub fn solve_into(
-        matrix: &Array2<f64>,
-        rhs: &Array1<f64>,
-        output: &mut Array1<f64>,
-    ) -> Result<(), CholeskyError> {
-        if rhs.len() != matrix.nrows() {
-            return Err(CholeskyError::InvalidInput(
-                "RHS length must match matrix dimensions".to_string(),
-            ));
-        }
-        if output.len() != rhs.len() {
-            return Err(CholeskyError::InvalidInput(
-                "output length must match rhs length".to_string(),
-            ));
-        }
-
-        #[cfg(feature = "openblas-system")]
-        {
-            let solution = solve_provider(matrix, rhs)?;
-            output.assign(&solution);
-            Ok(())
-        }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            let l = decompose_dispatch(matrix)?;
-            let n = l.nrows();
-
-            let mut y = Array1::<f64>::zeros(n);
-            for i in 0..n {
-                let mut sum = rhs[i];
-                for j in 0..i {
-                    sum -= l[[i, j]] * y[j];
-                }
-                y[i] = sum / l[[i, i]];
+        let mut y = Array1::<f64>::zeros(n);
+        for i in 0..n {
+            let mut sum = rhs[i];
+            for j in 0..i {
+                sum -= l[[i, j]] * y[j];
             }
+            y[i] = sum / l[[i, i]];
+        }
 
-            for i_rev in 0..n {
-                let i = n - 1 - i_rev;
-                let mut sum = y[i];
-                for j in (i + 1)..n {
-                    sum -= l[[j, i]] * output[j];
-                }
-                output[i] = sum / l[[i, i]];
+        for i_rev in 0..n {
+            let i = n - 1 - i_rev;
+            let mut sum = y[i];
+            for j in (i + 1)..n {
+                sum -= l[[j, i]] * output[j];
             }
-
-            Ok(())
+            output[i] = sum / l[[i, i]];
         }
+
+        Ok(())
     }
+}
 
-    /// Compute inverse via Cholesky decomposition.
-    ///
-    /// # Errors
-    /// Returns an error if matrix is not SPD.
-    pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
-        #[cfg(feature = "openblas-system")]
-        {
-            inverse_provider(matrix)
-        }
-        #[cfg(not(feature = "openblas-system"))]
-        {
-            let l = decompose_dispatch(matrix)?;
-            let n = l.nrows();
-            let mut inverse = Array2::<f64>::zeros((n, n));
+/// Compute inverse via Cholesky decomposition.
+///
+/// # Errors
+/// Returns an error if matrix is not SPD.
+pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        inverse_provider(matrix)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        let l = decompose_dispatch(matrix)?;
+        let n = l.nrows();
+        let mut inverse = Array2::<f64>::zeros((n, n));
 
-            for col in 0..n {
-                let mut e = Array1::<f64>::zeros(n);
-                e[col] = 1.0;
-                let mut solution = Array1::<f64>::zeros(n);
-                solve_into(matrix, &e, &mut solution)?;
-                for row in 0..n {
-                    inverse[[row, col]] = solution[row];
-                }
+        for col in 0..n {
+            let mut e = Array1::<f64>::zeros(n);
+            e[col] = 1.0;
+            let mut solution = Array1::<f64>::zeros(n);
+            solve_into(matrix, &e, &mut solution)?;
+            for row in 0..n {
+                inverse[[row, col]] = solution[row];
             }
-
-            Ok(inverse)
         }
-    }
 
-    /// Compute inverse via Cholesky decomposition from a matrix view.
-    ///
-    /// # Errors
-    /// Returns an error if matrix is not SPD.
-    pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
-        inverse(&matrix.to_owned())
+        Ok(inverse)
     }
+}
+
+/// Compute inverse via Cholesky decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if matrix is not SPD.
+pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
+    inverse(&matrix.to_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::{Array1, Array2};
 
-    use super::{CholeskyError, ndarray_cholesky};
+    use super::*;
 
     #[test]
     fn cholesky_reconstructs_spd_matrix() {
         let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
-        let decomposition = ndarray_cholesky::decompose(&matrix).unwrap();
+        let decomposition = decompose(&matrix).unwrap();
         let reconstructed = decomposition.l.dot(&decomposition.l.t());
         for i in 0..2 {
             for j in 0..2 {
@@ -293,18 +286,18 @@ mod tests {
         let matrix = Array2::from_shape_vec((2, 2), vec![9.0, 3.0, 3.0, 5.0]).unwrap();
         let rhs = Array1::from_vec(vec![12.0, 8.0]);
 
-        let owned = ndarray_cholesky::decompose(&matrix).unwrap();
-        let viewed = ndarray_cholesky::decompose_view(&matrix.view()).unwrap();
+        let owned = decompose(&matrix).unwrap();
+        let viewed = decompose_view(&matrix.view()).unwrap();
         assert_eq!(owned.l.dim(), viewed.l.dim());
 
-        let solution_owned = ndarray_cholesky::solve(&matrix, &rhs).unwrap();
-        let solution_viewed = ndarray_cholesky::solve_view(&matrix.view(), &rhs.view()).unwrap();
+        let solution_owned = solve(&matrix, &rhs).unwrap();
+        let solution_viewed = solve_view(&matrix.view(), &rhs.view()).unwrap();
         for i in 0..rhs.len() {
             assert!((solution_owned[i] - solution_viewed[i]).abs() < 1e-12);
         }
 
-        let inverse_owned = ndarray_cholesky::inverse(&matrix).unwrap();
-        let inverse_viewed = ndarray_cholesky::inverse_view(&matrix.view()).unwrap();
+        let inverse_owned = inverse(&matrix).unwrap();
+        let inverse_viewed = inverse_view(&matrix.view()).unwrap();
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
                 assert!((inverse_owned[[i, j]] - inverse_viewed[[i, j]]).abs() < 1e-12);
@@ -316,7 +309,7 @@ mod tests {
     fn solve_reconstructs_rhs() {
         let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
         let rhs = Array1::from_vec(vec![1.0, 1.0]);
-        let x = ndarray_cholesky::solve(&matrix, &rhs).unwrap();
+        let x = solve(&matrix, &rhs).unwrap();
         let reconstructed = matrix.dot(&x);
         assert!((reconstructed[0] - rhs[0]).abs() < 1e-10);
         assert!((reconstructed[1] - rhs[1]).abs() < 1e-10);
@@ -325,14 +318,14 @@ mod tests {
     #[test]
     fn non_spd_input_errors() {
         let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 2.0, 1.0]).unwrap();
-        let result = ndarray_cholesky::decompose(&matrix);
+        let result = decompose(&matrix);
         assert!(matches!(result, Err(CholeskyError::NotPositiveDefinite)));
     }
 
     #[test]
     fn inverse_multiplied_by_matrix_is_identity() {
         let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
-        let inverse = ndarray_cholesky::inverse(&matrix).unwrap();
+        let inverse = inverse(&matrix).unwrap();
         let product = matrix.dot(&inverse);
         assert!((product[[0, 0]] - 1.0).abs() < 1e-8);
         assert!((product[[1, 1]] - 1.0).abs() < 1e-8);
@@ -345,7 +338,7 @@ mod tests {
         let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
         let rhs = Array1::from_vec(vec![1.0, 1.0]);
         let mut output = Array1::from_vec(vec![0.0]);
-        let result = ndarray_cholesky::solve_into(&matrix, &rhs, &mut output);
+        let result = solve_into(&matrix, &rhs, &mut output);
         assert!(matches!(result, Err(CholeskyError::InvalidInput(_))));
     }
 
@@ -353,9 +346,9 @@ mod tests {
     fn solve_into_matches_solve() {
         let matrix = Array2::from_shape_vec((2, 2), vec![5.0, 1.0, 1.0, 2.0]).unwrap();
         let rhs = Array1::from_vec(vec![3.0, 4.0]);
-        let expected = ndarray_cholesky::solve(&matrix, &rhs).unwrap();
+        let expected = solve(&matrix, &rhs).unwrap();
         let mut output = Array1::<f64>::zeros(2);
-        ndarray_cholesky::solve_into(&matrix, &rhs, &mut output).unwrap();
+        solve_into(&matrix, &rhs, &mut output).unwrap();
         assert!((output[0] - expected[0]).abs() < 1e-10);
         assert!((output[1] - expected[1]).abs() < 1e-10);
     }
@@ -365,14 +358,14 @@ mod tests {
         let matrix = Array2::eye(2);
         let rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
         let mut output = Array1::<f64>::zeros(3);
-        let result = ndarray_cholesky::solve_into(&matrix, &rhs, &mut output);
+        let result = solve_into(&matrix, &rhs, &mut output);
         assert!(matches!(result, Err(CholeskyError::InvalidInput(_))));
     }
 
     #[test]
     fn decompose_rejects_non_finite_input() {
         let matrix = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();
-        let result = ndarray_cholesky::decompose(&matrix);
+        let result = decompose(&matrix);
         assert!(matches!(result, Err(CholeskyError::NumericalInstability)));
     }
 }

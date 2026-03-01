@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::lu::ndarray_lu;
+use nabled::lu;
 use ndarray::{Array1, Array2};
 use rand::RngExt;
 
@@ -32,15 +32,15 @@ fn benchmark_ndarray_lu(c: &mut Criterion) {
         let rhs = generate_random_vector(size);
 
         _ = group.bench_with_input(BenchmarkId::new("decompose", size), &size, |b, _| {
-            b.iter(|| ndarray_lu::decompose(black_box(&matrix)));
+            b.iter(|| lu::decompose(black_box(&matrix)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("solve", size), &size, |b, _| {
-            b.iter(|| ndarray_lu::solve(black_box(&matrix), black_box(&rhs)));
+            b.iter(|| lu::solve(black_box(&matrix), black_box(&rhs)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("determinant", size), &size, |b, _| {
-            b.iter(|| ndarray_lu::determinant(black_box(&matrix)));
+            b.iter(|| lu::determinant(black_box(&matrix)));
         });
     }
 

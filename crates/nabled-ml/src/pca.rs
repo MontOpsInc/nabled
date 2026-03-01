@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use nabled_linalg::svd::ndarray_svd;
+use nabled_linalg::svd;
 use ndarray::{Array1, Array2, ArrayView2, Axis, s};
 
 /// PCA result for ndarray matrices.
@@ -61,112 +61,98 @@ fn center_columns(matrix: &Array2<f64>) -> Result<(Array2<f64>, Array1<f64>), PC
     Ok((centered, mean))
 }
 
-/// Ndarray PCA functions.
-pub mod ndarray_pca {
-    use super::*;
+/// Compute principal component analysis.
+///
+/// # Errors
+/// Returns an error for invalid input or decomposition failure.
+pub fn compute_pca(
+    matrix: &Array2<f64>,
+    n_components: Option<usize>,
+) -> Result<NdarrayPCAResult, PCAError> {
+    let (centered, mean) = center_columns(matrix)?;
+    let svd = svd::decompose(&centered).map_err(|_| PCAError::DecompositionFailed)?;
 
-    /// Compute principal component analysis.
-    ///
-    /// # Errors
-    /// Returns an error for invalid input or decomposition failure.
-    pub fn compute_pca(
-        matrix: &Array2<f64>,
-        n_components: Option<usize>,
-    ) -> Result<NdarrayPCAResult, PCAError> {
-        let (centered, mean) = center_columns(matrix)?;
-        let svd = ndarray_svd::decompose(&centered).map_err(|_| PCAError::DecompositionFailed)?;
+    let max_components = centered.nrows().min(centered.ncols());
+    let keep = n_components.unwrap_or(max_components).min(max_components);
+    if keep == 0 {
+        return Err(PCAError::InvalidInput("n_components must be greater than 0".to_string()));
+    }
 
-        let max_components = centered.nrows().min(centered.ncols());
-        let keep = n_components.unwrap_or(max_components).min(max_components);
-        if keep == 0 {
-            return Err(PCAError::InvalidInput("n_components must be greater than 0".to_string()));
+    let components = svd.vt.slice(s![..keep, ..]).to_owned();
+    let scores = centered.dot(&components.t());
+
+    let denominator = (usize_to_f64(centered.nrows()) - 1.0).max(1.0);
+    let mut explained_variance = Array1::<f64>::zeros(keep);
+    for i in 0..keep {
+        explained_variance[i] = (svd.singular_values[i] * svd.singular_values[i]) / denominator;
+    }
+
+    let total_variance = explained_variance.iter().sum::<f64>().max(f64::EPSILON);
+    let explained_variance_ratio = explained_variance.map(|value| *value / total_variance);
+
+    Ok(NdarrayPCAResult { components, explained_variance, explained_variance_ratio, mean, scores })
+}
+
+/// Compute principal component analysis from a matrix view.
+///
+/// # Errors
+/// Returns an error for invalid input or decomposition failure.
+pub fn compute_pca_view(
+    matrix: &ArrayView2<'_, f64>,
+    n_components: Option<usize>,
+) -> Result<NdarrayPCAResult, PCAError> {
+    compute_pca(&matrix.to_owned(), n_components)
+}
+
+/// Project data to PCA score space.
+#[must_use]
+pub fn transform(matrix: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+    let mut centered = matrix.clone();
+    for row in 0..matrix.nrows() {
+        for col in 0..matrix.ncols() {
+            centered[[row, col]] -= pca.mean[col];
         }
+    }
+    centered.dot(&pca.components.t())
+}
 
-        let components = svd.vt.slice(s![..keep, ..]).to_owned();
-        let scores = centered.dot(&components.t());
+/// Project data to PCA score space from a matrix view.
+#[must_use]
+pub fn transform_view(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+    transform(&matrix.to_owned(), pca)
+}
 
-        let denominator = (usize_to_f64(centered.nrows()) - 1.0).max(1.0);
-        let mut explained_variance = Array1::<f64>::zeros(keep);
-        for i in 0..keep {
-            explained_variance[i] = (svd.singular_values[i] * svd.singular_values[i]) / denominator;
+/// Reconstruct from PCA scores.
+#[must_use]
+pub fn inverse_transform(scores: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+    let mut reconstructed = scores.dot(&pca.components);
+    for row in 0..reconstructed.nrows() {
+        for col in 0..reconstructed.ncols() {
+            reconstructed[[row, col]] += pca.mean[col];
         }
-
-        let total_variance = explained_variance.iter().sum::<f64>().max(f64::EPSILON);
-        let explained_variance_ratio = explained_variance.map(|value| *value / total_variance);
-
-        Ok(NdarrayPCAResult {
-            components,
-            explained_variance,
-            explained_variance_ratio,
-            mean,
-            scores,
-        })
     }
+    reconstructed
+}
 
-    /// Compute principal component analysis from a matrix view.
-    ///
-    /// # Errors
-    /// Returns an error for invalid input or decomposition failure.
-    pub fn compute_pca_view(
-        matrix: &ArrayView2<'_, f64>,
-        n_components: Option<usize>,
-    ) -> Result<NdarrayPCAResult, PCAError> {
-        compute_pca(&matrix.to_owned(), n_components)
-    }
-
-    /// Project data to PCA score space.
-    #[must_use]
-    pub fn transform(matrix: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
-        let mut centered = matrix.clone();
-        for row in 0..matrix.nrows() {
-            for col in 0..matrix.ncols() {
-                centered[[row, col]] -= pca.mean[col];
-            }
-        }
-        centered.dot(&pca.components.t())
-    }
-
-    /// Project data to PCA score space from a matrix view.
-    #[must_use]
-    pub fn transform_view(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
-        transform(&matrix.to_owned(), pca)
-    }
-
-    /// Reconstruct from PCA scores.
-    #[must_use]
-    pub fn inverse_transform(scores: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
-        let mut reconstructed = scores.dot(&pca.components);
-        for row in 0..reconstructed.nrows() {
-            for col in 0..reconstructed.ncols() {
-                reconstructed[[row, col]] += pca.mean[col];
-            }
-        }
-        reconstructed
-    }
-
-    /// Reconstruct from PCA scores provided as a matrix view.
-    #[must_use]
-    pub fn inverse_transform_view(
-        scores: &ArrayView2<'_, f64>,
-        pca: &NdarrayPCAResult,
-    ) -> Array2<f64> {
-        inverse_transform(&scores.to_owned(), pca)
-    }
+/// Reconstruct from PCA scores provided as a matrix view.
+#[must_use]
+pub fn inverse_transform_view(scores: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+    inverse_transform(&scores.to_owned(), pca)
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
 
-    use super::ndarray_pca;
+    use super::*;
 
     #[test]
     fn pca_roundtrip_is_consistent() {
         let matrix =
             Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
-        let pca = ndarray_pca::compute_pca(&matrix, Some(2)).unwrap();
-        let transformed = ndarray_pca::transform(&matrix, &pca);
-        let reconstructed = ndarray_pca::inverse_transform(&transformed, &pca);
+        let pca = compute_pca(&matrix, Some(2)).unwrap();
+        let transformed = transform(&matrix, &pca);
+        let reconstructed = inverse_transform(&transformed, &pca);
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
                 assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8);
@@ -178,15 +164,15 @@ mod tests {
     fn pca_rejects_zero_components() {
         let matrix =
             Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
-        let result = ndarray_pca::compute_pca(&matrix, Some(0));
-        assert!(matches!(result, Err(super::PCAError::InvalidInput(_))));
+        let result = compute_pca(&matrix, Some(0));
+        assert!(matches!(result, Err(PCAError::InvalidInput(_))));
     }
 
     #[test]
     fn explained_variance_ratio_sums_to_one() {
         let matrix =
             Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
-        let pca = ndarray_pca::compute_pca(&matrix, Some(2)).unwrap();
+        let pca = compute_pca(&matrix, Some(2)).unwrap();
         let sum = pca.explained_variance_ratio.iter().sum::<f64>();
         assert!((sum - 1.0).abs() < 1e-10);
     }
@@ -195,17 +181,16 @@ mod tests {
     fn pca_view_variants_match_owned() {
         let matrix =
             Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
-        let pca_owned = ndarray_pca::compute_pca(&matrix, Some(2)).unwrap();
-        let pca_view = ndarray_pca::compute_pca_view(&matrix.view(), Some(2)).unwrap();
+        let pca_owned = compute_pca(&matrix, Some(2)).unwrap();
+        let pca_view = compute_pca_view(&matrix.view(), Some(2)).unwrap();
 
         assert_eq!(pca_owned.components.dim(), pca_view.components.dim());
         assert_eq!(pca_owned.scores.dim(), pca_view.scores.dim());
 
-        let transformed_owned = ndarray_pca::transform(&matrix, &pca_owned);
-        let transformed_view = ndarray_pca::transform_view(&matrix.view(), &pca_owned);
-        let reconstructed_owned = ndarray_pca::inverse_transform(&transformed_owned, &pca_owned);
-        let reconstructed_view =
-            ndarray_pca::inverse_transform_view(&transformed_owned.view(), &pca_owned);
+        let transformed_owned = transform(&matrix, &pca_owned);
+        let transformed_view = transform_view(&matrix.view(), &pca_owned);
+        let reconstructed_owned = inverse_transform(&transformed_owned, &pca_owned);
+        let reconstructed_view = inverse_transform_view(&transformed_owned.view(), &pca_owned);
 
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {

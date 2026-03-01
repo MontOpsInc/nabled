@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::triangular::ndarray_triangular;
+use nabled::triangular;
 use ndarray::{Array1, Array2};
 use rand::RngExt;
 
@@ -35,10 +35,10 @@ fn generate_upper_triangular(size: usize) -> Array2<f64> {
 fn generate_rhs(size: usize) -> Array1<f64> { Array1::from_vec(generate_random_data(size)) }
 
 fn assert_ndarray_triangular_correct(lower: &Array2<f64>, upper: &Array2<f64>, rhs: &Array1<f64>) {
-    let x_lower = ndarray_triangular::solve_lower(lower, rhs)
-        .expect("nabled ndarray lower solve should work");
-    let x_upper = ndarray_triangular::solve_upper(upper, rhs)
-        .expect("nabled ndarray upper solve should work");
+    let x_lower =
+        triangular::solve_lower(lower, rhs).expect("nabled ndarray lower solve should work");
+    let x_upper =
+        triangular::solve_upper(upper, rhs).expect("nabled ndarray upper solve should work");
 
     let lower_residual = lower.dot(&x_lower) - rhs;
     let upper_residual = upper.dot(&x_upper) - rhs;
@@ -63,11 +63,11 @@ fn benchmark_ndarray_triangular(c: &mut Criterion) {
         assert_ndarray_triangular_correct(&lower, &upper, &rhs);
 
         _ = group.bench_with_input(BenchmarkId::new("solve_lower", &id), &size, |b, _| {
-            b.iter(|| ndarray_triangular::solve_lower(black_box(&lower), black_box(&rhs)));
+            b.iter(|| triangular::solve_lower(black_box(&lower), black_box(&rhs)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("solve_upper", &id), &size, |b, _| {
-            b.iter(|| ndarray_triangular::solve_upper(black_box(&upper), black_box(&rhs)));
+            b.iter(|| triangular::solve_upper(black_box(&upper), black_box(&rhs)));
         });
     }
 

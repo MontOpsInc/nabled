@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::svd::ndarray_svd;
+use nabled::svd;
 use ndarray::Array2;
 use rand::RngExt;
 
@@ -19,11 +19,11 @@ fn benchmark_ndarray_svd(c: &mut Criterion) {
         let matrix = generate_random_matrix(size, size);
 
         _ = group.bench_with_input(BenchmarkId::new("full_svd", size), &size, |b, _| {
-            b.iter(|| ndarray_svd::decompose(black_box(&matrix)));
+            b.iter(|| svd::decompose(black_box(&matrix)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("truncated_svd", size), &size, |b, _| {
-            b.iter(|| ndarray_svd::decompose_truncated(black_box(&matrix), black_box(size / 2)));
+            b.iter(|| svd::decompose_truncated(black_box(&matrix), black_box(size / 2)));
         });
     }
 

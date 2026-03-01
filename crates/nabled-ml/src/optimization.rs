@@ -149,162 +149,157 @@ fn validate_adam_config(config: &AdamConfig) -> Result<(), OptimizationError> {
     Ok(())
 }
 
-/// Ndarray optimization routines.
-pub mod ndarray_optimization {
-    use super::*;
+/// Perform Armijo backtracking line search.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite objective evaluations.
+pub fn backtracking_line_search<F, G>(
+    point: &Array1<f64>,
+    direction: &Array1<f64>,
+    objective: F,
+    gradient: G,
+    config: &LineSearchConfig,
+) -> Result<f64, OptimizationError>
+where
+    F: Fn(&Array1<f64>) -> f64,
+    G: Fn(&Array1<f64>) -> Array1<f64>,
+{
+    validate_vector(point)?;
+    validate_vector(direction)?;
+    if point.len() != direction.len() {
+        return Err(OptimizationError::DimensionMismatch);
+    }
+    validate_line_search_config(config)?;
 
-    /// Perform Armijo backtracking line search.
-    ///
-    /// # Errors
-    /// Returns an error for invalid inputs/configuration or non-finite objective evaluations.
-    pub fn backtracking_line_search<F, G>(
-        point: &Array1<f64>,
-        direction: &Array1<f64>,
-        objective: F,
-        gradient: G,
-        config: &LineSearchConfig,
-    ) -> Result<f64, OptimizationError>
-    where
-        F: Fn(&Array1<f64>) -> f64,
-        G: Fn(&Array1<f64>) -> Array1<f64>,
-    {
-        validate_vector(point)?;
-        validate_vector(direction)?;
-        if point.len() != direction.len() {
-            return Err(OptimizationError::DimensionMismatch);
-        }
-        validate_line_search_config(config)?;
+    let grad = gradient(point);
+    if grad.len() != point.len() || grad.iter().any(|value| !value.is_finite()) {
+        return Err(OptimizationError::NonFiniteInput);
+    }
 
-        let grad = gradient(point);
-        if grad.len() != point.len() || grad.iter().any(|value| !value.is_finite()) {
+    let fx = objective(point);
+    if !fx.is_finite() {
+        return Err(OptimizationError::NonFiniteInput);
+    }
+    let directional_derivative = grad.dot(direction);
+
+    let mut alpha = config.initial_step;
+    for _ in 0..config.max_iterations {
+        let candidate = point + &(alpha * direction);
+        let candidate_value = objective(&candidate);
+        if !candidate_value.is_finite() {
             return Err(OptimizationError::NonFiniteInput);
         }
+        if candidate_value <= fx + config.sufficient_decrease * alpha * directional_derivative {
+            return Ok(alpha);
+        }
+        alpha *= config.contraction;
+    }
+    Err(OptimizationError::MaxIterationsExceeded)
+}
 
-        let fx = objective(point);
-        if !fx.is_finite() {
+/// Minimize objective with fixed-step gradient descent.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn gradient_descent<F, G>(
+    initial: &Array1<f64>,
+    objective: F,
+    gradient: G,
+    config: &SGDConfig,
+) -> Result<Array1<f64>, OptimizationError>
+where
+    F: Fn(&Array1<f64>) -> f64,
+    G: Fn(&Array1<f64>) -> Array1<f64>,
+{
+    validate_vector(initial)?;
+    validate_sgd_config(config)?;
+
+    let mut x = initial.clone();
+    let _ = objective(&x);
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
             return Err(OptimizationError::NonFiniteInput);
         }
-        let directional_derivative = grad.dot(direction);
-
-        let mut alpha = config.initial_step;
-        for _ in 0..config.max_iterations {
-            let candidate = point + &(alpha * direction);
-            let candidate_value = objective(&candidate);
-            if !candidate_value.is_finite() {
-                return Err(OptimizationError::NonFiniteInput);
-            }
-            if candidate_value <= fx + config.sufficient_decrease * alpha * directional_derivative {
-                return Ok(alpha);
-            }
-            alpha *= config.contraction;
+        if l2_norm(&grad) <= tolerance {
+            return Ok(x);
         }
-        Err(OptimizationError::MaxIterationsExceeded)
+        x = &x - &(config.learning_rate * &grad);
     }
 
-    /// Minimize objective with fixed-step gradient descent.
-    ///
-    /// # Errors
-    /// Returns an error for invalid inputs/configuration or non-finite gradients.
-    pub fn gradient_descent<F, G>(
-        initial: &Array1<f64>,
-        objective: F,
-        gradient: G,
-        config: &SGDConfig,
-    ) -> Result<Array1<f64>, OptimizationError>
-    where
-        F: Fn(&Array1<f64>) -> f64,
-        G: Fn(&Array1<f64>) -> Array1<f64>,
-    {
-        validate_vector(initial)?;
-        validate_sgd_config(config)?;
+    Err(OptimizationError::MaxIterationsExceeded)
+}
 
-        let mut x = initial.clone();
-        let _ = objective(&x);
-        let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+/// Minimize objective with Adam.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn adam<F, G>(
+    initial: &Array1<f64>,
+    objective: F,
+    gradient: G,
+    config: &AdamConfig,
+) -> Result<Array1<f64>, OptimizationError>
+where
+    F: Fn(&Array1<f64>) -> f64,
+    G: Fn(&Array1<f64>) -> Array1<f64>,
+{
+    validate_vector(initial)?;
+    validate_adam_config(config)?;
 
-        for _ in 0..config.max_iterations {
-            let grad = gradient(&x);
-            if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
-                return Err(OptimizationError::NonFiniteInput);
-            }
-            if l2_norm(&grad) <= tolerance {
-                return Ok(x);
-            }
-            x = &x - &(config.learning_rate * &grad);
+    let mut x = initial.clone();
+    let mut m = Array1::<f64>::zeros(x.len());
+    let mut v = Array1::<f64>::zeros(x.len());
+    let mut beta1_power = 1.0_f64;
+    let mut beta2_power = 1.0_f64;
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    let _ = objective(&x);
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm(&grad) <= tolerance {
+            return Ok(x);
         }
 
-        Err(OptimizationError::MaxIterationsExceeded)
-    }
+        beta1_power *= config.beta1;
+        beta2_power *= config.beta2;
 
-    /// Minimize objective with Adam.
-    ///
-    /// # Errors
-    /// Returns an error for invalid inputs/configuration or non-finite gradients.
-    pub fn adam<F, G>(
-        initial: &Array1<f64>,
-        objective: F,
-        gradient: G,
-        config: &AdamConfig,
-    ) -> Result<Array1<f64>, OptimizationError>
-    where
-        F: Fn(&Array1<f64>) -> f64,
-        G: Fn(&Array1<f64>) -> Array1<f64>,
-    {
-        validate_vector(initial)?;
-        validate_adam_config(config)?;
+        for i in 0..x.len() {
+            m[i] = config.beta1 * m[i] + (1.0 - config.beta1) * grad[i];
+            v[i] = config.beta2 * v[i] + (1.0 - config.beta2) * grad[i] * grad[i];
 
-        let mut x = initial.clone();
-        let mut m = Array1::<f64>::zeros(x.len());
-        let mut v = Array1::<f64>::zeros(x.len());
-        let mut beta1_power = 1.0_f64;
-        let mut beta2_power = 1.0_f64;
-        let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
-
-        let _ = objective(&x);
-        for _ in 0..config.max_iterations {
-            let grad = gradient(&x);
-            if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
-                return Err(OptimizationError::NonFiniteInput);
-            }
-            if l2_norm(&grad) <= tolerance {
-                return Ok(x);
-            }
-
-            beta1_power *= config.beta1;
-            beta2_power *= config.beta2;
-
-            for i in 0..x.len() {
-                m[i] = config.beta1 * m[i] + (1.0 - config.beta1) * grad[i];
-                v[i] = config.beta2 * v[i] + (1.0 - config.beta2) * grad[i] * grad[i];
-
-                let m_hat = m[i] / (1.0 - beta1_power);
-                let v_hat = v[i] / (1.0 - beta2_power);
-                x[i] -= config.learning_rate * m_hat / (v_hat.sqrt() + config.epsilon);
-            }
+            let m_hat = m[i] / (1.0 - beta1_power);
+            let v_hat = v[i] / (1.0 - beta2_power);
+            x[i] -= config.learning_rate * m_hat / (v_hat.sqrt() + config.epsilon);
         }
-
-        Err(OptimizationError::MaxIterationsExceeded)
     }
+
+    Err(OptimizationError::MaxIterationsExceeded)
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::arr1;
 
-    use super::{AdamConfig, LineSearchConfig, OptimizationError, SGDConfig, ndarray_optimization};
+    use super::*;
 
-    fn objective(x: &ndarray::Array1<f64>) -> f64 {
+    fn objective(x: &Array1<f64>) -> f64 {
         let delta = x[0] - 3.0;
         delta * delta
     }
 
-    fn gradient(x: &ndarray::Array1<f64>) -> ndarray::Array1<f64> { arr1(&[2.0 * (x[0] - 3.0)]) }
+    fn gradient(x: &Array1<f64>) -> Array1<f64> { arr1(&[2.0 * (x[0] - 3.0)]) }
 
     #[test]
     fn backtracking_line_search_finds_descent_step() {
         let x = arr1(&[0.0_f64]);
         let direction = arr1(&[1.0_f64]);
-        let alpha = ndarray_optimization::backtracking_line_search(
+        let alpha = backtracking_line_search(
             &x,
             &direction,
             objective,
@@ -318,17 +313,14 @@ mod tests {
     #[test]
     fn gradient_descent_converges_on_quadratic() {
         let x0 = arr1(&[0.0_f64]);
-        let solution =
-            ndarray_optimization::gradient_descent(&x0, objective, gradient, &SGDConfig::default())
-                .unwrap();
+        let solution = gradient_descent(&x0, objective, gradient, &SGDConfig::default()).unwrap();
         assert!((solution[0] - 3.0).abs() < 1e-4);
     }
 
     #[test]
     fn adam_converges_on_quadratic() {
         let x0 = arr1(&[-5.0_f64]);
-        let solution =
-            ndarray_optimization::adam(&x0, objective, gradient, &AdamConfig::default()).unwrap();
+        let solution = adam(&x0, objective, gradient, &AdamConfig::default()).unwrap();
         assert!((solution[0] - 3.0).abs() < 1e-3);
     }
 
@@ -336,7 +328,7 @@ mod tests {
     fn line_search_rejects_invalid_config_and_dimension_mismatch() {
         let x = arr1(&[0.0_f64]);
         let direction = arr1(&[1.0_f64, 2.0_f64]);
-        let result = ndarray_optimization::backtracking_line_search(
+        let result = backtracking_line_search(
             &x,
             &direction,
             objective,
@@ -346,13 +338,8 @@ mod tests {
         assert!(matches!(result, Err(OptimizationError::DimensionMismatch)));
 
         let bad_config = LineSearchConfig { contraction: 1.0, ..LineSearchConfig::default() };
-        let result = ndarray_optimization::backtracking_line_search(
-            &x,
-            &arr1(&[1.0_f64]),
-            objective,
-            gradient,
-            &bad_config,
-        );
+        let result =
+            backtracking_line_search(&x, &arr1(&[1.0_f64]), objective, gradient, &bad_config);
         assert!(matches!(result, Err(OptimizationError::InvalidConfig)));
     }
 
@@ -360,25 +347,19 @@ mod tests {
     fn gradient_descent_and_adam_cover_error_paths() {
         let x0 = arr1(&[0.0_f64]);
 
-        let bad_gradient = |_x: &ndarray::Array1<f64>| arr1(&[f64::NAN]);
-        let gd_non_finite = ndarray_optimization::gradient_descent(
-            &x0,
-            objective,
-            bad_gradient,
-            &SGDConfig::default(),
-        );
+        let bad_gradient = |_x: &Array1<f64>| arr1(&[f64::NAN]);
+        let gd_non_finite = gradient_descent(&x0, objective, bad_gradient, &SGDConfig::default());
         assert!(matches!(gd_non_finite, Err(OptimizationError::NonFiniteInput)));
 
-        let gd_stall =
-            ndarray_optimization::gradient_descent(&x0, objective, gradient, &SGDConfig {
-                learning_rate:  1e-12,
-                max_iterations: 1,
-                tolerance:      0.0,
-            });
+        let gd_stall = gradient_descent(&x0, objective, gradient, &SGDConfig {
+            learning_rate:  1e-12,
+            max_iterations: 1,
+            tolerance:      0.0,
+        });
         assert!(matches!(gd_stall, Err(OptimizationError::MaxIterationsExceeded)));
 
         let bad_adam = AdamConfig { beta1: 1.0, ..AdamConfig::default() };
-        let adam_invalid = ndarray_optimization::adam(&x0, objective, gradient, &bad_adam);
+        let adam_invalid = adam(&x0, objective, gradient, &bad_adam);
         assert!(matches!(adam_invalid, Err(OptimizationError::InvalidConfig)));
     }
 }

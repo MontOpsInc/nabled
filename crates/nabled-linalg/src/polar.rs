@@ -5,7 +5,7 @@ use std::fmt;
 use ndarray::{Array2, ArrayView2};
 
 use crate::internal::{validate_finite, validate_square_non_empty};
-use crate::svd::ndarray_svd;
+use crate::svd;
 
 /// Result of polar decomposition `A = U P`.
 #[derive(Debug, Clone)]
@@ -42,60 +42,53 @@ impl fmt::Display for PolarError {
 
 impl std::error::Error for PolarError {}
 
-/// Ndarray polar decomposition functions.
-pub mod ndarray_polar {
-    use super::*;
+/// Compute polar decomposition using SVD.
+///
+/// # Errors
+/// Returns an error if matrix is invalid or SVD fails.
+pub fn compute_polar(matrix: &Array2<f64>) -> Result<NdarrayPolarResult, PolarError> {
+    validate_square_non_empty(matrix).map_err(|error| match error {
+        "empty" => PolarError::EmptyMatrix,
+        _ => PolarError::NotSquare,
+    })?;
+    validate_finite(matrix).map_err(|_| PolarError::NumericalInstability)?;
 
-    /// Compute polar decomposition using SVD.
-    ///
-    /// # Errors
-    /// Returns an error if matrix is invalid or SVD fails.
-    pub fn compute_polar(matrix: &Array2<f64>) -> Result<NdarrayPolarResult, PolarError> {
-        validate_square_non_empty(matrix).map_err(|error| match error {
-            "empty" => PolarError::EmptyMatrix,
-            _ => PolarError::NotSquare,
-        })?;
-        validate_finite(matrix).map_err(|_| PolarError::NumericalInstability)?;
+    let svd = svd::decompose(matrix).map_err(|_| PolarError::DecompositionFailed)?;
 
-        let svd = ndarray_svd::decompose(matrix).map_err(|_| PolarError::DecompositionFailed)?;
+    let orthogonal_factor = svd.u.dot(&svd.vt);
 
-        let orthogonal_factor = svd.u.dot(&svd.vt);
-
-        let column_count = matrix.ncols();
-        let retained_rank = svd.singular_values.len();
-        let mut sigma = Array2::<f64>::zeros((retained_rank, retained_rank));
-        for i in 0..retained_rank {
-            sigma[[i, i]] = svd.singular_values[i];
-        }
-
-        let right_vectors = svd.vt.t().to_owned();
-        let psd_factor = right_vectors.dot(&sigma).dot(&svd.vt);
-        debug_assert_eq!(psd_factor.nrows(), column_count);
-
-        Ok(NdarrayPolarResult { u: orthogonal_factor, p: psd_factor })
+    let column_count = matrix.ncols();
+    let retained_rank = svd.singular_values.len();
+    let mut sigma = Array2::<f64>::zeros((retained_rank, retained_rank));
+    for i in 0..retained_rank {
+        sigma[[i, i]] = svd.singular_values[i];
     }
 
-    /// Compute polar decomposition using SVD from a matrix view.
-    ///
-    /// # Errors
-    /// Returns an error if matrix is invalid or SVD fails.
-    pub fn compute_polar_view(
-        matrix: &ArrayView2<'_, f64>,
-    ) -> Result<NdarrayPolarResult, PolarError> {
-        compute_polar(&matrix.to_owned())
-    }
+    let right_vectors = svd.vt.t().to_owned();
+    let psd_factor = right_vectors.dot(&sigma).dot(&svd.vt);
+    debug_assert_eq!(psd_factor.nrows(), column_count);
+
+    Ok(NdarrayPolarResult { u: orthogonal_factor, p: psd_factor })
+}
+
+/// Compute polar decomposition using SVD from a matrix view.
+///
+/// # Errors
+/// Returns an error if matrix is invalid or SVD fails.
+pub fn compute_polar_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarResult, PolarError> {
+    compute_polar(&matrix.to_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
 
-    use super::ndarray_polar;
+    use super::*;
 
     #[test]
     fn polar_reconstructs_input() {
         let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 1.0, 3.0]).unwrap();
-        let polar = ndarray_polar::compute_polar(&matrix).unwrap();
+        let polar = compute_polar(&matrix).unwrap();
         let reconstructed = polar.u.dot(&polar.p);
         for i in 0..2 {
             for j in 0..2 {
@@ -107,15 +100,15 @@ mod tests {
     #[test]
     fn polar_rejects_non_square_input() {
         let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
-        let result = ndarray_polar::compute_polar(&matrix);
-        assert!(matches!(result, Err(super::PolarError::NotSquare)));
+        let result = compute_polar(&matrix);
+        assert!(matches!(result, Err(PolarError::NotSquare)));
     }
 
     #[test]
     fn polar_view_matches_owned() {
         let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 1.0, 2.0]).unwrap();
-        let owned = ndarray_polar::compute_polar(&matrix).unwrap();
-        let viewed = ndarray_polar::compute_polar_view(&matrix.view()).unwrap();
+        let owned = compute_polar(&matrix).unwrap();
+        let viewed = compute_polar_view(&matrix.view()).unwrap();
         for i in 0..2 {
             for j in 0..2 {
                 assert!((owned.u[[i, j]] - viewed.u[[i, j]]).abs() < 1e-12);

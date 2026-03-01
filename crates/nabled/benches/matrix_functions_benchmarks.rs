@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::matrix_functions::ndarray_matrix_functions;
+use nabled::matrix_functions;
 use ndarray::Array2;
 use rand::RngExt;
 
@@ -24,15 +24,15 @@ fn benchmark_ndarray_matrix_functions(c: &mut Criterion) {
         let matrix = generate_spd_matrix(size);
 
         _ = group.bench_with_input(BenchmarkId::new("matrix_exp_eigen", size), &size, |b, _| {
-            b.iter(|| ndarray_matrix_functions::matrix_exp_eigen(black_box(&matrix)));
+            b.iter(|| matrix_functions::matrix_exp_eigen(black_box(&matrix)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("matrix_log_eigen", size), &size, |b, _| {
-            b.iter(|| ndarray_matrix_functions::matrix_log_eigen(black_box(&matrix)));
+            b.iter(|| matrix_functions::matrix_log_eigen(black_box(&matrix)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("matrix_power_half", size), &size, |b, _| {
-            b.iter(|| ndarray_matrix_functions::matrix_power(black_box(&matrix), black_box(0.5)));
+            b.iter(|| matrix_functions::matrix_power(black_box(&matrix), black_box(0.5)));
         });
     }
 

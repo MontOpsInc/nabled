@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::qr::{QRConfig, ndarray_qr};
+use nabled::qr::{self as qr, QRConfig};
 use ndarray::{Array1, Array2};
 use rand::RngExt;
 
@@ -27,16 +27,12 @@ fn benchmark_ndarray_qr(c: &mut Criterion) {
         let rhs = generate_random_vector(size);
 
         _ = group.bench_with_input(BenchmarkId::new("qr", size), &size, |b, _| {
-            b.iter(|| ndarray_qr::decompose(black_box(&matrix), black_box(&config)));
+            b.iter(|| qr::decompose(black_box(&matrix), black_box(&config)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("least_squares", size), &size, |b, _| {
             b.iter(|| {
-                ndarray_qr::solve_least_squares(
-                    black_box(&matrix),
-                    black_box(&rhs),
-                    black_box(&config),
-                )
+                qr::solve_least_squares(black_box(&matrix), black_box(&rhs), black_box(&config))
             });
         });
     }

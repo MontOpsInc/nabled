@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::sparse::{CsrMatrix, ndarray_sparse};
+use nabled::sparse::{self as sparse, CsrMatrix};
 use ndarray::Array1;
 use rand::RngExt;
 
@@ -44,22 +44,18 @@ fn benchmark_sparse(c: &mut Criterion) {
         let id = format!("square-{size}x{size}");
 
         _ = group.bench_with_input(BenchmarkId::new("csr_matvec", &id), &size, |bench, _| {
-            bench.iter(|| ndarray_sparse::matvec(black_box(&matrix), black_box(&rhs)));
+            bench.iter(|| sparse::matvec(black_box(&matrix), black_box(&rhs)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("csr_matvec_into", &id), &size, |bench, _| {
             bench.iter(|| {
-                ndarray_sparse::matvec_into(
-                    black_box(&matrix),
-                    black_box(&rhs),
-                    black_box(&mut output),
-                )
+                sparse::matvec_into(black_box(&matrix), black_box(&rhs), black_box(&mut output))
             });
         });
 
         _ = group.bench_with_input(BenchmarkId::new("jacobi_solve", &id), &size, |bench, _| {
             bench.iter(|| {
-                ndarray_sparse::jacobi_solve(
+                sparse::jacobi_solve(
                     black_box(&matrix),
                     black_box(&rhs),
                     black_box(1e-8),

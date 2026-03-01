@@ -23,6 +23,7 @@ Workspace migration for library domains is complete.
 15. Complex-number vector parity is now present (Hermitian dot, complex norm/cosine).
 16. First-order optimization primitives are now present (line search, gradient descent, Adam).
 17. View-first (`ArrayView*`) API coverage is expanded across remaining heavy linalg/ml domains with parity tests.
+18. Public API namespaces are flattened; `ndarray_*` wrapper modules are removed in favor of direct domain APIs.
 
 ## Current Code Ownership
 
@@ -58,11 +59,10 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Expand view-first API pass (`ArrayView*`) across remaining heavy public APIs.
-2. Expand complex-number parity beyond QR/SVD and vector kernels.
-3. Add explicit tests for `IntoNabledError` mappings and maintain mapping stability.
-4. Add benchmark competitor baselines for newly added benchmark domains.
-5. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
+1. Expand complex-number parity beyond QR/SVD and vector kernels.
+2. Add explicit tests for `IntoNabledError` mappings and maintain mapping stability.
+3. Add benchmark competitor baselines for newly added benchmark domains.
+4. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration
 

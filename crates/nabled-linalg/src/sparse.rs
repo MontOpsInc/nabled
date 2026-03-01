@@ -163,182 +163,177 @@ impl CooMatrix {
     }
 }
 
-/// Ndarray-backed sparse primitives.
-pub mod ndarray_sparse {
-    use super::*;
+/// Compute sparse matrix-vector product `y = A x`.
+///
+/// # Errors
+/// Returns an error if vector length mismatches matrix columns.
+pub fn matvec(matrix: &CsrMatrix, vector: &Array1<f64>) -> Result<Array1<f64>, SparseError> {
+    let mut output = Array1::<f64>::zeros(matrix.nrows);
+    matvec_into(matrix, vector, &mut output)?;
+    Ok(output)
+}
 
-    /// Compute sparse matrix-vector product `y = A x`.
-    ///
-    /// # Errors
-    /// Returns an error if vector length mismatches matrix columns.
-    pub fn matvec(matrix: &CsrMatrix, vector: &Array1<f64>) -> Result<Array1<f64>, SparseError> {
-        let mut output = Array1::<f64>::zeros(matrix.nrows);
-        matvec_into(matrix, vector, &mut output)?;
-        Ok(output)
+/// Compute sparse matrix-vector product `y = A x` into `output`.
+///
+/// # Errors
+/// Returns an error if input/output dimensions are incompatible.
+pub fn matvec_into(
+    matrix: &CsrMatrix,
+    vector: &Array1<f64>,
+    output: &mut Array1<f64>,
+) -> Result<(), SparseError> {
+    if vector.len() != matrix.ncols || output.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
     }
 
-    /// Compute sparse matrix-vector product `y = A x` into `output`.
-    ///
-    /// # Errors
-    /// Returns an error if input/output dimensions are incompatible.
-    pub fn matvec_into(
-        matrix: &CsrMatrix,
-        vector: &Array1<f64>,
-        output: &mut Array1<f64>,
-    ) -> Result<(), SparseError> {
-        if vector.len() != matrix.ncols || output.len() != matrix.nrows {
-            return Err(SparseError::DimensionMismatch);
+    for row in 0..matrix.nrows {
+        let start = matrix.indptr[row];
+        let end = matrix.indptr[row + 1];
+        let mut sum = 0.0_f64;
+        for entry in start..end {
+            sum += matrix.data[entry] * vector[matrix.indices[entry]];
         }
+        output[row] = sum;
+    }
 
-        for row in 0..matrix.nrows {
-            let start = matrix.indptr[row];
-            let end = matrix.indptr[row + 1];
-            let mut sum = 0.0_f64;
-            for entry in start..end {
-                sum += matrix.data[entry] * vector[matrix.indices[entry]];
+    Ok(())
+}
+
+/// Solve sparse linear system `A x = b` with Jacobi iteration.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular diagonals, or non-convergence.
+pub fn jacobi_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let n = matrix.nrows;
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+
+    let mut diagonal = Array1::<f64>::zeros(n);
+    for row in 0..n {
+        let start = matrix.indptr[row];
+        let end = matrix.indptr[row + 1];
+        for entry in start..end {
+            if matrix.indices[entry] == row {
+                diagonal[row] = matrix.data[entry];
+                break;
             }
-            output[row] = sum;
         }
-
-        Ok(())
+        if diagonal[row].abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
     }
 
-    /// Solve sparse linear system `A x = b` with Jacobi iteration.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions, singular diagonals, or non-convergence.
-    pub fn jacobi_solve(
-        matrix: &CsrMatrix,
-        rhs: &Array1<f64>,
-        tolerance: f64,
-        max_iterations: usize,
-    ) -> Result<Array1<f64>, SparseError> {
-        if matrix.nrows != matrix.ncols {
-            return Err(SparseError::DimensionMismatch);
-        }
-        if rhs.len() != matrix.nrows {
-            return Err(SparseError::DimensionMismatch);
-        }
-        if rhs.is_empty() {
-            return Err(SparseError::EmptyInput);
-        }
+    let mut x = Array1::<f64>::zeros(n);
+    let mut x_next = Array1::<f64>::zeros(n);
 
-        let n = matrix.nrows;
-        let tolerance = tolerance.max(DEFAULT_TOLERANCE);
-
-        let mut diagonal = Array1::<f64>::zeros(n);
+    for _ in 0..max_iterations.max(1) {
         for row in 0..n {
             let start = matrix.indptr[row];
             let end = matrix.indptr[row + 1];
+            let mut off_diagonal = 0.0_f64;
             for entry in start..end {
-                if matrix.indices[entry] == row {
-                    diagonal[row] = matrix.data[entry];
-                    break;
+                let col = matrix.indices[entry];
+                if col != row {
+                    off_diagonal += matrix.data[entry] * x[col];
                 }
             }
-            if diagonal[row].abs() <= DEFAULT_TOLERANCE {
+            x_next[row] = (rhs[row] - off_diagonal) / diagonal[row];
+        }
+
+        let mut delta_inf = 0.0_f64;
+        for i in 0..n {
+            delta_inf = delta_inf.max((x_next[i] - x[i]).abs());
+            x[i] = x_next[i];
+        }
+
+        if delta_inf <= tolerance {
+            return Ok(x);
+        }
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
+/// Solve sparse linear system `A x = b` with Gauss-Seidel iteration.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular diagonals, or non-convergence.
+pub fn gauss_seidel_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let n = matrix.nrows;
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+    let mut x = Array1::<f64>::zeros(n);
+
+    for _ in 0..max_iterations.max(1) {
+        let previous = x.clone();
+        for row in 0..n {
+            let start = matrix.indptr[row];
+            let end = matrix.indptr[row + 1];
+
+            let mut diagonal = 0.0_f64;
+            let mut sum = 0.0_f64;
+            for entry in start..end {
+                let col = matrix.indices[entry];
+                let value = matrix.data[entry];
+                if col == row {
+                    diagonal = value;
+                } else {
+                    sum += value * x[col];
+                }
+            }
+
+            if diagonal.abs() <= DEFAULT_TOLERANCE {
                 return Err(SparseError::SingularMatrix);
             }
+
+            x[row] = (rhs[row] - sum) / diagonal;
         }
 
-        let mut x = Array1::<f64>::zeros(n);
-        let mut x_next = Array1::<f64>::zeros(n);
-
-        for _ in 0..max_iterations.max(1) {
-            for row in 0..n {
-                let start = matrix.indptr[row];
-                let end = matrix.indptr[row + 1];
-                let mut off_diagonal = 0.0_f64;
-                for entry in start..end {
-                    let col = matrix.indices[entry];
-                    if col != row {
-                        off_diagonal += matrix.data[entry] * x[col];
-                    }
-                }
-                x_next[row] = (rhs[row] - off_diagonal) / diagonal[row];
-            }
-
-            let mut delta_inf = 0.0_f64;
-            for i in 0..n {
-                delta_inf = delta_inf.max((x_next[i] - x[i]).abs());
-                x[i] = x_next[i];
-            }
-
-            if delta_inf <= tolerance {
-                return Ok(x);
-            }
+        let mut delta_inf = 0.0_f64;
+        for i in 0..n {
+            delta_inf = delta_inf.max((x[i] - previous[i]).abs());
         }
-
-        Err(SparseError::MaxIterationsExceeded)
+        if delta_inf <= tolerance {
+            return Ok(x);
+        }
     }
 
-    /// Solve sparse linear system `A x = b` with Gauss-Seidel iteration.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions, singular diagonals, or non-convergence.
-    pub fn gauss_seidel_solve(
-        matrix: &CsrMatrix,
-        rhs: &Array1<f64>,
-        tolerance: f64,
-        max_iterations: usize,
-    ) -> Result<Array1<f64>, SparseError> {
-        if matrix.nrows != matrix.ncols {
-            return Err(SparseError::DimensionMismatch);
-        }
-        if rhs.len() != matrix.nrows {
-            return Err(SparseError::DimensionMismatch);
-        }
-        if rhs.is_empty() {
-            return Err(SparseError::EmptyInput);
-        }
-
-        let n = matrix.nrows;
-        let tolerance = tolerance.max(DEFAULT_TOLERANCE);
-        let mut x = Array1::<f64>::zeros(n);
-
-        for _ in 0..max_iterations.max(1) {
-            let previous = x.clone();
-            for row in 0..n {
-                let start = matrix.indptr[row];
-                let end = matrix.indptr[row + 1];
-
-                let mut diagonal = 0.0_f64;
-                let mut sum = 0.0_f64;
-                for entry in start..end {
-                    let col = matrix.indices[entry];
-                    let value = matrix.data[entry];
-                    if col == row {
-                        diagonal = value;
-                    } else {
-                        sum += value * x[col];
-                    }
-                }
-
-                if diagonal.abs() <= DEFAULT_TOLERANCE {
-                    return Err(SparseError::SingularMatrix);
-                }
-
-                x[row] = (rhs[row] - sum) / diagonal;
-            }
-
-            let mut delta_inf = 0.0_f64;
-            for i in 0..n {
-                delta_inf = delta_inf.max((x[i] - previous[i]).abs());
-            }
-            if delta_inf <= tolerance {
-                return Ok(x);
-            }
-        }
-
-        Err(SparseError::MaxIterationsExceeded)
-    }
+    Err(SparseError::MaxIterationsExceeded)
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::arr1;
 
-    use super::{CooMatrix, CsrMatrix, SparseError, ndarray_sparse};
+    use super::*;
 
     fn toy_matrix() -> CsrMatrix {
         // [4 1 0]
@@ -354,7 +349,7 @@ mod tests {
     fn matvec_matches_expected() {
         let matrix = toy_matrix();
         let vector = arr1(&[1.0_f64, 2.0, 3.0]);
-        let y = ndarray_sparse::matvec(&matrix, &vector).unwrap();
+        let y = matvec(&matrix, &vector).unwrap();
         assert!((y[0] - 6.0).abs() < 1e-12);
         assert!((y[1] - 10.0).abs() < 1e-12);
         assert!((y[2] - 8.0).abs() < 1e-12);
@@ -364,8 +359,8 @@ mod tests {
     fn jacobi_solves_diagonally_dominant_system() {
         let matrix = toy_matrix();
         let rhs = arr1(&[1.0_f64, 2.0, 3.0]);
-        let solution = ndarray_sparse::jacobi_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
-        let reconstructed = ndarray_sparse::matvec(&matrix, &solution).unwrap();
+        let solution = jacobi_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
         }
@@ -385,7 +380,7 @@ mod tests {
         .unwrap();
         let csr = coo.to_csr().unwrap();
         let vector = arr1(&[1.0_f64, 2.0, 3.0]);
-        let y = ndarray_sparse::matvec(&csr, &vector).unwrap();
+        let y = matvec(&csr, &vector).unwrap();
         assert!((y[0] - 6.0).abs() < 1e-12);
         assert!((y[1] - 10.0).abs() < 1e-12);
         assert!((y[2] - 8.0).abs() < 1e-12);
@@ -395,8 +390,8 @@ mod tests {
     fn gauss_seidel_solves_diagonally_dominant_system() {
         let matrix = toy_matrix();
         let rhs = arr1(&[1.0_f64, 2.0, 3.0]);
-        let solution = ndarray_sparse::gauss_seidel_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
-        let reconstructed = ndarray_sparse::matvec(&matrix, &solution).unwrap();
+        let solution = gauss_seidel_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
         }

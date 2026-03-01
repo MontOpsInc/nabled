@@ -1,5 +1,4 @@
-use nabled::jacobian::ndarray_jacobian;
-use nabled::{JacobianConfig, JacobianError};
+use nabled::{JacobianConfig, JacobianError, jacobian};
 use ndarray::Array1;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(Array1::from_vec(vec![input[0] * input[0] + input[1], input[1] * input[1] + input[0]]))
     };
 
-    let jacobian = ndarray_jacobian::numerical_jacobian(&f, &x, &config)?;
+    let jacobian = jacobian::numerical_jacobian(&f, &x, &config)?;
     println!("jacobian:\n{jacobian:?}");
 
     Ok(())

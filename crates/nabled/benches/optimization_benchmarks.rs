@@ -1,8 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::optimization::ndarray_optimization;
-use nabled::{AdamConfig, SGDConfig};
+use nabled::{AdamConfig, SGDConfig, optimization};
 use ndarray::Array1;
 use rand::RngExt;
 
@@ -27,7 +26,7 @@ fn benchmark_optimization(c: &mut Criterion) {
             SGDConfig { learning_rate: 1e-2, max_iterations: 200, tolerance: 1e-8 };
         _ = group.bench_with_input(BenchmarkId::new("gradient_descent", &id), &dim, |bench, _| {
             bench.iter(|| {
-                ndarray_optimization::gradient_descent(
+                optimization::gradient_descent(
                     black_box(&start),
                     black_box(quadratic_objective),
                     black_box(quadratic_gradient),
@@ -46,7 +45,7 @@ fn benchmark_optimization(c: &mut Criterion) {
         };
         _ = group.bench_with_input(BenchmarkId::new("adam", &id), &dim, |bench, _| {
             bench.iter(|| {
-                ndarray_optimization::adam(
+                optimization::adam(
                     black_box(&start),
                     black_box(quadratic_objective),
                     black_box(quadratic_gradient),

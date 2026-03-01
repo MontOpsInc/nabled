@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::sylvester::ndarray_sylvester;
+use nabled::sylvester;
 use ndarray::Array2;
 use rand::RngExt;
 
@@ -30,7 +30,7 @@ fn benchmark_sylvester(c: &mut Criterion) {
 
         _ = group.bench_with_input(BenchmarkId::new("solve_sylvester", &id), &size, |bench, _| {
             bench.iter(|| {
-                ndarray_sylvester::solve_sylvester(
+                sylvester::solve_sylvester(
                     black_box(&matrix_a),
                     black_box(&matrix_b),
                     black_box(&matrix_c),

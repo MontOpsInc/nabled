@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::vector::{PairwiseCosineWorkspace, ndarray_vector};
+use nabled::vector::{self as vector, PairwiseCosineWorkspace};
 use ndarray::{Array1, Array2};
 use rand::RngExt;
 
@@ -28,12 +28,12 @@ fn benchmark_ndarray_vector(c: &mut Criterion) {
             BenchmarkId::new("cosine_similarity", size),
             &size,
             |bench, _| {
-                bench.iter(|| ndarray_vector::cosine_similarity(black_box(&a), black_box(&b)));
+                bench.iter(|| vector::cosine_similarity(black_box(&a), black_box(&b)));
             },
         );
 
         _ = group.bench_with_input(BenchmarkId::new("dot", size), &size, |bench, _| {
-            bench.iter(|| ndarray_vector::dot(black_box(&a), black_box(&b)));
+            bench.iter(|| vector::dot(black_box(&a), black_box(&b)));
         });
     }
 
@@ -48,7 +48,7 @@ fn benchmark_ndarray_vector(c: &mut Criterion) {
 
         _ = group.bench_with_input(BenchmarkId::new("pairwise_l2_into", &id), &rows, |bench, _| {
             bench.iter(|| {
-                ndarray_vector::pairwise_l2_distance_into(
+                vector::pairwise_l2_distance_into(
                     black_box(&left),
                     black_box(&right),
                     black_box(&mut l2_out),
@@ -61,7 +61,7 @@ fn benchmark_ndarray_vector(c: &mut Criterion) {
             &rows,
             |bench, _| {
                 bench.iter(|| {
-                    ndarray_vector::pairwise_cosine_similarity_with_workspace_into(
+                    vector::pairwise_cosine_similarity_with_workspace_into(
                         black_box(&left),
                         black_box(&right),
                         black_box(&mut cosine_out),

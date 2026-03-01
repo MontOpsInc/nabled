@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::eigen::ndarray_eigen;
+use nabled::eigen;
 use ndarray::Array2;
 use rand::RngExt;
 
@@ -25,11 +25,11 @@ fn benchmark_ndarray_eigen(c: &mut Criterion) {
         let b = generate_spd_matrix(size);
 
         _ = group.bench_with_input(BenchmarkId::new("symmetric", size), &size, |bench, _| {
-            bench.iter(|| ndarray_eigen::symmetric(black_box(&a)));
+            bench.iter(|| eigen::symmetric(black_box(&a)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("generalized", size), &size, |bench, _| {
-            bench.iter(|| ndarray_eigen::generalized(black_box(&a), black_box(&b)));
+            bench.iter(|| eigen::generalized(black_box(&a), black_box(&b)));
         });
     }
 

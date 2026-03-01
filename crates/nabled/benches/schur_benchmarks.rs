@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::schur::ndarray_schur;
+use nabled::schur;
 use ndarray::Array2;
 use rand::RngExt;
 
@@ -18,7 +18,7 @@ fn benchmark_schur(c: &mut Criterion) {
         let matrix = random_matrix(size);
         let id = format!("square-{size}x{size}");
         _ = group.bench_with_input(BenchmarkId::new("compute_schur", &id), &size, |bench, _| {
-            bench.iter(|| ndarray_schur::compute_schur(black_box(&matrix)));
+            bench.iter(|| schur::compute_schur(black_box(&matrix)));
         });
     }
 

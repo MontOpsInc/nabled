@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::cholesky::ndarray_cholesky;
+use nabled::cholesky;
 use ndarray::{Array1, Array2};
 use rand::RngExt;
 
@@ -31,15 +31,15 @@ fn benchmark_ndarray_cholesky(c: &mut Criterion) {
         let rhs = generate_random_vector(size);
 
         _ = group.bench_with_input(BenchmarkId::new("decompose", size), &size, |b, _| {
-            b.iter(|| ndarray_cholesky::decompose(black_box(&matrix)));
+            b.iter(|| cholesky::decompose(black_box(&matrix)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("solve", size), &size, |b, _| {
-            b.iter(|| ndarray_cholesky::solve(black_box(&matrix), black_box(&rhs)));
+            b.iter(|| cholesky::solve(black_box(&matrix), black_box(&rhs)));
         });
 
         _ = group.bench_with_input(BenchmarkId::new("inverse", size), &size, |b, _| {
-            b.iter(|| ndarray_cholesky::inverse(black_box(&matrix)));
+            b.iter(|| cholesky::inverse(black_box(&matrix)));
         });
     }
 

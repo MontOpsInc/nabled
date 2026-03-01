@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use nabled_linalg::lu::{LUError, ndarray_lu};
+use nabled_linalg::lu::{self as lu, LUError};
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 /// Regression result for ndarray inputs.
@@ -55,85 +55,80 @@ fn map_lu_error(error: LUError) -> RegressionError {
     }
 }
 
-/// Ndarray regression functions.
-pub mod ndarray_regression {
-    use super::*;
+/// Solve linear regression with optional intercept.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or singular design matrix.
+pub fn linear_regression(
+    x: &Array2<f64>,
+    y: &Array1<f64>,
+    add_intercept: bool,
+) -> Result<NdarrayRegressionResult, RegressionError> {
+    if x.is_empty() || y.is_empty() {
+        return Err(RegressionError::EmptyInput);
+    }
+    if x.nrows() != y.len() {
+        return Err(RegressionError::DimensionMismatch);
+    }
 
-    /// Solve linear regression with optional intercept.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions or singular design matrix.
-    pub fn linear_regression(
-        x: &Array2<f64>,
-        y: &Array1<f64>,
-        add_intercept: bool,
-    ) -> Result<NdarrayRegressionResult, RegressionError> {
-        if x.is_empty() || y.is_empty() {
-            return Err(RegressionError::EmptyInput);
-        }
-        if x.nrows() != y.len() {
-            return Err(RegressionError::DimensionMismatch);
-        }
-
-        let design = if add_intercept {
-            let mut with_intercept = Array2::<f64>::zeros((x.nrows(), x.ncols() + 1));
-            for row in 0..x.nrows() {
-                with_intercept[[row, 0]] = 1.0;
-                for col in 0..x.ncols() {
-                    with_intercept[[row, col + 1]] = x[[row, col]];
-                }
+    let design = if add_intercept {
+        let mut with_intercept = Array2::<f64>::zeros((x.nrows(), x.ncols() + 1));
+        for row in 0..x.nrows() {
+            with_intercept[[row, 0]] = 1.0;
+            for col in 0..x.ncols() {
+                with_intercept[[row, col + 1]] = x[[row, col]];
             }
-            with_intercept
-        } else {
-            x.clone()
-        };
+        }
+        with_intercept
+    } else {
+        x.clone()
+    };
 
-        let xt = design.t();
-        let normal_matrix = xt.dot(&design);
-        let normal_rhs = xt.dot(y);
-        let coefficients = ndarray_lu::solve(&normal_matrix, &normal_rhs).map_err(map_lu_error)?;
+    let xt = design.t();
+    let normal_matrix = xt.dot(&design);
+    let normal_rhs = xt.dot(y);
+    let coefficients = lu::solve(&normal_matrix, &normal_rhs).map_err(map_lu_error)?;
 
-        let fitted_values = design.dot(&coefficients);
-        let residuals = y - &fitted_values;
+    let fitted_values = design.dot(&coefficients);
+    let residuals = y - &fitted_values;
 
-        let y_mean = y.iter().sum::<f64>() / usize_to_f64(y.len());
-        let ss_total = y
-            .iter()
-            .map(|value| {
-                let centered = *value - y_mean;
-                centered * centered
-            })
-            .sum::<f64>();
-        let ss_residual = residuals.iter().map(|value| value * value).sum::<f64>();
-        let r_squared = if ss_total <= f64::EPSILON { 1.0 } else { 1.0 - ss_residual / ss_total };
+    let y_mean = y.iter().sum::<f64>() / usize_to_f64(y.len());
+    let ss_total = y
+        .iter()
+        .map(|value| {
+            let centered = *value - y_mean;
+            centered * centered
+        })
+        .sum::<f64>();
+    let ss_residual = residuals.iter().map(|value| value * value).sum::<f64>();
+    let r_squared = if ss_total <= f64::EPSILON { 1.0 } else { 1.0 - ss_residual / ss_total };
 
-        Ok(NdarrayRegressionResult { coefficients, fitted_values, residuals, r_squared })
-    }
+    Ok(NdarrayRegressionResult { coefficients, fitted_values, residuals, r_squared })
+}
 
-    /// Solve linear regression with optional intercept from matrix/vector views.
-    ///
-    /// # Errors
-    /// Returns an error for invalid dimensions or singular design matrix.
-    pub fn linear_regression_view(
-        x: &ArrayView2<'_, f64>,
-        y: &ArrayView1<'_, f64>,
-        add_intercept: bool,
-    ) -> Result<NdarrayRegressionResult, RegressionError> {
-        linear_regression(&x.to_owned(), &y.to_owned(), add_intercept)
-    }
+/// Solve linear regression with optional intercept from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or singular design matrix.
+pub fn linear_regression_view(
+    x: &ArrayView2<'_, f64>,
+    y: &ArrayView1<'_, f64>,
+    add_intercept: bool,
+) -> Result<NdarrayRegressionResult, RegressionError> {
+    linear_regression(&x.to_owned(), &y.to_owned(), add_intercept)
 }
 
 #[cfg(test)]
 mod tests {
     use ndarray::{Array1, Array2};
 
-    use super::{RegressionError, ndarray_regression};
+    use super::*;
 
     #[test]
     fn linear_regression_fits_known_line() {
         let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
         let y = Array1::from_vec(vec![3.0, 5.0, 7.0, 9.0]);
-        let result = ndarray_regression::linear_regression(&x, &y, true).unwrap();
+        let result = linear_regression(&x, &y, true).unwrap();
         assert!((result.coefficients[0] - 1.0).abs() < 1e-8);
         assert!((result.coefficients[1] - 2.0).abs() < 1e-8);
         assert!(result.r_squared > 0.999_999);
@@ -143,7 +138,7 @@ mod tests {
     fn regression_without_intercept_fits_origin_line() {
         let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
         let y = Array1::from_vec(vec![2.0, 4.0, 6.0, 8.0]);
-        let result = ndarray_regression::linear_regression(&x, &y, false).unwrap();
+        let result = linear_regression(&x, &y, false).unwrap();
         assert_eq!(result.coefficients.len(), 1);
         assert!((result.coefficients[0] - 2.0).abs() < 1e-8);
     }
@@ -152,7 +147,7 @@ mod tests {
     fn regression_rejects_dimension_mismatch() {
         let x = Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap();
         let y = Array1::from_vec(vec![1.0, 2.0, 3.0]);
-        let result = ndarray_regression::linear_regression(&x, &y, true);
+        let result = linear_regression(&x, &y, true);
         assert!(matches!(result, Err(RegressionError::DimensionMismatch)));
     }
 
@@ -160,7 +155,7 @@ mod tests {
     fn regression_rejects_empty_inputs() {
         let x = Array2::<f64>::zeros((0, 0));
         let y = Array1::<f64>::zeros(0);
-        let result = ndarray_regression::linear_regression(&x, &y, true);
+        let result = linear_regression(&x, &y, true);
         assert!(matches!(result, Err(RegressionError::EmptyInput)));
     }
 
@@ -168,7 +163,7 @@ mod tests {
     fn regression_reports_singular_system() {
         let x = Array2::from_shape_vec((3, 1), vec![1.0, 1.0, 1.0]).unwrap();
         let y = Array1::from_vec(vec![1.0, 2.0, 3.0]);
-        let result = ndarray_regression::linear_regression(&x, &y, true);
+        let result = linear_regression(&x, &y, true);
         assert!(matches!(result, Err(RegressionError::Singular)));
     }
 
@@ -176,7 +171,7 @@ mod tests {
     fn regression_constant_response_has_unit_r_squared() {
         let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
         let y = Array1::from_vec(vec![3.0, 3.0, 3.0, 3.0]);
-        let result = ndarray_regression::linear_regression(&x, &y, true).unwrap();
+        let result = linear_regression(&x, &y, true).unwrap();
         assert!((result.r_squared - 1.0).abs() < 1e-12);
         assert_eq!(result.fitted_values.len(), y.len());
         assert_eq!(result.residuals.len(), y.len());
@@ -186,9 +181,8 @@ mod tests {
     fn regression_view_matches_owned() {
         let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
         let y = Array1::from_vec(vec![3.0, 5.0, 7.0, 9.0]);
-        let owned = ndarray_regression::linear_regression(&x, &y, true).unwrap();
-        let viewed =
-            ndarray_regression::linear_regression_view(&x.view(), &y.view(), true).unwrap();
+        let owned = linear_regression(&x, &y, true).unwrap();
+        let viewed = linear_regression_view(&x.view(), &y.view(), true).unwrap();
 
         assert_eq!(owned.coefficients.len(), viewed.coefficients.len());
         for i in 0..owned.coefficients.len() {
