@@ -86,13 +86,14 @@ Use this file to resume work quickly after context compaction without re-auditin
 56. `D-056`: Tensor breadth expanded from rank-3 baseline with higher-rank `ArrayD` last-axis operations (`sum`, `l2_norm`, `normalize`, `batched_dot`) plus coverage.
 57. `D-057`: Accelerator domain now includes explicit serial matmat and feature-gated accelerated matmat kernel (`accelerator-rayon`) with stable error mapping and integration coverage.
 58. `D-058`: Benchmark/report pipeline expanded with `matrix_benchmarks` and `tensor_benchmarks`, sparse benchmark additions, and benchmark-report classifier mappings for new suites.
+59. `D-059`: Sparse factorization-grade baseline advanced with ILU(0): `ilu0_factor`, `apply_ilu0_preconditioner`, and `bicgstab_ilu0_solve`, plus tests and sparse benchmark coverage.
 
 ## Next
 
-1. `N-059` (P2): Convert accelerator contracts from CPU/feature-gated parallel baseline into concrete GPU/distributed kernels.
-2. `N-060` (P1): Expand sparse depth beyond iterative/preconditioned baseline into factorization-grade sparse workflows.
-3. `N-061` (P0/P1): Continue copy-elision pass for remaining convenience/view wrappers that still materialize owned allocations.
-4. `N-062` (P2): Expand tensor APIs beyond current last-axis `ArrayD` operations into richer higher-rank algebra/contraction workflows.
+1. `N-060` (P1): Expand sparse depth beyond current ILU(0) baseline into broader factorization-grade workflows.
+2. `N-061` (P0/P1): Continue copy-elision pass for remaining convenience/view wrappers that still materialize owned allocations.
+3. `N-062` (P2): Expand tensor APIs beyond current last-axis `ArrayD` operations into richer higher-rank algebra/contraction workflows.
+4. `N-063` (P2): Convert accelerator contracts from CPU/feature-gated parallel baseline into concrete GPU/distributed kernels.
 
 ## Needed
 

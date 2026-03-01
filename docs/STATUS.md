@@ -41,6 +41,7 @@ Workspace migration for library domains is complete.
 33. Tensor breadth now includes higher-rank `ArrayD` last-axis operations (`sum`, norm, normalize, batched dot).
 34. Accelerator domain now includes explicit serial matmat and feature-gated accelerated matmat (`accelerator-rayon`) with strict error mapping.
 35. Benchmark/report coverage now includes new matrix/tensor suites and expanded sparse cases, with classifier support in reporting tooling.
+36. Sparse depth now includes ILU(0) factorization and ILU0-preconditioned `BiCGSTAB` for non-symmetric systems.
 
 ## Current Code Ownership
 
@@ -78,7 +79,7 @@ Workspace migration for library domains is complete.
 Harden workspace contracts and release readiness:
 
 1. Continue copy-elision pass for remaining convenience/view wrappers that still allocate hidden owned buffers.
-2. Expand sparse depth from iterative/preconditioned baseline into factorization-grade sparse workflows.
+2. Expand sparse depth from current ILU(0) baseline into broader factorization-grade sparse workflows.
 3. Expand tensor beyond current last-axis `ArrayD` baseline and advance accelerator from CPU parallel baseline toward concrete GPU/distributed kernels.
 4. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 

@@ -38,7 +38,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Includes complex `exp/log/power/sign` coverage in both internal and provider-enabled builds. Bench exists (`matrix_functions_benchmarks`) with complex cases. |
 | Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization` | Implemented | Yes | Dedicated benchmark now exists (`orthogonalization_benchmarks`). |
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Good foundation for larger optimization stack. |
-| Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/BiCGSTAB | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion and sparse-sparse multiplication. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
+| Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB, ILU(0) + ILU0-preconditioned BiCGSTAB | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, and ILU0 factorization/preconditioned solve paths. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
 | Optimization | line search, gradient descent, Adam, momentum, RMSProp | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
 | Tensor/cube primitives | batched cube kernels + higher-rank last-axis `ArrayD` ops | `nabled-linalg::tensor` | Partial | Yes | Rank-3 APIs are present with owned/view/into variants; higher-rank baseline now includes last-axis reductions/normalization/batched dot. |
 | Accelerator contracts | compile-time backend trait + CPU execution/chunking + feature-gated accelerated matmat + unsupported CUDA/distributed placeholders | `nabled-linalg::accelerator` | Partial | No | Establishes compile-time backend seam; accelerated CPU path (`accelerator-rayon`) exists, concrete GPU/distributed kernels remain open. |
@@ -66,7 +66,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Capability Group | Current Status | Gap |
 |---|---|---|
 | Batched operations over many vectors/matrices | Implemented | Vector, dense matrix, sparse matrix, and cube-level batched primitives are now exposed with explicit allocation-control paths. |
-| Sparse linear algebra primitives | Implemented | Baseline sparse primitives now span CSR/CSC/COO formats, sparse-dense/sparse-sparse products, and iterative solve breadth including `BiCGSTAB`. |
+| Sparse linear algebra primitives | Implemented | Baseline sparse primitives now span CSR/CSC/COO formats, sparse-dense/sparse-sparse products, iterative solve breadth including `BiCGSTAB`, and ILU(0)-backed preconditioned solve paths. |
 | Complex-number parity across major algorithms | Partial | Complex parity now includes vector kernels, QR, SVD, LU, Cholesky, Schur, Sylvester/Lyapunov, matrix-functions (`exp/log/power/sign`), polar decomposition, and triangular solves across internal/provider builds; this is now validated by facade integration tests plus complex benchmark visibility in selected dense suites. Many other domains are still f64-only. |
 | Non-symmetric dense eigen coverage | Implemented | Non-symmetric real/complex eigen APIs exist with internal and provider-enabled execution paths. |
 | More optimization primitives | Implemented | First-order suite now includes line search, gradient descent, Adam, momentum, and `RMSProp`; advanced second-order and constrained methods remain future enhancements. |
@@ -101,3 +101,12 @@ When updating this matrix:
 1. Keep every capability tied to an actual module/API.
 2. Mark status using the legend only.
 3. Update the verdict if scope coverage changes materially.
+
+## Post-Readiness Hardening Backlog
+
+These are intentionally tracked as post-capability polish passes once P0/P1 sufficiency is met.
+
+1. Benchmark outlier analysis and targeted remediation for regressions or weak domains.
+2. Allocation audit to ensure heap allocations occur only where contractually necessary.
+3. SIMD opportunity pass for hand-rolled kernels that dominate wall-clock time.
+4. Threading policy pass for internal parallelism, including `accelerator-rayon` interactions with BLAS/LAPACK provider threading to avoid oversubscription.

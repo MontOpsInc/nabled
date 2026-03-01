@@ -39,7 +39,9 @@ pub use schur::{
     NdarrayComplexSchurResult, NdarraySchurResult, SchurComplexWorkspace, SchurError,
     SchurWorkspace,
 };
-pub use sparse::{CooMatrix, CscMatrix, CsrMatrix, JacobiPreconditioner, SparseError};
+pub use sparse::{
+    CooMatrix, CscMatrix, CsrMatrix, ILU0Factorization, JacobiPreconditioner, SparseError,
+};
 pub use svd::{NdarrayComplexSVD, NdarraySVD, PseudoInverseConfig, SVDError};
 pub use sylvester::{SylvesterComplexWorkspace, SylvesterError, SylvesterWorkspace};
 pub use tensor::TensorError;

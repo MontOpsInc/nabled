@@ -1,5 +1,7 @@
 //! Sparse matrix primitives and iterative solves over CSR/CSC/COO structures.
 
+use std::collections::HashMap;
+
 use ndarray::{Array1, Array2};
 use thiserror::Error;
 
@@ -199,6 +201,15 @@ impl CscMatrix {
 pub struct JacobiPreconditioner {
     /// Inverse diagonal values.
     pub inverse_diagonal: Array1<f64>,
+}
+
+/// Incomplete LU(0) sparse factorization.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ILU0Factorization {
+    /// Unit-lower factor.
+    pub l: CsrMatrix,
+    /// Upper factor.
+    pub u: CsrMatrix,
 }
 
 impl CooMatrix {
@@ -430,6 +441,181 @@ pub fn apply_jacobi_preconditioner(
     for i in 0..vector.len() {
         output[i] = preconditioner.inverse_diagonal[i] * vector[i];
     }
+    Ok(output)
+}
+
+fn row_positions(matrix: &CsrMatrix) -> Vec<HashMap<usize, usize>> {
+    let mut positions = Vec::<HashMap<usize, usize>>::with_capacity(matrix.nrows);
+    for row in 0..matrix.nrows {
+        let mut map = HashMap::<usize, usize>::new();
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            let _ = map.insert(matrix.indices[entry], entry);
+        }
+        positions.push(map);
+    }
+    positions
+}
+
+/// Compute ILU(0) factorization for a square sparse matrix.
+///
+/// The non-zero pattern of factors follows the input pattern (`level-of-fill = 0`).
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or the factorization breaks down.
+pub fn ilu0_factor(matrix: &CsrMatrix) -> Result<ILU0Factorization, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+
+    let n = matrix.nrows;
+    let positions = row_positions(matrix);
+    let mut factors = matrix.data.clone();
+
+    for row in 0..n {
+        let mut lower_entries = Vec::<(usize, usize)>::new();
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            let col = matrix.indices[entry];
+            if col < row {
+                lower_entries.push((col, entry));
+            }
+        }
+        lower_entries.sort_unstable_by_key(|&(col, _)| col);
+
+        for (col_j, row_col_entry) in lower_entries {
+            let Some(&diag_index) = positions[col_j].get(&col_j) else {
+                return Err(SparseError::SingularMatrix);
+            };
+            let diagonal = factors[diag_index];
+            if diagonal.abs() <= DEFAULT_TOLERANCE {
+                return Err(SparseError::SingularMatrix);
+            }
+
+            let multiplier = factors[row_col_entry] / diagonal;
+            factors[row_col_entry] = multiplier;
+
+            for upper_entry in matrix.indptr[col_j]..matrix.indptr[col_j + 1] {
+                let col_k = matrix.indices[upper_entry];
+                if col_k <= col_j {
+                    continue;
+                }
+                if let Some(&update_index) = positions[row].get(&col_k) {
+                    factors[update_index] -= multiplier * factors[upper_entry];
+                }
+            }
+        }
+
+        let Some(&row_diagonal_index) = positions[row].get(&row) else {
+            return Err(SparseError::SingularMatrix);
+        };
+        if factors[row_diagonal_index].abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+    }
+
+    let mut l_indptr = Vec::<usize>::with_capacity(n + 1);
+    let mut l_indices = Vec::<usize>::new();
+    let mut l_data = Vec::<f64>::new();
+    l_indptr.push(0);
+
+    let mut u_indptr = Vec::<usize>::with_capacity(n + 1);
+    let mut u_indices = Vec::<usize>::new();
+    let mut u_data = Vec::<f64>::new();
+    u_indptr.push(0);
+
+    for row in 0..n {
+        let mut l_row = Vec::<(usize, f64)>::new();
+        l_row.push((row, 1.0));
+        let mut u_row = Vec::<(usize, f64)>::new();
+
+        for (&col, &value) in matrix.indices[matrix.indptr[row]..matrix.indptr[row + 1]]
+            .iter()
+            .zip(factors[matrix.indptr[row]..matrix.indptr[row + 1]].iter())
+        {
+            if col < row {
+                l_row.push((col, value));
+            } else {
+                u_row.push((col, value));
+            }
+        }
+
+        l_row.sort_unstable_by_key(|&(col, _)| col);
+        u_row.sort_unstable_by_key(|&(col, _)| col);
+
+        for (col, value) in l_row {
+            l_indices.push(col);
+            l_data.push(value);
+        }
+        for (col, value) in u_row {
+            u_indices.push(col);
+            u_data.push(value);
+        }
+
+        l_indptr.push(l_indices.len());
+        u_indptr.push(u_indices.len());
+    }
+
+    let l = CsrMatrix::new(n, n, l_indptr, l_indices, l_data)?;
+    let u = CsrMatrix::new(n, n, u_indptr, u_indices, u_data)?;
+    Ok(ILU0Factorization { l, u })
+}
+
+/// Apply an ILU(0) preconditioner to a dense vector.
+///
+/// Solves `L U x = rhs` where `L` and `U` come from [`ilu0_factor`].
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or factors are singular.
+pub fn apply_ilu0_preconditioner(
+    factorization: &ILU0Factorization,
+    rhs: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    if factorization.l.nrows != factorization.l.ncols
+        || factorization.u.nrows != factorization.u.ncols
+        || factorization.l.nrows != factorization.u.nrows
+    {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != factorization.l.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+
+    let n = rhs.len();
+    let mut intermediate = Array1::<f64>::zeros(n);
+    for row in 0..n {
+        let mut sum = rhs[row];
+        for entry in factorization.l.indptr[row]..factorization.l.indptr[row + 1] {
+            let col = factorization.l.indices[entry];
+            if col < row {
+                sum -= factorization.l.data[entry] * intermediate[col];
+            }
+        }
+        intermediate[row] = sum;
+    }
+
+    let mut output = Array1::<f64>::zeros(n);
+    for row_reverse in 0..n {
+        let row = n - 1 - row_reverse;
+        let mut sum = intermediate[row];
+        let mut diagonal = None;
+        for entry in factorization.u.indptr[row]..factorization.u.indptr[row + 1] {
+            let col = factorization.u.indices[entry];
+            let value = factorization.u.data[entry];
+            if col == row {
+                diagonal = Some(value);
+            } else if col > row {
+                sum -= value * output[col];
+            }
+        }
+
+        let Some(diagonal) = diagonal else {
+            return Err(SparseError::SingularMatrix);
+        };
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        output[row] = sum / diagonal;
+    }
+
     Ok(output)
 }
 
@@ -944,6 +1130,113 @@ pub fn bicgstab_solve(
     Err(SparseError::MaxIterationsExceeded)
 }
 
+/// Solve sparse linear system `A x = b` with ILU(0)-preconditioned `BiCGSTAB`.
+///
+/// This routine supports general non-symmetric matrices.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ilu0_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let factorization = ilu0_factor(matrix)?;
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+    let dimension = rhs.len();
+    let mut solution = Array1::<f64>::zeros(dimension);
+    let mut residual = rhs.clone();
+    let residual_shadow = residual.clone();
+    let mut rho_prev = 1.0_f64;
+    let mut alpha = 1.0_f64;
+    let mut omega = 1.0_f64;
+    let mut krylov_vector = Array1::<f64>::zeros(dimension);
+    let mut search_direction = Array1::<f64>::zeros(dimension);
+
+    if dot(&residual, &residual)?.sqrt() <= tolerance {
+        return Ok(solution);
+    }
+
+    for iteration in 0..max_iterations.max(1) {
+        let rho = dot(&residual_shadow, &residual)?;
+        if rho.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        if iteration == 0 {
+            search_direction.assign(&residual);
+        } else {
+            if omega.abs() <= DEFAULT_TOLERANCE {
+                return Err(SparseError::SingularMatrix);
+            }
+            let beta = (rho / rho_prev) * (alpha / omega);
+            for i in 0..dimension {
+                search_direction[i] =
+                    residual[i] + beta * (search_direction[i] - omega * krylov_vector[i]);
+            }
+        }
+
+        let preconditioned_search = apply_ilu0_preconditioner(&factorization, &search_direction)?;
+        krylov_vector = matvec(matrix, &preconditioned_search)?;
+        let denominator = dot(&residual_shadow, &krylov_vector)?;
+        if denominator.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        alpha = rho / denominator;
+
+        let mut auxiliary_residual = residual.clone();
+        for i in 0..dimension {
+            auxiliary_residual[i] -= alpha * krylov_vector[i];
+        }
+
+        if dot(&auxiliary_residual, &auxiliary_residual)?.sqrt() <= tolerance {
+            for i in 0..dimension {
+                solution[i] += alpha * preconditioned_search[i];
+            }
+            return Ok(solution);
+        }
+
+        let preconditioned_auxiliary =
+            apply_ilu0_preconditioner(&factorization, &auxiliary_residual)?;
+        let transformed_auxiliary = matvec(matrix, &preconditioned_auxiliary)?;
+        let transformed_norm_sq = dot(&transformed_auxiliary, &transformed_auxiliary)?;
+        if transformed_norm_sq.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        omega = dot(&transformed_auxiliary, &auxiliary_residual)? / transformed_norm_sq;
+        if omega.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        for i in 0..dimension {
+            solution[i] += alpha * preconditioned_search[i] + omega * preconditioned_auxiliary[i];
+        }
+
+        for i in 0..dimension {
+            residual[i] = auxiliary_residual[i] - omega * transformed_auxiliary[i];
+        }
+
+        if dot(&residual, &residual)?.sqrt() <= tolerance {
+            return Ok(solution);
+        }
+
+        rho_prev = rho;
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::{Array2, arr1};
@@ -958,6 +1251,16 @@ mod tests {
             4.0, 1.0, 1.0, 3.0, 1.0, 1.0, 2.0,
         ])
         .unwrap()
+    }
+
+    fn csr_to_dense(matrix: &CsrMatrix) -> Array2<f64> {
+        let mut dense = Array2::<f64>::zeros((matrix.nrows, matrix.ncols));
+        for row in 0..matrix.nrows {
+            for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+                dense[[row, matrix.indices[entry]]] = matrix.data[entry];
+            }
+        }
+        dense
     }
 
     #[test]
@@ -1134,6 +1437,46 @@ mod tests {
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
         let solution = bicgstab_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn ilu0_factorization_reconstructs_toy_matrix() {
+        let matrix = toy_matrix();
+        let factorization = ilu0_factor(&matrix).unwrap();
+
+        let dense_l = csr_to_dense(&factorization.l);
+        let dense_u = csr_to_dense(&factorization.u);
+        let reconstructed = dense_l.dot(&dense_u);
+        let expected = csr_to_dense(&matrix);
+
+        for row in 0..matrix.nrows {
+            for col in 0..matrix.ncols {
+                assert!((reconstructed[[row, col]] - expected[[row, col]]).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn apply_ilu0_preconditioner_rejects_bad_dimensions() {
+        let matrix = toy_matrix();
+        let factorization = ilu0_factor(&matrix).unwrap();
+        let rhs = arr1(&[1.0_f64, 2.0]);
+        let result = apply_ilu0_preconditioner(&factorization, &rhs);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn bicgstab_ilu0_solves_nonsymmetric_system() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution = bicgstab_ilu0_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
         let reconstructed = matvec(&matrix, &solution).unwrap();
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
