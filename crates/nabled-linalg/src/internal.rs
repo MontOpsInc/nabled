@@ -227,9 +227,12 @@ pub(crate) fn qr_gram_schmidt(
     let mut q = Array2::<f64>::zeros((rows, cols));
     let mut r = Array2::<f64>::zeros((cols, cols));
     let mut rank = 0_usize;
+    let mut v = Array1::<f64>::zeros(rows);
 
     for j in 0..cols {
-        let mut v = matrix.column(j).to_owned();
+        for row in 0..rows {
+            v[row] = matrix[[row, j]];
+        }
         for i in 0..j {
             let q_col = q.column(i);
             let mut projection = 0.0_f64;

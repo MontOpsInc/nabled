@@ -87,7 +87,7 @@ fn linear_regression_impl(
     let coefficients = lu::solve(&normal_matrix, &normal_rhs).map_err(map_lu_error)?;
 
     let fitted_values = design.dot(&coefficients);
-    let residuals = y.to_owned() - &fitted_values;
+    let residuals = y - &fitted_values;
 
     let y_mean = y.iter().sum::<f64>() / usize_to_f64(y.len());
     let ss_total = y

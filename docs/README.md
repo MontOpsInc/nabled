@@ -14,10 +14,11 @@ This folder contains the current, authoritative direction for `nabled`.
 
 1. `docs/DECISIONS.md`: locked decisions and constraints.
 2. `docs/CAPABILITY_MATRIX.md`: capability inventory, gap analysis, and scope verdict.
-3. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
-4. `docs/architecture.md`: target package/module architecture.
-5. `docs/ROADMAP.md`: implementation sequencing and milestones.
-6. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+3. `docs/PERFORMANCE_CONTRACTS.md`: allocation/copy contract and copy-elision audit status.
+4. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
+5. `docs/architecture.md`: target package/module architecture.
+6. `docs/ROADMAP.md`: implementation sequencing and milestones.
+7. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
 
 ## Context Resume Protocol
 
@@ -26,10 +27,11 @@ When starting from a compacted/partial context, read documents in this order:
 1. `docs/README.md`
 2. `docs/DECISIONS.md`
 3. `docs/CAPABILITY_MATRIX.md`
-4. `docs/EXECUTION_TRACKER.md`
-5. `docs/architecture.md`
-6. `docs/ROADMAP.md`
-7. `docs/STATUS.md`
+4. `docs/PERFORMANCE_CONTRACTS.md`
+5. `docs/EXECUTION_TRACKER.md`
+6. `docs/architecture.md`
+7. `docs/ROADMAP.md`
+8. `docs/STATUS.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 

@@ -95,13 +95,14 @@ Use this file to resume work quickly after context compaction without re-auditin
 65. `D-065`: ILUT ergonomics and solver breadth expanded with `ILUTConfig` policy helpers, config-driven factorization/solve APIs, and ILUT-preconditioned `gmres` sparse solve (`gmres_ilut_solve` / `gmres_ilut_solve_with_config`), plus tests and benchmark coverage.
 66. `D-066`: Sparse solve reuse APIs added for factorization-caching workflows (`gmres_ilut_solve_with_factorization`, `bicgstab_ilu0_solve_with_factorization`, `bicgstab_ilut_solve_with_factorization`, `bicgstab_ilut_solve_with_config`) with parity tests and sparse benchmark coverage for reuse paths.
 67. `D-067`: Sparse solver breadth expanded with ILU(0)-preconditioned `gmres` (`gmres_ilu0_solve`, `gmres_ilu0_solve_with_factorization`) plus dimension/error parity tests and benchmark coverage (`gmres_ilu0_solve`, `gmres_ilu0_solve_reuse`).
+68. `D-068`: `N-061` copy-elision audit completed: removed remaining avoidable algorithm-internal materializations in iterative/QR/SVD paths, documented unavoidable allocations in `docs/PERFORMANCE_CONTRACTS.md`, and promoted P0 performance-contract status to implemented.
+69. `D-069`: `B-P1-003` complex-parity closure for major algorithms: complex matrix primitives, complex orthogonalization, complex iterative solvers (CG/GMRES), and complex tensor kernels/last-axis ops are now implemented with parity tests in internal/provider-aware quality gates.
 
 ## Next
 
-1. `N-060` (P1): Continue sparse depth expansion beyond ILU(0)+IC(0)+ILUT baseline into broader factorization-grade workflows.
-2. `N-061` (P0/P1): Complete copy-elision audit for remaining algorithm-internal owned materializations and document/optimize unavoidable cases.
-3. `N-062` (P2): Expand tensor APIs beyond current last-axis `ArrayD` operations into richer higher-rank algebra/contraction workflows.
-4. `N-063` (P2): Convert accelerator contracts from CPU/feature-gated parallel baseline into concrete GPU/distributed kernels.
+1. `N-060` (P2): Continue sparse depth expansion beyond ILU(0)+IC(0)+ILUT baseline into broader factorization-grade workflows.
+2. `N-062` (P2): Expand tensor APIs beyond current last-axis `ArrayD` operations into richer higher-rank algebra/contraction workflows.
+3. `N-063` (P2): Convert accelerator contracts from CPU/feature-gated parallel baseline into concrete GPU/distributed kernels.
 
 ## Needed
 
@@ -114,7 +115,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 
 1. `B-P1-001`: Batched decomposition-level APIs and richer broadcast semantics.
 2. `B-P1-002`: Sparse preconditioners and factorization-grade sparse workflows.
-3. `B-P1-003`: Complex-number parity across currently real-only domains.
+3. `B-P2-001`: Complex parity for higher-level ML/statistical domains that remain real-first (`stats`, `regression`, `pca`, `optimization`).
 4. `B-P1-004`: Left-eigenvector and balancing-depth improvements for non-symmetric eigen APIs.
 5. `B-P1-005`: Advanced optimization breadth (constrained, stochastic variants, quasi-Newton/second-order).
 
@@ -124,6 +125,7 @@ Use this file to resume work quickly after context compaction without re-auditin
    - `docs/README.md`
    - `docs/DECISIONS.md`
    - `docs/CAPABILITY_MATRIX.md`
+   - `docs/PERFORMANCE_CONTRACTS.md`
    - `docs/EXECUTION_TRACKER.md`
    - `docs/STATUS.md`
 2. Start from the highest-priority open `N-*` item unless maintainers redirect.

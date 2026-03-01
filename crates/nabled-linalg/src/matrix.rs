@@ -6,6 +6,7 @@ use ndarray::{
     Array1, Array2, Array3, ArrayView1, ArrayView2, ArrayView3, ArrayViewMut1, ArrayViewMut2,
     ArrayViewMut3,
 };
+use num_complex::Complex64;
 
 /// Error type for dense matrix operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +44,24 @@ fn validate_vector_non_empty(vector: &ArrayView1<'_, f64>) -> Result<(), MatrixE
 
 fn validate_tensor_non_empty(tensor: &ArrayView3<'_, f64>) -> Result<(), MatrixError> {
     if tensor.is_empty() {
+        return Err(MatrixError::EmptyInput);
+    }
+    Ok(())
+}
+
+fn validate_matrix_non_empty_complex(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<(), MatrixError> {
+    if matrix.is_empty() {
+        return Err(MatrixError::EmptyInput);
+    }
+    Ok(())
+}
+
+fn validate_vector_non_empty_complex(
+    vector: &ArrayView1<'_, Complex64>,
+) -> Result<(), MatrixError> {
+    if vector.is_empty() {
         return Err(MatrixError::EmptyInput);
     }
     Ok(())
@@ -112,6 +131,69 @@ pub fn matvec_view_into(
     Ok(())
 }
 
+/// Compute complex dense matrix-vector product `y = A x`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn matvec_complex(
+    matrix: &Array2<Complex64>,
+    vector: &Array1<Complex64>,
+) -> Result<Array1<Complex64>, MatrixError> {
+    let mut output = Array1::<Complex64>::zeros(matrix.nrows());
+    matvec_complex_view_into(&matrix.view(), &vector.view(), output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute complex dense matrix-vector product `y = A x` from views.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn matvec_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    vector: &ArrayView1<'_, Complex64>,
+) -> Result<Array1<Complex64>, MatrixError> {
+    let mut output = Array1::<Complex64>::zeros(matrix.nrows());
+    matvec_complex_view_into(matrix, vector, output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute complex dense matrix-vector product `y = A x` into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn matvec_complex_into(
+    matrix: &Array2<Complex64>,
+    vector: &Array1<Complex64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), MatrixError> {
+    matvec_complex_view_into(&matrix.view(), &vector.view(), output.view_mut())
+}
+
+/// Compute complex dense matrix-vector product `y = A x` from views into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn matvec_complex_view_into(
+    matrix: &ArrayView2<'_, Complex64>,
+    vector: &ArrayView1<'_, Complex64>,
+    mut output: ArrayViewMut1<'_, Complex64>,
+) -> Result<(), MatrixError> {
+    validate_matrix_non_empty_complex(matrix)?;
+    validate_vector_non_empty_complex(vector)?;
+    if vector.len() != matrix.ncols() || output.len() != matrix.nrows() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+
+    for row in 0..matrix.nrows() {
+        let mut sum = Complex64::new(0.0, 0.0);
+        for col in 0..matrix.ncols() {
+            sum += matrix[[row, col]] * vector[col];
+        }
+        output[row] = sum;
+    }
+    Ok(())
+}
+
 /// Compute dense matrix-matrix product `C = A B`.
 ///
 /// # Errors
@@ -167,6 +249,71 @@ pub fn matmat_view_into(
     }
 
     output.fill(0.0);
+    for row in 0..left.nrows() {
+        for k in 0..left.ncols() {
+            let lhs = left[[row, k]];
+            for col in 0..right.ncols() {
+                output[[row, col]] += lhs * right[[k, col]];
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Compute complex dense matrix-matrix product `C = A B`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn matmat_complex(
+    left: &Array2<Complex64>,
+    right: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, MatrixError> {
+    let mut output = Array2::<Complex64>::zeros((left.nrows(), right.ncols()));
+    matmat_complex_view_into(&left.view(), &right.view(), output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute complex dense matrix-matrix product `C = A B` from views.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn matmat_complex_view(
+    left: &ArrayView2<'_, Complex64>,
+    right: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, MatrixError> {
+    let mut output = Array2::<Complex64>::zeros((left.nrows(), right.ncols()));
+    matmat_complex_view_into(left, right, output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute complex dense matrix-matrix product `C = A B` into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn matmat_complex_into(
+    left: &Array2<Complex64>,
+    right: &Array2<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), MatrixError> {
+    matmat_complex_view_into(&left.view(), &right.view(), output.view_mut())
+}
+
+/// Compute complex dense matrix-matrix product `C = A B` from views into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn matmat_complex_view_into(
+    left: &ArrayView2<'_, Complex64>,
+    right: &ArrayView2<'_, Complex64>,
+    mut output: ArrayViewMut2<'_, Complex64>,
+) -> Result<(), MatrixError> {
+    validate_matrix_non_empty_complex(left)?;
+    validate_matrix_non_empty_complex(right)?;
+    if left.ncols() != right.nrows() || output.dim() != (left.nrows(), right.ncols()) {
+        return Err(MatrixError::DimensionMismatch);
+    }
+
+    output.fill(Complex64::new(0.0, 0.0));
     for row in 0..left.nrows() {
         for k in 0..left.ncols() {
             let lhs = left[[row, k]];
@@ -344,6 +491,7 @@ pub fn batched_matmat_view_into(
 #[cfg(test)]
 mod tests {
     use ndarray::{Array1, Array2, Array3};
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -366,6 +514,28 @@ mod tests {
     }
 
     #[test]
+    fn matvec_complex_variants_match() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(0.0, -1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(1.0, 2.0),
+        ])
+        .unwrap();
+        let vector = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.5, -0.5)]);
+
+        let allocating = matvec_complex(&matrix, &vector).unwrap();
+        let viewed = matvec_complex_view(&matrix.view(), &vector.view()).unwrap();
+        let mut into = Array1::<Complex64>::zeros(2);
+        matvec_complex_into(&matrix, &vector, &mut into).unwrap();
+
+        for i in 0..2 {
+            assert!((allocating[i] - viewed[i]).norm() < 1e-12);
+            assert!((allocating[i] - into[i]).norm() < 1e-12);
+        }
+    }
+
+    #[test]
     fn matmat_variants_match() {
         let left = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
         let right = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
@@ -385,6 +555,36 @@ mod tests {
         assert!((allocating[[0, 1]] - 2.0).abs() < 1e-12);
         assert!((allocating[[1, 0]] - 3.0).abs() < 1e-12);
         assert!((allocating[[1, 1]] - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn matmat_complex_variants_match() {
+        let left = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+        ])
+        .unwrap();
+        let right = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(1.0, -1.0),
+        ])
+        .unwrap();
+
+        let allocating = matmat_complex(&left, &right).unwrap();
+        let viewed = matmat_complex_view(&left.view(), &right.view()).unwrap();
+        let mut into = Array2::<Complex64>::zeros((2, 2));
+        matmat_complex_into(&left, &right, &mut into).unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((allocating[[i, j]] - viewed[[i, j]]).norm() < 1e-12);
+                assert!((allocating[[i, j]] - into[[i, j]]).norm() < 1e-12);
+            }
+        }
     }
 
     #[test]

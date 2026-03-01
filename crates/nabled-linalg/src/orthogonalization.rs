@@ -2,7 +2,8 @@
 
 use std::fmt;
 
-use ndarray::{Array2, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView2};
+use num_complex::Complex64;
 
 use crate::internal::{DEFAULT_TOLERANCE, qr_gram_schmidt};
 
@@ -47,6 +48,47 @@ fn gram_schmidt_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Orthog
     Ok(q)
 }
 
+fn gram_schmidt_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, OrthogonalizationError> {
+    if matrix.is_empty() {
+        return Err(OrthogonalizationError::EmptyMatrix);
+    }
+    if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
+        return Err(OrthogonalizationError::NumericalInstability);
+    }
+
+    let rows = matrix.nrows();
+    let cols = matrix.ncols();
+    let mut q = Array2::<Complex64>::zeros((rows, cols));
+    let mut v = Array1::<Complex64>::zeros(rows);
+
+    for j in 0..cols {
+        for row in 0..rows {
+            v[row] = matrix[[row, j]];
+        }
+
+        for i in 0..j {
+            let mut projection = Complex64::new(0.0, 0.0);
+            for row in 0..rows {
+                projection += q[[row, i]].conj() * v[row];
+            }
+            for row in 0..rows {
+                v[row] -= projection * q[[row, i]];
+            }
+        }
+
+        let norm = v.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+        if norm > DEFAULT_TOLERANCE {
+            for row in 0..rows {
+                q[[row, j]] = v[row] / norm;
+            }
+        }
+    }
+
+    Ok(q)
+}
+
 /// Modified Gram-Schmidt orthogonalization from a matrix view.
 ///
 /// # Errors
@@ -55,6 +97,26 @@ pub fn gram_schmidt_view(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, OrthogonalizationError> {
     gram_schmidt_impl(matrix)
+}
+
+/// Modified Gram-Schmidt orthogonalization for complex matrices.
+///
+/// # Errors
+/// Returns an error for empty or non-finite input.
+pub fn gram_schmidt_complex(
+    matrix: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, OrthogonalizationError> {
+    gram_schmidt_complex_impl(&matrix.view())
+}
+
+/// Modified Gram-Schmidt orthogonalization for complex matrix views.
+///
+/// # Errors
+/// Returns an error for empty or non-finite input.
+pub fn gram_schmidt_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, OrthogonalizationError> {
+    gram_schmidt_complex_impl(matrix)
 }
 
 /// Classical Gram-Schmidt orthogonalization.
@@ -78,6 +140,7 @@ pub fn gram_schmidt_classic_view(
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -122,6 +185,45 @@ mod tests {
             for j in 0..matrix.ncols() {
                 assert!((modified_owned[[i, j]] - modified_view[[i, j]]).abs() < 1e-12);
                 assert!((classic_owned[[i, j]] - classic_view[[i, j]]).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn gram_schmidt_complex_returns_orthonormal_columns() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(1.0, 1.0),
+            Complex64::new(1.0, -1.0),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(1.0, 0.0),
+        ])
+        .unwrap();
+        let q = gram_schmidt_complex(&matrix).unwrap();
+        let q_h_q = q.t().mapv(|value| value.conj()).dot(&q);
+        assert!((q_h_q[[0, 0]] - Complex64::new(1.0, 0.0)).norm() < 1e-8);
+        assert!((q_h_q[[1, 1]] - Complex64::new(1.0, 0.0)).norm() < 1e-8);
+        assert!(q_h_q[[0, 1]].norm() < 1e-8);
+        assert!(q_h_q[[1, 0]].norm() < 1e-8);
+    }
+
+    #[test]
+    fn gram_schmidt_complex_view_matches_owned() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 1.0),
+            Complex64::new(3.0, -1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+        ])
+        .unwrap();
+        let owned = gram_schmidt_complex(&matrix).unwrap();
+        let viewed = gram_schmidt_complex_view(&matrix.view()).unwrap();
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-12);
             }
         }
     }

@@ -50,6 +50,8 @@ Workspace migration for library domains is complete.
 42. ILUT now has policy/config support (`ILUTConfig`, size-aware defaults, config-driven APIs) and a second ILUT-backed solver path via preconditioned GMRES (`gmres_ilut_solve`), with tests and benchmark coverage.
 43. Sparse iterative APIs now include explicit factorization-reuse entry points for repeated RHS solves (`*_with_factorization` variants for `gmres_ilut`, `bicgstab_ilu0`, `bicgstab_ilut`) plus config-driven `bicgstab_ilut_solve_with_config`, with parity tests and benchmark visibility.
 44. Sparse iterative breadth now also includes ILU(0)-preconditioned GMRES (`gmres_ilu0_solve` and reuse variant), with parity/error tests and benchmark visibility for setup-vs-solve paths.
+45. Copy-elision/performance-contract audit (`N-061`) is complete: remaining avoidable algorithm-internal owned materializations were removed in iterative/QR/SVD paths, and unavoidable allocations are now explicitly documented in `docs/PERFORMANCE_CONTRACTS.md`.
+46. Complex parity across major algorithms is now complete: matrix primitives and orthogonalization gained complex APIs, iterative solvers gained complex CG/GMRES, and tensor gained complex cube and last-axis tensor operations with parity tests.
 
 ## Current Code Ownership
 
@@ -86,10 +88,9 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Continue copy-elision pass for remaining convenience/view wrappers that still allocate hidden owned buffers.
-2. Expand sparse depth from current ILU(0) baseline into broader factorization-grade sparse workflows.
-3. Expand tensor beyond current last-axis `ArrayD` baseline and advance accelerator from CPU parallel baseline toward concrete GPU/distributed kernels.
-4. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
+1. Expand sparse depth from current ILU(0)+IC(0)+ILUT baseline into broader factorization-grade sparse workflows.
+2. Expand tensor beyond current last-axis `ArrayD` baseline and advance accelerator from CPU parallel baseline toward concrete GPU/distributed kernels.
+3. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration
 

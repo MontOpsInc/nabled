@@ -165,9 +165,12 @@ fn decompose_complex_internal(
     let mut r = Array2::<Complex64>::zeros((cols, cols));
     let mut rank = 0_usize;
     let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
+    let mut v = Array1::<Complex64>::zeros(rows);
 
     for j in 0..cols {
-        let mut v = matrix.column(j).to_owned();
+        for row in 0..rows {
+            v[row] = matrix[[row, j]];
+        }
         for i in 0..j {
             let mut projection = Complex64::new(0.0, 0.0);
             for row in 0..rows {

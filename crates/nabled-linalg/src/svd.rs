@@ -101,8 +101,7 @@ fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDErr
     for i in 0..k {
         let sigma = singular_values[i];
         if sigma > DenseKernelPolicy::BASE_TOLERANCE {
-            let v_i = sorted_vectors.column(i).to_owned();
-            let av = matrix.dot(&v_i);
+            let av = matrix.dot(&sorted_vectors.column(i));
             for row in 0..rows {
                 u[[row, i]] = av[row] / sigma;
             }
@@ -166,13 +165,12 @@ fn decompose_complex_internal(
         let (sigma, in_col) = singular_pairs[out];
         singular_values[out] = sigma;
 
-        let right_vector = schur.q.column(in_col).to_owned();
         for j in 0..cols {
-            vt[[out, j]] = right_vector[j].conj();
+            vt[[out, j]] = schur.q[[j, in_col]].conj();
         }
 
         if sigma > DenseKernelPolicy::BASE_TOLERANCE {
-            let av = matrix.dot(&right_vector);
+            let av = matrix.dot(&schur.q.column(in_col));
             let scale = 1.0_f64 / sigma;
             for i in 0..rows {
                 u[[i, out]] = av[i] * scale;
