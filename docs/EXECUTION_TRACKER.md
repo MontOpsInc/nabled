@@ -67,13 +67,15 @@ Use this file to resume work quickly after context compaction without re-auditin
 39. `D-039`: Complex matrix-functions parity baseline added (complex `matrix_exp*` Taylor path and provider-backed complex `matrix_log_svd*` with owned/view/into/workspace APIs and feature-split tests).
 40. `D-040`: Complex matrix-functions parity expanded to Hermitian eigen-based `exp/log/power/sign` paths (owned/view/into/workspace), with explicit no-provider behavior where provider-backed eigendecomposition is required.
 41. `D-041`: `N-024A` complete for currently identified dense domains.
+42. `D-042`: `N-024B` internal/no-provider complex parity advanced across LU, Cholesky, Schur, Sylvester/Lyapunov, and Polar; complex no-provider behavior now succeeds in these domains instead of provider-only erroring.
+43. `D-043`: Internal complex SVD path added for no-provider builds (Schur-derived over `A^H A`), and complex `matrix_log_svd*` no-provider behavior now succeeds.
+44. `D-044`: Internal complex Hermitian-eigen matrix-functions paths landed (`log/power/sign`), completing `N-024B` for currently implemented complex-capable dense domains.
 
 ## Next
 
-1. `N-024B` (P1): Add provider-free internal complex paths where feasible for currently provider-gated domains (or explicitly lock/justify unsupported cases).
-2. `N-024C` (P1): Complete complex parity validation matrix (owned/view variants, error mappings, integration coverage, and benchmark visibility where practical).
-3. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
-4. `N-027` (P1): Remove avoidable copies in convenience/view APIs where feasible (beyond current explicit documentation pass).
+1. `N-024C` (P1): Complete complex parity validation matrix (owned/view variants, error mappings, integration coverage, and benchmark visibility where practical).
+2. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
+3. `N-027` (P1): Remove avoidable copies in convenience/view APIs where feasible (beyond current explicit documentation pass).
 
 ## Needed
 

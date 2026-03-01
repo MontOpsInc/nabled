@@ -68,7 +68,6 @@ fn map_lu_error(error: &'static str) -> LUError {
     }
 }
 
-#[cfg(feature = "openblas-system")]
 fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), LUError> {
     if matrix.is_empty() {
         return Err(LUError::EmptyMatrix);
@@ -80,6 +79,128 @@ fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), L
         return Err(LUError::NumericalInstability);
     }
     Ok(())
+}
+
+#[cfg(not(feature = "openblas-system"))]
+type ComplexLUFactors = (Array2<Complex64>, Array2<Complex64>, Vec<usize>, i8);
+
+#[cfg(not(feature = "openblas-system"))]
+#[allow(clippy::many_single_char_names)]
+fn decompose_complex_internal(matrix: &Array2<Complex64>) -> Result<ComplexLUFactors, LUError> {
+    validate_complex_square_non_empty(matrix)?;
+
+    let n = matrix.nrows();
+    let mut l = Array2::<Complex64>::zeros((n, n));
+    let mut u = matrix.clone();
+    let mut pivots = (0..n).collect::<Vec<usize>>();
+    let mut sign = 1_i8;
+
+    for i in 0..n {
+        l[[i, i]] = Complex64::new(1.0, 0.0);
+    }
+
+    for k in 0..n {
+        let mut pivot_row = k;
+        let mut pivot_norm = u[[k, k]].norm();
+        for i in (k + 1)..n {
+            let norm = u[[i, k]].norm();
+            if norm > pivot_norm {
+                pivot_norm = norm;
+                pivot_row = i;
+            }
+        }
+        if pivot_norm <= DEFAULT_TOLERANCE {
+            return Err(LUError::SingularMatrix);
+        }
+
+        if pivot_row != k {
+            for j in 0..n {
+                let temp = u[[k, j]];
+                u[[k, j]] = u[[pivot_row, j]];
+                u[[pivot_row, j]] = temp;
+            }
+            for j in 0..k {
+                let temp = l[[k, j]];
+                l[[k, j]] = l[[pivot_row, j]];
+                l[[pivot_row, j]] = temp;
+            }
+            pivots.swap(k, pivot_row);
+            sign *= -1;
+        }
+
+        let pivot = u[[k, k]];
+        for i in (k + 1)..n {
+            let factor = u[[i, k]] / pivot;
+            l[[i, k]] = factor;
+            u[[i, k]] = Complex64::new(0.0, 0.0);
+            for j in (k + 1)..n {
+                let top_row_value = u[[k, j]];
+                u[[i, j]] -= factor * top_row_value;
+            }
+        }
+    }
+
+    Ok((l, u, pivots, sign))
+}
+
+#[cfg(not(feature = "openblas-system"))]
+#[allow(clippy::many_single_char_names)]
+fn solve_complex_from_factors(
+    l: &Array2<Complex64>,
+    u: &Array2<Complex64>,
+    pivots: &[usize],
+    rhs: &Array1<Complex64>,
+) -> Result<Array1<Complex64>, LUError> {
+    let n = l.nrows();
+    if rhs.len() != n {
+        return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
+    }
+
+    let mut b = Array1::<Complex64>::zeros(n);
+    for i in 0..n {
+        b[i] = rhs[pivots[i]];
+    }
+
+    let mut y = Array1::<Complex64>::zeros(n);
+    for i in 0..n {
+        let mut sum = b[i];
+        for j in 0..i {
+            sum -= l[[i, j]] * y[j];
+        }
+        y[i] = sum;
+    }
+
+    let mut x = Array1::<Complex64>::zeros(n);
+    for i_rev in 0..n {
+        let i = n - 1 - i_rev;
+        let mut sum = y[i];
+        for j in (i + 1)..n {
+            sum -= u[[i, j]] * x[j];
+        }
+        let diagonal = u[[i, i]];
+        if diagonal.norm() <= DEFAULT_TOLERANCE {
+            return Err(LUError::SingularMatrix);
+        }
+        x[i] = sum / diagonal;
+    }
+    Ok(x)
+}
+
+#[cfg(not(feature = "openblas-system"))]
+fn inverse_complex_internal(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, LUError> {
+    let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
+    let n = matrix.nrows();
+    let mut inverse = Array2::<Complex64>::zeros((n, n));
+
+    for col in 0..n {
+        let mut e = Array1::<Complex64>::zeros(n);
+        e[col] = Complex64::new(1.0, 0.0);
+        let solution = solve_complex_from_factors(&l, &u, &pivots, &e)?;
+        for row in 0..n {
+            inverse[[row, col]] = solution[row];
+        }
+    }
+    Ok(inverse)
 }
 
 fn decompose_internal(matrix: &Array2<f64>) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
@@ -196,8 +317,7 @@ pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, LUE
 /// Solve complex-valued `Ax=b` using LU decomposition.
 ///
 /// # Errors
-/// Returns an error if dimensions are incompatible, matrix is singular, or
-/// provider support is unavailable.
+/// Returns an error if dimensions are incompatible or matrix is singular.
 pub fn solve_complex(
     matrix: &Array2<Complex64>,
     rhs: &Array1<Complex64>,
@@ -208,8 +328,8 @@ pub fn solve_complex(
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let _ = (matrix, rhs);
-        Err(LUError::InvalidInput("complex LU requires `openblas-system` feature".to_string()))
+        let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
+        solve_complex_from_factors(&l, &u, &pivots, rhs)
     }
 }
 
@@ -235,8 +355,7 @@ pub fn solve_view(
 /// before dispatching to [`solve_complex`].
 ///
 /// # Errors
-/// Returns an error if dimensions are incompatible, matrix is singular, or
-/// provider support is unavailable.
+/// Returns an error if dimensions are incompatible or matrix is singular.
 pub fn solve_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
@@ -263,7 +382,7 @@ pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> {
 /// Compute complex matrix inverse via LU decomposition.
 ///
 /// # Errors
-/// Returns an error if matrix is singular or provider support is unavailable.
+/// Returns an error if matrix is singular.
 pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, LUError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -271,8 +390,7 @@ pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, 
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let _ = matrix;
-        Err(LUError::InvalidInput("complex LU requires `openblas-system` feature".to_string()))
+        inverse_complex_internal(matrix)
     }
 }
 
@@ -295,7 +413,7 @@ pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError
 /// before dispatching to [`inverse_complex`].
 ///
 /// # Errors
-/// Returns an error if matrix is singular or provider support is unavailable.
+/// Returns an error if matrix is singular.
 pub fn inverse_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, LUError> {
@@ -328,7 +446,7 @@ pub fn determinant(matrix: &Array2<f64>) -> Result<f64, LUError> {
 /// Compute complex determinant via LU decomposition.
 ///
 /// # Errors
-/// Returns an error if decomposition fails or provider support is unavailable.
+/// Returns an error if decomposition fails.
 pub fn determinant_complex(matrix: &Array2<Complex64>) -> Result<Complex64, LUError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -336,8 +454,15 @@ pub fn determinant_complex(matrix: &Array2<Complex64>) -> Result<Complex64, LUEr
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let _ = matrix;
-        Err(LUError::InvalidInput("complex LU requires `openblas-system` feature".to_string()))
+        let (_, u, _, sign) = decompose_complex_internal(matrix)?;
+        let mut determinant = Complex64::new(f64::from(sign), 0.0);
+        for i in 0..u.nrows() {
+            determinant *= u[[i, i]];
+        }
+        if !determinant.re.is_finite() || !determinant.im.is_finite() {
+            return Err(LUError::NumericalInstability);
+        }
+        Ok(determinant)
     }
 }
 
@@ -360,7 +485,7 @@ pub fn determinant_view(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
 /// before dispatching to [`determinant_complex`].
 ///
 /// # Errors
-/// Returns an error if decomposition fails or provider support is unavailable.
+/// Returns an error if decomposition fails.
 pub fn determinant_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
     determinant_complex(&matrix.to_owned())
 }
@@ -490,7 +615,6 @@ mod tests {
         assert!((logdet_owned.ln_abs_det - logdet_view.ln_abs_det).abs() < 1e-12);
     }
 
-    #[cfg(feature = "openblas-system")]
     #[test]
     fn complex_lu_paths_solve_inverse_and_determinant() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
@@ -530,22 +654,5 @@ mod tests {
             }
         }
         assert!((determinant_viewed - determinant).norm() < 1e-10);
-    }
-
-    #[cfg(not(feature = "openblas-system"))]
-    #[test]
-    fn complex_lu_without_provider_errors() {
-        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-        let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0)]);
-
-        assert!(matches!(solve_complex(&matrix, &rhs), Err(LUError::InvalidInput(_))));
-        assert!(matches!(inverse_complex(&matrix), Err(LUError::InvalidInput(_))));
-        assert!(matches!(determinant_complex(&matrix), Err(LUError::InvalidInput(_))));
-        assert!(matches!(
-            solve_complex_view(&matrix.view(), &rhs.view()),
-            Err(LUError::InvalidInput(_))
-        ));
-        assert!(matches!(inverse_complex_view(&matrix.view()), Err(LUError::InvalidInput(_))));
-        assert!(matches!(determinant_complex_view(&matrix.view()), Err(LUError::InvalidInput(_))));
     }
 }

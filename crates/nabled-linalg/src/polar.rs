@@ -5,7 +5,11 @@ use std::fmt;
 use ndarray::{Array2, ArrayView2};
 use num_complex::Complex64;
 
+#[cfg(not(feature = "openblas-system"))]
+use crate::internal::DEFAULT_TOLERANCE;
 use crate::internal::{validate_finite, validate_square_non_empty};
+#[cfg(not(feature = "openblas-system"))]
+use crate::lu;
 use crate::svd;
 
 /// Result of polar decomposition `A = U P`.
@@ -67,6 +71,62 @@ fn validate_complex_finite(matrix: &Array2<Complex64>) -> Result<(), PolarError>
         return Err(PolarError::NumericalInstability);
     }
     Ok(())
+}
+
+#[cfg(not(feature = "openblas-system"))]
+fn conjugate_transpose(matrix: &Array2<Complex64>) -> Array2<Complex64> {
+    matrix.t().mapv(|value| value.conj())
+}
+
+#[cfg(not(feature = "openblas-system"))]
+fn frobenius_norm_complex(matrix: &Array2<Complex64>) -> f64 {
+    matrix.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
+}
+
+#[cfg(not(feature = "openblas-system"))]
+fn max_abs_diff_complex(left: &Array2<Complex64>, right: &Array2<Complex64>) -> f64 {
+    left.iter()
+        .zip(right.iter())
+        .map(|(lhs, rhs)| (*lhs - *rhs).norm())
+        .fold(0.0_f64, f64::max)
+}
+
+#[cfg(not(feature = "openblas-system"))]
+fn compute_polar_complex_internal(
+    matrix: &Array2<Complex64>,
+) -> Result<NdarrayComplexPolarResult, PolarError> {
+    let mut unitary = matrix.clone();
+    let max_iterations = 64;
+    let tolerance = DEFAULT_TOLERANCE.sqrt();
+    let half = Complex64::new(0.5, 0.0);
+    let one = Complex64::new(1.0, 0.0);
+
+    let mut converged = false;
+    for _ in 0..max_iterations {
+        let unitary_h = conjugate_transpose(&unitary);
+        let inverse_h =
+            lu::inverse_complex(&unitary_h).map_err(|_| PolarError::DecompositionFailed)?;
+        let next = (&unitary + &inverse_h).mapv(|value| value * half);
+
+        let delta = max_abs_diff_complex(&next, &unitary);
+        let scale = one.re + frobenius_norm_complex(&next);
+        unitary = next;
+        if delta <= tolerance * scale {
+            converged = true;
+            break;
+        }
+    }
+
+    if !converged {
+        return Err(PolarError::DecompositionFailed);
+    }
+
+    let unitary_h = conjugate_transpose(&unitary);
+    let mut psd = unitary_h.dot(matrix);
+    let psd_h = conjugate_transpose(&psd);
+    psd = (&psd + &psd_h).mapv(|value| value * half);
+
+    Ok(NdarrayComplexPolarResult { u: unitary, p: psd })
 }
 
 /// Compute polar decomposition using SVD.
@@ -138,8 +198,7 @@ pub fn compute_polar_complex(
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let _ = matrix;
-        Err(PolarError::DecompositionFailed)
+        compute_polar_complex_internal(matrix)
     }
 }
 
@@ -205,7 +264,6 @@ mod tests {
         assert!(matches!(compute_polar(&non_finite), Err(PolarError::NumericalInstability)));
     }
 
-    #[cfg(feature = "openblas-system")]
     #[test]
     fn complex_polar_reconstructs_input_and_view_matches_owned() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
@@ -227,16 +285,6 @@ mod tests {
                 assert!((owned.p[[i, j]] - viewed.p[[i, j]]).norm() < 1e-10);
             }
         }
-    }
-
-    #[cfg(not(feature = "openblas-system"))]
-    #[test]
-    fn complex_polar_without_provider_errors() {
-        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-        let result_owned = compute_polar_complex(&matrix);
-        let result_view = compute_polar_complex_view(&matrix.view());
-        assert!(matches!(result_owned, Err(PolarError::DecompositionFailed)));
-        assert!(matches!(result_view, Err(PolarError::DecompositionFailed)));
     }
 
     #[test]

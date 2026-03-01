@@ -64,19 +64,14 @@ impl SylvesterWorkspace {
 }
 
 /// Reusable workspace for complex Sylvester/Lyapunov solves.
-#[cfg_attr(not(feature = "openblas-system"), allow(missing_copy_implementations))]
 #[derive(Debug, Clone, Default)]
 pub struct SylvesterComplexWorkspace {
-    #[cfg(feature = "openblas-system")]
     coefficient: Array2<Complex64>,
-    #[cfg(feature = "openblas-system")]
     rhs:         Array1<Complex64>,
-    #[cfg(feature = "openblas-system")]
     solution:    Array1<Complex64>,
 }
 
 impl SylvesterComplexWorkspace {
-    #[cfg(feature = "openblas-system")]
     fn ensure_dims(&mut self, rows: usize, cols: usize) {
         let system_size = rows * cols;
         if self.coefficient.dim() == (system_size, system_size) {
@@ -234,8 +229,7 @@ pub fn solve_sylvester_with_workspace_into(
     Ok(())
 }
 
-#[cfg(feature = "openblas-system")]
-fn solve_sylvester_complex_provider_with_workspace_into(
+fn solve_sylvester_complex_with_workspace_impl(
     matrix_a: &Array2<Complex64>,
     matrix_b: &Array2<Complex64>,
     matrix_c: &Array2<Complex64>,
@@ -278,8 +272,7 @@ fn solve_sylvester_complex_provider_with_workspace_into(
 /// Solve complex Sylvester equation `A X + X B = C`.
 ///
 /// # Errors
-/// Returns an error if dimensions are invalid, the linear system is singular,
-/// or provider support is unavailable.
+/// Returns an error if dimensions are invalid or the linear system is singular.
 pub fn solve_sylvester_complex(
     matrix_a: &Array2<Complex64>,
     matrix_b: &Array2<Complex64>,
@@ -305,8 +298,7 @@ pub fn solve_sylvester_complex(
 /// before dispatching to [`solve_sylvester_complex`].
 ///
 /// # Errors
-/// Returns an error if dimensions are invalid, the linear system is singular,
-/// or provider support is unavailable.
+/// Returns an error if dimensions are invalid or the linear system is singular.
 pub fn solve_sylvester_complex_view(
     matrix_a: &ArrayView2<'_, Complex64>,
     matrix_b: &ArrayView2<'_, Complex64>,
@@ -319,7 +311,7 @@ pub fn solve_sylvester_complex_view(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid, output shape mismatches, the
-/// linear system is singular, or provider support is unavailable.
+/// linear system is singular.
 pub fn solve_sylvester_complex_into(
     matrix_a: &Array2<Complex64>,
     matrix_b: &Array2<Complex64>,
@@ -340,7 +332,7 @@ pub fn solve_sylvester_complex_into(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid, output shape mismatches, the
-/// linear system is singular, or provider support is unavailable.
+/// linear system is singular.
 pub fn solve_sylvester_complex_with_workspace_into(
     matrix_a: &Array2<Complex64>,
     matrix_b: &Array2<Complex64>,
@@ -348,19 +340,7 @@ pub fn solve_sylvester_complex_with_workspace_into(
     output: &mut Array2<Complex64>,
     workspace: &mut SylvesterComplexWorkspace,
 ) -> Result<(), SylvesterError> {
-    #[cfg(feature = "openblas-system")]
-    {
-        solve_sylvester_complex_provider_with_workspace_into(
-            matrix_a, matrix_b, matrix_c, output, workspace,
-        )
-    }
-    #[cfg(not(feature = "openblas-system"))]
-    {
-        let _ = (matrix_a, matrix_b, matrix_c, output, workspace);
-        Err(SylvesterError::InvalidInput(
-            "complex Sylvester/Lyapunov requires `openblas-system` feature".to_string(),
-        ))
-    }
+    solve_sylvester_complex_with_workspace_impl(matrix_a, matrix_b, matrix_c, output, workspace)
 }
 
 /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0`.
@@ -378,8 +358,7 @@ pub fn solve_lyapunov(a: &Array2<f64>, q: &Array2<f64>) -> Result<Array2<f64>, S
 /// Solve complex continuous Lyapunov equation `A X + X A^H + Q = 0`.
 ///
 /// # Errors
-/// Returns an error if dimensions are invalid, the linear system is singular,
-/// or provider support is unavailable.
+/// Returns an error if dimensions are invalid or the linear system is singular.
 pub fn solve_lyapunov_complex(
     a: &Array2<Complex64>,
     q: &Array2<Complex64>,
@@ -414,8 +393,7 @@ pub fn solve_lyapunov_view(
 /// before dispatching to [`solve_lyapunov_complex`].
 ///
 /// # Errors
-/// Returns an error if dimensions are invalid, the linear system is singular,
-/// or provider support is unavailable.
+/// Returns an error if dimensions are invalid or the linear system is singular.
 pub fn solve_lyapunov_complex_view(
     a: &ArrayView2<'_, Complex64>,
     q: &ArrayView2<'_, Complex64>,
@@ -443,7 +421,7 @@ pub fn solve_lyapunov_into(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid, output shape mismatches, the
-/// linear system is singular, or provider support is unavailable.
+/// linear system is singular.
 pub fn solve_lyapunov_complex_into(
     a: &Array2<Complex64>,
     q: &Array2<Complex64>,
@@ -531,7 +509,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "openblas-system")]
     #[test]
     fn complex_sylvester_and_lyapunov_paths_work() {
         let a = Array2::from_shape_vec((2, 2), vec![
@@ -598,45 +575,5 @@ mod tests {
                 assert!((lyapunov[[i, j]] - lyapunov_into[[i, j]]).norm() < 1e-10);
             }
         }
-    }
-
-    #[cfg(not(feature = "openblas-system"))]
-    #[test]
-    fn complex_sylvester_without_provider_errors() {
-        let a = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-        let b = Array2::from_shape_vec((1, 1), vec![Complex64::new(2.0, 0.0)]).unwrap();
-        let c = Array2::from_shape_vec((1, 1), vec![Complex64::new(3.0, 0.0)]).unwrap();
-        let q = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-
-        assert!(matches!(
-            solve_sylvester_complex(&a, &b, &c),
-            Err(SylvesterError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            solve_sylvester_complex_view(&a.view(), &b.view(), &c.view()),
-            Err(SylvesterError::InvalidInput(_))
-        ));
-
-        let mut output = Array2::<Complex64>::zeros((1, 1));
-        assert!(matches!(
-            solve_sylvester_complex_into(&a, &b, &c, &mut output),
-            Err(SylvesterError::InvalidInput(_))
-        ));
-
-        let mut workspace = SylvesterComplexWorkspace::default();
-        assert!(matches!(
-            solve_sylvester_complex_with_workspace_into(&a, &b, &c, &mut output, &mut workspace),
-            Err(SylvesterError::InvalidInput(_))
-        ));
-
-        assert!(matches!(solve_lyapunov_complex(&a, &q), Err(SylvesterError::InvalidInput(_))));
-        assert!(matches!(
-            solve_lyapunov_complex_view(&a.view(), &q.view()),
-            Err(SylvesterError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            solve_lyapunov_complex_into(&a, &q, &mut output),
-            Err(SylvesterError::InvalidInput(_))
-        ));
     }
 }

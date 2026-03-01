@@ -63,7 +63,6 @@ fn map_validation_error(error: &'static str) -> CholeskyError {
     }
 }
 
-#[cfg(feature = "openblas-system")]
 fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), CholeskyError> {
     if matrix.is_empty() {
         return Err(CholeskyError::EmptyMatrix);
@@ -75,6 +74,41 @@ fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), C
         return Err(CholeskyError::NumericalInstability);
     }
     Ok(())
+}
+
+#[cfg(not(feature = "openblas-system"))]
+#[allow(clippy::many_single_char_names)]
+fn decompose_complex_internal(
+    matrix: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, CholeskyError> {
+    validate_complex_square_non_empty(matrix)?;
+
+    let n = matrix.nrows();
+    let mut l = Array2::<Complex64>::zeros((n, n));
+
+    for i in 0..n {
+        for j in 0..=i {
+            let mut sum = matrix[[i, j]];
+            for k in 0..j {
+                sum -= l[[i, k]] * l[[j, k]].conj();
+            }
+
+            if i == j {
+                if sum.im.abs() > DEFAULT_TOLERANCE || sum.re <= DEFAULT_TOLERANCE {
+                    return Err(CholeskyError::NotPositiveDefinite);
+                }
+                l[[i, j]] = Complex64::new(sum.re.sqrt(), 0.0);
+            } else {
+                let diagonal = l[[j, j]];
+                if diagonal.norm() <= DEFAULT_TOLERANCE {
+                    return Err(CholeskyError::NotPositiveDefinite);
+                }
+                l[[i, j]] = sum / diagonal;
+            }
+        }
+    }
+
+    Ok(l)
 }
 
 #[cfg(not(feature = "openblas-system"))]
@@ -174,6 +208,49 @@ fn inverse_complex_provider(
     matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
+#[cfg(not(feature = "openblas-system"))]
+#[allow(clippy::many_single_char_names)]
+fn solve_complex_from_factor(
+    lower_factor: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+) -> Result<Array1<Complex64>, CholeskyError> {
+    let size = lower_factor.nrows();
+    if rhs.len() != size {
+        return Err(CholeskyError::InvalidInput(
+            "RHS length must match matrix dimensions".to_string(),
+        ));
+    }
+
+    let mut y = Array1::<Complex64>::zeros(size);
+    for i in 0..size {
+        let mut sum = rhs[i];
+        for j in 0..i {
+            sum -= lower_factor[[i, j]] * y[j];
+        }
+        let diagonal = lower_factor[[i, i]];
+        if diagonal.norm() <= DEFAULT_TOLERANCE {
+            return Err(CholeskyError::NotPositiveDefinite);
+        }
+        y[i] = sum / diagonal;
+    }
+
+    let mut x = Array1::<Complex64>::zeros(size);
+    for i_rev in 0..size {
+        let i = size - 1 - i_rev;
+        let mut sum = y[i];
+        for j in (i + 1)..size {
+            sum -= lower_factor[[j, i]].conj() * x[j];
+        }
+        let diagonal = lower_factor[[i, i]].conj();
+        if diagonal.norm() <= DEFAULT_TOLERANCE {
+            return Err(CholeskyError::NotPositiveDefinite);
+        }
+        x[i] = sum / diagonal;
+    }
+
+    Ok(x)
+}
+
 fn decompose_dispatch(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -197,8 +274,7 @@ pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayCholeskyResult, Cholesky
 /// Compute complex Cholesky decomposition.
 ///
 /// # Errors
-/// Returns an error if matrix is not Hermitian positive definite or provider
-/// support is unavailable.
+/// Returns an error if matrix is not Hermitian positive definite.
 pub fn decompose_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<NdarrayComplexCholeskyResult, CholeskyError> {
@@ -209,10 +285,8 @@ pub fn decompose_complex(
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let _ = matrix;
-        Err(CholeskyError::InvalidInput(
-            "complex Cholesky requires `openblas-system` feature".to_string(),
-        ))
+        let l = decompose_complex_internal(matrix)?;
+        Ok(NdarrayComplexCholeskyResult { l })
     }
 }
 
@@ -265,8 +339,7 @@ pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, Cho
 /// Solve complex-valued `Ax=b` using Cholesky decomposition.
 ///
 /// # Errors
-/// Returns an error for invalid dimensions, non-HPD matrix, or unavailable
-/// provider support.
+/// Returns an error for invalid dimensions or non-HPD matrix.
 pub fn solve_complex(
     matrix: &Array2<Complex64>,
     rhs: &Array1<Complex64>,
@@ -277,10 +350,8 @@ pub fn solve_complex(
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let _ = (matrix, rhs);
-        Err(CholeskyError::InvalidInput(
-            "complex Cholesky requires `openblas-system` feature".to_string(),
-        ))
+        let lower_factor = decompose_complex_internal(matrix)?;
+        solve_complex_from_factor(&lower_factor, rhs)
     }
 }
 
@@ -306,8 +377,7 @@ pub fn solve_view(
 /// before dispatching to [`solve_complex`].
 ///
 /// # Errors
-/// Returns an error for invalid dimensions, non-HPD matrix, or unavailable
-/// provider support.
+/// Returns an error for invalid dimensions or non-HPD matrix.
 pub fn solve_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
@@ -399,7 +469,7 @@ pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
 /// Compute complex inverse via Cholesky decomposition.
 ///
 /// # Errors
-/// Returns an error if matrix is not HPD or provider support is unavailable.
+/// Returns an error if matrix is not HPD.
 pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, CholeskyError> {
     #[cfg(feature = "openblas-system")]
     {
@@ -407,10 +477,20 @@ pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, 
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let _ = matrix;
-        Err(CholeskyError::InvalidInput(
-            "complex Cholesky requires `openblas-system` feature".to_string(),
-        ))
+        let lower_factor = decompose_complex_internal(matrix)?;
+        let size = lower_factor.nrows();
+        let mut inverse = Array2::<Complex64>::zeros((size, size));
+
+        for col in 0..size {
+            let mut basis = Array1::<Complex64>::zeros(size);
+            basis[col] = Complex64::new(1.0, 0.0);
+            let solution = solve_complex_from_factor(&lower_factor, &basis)?;
+            for row in 0..size {
+                inverse[[row, col]] = solution[row];
+            }
+        }
+
+        Ok(inverse)
     }
 }
 
@@ -433,7 +513,7 @@ pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Cholesk
 /// before dispatching to [`inverse_complex`].
 ///
 /// # Errors
-/// Returns an error if matrix is not HPD or provider support is unavailable.
+/// Returns an error if matrix is not HPD.
 pub fn inverse_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
@@ -547,7 +627,6 @@ mod tests {
         assert!(matches!(result, Err(CholeskyError::NumericalInstability)));
     }
 
-    #[cfg(feature = "openblas-system")]
     #[test]
     fn complex_cholesky_paths_work() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
@@ -587,28 +666,5 @@ mod tests {
                 assert!((inverse[[i, j]] - view_inverse[[i, j]]).norm() < 1e-10);
             }
         }
-    }
-
-    #[cfg(not(feature = "openblas-system"))]
-    #[test]
-    fn complex_cholesky_without_provider_errors() {
-        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-        let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0)]);
-
-        assert!(matches!(decompose_complex(&matrix), Err(CholeskyError::InvalidInput(_))));
-        assert!(matches!(solve_complex(&matrix, &rhs), Err(CholeskyError::InvalidInput(_))));
-        assert!(matches!(inverse_complex(&matrix), Err(CholeskyError::InvalidInput(_))));
-        assert!(matches!(
-            decompose_complex_view(&matrix.view()),
-            Err(CholeskyError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            solve_complex_view(&matrix.view(), &rhs.view()),
-            Err(CholeskyError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            inverse_complex_view(&matrix.view()),
-            Err(CholeskyError::InvalidInput(_))
-        ));
     }
 }

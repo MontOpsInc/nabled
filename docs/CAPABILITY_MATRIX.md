@@ -24,17 +24,17 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 |---|---|---|---|---|---|
 | Core validation | shape checks for matrix/system inputs | `nabled-core::validation` | Implemented | No | Shared helpers exist; error model still minimal. |
 | Core errors | common shape errors + shared taxonomy (`NabledError`) | `nabled-core::errors` | Implemented | No | Domain errors remain local, but normalization path exists via `IntoNabledError`. |
-| Cholesky | factorization, solve, inverse (+ complex provider paths) | `nabled-linalg::cholesky` | Implemented | Yes | Complex APIs now exist with provider-gated execution. Bench exists (`cholesky_benchmarks`). |
+| Cholesky | factorization, solve, inverse (+ complex paths) | `nabled-linalg::cholesky` | Implemented | Yes | Complex APIs execute in both internal and provider-enabled builds. Bench exists (`cholesky_benchmarks`). |
 | Eigen | symmetric + generalized SPD-B eigen | `nabled-linalg::eigen` | Partial | Yes | No general non-symmetric dense eigensolver API. |
-| LU | factorization, solve, inverse, det/logdet (+ complex provider paths) | `nabled-linalg::lu` | Implemented | Yes | Complex solve/inverse/determinant APIs now exist with provider-gated execution. Bench exists (`lu_benchmarks`). |
+| LU | factorization, solve, inverse, det/logdet (+ complex paths) | `nabled-linalg::lu` | Implemented | Yes | Complex solve/inverse/determinant APIs execute in both internal and provider-enabled builds. Bench exists (`lu_benchmarks`). |
 | QR | full/reduced QR, pivoting, least-squares | `nabled-linalg::qr` | Implemented | Yes | Bench exists (`qr_benchmarks`). |
-| SVD | full/truncated/toleranced SVD, rank, cond, pinv, null space | `nabled-linalg::svd` | Implemented | Yes | Bench exists (`svd_benchmarks`). |
+| SVD | full/truncated/toleranced SVD, rank, cond, pinv, null space | `nabled-linalg::svd` | Implemented | Yes | Real and complex paths execute in both internal and provider-enabled builds. Bench exists (`svd_benchmarks`). |
 | Triangular solves | lower/upper substitution (+ complex variants) | `nabled-linalg::triangular` | Implemented | Yes | Includes allocation-controlled `*_into` paths and complex solve entrypoints. |
 | Vector primitives | dot/norm/cosine/pairwise/batched dot (+ complex Hermitian baseline) | `nabled-linalg::vector` | Implemented | Yes | Bench exists (`vector_benchmarks`) with ndarray competitor baselines. |
-| Schur | Schur decomposition | `nabled-linalg::schur` | Implemented | Yes | Includes complex provider-backed parity; bench exists (`schur_benchmarks`) with manual competitor baseline. |
-| Polar | polar decomposition (+ complex variant) | `nabled-linalg::polar` | Implemented | Yes | Dedicated benchmark now exists (`polar_benchmarks`). |
-| Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester` | Implemented | Yes | Includes complex provider-backed parity; bench exists (`sylvester_benchmarks`) with manual competitor baseline. |
-| Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Includes complex `exp/log/power/sign` coverage; Hermitian eigen-based complex `log/power/sign` paths are provider-backed (`openblas-system`). Bench exists (`matrix_functions_benchmarks`). |
+| Schur | Schur decomposition | `nabled-linalg::schur` | Implemented | Yes | Includes complex parity in both internal and provider-enabled builds; bench exists (`schur_benchmarks`) with manual competitor baseline. |
+| Polar | polar decomposition (+ complex variant) | `nabled-linalg::polar` | Implemented | Yes | Complex variant executes in both internal and provider-enabled builds; dedicated benchmark now exists (`polar_benchmarks`). |
+| Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester` | Implemented | Yes | Includes complex parity in both internal and provider-enabled builds; bench exists (`sylvester_benchmarks`) with manual competitor baseline. |
+| Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Includes complex `exp/log/power/sign` coverage in both internal and provider-enabled builds. Bench exists (`matrix_functions_benchmarks`). |
 | Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization` | Implemented | Yes | Dedicated benchmark now exists (`orthogonalization_benchmarks`). |
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Good foundation for larger optimization stack. |
 | Sparse kernels | CSR/COO primitives, sparse matvec, Jacobi + Gauss-Seidel | `nabled-linalg::sparse` | Implemented | Yes | Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
@@ -64,7 +64,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 |---|---|---|
 | Batched operations over many vectors/matrices | Partial | Vector batched dot and pairwise kernels exist; matrix-batch and sparse-batch APIs still missing. |
 | Sparse linear algebra primitives | Partial | CSR baseline exists (`matvec`, `matvec_into`, Jacobi solve); more formats and solver breadth still missing. |
-| Complex-number parity across major algorithms | Partial | Complex parity now includes vector kernels, QR, SVD, LU, Cholesky, Schur, Sylvester/Lyapunov, matrix-functions (`exp/log/power/sign`), polar decomposition, and triangular solves; many other domains remain f64-only. |
+| Complex-number parity across major algorithms | Partial | Complex parity now includes vector kernels, QR, SVD, LU, Cholesky, Schur, Sylvester/Lyapunov, matrix-functions (`exp/log/power/sign`), polar decomposition, and triangular solves across internal/provider builds; many other domains are still f64-only. |
 | Non-symmetric dense eigen coverage | Partial | Symmetric/generalized-SPD available; broader eigen support missing. |
 | More optimization primitives | Partial | CG/GMRES + line search + gradient descent + Adam exist; constrained/stochastic/advanced second-order breadth is still missing. |
 

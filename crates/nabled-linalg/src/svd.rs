@@ -1,5 +1,7 @@
 //! Singular value decomposition over ndarray matrices.
 
+#[cfg(not(feature = "openblas-system"))]
+use std::cmp::Ordering;
 use std::fmt;
 
 use ndarray::{Array1, Array2, ArrayView2, s};
@@ -8,6 +10,8 @@ use num_complex::Complex64;
 use crate::internal::{
     DEFAULT_TOLERANCE, jacobi_eigen_symmetric, sort_eigenpairs_desc, usize_to_f64,
 };
+#[cfg(not(feature = "openblas-system"))]
+use crate::schur;
 
 /// SVD result for ndarray matrices.
 #[derive(Debug, Clone)]
@@ -121,6 +125,59 @@ fn decompose_provider(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
     Ok(NdarraySVD { u, singular_values, vt })
 }
 
+#[cfg(not(feature = "openblas-system"))]
+fn validate_complex_finite(matrix: &Array2<Complex64>) -> Result<(), SVDError> {
+    if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
+        return Err(SVDError::InvalidInput("matrix must be finite".to_string()));
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "openblas-system"))]
+#[allow(clippy::many_single_char_names)]
+fn decompose_complex_internal(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD, SVDError> {
+    validate_complex_finite(matrix)?;
+
+    let (rows, cols) = matrix.dim();
+    let keep = rows.min(cols);
+
+    let conjugate_transpose = matrix.t().mapv(|value| value.conj());
+    let gram = conjugate_transpose.dot(matrix);
+    let schur = schur::compute_schur_complex(&gram).map_err(|_| SVDError::ConvergenceFailed)?;
+
+    let mut singular_pairs = (0..cols)
+        .map(|index| {
+            let eigenvalue = schur.t[[index, index]].re.max(0.0);
+            (eigenvalue.sqrt(), index)
+        })
+        .collect::<Vec<_>>();
+    singular_pairs.sort_by(|(lhs, _), (rhs, _)| rhs.partial_cmp(lhs).unwrap_or(Ordering::Equal));
+
+    let mut singular_values = Array1::<f64>::zeros(keep);
+    let mut vt = Array2::<Complex64>::zeros((keep, cols));
+    let mut u = Array2::<Complex64>::zeros((rows, keep));
+
+    for out in 0..keep {
+        let (sigma, in_col) = singular_pairs[out];
+        singular_values[out] = sigma;
+
+        let right_vector = schur.q.column(in_col).to_owned();
+        for j in 0..cols {
+            vt[[out, j]] = right_vector[j].conj();
+        }
+
+        if sigma > DEFAULT_TOLERANCE {
+            let av = matrix.dot(&right_vector);
+            let scale = 1.0_f64 / sigma;
+            for i in 0..rows {
+                u[[i, out]] = av[i] * scale;
+            }
+        }
+    }
+
+    Ok(NdarrayComplexSVD { u, singular_values, vt })
+}
+
 fn null_space_internal(
     matrix: &Array2<f64>,
     tolerance: Option<f64>,
@@ -191,7 +248,7 @@ pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDErr
 /// Compute the SVD of a complex matrix.
 ///
 /// # Errors
-/// Returns an error if provider support is unavailable or decomposition fails.
+/// Returns an error if decomposition fails.
 pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD, SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
@@ -208,7 +265,7 @@ pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        Err(SVDError::InvalidInput("complex SVD requires `openblas-system` feature".to_string()))
+        decompose_complex_internal(matrix)
     }
 }
 
@@ -219,7 +276,7 @@ pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD
 /// before dispatching to [`decompose_complex`].
 ///
 /// # Errors
-/// Returns an error if provider support is unavailable or decomposition fails.
+/// Returns an error if decomposition fails.
 pub fn decompose_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexSVD, SVDError> {
@@ -467,7 +524,6 @@ mod tests {
         assert_eq!(from_owned.singular_values.len(), from_view.singular_values.len());
     }
 
-    #[cfg(feature = "openblas-system")]
     #[test]
     fn complex_svd_reconstructs_input() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
@@ -484,14 +540,6 @@ mod tests {
                 assert!((reconstructed[[i, j]] - matrix[[i, j]]).norm() < 1e-8);
             }
         }
-    }
-
-    #[cfg(not(feature = "openblas-system"))]
-    #[test]
-    fn complex_svd_without_provider_errors() {
-        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-        let result = decompose_complex(&matrix);
-        assert!(matches!(result, Err(SVDError::InvalidInput(_))));
     }
 
     #[test]

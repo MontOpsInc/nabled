@@ -9,6 +9,8 @@ use crate::internal::{
     DEFAULT_TOLERANCE, identity, is_symmetric, usize_to_f64, validate_finite,
     validate_square_non_empty,
 };
+#[cfg(not(feature = "openblas-system"))]
+use crate::schur;
 use crate::{eigen, svd};
 
 /// Error type for matrix functions.
@@ -210,6 +212,40 @@ fn hermitian_eigen_provider(
     matrix.clone().eigh(UPLO::Lower).map_err(|_| MatrixFunctionError::ConvergenceFailed)
 }
 
+#[cfg(not(feature = "openblas-system"))]
+fn hermitian_eigen_internal(
+    matrix: &Array2<Complex64>,
+) -> Result<(Array1<f64>, Array2<Complex64>), MatrixFunctionError> {
+    let decomposition =
+        schur::compute_schur_complex(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    let n = matrix.nrows();
+    let mut eigenvalues = Array1::<f64>::zeros(n);
+    let imag_tolerance = DEFAULT_TOLERANCE.sqrt();
+
+    for i in 0..n {
+        let lambda = decomposition.t[[i, i]];
+        if lambda.im.abs() > imag_tolerance {
+            return Err(MatrixFunctionError::ConvergenceFailed);
+        }
+        eigenvalues[i] = lambda.re;
+    }
+
+    Ok((eigenvalues, decomposition.q))
+}
+
+fn hermitian_eigen_dispatch(
+    matrix: &Array2<Complex64>,
+) -> Result<(Array1<f64>, Array2<Complex64>), MatrixFunctionError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        hermitian_eigen_provider(matrix)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        hermitian_eigen_internal(matrix)
+    }
+}
+
 /// Compute matrix exponential via Taylor series.
 ///
 /// # Errors
@@ -380,18 +416,11 @@ pub fn matrix_exp_eigen_complex(
         return matrix_exp_complex(matrix, 128, 1e-12);
     }
 
-    #[cfg(feature = "openblas-system")]
-    {
-        let (eigenvalues, eigenvectors) = hermitian_eigen_provider(matrix)?;
-        let exp_values = eigenvalues.map(|value| value.exp());
-        let diagonal = diagonal_from_real_complex(&exp_values);
-        let qh = eigenvectors.t().mapv(|value| value.conj());
-        Ok(eigenvectors.dot(&diagonal).dot(&qh))
-    }
-    #[cfg(not(feature = "openblas-system"))]
-    {
-        matrix_exp_complex(matrix, 128, 1e-12)
-    }
+    let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
+    let exp_values = eigenvalues.map(|value| value.exp());
+    let diagonal = diagonal_from_real_complex(&exp_values);
+    let qh = eigenvectors.t().mapv(|value| value.conj());
+    Ok(eigenvectors.dot(&diagonal).dot(&qh))
 }
 
 /// Compute complex matrix exponential via Hermitian eigen decomposition from a matrix view.
@@ -556,8 +585,7 @@ pub fn matrix_log_eigen_with_workspace_into(
 /// Compute complex matrix logarithm via Hermitian eigen decomposition.
 ///
 /// # Errors
-/// Returns an error for non-Hermitian or non-positive-definite inputs, or when
-/// provider support is unavailable.
+/// Returns an error for non-Hermitian or non-positive-definite inputs.
 pub fn matrix_log_eigen_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
@@ -566,24 +594,14 @@ pub fn matrix_log_eigen_complex(
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
-    #[cfg(feature = "openblas-system")]
-    {
-        let (eigenvalues, eigenvectors) = hermitian_eigen_provider(matrix)?;
-        if eigenvalues.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
-            return Err(MatrixFunctionError::NotPositiveDefinite);
-        }
-        let log_values = eigenvalues.map(|value| value.ln());
-        let diagonal = diagonal_from_real_complex(&log_values);
-        let qh = eigenvectors.t().mapv(|value| value.conj());
-        Ok(eigenvectors.dot(&diagonal).dot(&qh))
+    let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
+    if eigenvalues.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
+        return Err(MatrixFunctionError::NotPositiveDefinite);
     }
-    #[cfg(not(feature = "openblas-system"))]
-    {
-        let _ = matrix;
-        Err(MatrixFunctionError::InvalidInput(
-            "complex matrix_log_eigen requires `openblas-system` feature".to_string(),
-        ))
-    }
+    let log_values = eigenvalues.map(|value| value.ln());
+    let diagonal = diagonal_from_real_complex(&log_values);
+    let qh = eigenvectors.t().mapv(|value| value.conj());
+    Ok(eigenvectors.dot(&diagonal).dot(&qh))
 }
 
 /// Compute complex matrix logarithm via Hermitian eigen decomposition from a matrix view.
@@ -593,8 +611,7 @@ pub fn matrix_log_eigen_complex(
 /// before dispatching to [`matrix_log_eigen_complex`].
 ///
 /// # Errors
-/// Returns an error for non-Hermitian or non-positive-definite inputs, or when
-/// provider support is unavailable.
+/// Returns an error for non-Hermitian or non-positive-definite inputs.
 pub fn matrix_log_eigen_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
@@ -605,7 +622,7 @@ pub fn matrix_log_eigen_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
-/// or non-positive-definite inputs, or unavailable provider support.
+/// or non-positive-definite inputs.
 pub fn matrix_log_eigen_complex_into(
     matrix: &Array2<Complex64>,
     output: &mut Array2<Complex64>,
@@ -618,7 +635,7 @@ pub fn matrix_log_eigen_complex_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
-/// or non-positive-definite inputs, or unavailable provider support.
+/// or non-positive-definite inputs.
 pub fn matrix_log_eigen_complex_with_workspace_into(
     matrix: &Array2<Complex64>,
     output: &mut Array2<Complex64>,
@@ -650,7 +667,7 @@ pub fn matrix_log_svd(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctio
 /// Compute complex matrix logarithm via SVD.
 ///
 /// # Errors
-/// Returns an error if decomposition fails or provider support is unavailable.
+/// Returns an error if decomposition fails.
 pub fn matrix_log_svd_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
@@ -690,7 +707,7 @@ pub fn matrix_log_svd_view(
 /// before dispatching to [`matrix_log_svd_complex`].
 ///
 /// # Errors
-/// Returns an error if decomposition fails or provider support is unavailable.
+/// Returns an error if decomposition fails.
 pub fn matrix_log_svd_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
@@ -713,7 +730,7 @@ pub fn matrix_log_svd_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shape mismatch, decomposition
-/// failure, or unavailable provider support.
+/// failure.
 pub fn matrix_log_svd_complex_into(
     matrix: &Array2<Complex64>,
     output: &mut Array2<Complex64>,
@@ -743,7 +760,7 @@ pub fn matrix_log_svd_with_workspace_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shape mismatch, decomposition
-/// failure, or unavailable provider support.
+/// failure.
 pub fn matrix_log_svd_complex_with_workspace_into(
     matrix: &Array2<Complex64>,
     output: &mut Array2<Complex64>,
@@ -822,7 +839,7 @@ pub fn matrix_power_with_workspace_into(
 /// Compute complex matrix power via Hermitian eigen decomposition.
 ///
 /// # Errors
-/// Returns an error for non-Hermitian inputs or unavailable provider support.
+/// Returns an error for non-Hermitian inputs.
 pub fn matrix_power_complex(
     matrix: &Array2<Complex64>,
     power: f64,
@@ -832,21 +849,11 @@ pub fn matrix_power_complex(
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
-    #[cfg(feature = "openblas-system")]
-    {
-        let (eigenvalues, eigenvectors) = hermitian_eigen_provider(matrix)?;
-        let powered_values = eigenvalues.map(|value| value.powf(power));
-        let diagonal = diagonal_from_real_complex(&powered_values);
-        let qh = eigenvectors.t().mapv(|value| value.conj());
-        Ok(eigenvectors.dot(&diagonal).dot(&qh))
-    }
-    #[cfg(not(feature = "openblas-system"))]
-    {
-        let _ = (matrix, power);
-        Err(MatrixFunctionError::InvalidInput(
-            "complex matrix_power requires `openblas-system` feature".to_string(),
-        ))
-    }
+    let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
+    let powered_values = eigenvalues.map(|value| value.powf(power));
+    let diagonal = diagonal_from_real_complex(&powered_values);
+    let qh = eigenvectors.t().mapv(|value| value.conj());
+    Ok(eigenvectors.dot(&diagonal).dot(&qh))
 }
 
 /// Compute complex matrix power via Hermitian eigen decomposition from a matrix view.
@@ -856,7 +863,7 @@ pub fn matrix_power_complex(
 /// before dispatching to [`matrix_power_complex`].
 ///
 /// # Errors
-/// Returns an error for non-Hermitian inputs or unavailable provider support.
+/// Returns an error for non-Hermitian inputs.
 pub fn matrix_power_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     power: f64,
@@ -868,7 +875,7 @@ pub fn matrix_power_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
-/// inputs, or unavailable provider support.
+/// inputs.
 pub fn matrix_power_complex_into(
     matrix: &Array2<Complex64>,
     power: f64,
@@ -882,7 +889,7 @@ pub fn matrix_power_complex_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
-/// inputs, or unavailable provider support.
+/// inputs.
 pub fn matrix_power_complex_with_workspace_into(
     matrix: &Array2<Complex64>,
     power: f64,
@@ -965,7 +972,7 @@ pub fn matrix_sign_with_workspace_into(
 /// Compute complex matrix sign via Hermitian eigen decomposition.
 ///
 /// # Errors
-/// Returns an error for non-Hermitian inputs or unavailable provider support.
+/// Returns an error for non-Hermitian inputs.
 pub fn matrix_sign_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
@@ -974,29 +981,19 @@ pub fn matrix_sign_complex(
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
-    #[cfg(feature = "openblas-system")]
-    {
-        let (eigenvalues, eigenvectors) = hermitian_eigen_provider(matrix)?;
-        let sign_values = eigenvalues.map(|value| {
-            if *value > DEFAULT_TOLERANCE {
-                1.0
-            } else if *value < -DEFAULT_TOLERANCE {
-                -1.0
-            } else {
-                0.0
-            }
-        });
-        let diagonal = diagonal_from_real_complex(&sign_values);
-        let qh = eigenvectors.t().mapv(|value| value.conj());
-        Ok(eigenvectors.dot(&diagonal).dot(&qh))
-    }
-    #[cfg(not(feature = "openblas-system"))]
-    {
-        let _ = matrix;
-        Err(MatrixFunctionError::InvalidInput(
-            "complex matrix_sign requires `openblas-system` feature".to_string(),
-        ))
-    }
+    let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
+    let sign_values = eigenvalues.map(|value| {
+        if *value > DEFAULT_TOLERANCE {
+            1.0
+        } else if *value < -DEFAULT_TOLERANCE {
+            -1.0
+        } else {
+            0.0
+        }
+    });
+    let diagonal = diagonal_from_real_complex(&sign_values);
+    let qh = eigenvectors.t().mapv(|value| value.conj());
+    Ok(eigenvectors.dot(&diagonal).dot(&qh))
 }
 
 /// Compute complex matrix sign via Hermitian eigen decomposition from a matrix view.
@@ -1006,7 +1003,7 @@ pub fn matrix_sign_complex(
 /// before dispatching to [`matrix_sign_complex`].
 ///
 /// # Errors
-/// Returns an error for non-Hermitian inputs or unavailable provider support.
+/// Returns an error for non-Hermitian inputs.
 pub fn matrix_sign_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
@@ -1017,7 +1014,7 @@ pub fn matrix_sign_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
-/// inputs, or unavailable provider support.
+/// inputs.
 pub fn matrix_sign_complex_into(
     matrix: &Array2<Complex64>,
     output: &mut Array2<Complex64>,
@@ -1030,7 +1027,7 @@ pub fn matrix_sign_complex_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
-/// inputs, or unavailable provider support.
+/// inputs.
 pub fn matrix_sign_complex_with_workspace_into(
     matrix: &Array2<Complex64>,
     output: &mut Array2<Complex64>,
@@ -1333,7 +1330,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "openblas-system")]
     #[test]
     fn complex_log_svd_paths_work() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
@@ -1369,7 +1365,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "openblas-system")]
     #[test]
     fn complex_eigen_power_sign_paths_work() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
@@ -1457,90 +1452,5 @@ mod tests {
                 assert!((sign_owned[[i, j]] - sign_ws[[i, j]]).norm() < 1e-12);
             }
         }
-    }
-
-    #[cfg(not(feature = "openblas-system"))]
-    #[test]
-    fn complex_log_svd_without_provider_errors() {
-        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-        assert!(matches!(
-            matrix_log_svd_complex(&matrix),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            matrix_log_svd_complex_view(&matrix.view()),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        let mut out = Array2::<Complex64>::zeros((1, 1));
-        assert!(matches!(
-            matrix_log_svd_complex_into(&matrix, &mut out),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        let mut workspace = MatrixFunctionComplexWorkspace::default();
-        assert!(matches!(
-            matrix_log_svd_complex_with_workspace_into(&matrix, &mut out, &mut workspace),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-    }
-
-    #[cfg(not(feature = "openblas-system"))]
-    #[test]
-    fn complex_eigen_power_sign_without_provider_errors() {
-        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-
-        assert!(matches!(
-            matrix_log_eigen_complex(&matrix),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            matrix_log_eigen_complex_view(&matrix.view()),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-
-        let mut out = Array2::<Complex64>::zeros((1, 1));
-        assert!(matches!(
-            matrix_log_eigen_complex_into(&matrix, &mut out),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        let mut workspace = MatrixFunctionComplexWorkspace::default();
-        assert!(matches!(
-            matrix_log_eigen_complex_with_workspace_into(&matrix, &mut out, &mut workspace),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-
-        assert!(matches!(
-            matrix_power_complex(&matrix, 0.5),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            matrix_power_complex_view(&matrix.view(), 0.5),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            matrix_power_complex_into(&matrix, 0.5, &mut out),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            matrix_power_complex_with_workspace_into(&matrix, 0.5, &mut out, &mut workspace),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-
-        assert!(matches!(matrix_sign_complex(&matrix), Err(MatrixFunctionError::InvalidInput(_))));
-        assert!(matches!(
-            matrix_sign_complex_view(&matrix.view()),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            matrix_sign_complex_into(&matrix, &mut out),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            matrix_sign_complex_with_workspace_into(&matrix, &mut out, &mut workspace),
-            Err(MatrixFunctionError::InvalidInput(_))
-        ));
-
-        let exp_eigen = matrix_exp_eigen_complex(&matrix).unwrap();
-        let exp_taylor = matrix_exp_complex(&matrix, 128, 1e-12).unwrap();
-        assert!((exp_eigen[[0, 0]] - exp_taylor[[0, 0]]).norm() < 1e-12);
     }
 }

@@ -103,7 +103,6 @@ fn off_diagonal_norm(matrix: &Array2<f64>) -> f64 {
     sum.sqrt()
 }
 
-#[cfg(feature = "openblas-system")]
 fn off_diagonal_norm_complex(matrix: &Array2<Complex64>) -> f64 {
     let n = matrix.nrows();
     let mut sum = 0.0_f64;
@@ -142,7 +141,6 @@ fn validate_output_shapes_complex(
     Ok(())
 }
 
-#[cfg(feature = "openblas-system")]
 fn identity_complex(n: usize) -> Array2<Complex64> {
     let mut identity = Array2::<Complex64>::zeros((n, n));
     for i in 0..n {
@@ -203,44 +201,31 @@ pub fn compute_schur(matrix: &Array2<f64>) -> Result<NdarraySchurResult, SchurEr
 /// Compute complex Schur decomposition `A = Q T Q^H`.
 ///
 /// # Errors
-/// Returns an error for invalid input, unavailable provider support, or
-/// convergence failure.
+/// Returns an error for invalid input or convergence failure.
 pub fn compute_schur_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<NdarrayComplexSchurResult, SchurError> {
     validate_complex_square_non_empty(matrix)?;
+    let n = matrix.nrows();
+    let mut q_total = identity_complex(n);
+    let mut t = matrix.clone();
+    let config = QRConfig::default();
 
-    #[cfg(feature = "openblas-system")]
-    {
-        let n = matrix.nrows();
-        let mut q_total = identity_complex(n);
-        let mut t = matrix.clone();
-        let config = QRConfig::default();
-
-        let mut converged = false;
-        for _ in 0..config.max_iterations.max(128) {
-            let qr =
-                qr::decompose_complex(&t, &config).map_err(|_| SchurError::ConvergenceFailed)?;
-            t = qr.r.dot(&qr.q);
-            q_total = q_total.dot(&qr.q);
-            if off_diagonal_norm_complex(&t) < config.rank_tolerance.max(DEFAULT_TOLERANCE) {
-                converged = true;
-                break;
-            }
+    let mut converged = false;
+    for _ in 0..config.max_iterations.max(128) {
+        let qr = qr::decompose_complex(&t, &config).map_err(|_| SchurError::ConvergenceFailed)?;
+        t = qr.r.dot(&qr.q);
+        q_total = q_total.dot(&qr.q);
+        if off_diagonal_norm_complex(&t) < config.rank_tolerance.max(DEFAULT_TOLERANCE) {
+            converged = true;
+            break;
         }
+    }
 
-        if !converged {
-            return Err(SchurError::ConvergenceFailed);
-        }
-        Ok(NdarrayComplexSchurResult { q: q_total, t })
+    if !converged {
+        return Err(SchurError::ConvergenceFailed);
     }
-    #[cfg(not(feature = "openblas-system"))]
-    {
-        let _ = matrix;
-        Err(SchurError::InvalidInput(
-            "complex Schur requires `openblas-system` feature".to_string(),
-        ))
-    }
+    Ok(NdarrayComplexSchurResult { q: q_total, t })
 }
 
 /// Compute Schur decomposition `A = Q T Q^T` from a matrix view.
@@ -262,8 +247,7 @@ pub fn compute_schur_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySchurRe
 /// before dispatching to [`compute_schur_complex`].
 ///
 /// # Errors
-/// Returns an error for invalid input, unavailable provider support, or
-/// convergence failure.
+/// Returns an error for invalid input or convergence failure.
 pub fn compute_schur_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexSchurResult, SchurError> {
@@ -286,8 +270,7 @@ pub fn compute_schur_into(
 /// Compute complex Schur decomposition into caller-provided outputs.
 ///
 /// # Errors
-/// Returns an error for invalid inputs, output shapes, unavailable provider
-/// support, or convergence failure.
+/// Returns an error for invalid inputs, output shapes, or convergence failure.
 pub fn compute_schur_complex_into(
     matrix: &Array2<Complex64>,
     output_q: &mut Array2<Complex64>,
@@ -320,8 +303,7 @@ pub fn compute_schur_into_view(
 /// before dispatching to [`compute_schur_complex_into`].
 ///
 /// # Errors
-/// Returns an error for invalid inputs, output shapes, unavailable provider
-/// support, or convergence failure.
+/// Returns an error for invalid inputs, output shapes, or convergence failure.
 pub fn compute_schur_complex_into_view(
     matrix: &ArrayView2<'_, Complex64>,
     output_q: &mut Array2<Complex64>,
@@ -354,8 +336,7 @@ pub fn compute_schur_with_workspace_into(
 /// Compute complex Schur decomposition into outputs using reusable `workspace`.
 ///
 /// # Errors
-/// Returns an error for invalid inputs, output shapes, unavailable provider
-/// support, or convergence failure.
+/// Returns an error for invalid inputs, output shapes, or convergence failure.
 pub fn compute_schur_complex_with_workspace_into(
     matrix: &Array2<Complex64>,
     output_q: &mut Array2<Complex64>,
@@ -456,7 +437,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "openblas-system")]
     #[test]
     fn complex_schur_reconstructs_and_view_into_match() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
@@ -494,22 +474,5 @@ mod tests {
                 assert!((owned.t[[i, j]] - t[[i, j]]).norm() < 1e-10);
             }
         }
-    }
-
-    #[cfg(not(feature = "openblas-system"))]
-    #[test]
-    fn complex_schur_without_provider_errors() {
-        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
-
-        let result = compute_schur_complex(&matrix);
-        assert!(matches!(result, Err(SchurError::InvalidInput(_))));
-
-        let mut q = Array2::<Complex64>::zeros((1, 1));
-        let mut t = Array2::<Complex64>::zeros((1, 1));
-        let result_into = compute_schur_complex_into(&matrix, &mut q, &mut t);
-        assert!(matches!(result_into, Err(SchurError::InvalidInput(_))));
-
-        let result_view = compute_schur_complex_view(&matrix.view());
-        assert!(matches!(result_view, Err(SchurError::InvalidInput(_))));
     }
 }
