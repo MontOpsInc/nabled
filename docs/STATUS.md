@@ -54,6 +54,7 @@ Workspace migration for library domains is complete.
 46. Complex parity across major algorithms is now complete: matrix primitives and orthogonalization gained complex APIs, iterative solvers gained complex CG/GMRES, and tensor gained complex cube and last-axis tensor operations with parity tests.
 47. Sparse factorization depth now includes ILDL(0) and ILDL0-preconditioned GMRES/BiCGSTAB (direct + factorization-reuse APIs), with unit tests and sparse benchmark coverage.
 48. Tensor higher-rank algebra baseline now includes axis permutation, explicit-axis contraction, and N-D batched last-two matmul across real/complex APIs, with unit tests and tensor benchmark coverage.
+49. Accelerator baseline now includes concrete distributed row-sharded matmat, backend-dispatched distributed execution, and dedicated accelerator benchmark coverage in smoke/report pipelines.
 
 ## Current Code Ownership
 
@@ -91,7 +92,7 @@ Workspace migration for library domains is complete.
 Harden workspace contracts and release readiness:
 
 1. Expand sparse depth from current ILU(0)+IC(0)+ILUT baseline into broader factorization-grade sparse workflows.
-2. Expand tensor beyond the new contraction/matmul baseline and advance accelerator from CPU parallel baseline toward concrete GPU/distributed kernels.
+2. Expand tensor beyond the new contraction/matmul baseline and advance accelerator from distributed CPU baseline toward concrete GPU kernels and richer distributed execution semantics.
 3. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration

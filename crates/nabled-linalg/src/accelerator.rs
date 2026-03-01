@@ -1,6 +1,6 @@
 //! Compile-time backend contracts for future accelerator/distributed kernels.
 
-use std::fmt;
+use std::{fmt, thread};
 
 use ndarray::{Array2, ArrayView2, s};
 #[cfg(feature = "accelerator-rayon")]
@@ -11,9 +11,9 @@ use rayon::prelude::*;
 pub enum BackendKind {
     /// CPU backend.
     Cpu,
-    /// GPU backend placeholder.
+    /// GPU backend (not yet implemented).
     Cuda,
-    /// Distributed backend placeholder.
+    /// Distributed CPU-sharded backend.
     Distributed,
 }
 
@@ -24,10 +24,14 @@ pub enum AcceleratorError {
     UnsupportedBackend(BackendKind),
     /// Invalid chunking policy.
     InvalidChunkSize,
+    /// Invalid distributed worker count.
+    InvalidWorkerCount,
     /// Matrix dimensions are incompatible.
     DimensionMismatch,
     /// Optional accelerator feature was not enabled at compile time.
     FeatureNotEnabled,
+    /// A distributed worker panicked while executing a kernel.
+    WorkerPanicked,
 }
 
 impl fmt::Display for AcceleratorError {
@@ -37,11 +41,17 @@ impl fmt::Display for AcceleratorError {
                 write!(f, "backend {kind:?} is not currently available")
             }
             AcceleratorError::InvalidChunkSize => write!(f, "chunk size must be greater than zero"),
+            AcceleratorError::InvalidWorkerCount => {
+                write!(f, "worker count must be greater than zero")
+            }
             AcceleratorError::DimensionMismatch => {
                 write!(f, "matrix dimensions are incompatible")
             }
             AcceleratorError::FeatureNotEnabled => {
                 write!(f, "feature `accelerator-rayon` is not enabled")
+            }
+            AcceleratorError::WorkerPanicked => {
+                write!(f, "distributed worker panicked")
             }
         }
     }
@@ -71,12 +81,25 @@ impl ComputeBackend for CudaBackend {
     const KIND: BackendKind = BackendKind::Cuda;
 }
 
-/// Distributed backend placeholder.
+/// Distributed backend.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DistributedBackend;
 
 impl ComputeBackend for DistributedBackend {
     const KIND: BackendKind = BackendKind::Distributed;
+}
+
+/// Distributed execution configuration for row-sharded kernels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DistributedConfig {
+    /// Number of worker threads.
+    pub workers:    usize,
+    /// Rows per work chunk.
+    pub chunk_rows: usize,
+}
+
+impl Default for DistributedConfig {
+    fn default() -> Self { Self { workers: 4, chunk_rows: 64 } }
 }
 
 /// Execute a closure with compile-time backend selection.
@@ -89,10 +112,8 @@ where
     F: FnOnce() -> T,
 {
     match B::KIND {
-        BackendKind::Cpu => Ok(operation()),
-        BackendKind::Cuda | BackendKind::Distributed => {
-            Err(AcceleratorError::UnsupportedBackend(B::KIND))
-        }
+        BackendKind::Cpu | BackendKind::Distributed => Ok(operation()),
+        BackendKind::Cuda => Err(AcceleratorError::UnsupportedBackend(B::KIND)),
     }
 }
 
@@ -142,6 +163,109 @@ pub fn matmat_serial(
         }
     }
     Ok(output)
+}
+
+/// Compute matrix-matrix product with row-sharded distributed CPU execution.
+///
+/// Work is split into row chunks and scheduled over a fixed number of workers.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible, worker/chunk config is invalid,
+/// or if a worker panics.
+pub fn matmat_distributed(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+    config: DistributedConfig,
+) -> Result<Array2<f64>, AcceleratorError> {
+    if left.ncols() != right.nrows() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+    if config.workers == 0 {
+        return Err(AcceleratorError::InvalidWorkerCount);
+    }
+    if config.chunk_rows == 0 {
+        return Err(AcceleratorError::InvalidChunkSize);
+    }
+
+    let rows = left.nrows();
+    let cols = right.ncols();
+    let mut chunks = Vec::new();
+    let mut start_row = 0_usize;
+    while start_row < rows {
+        let end_row = (start_row + config.chunk_rows).min(rows);
+        chunks.push((start_row, end_row));
+        start_row = end_row;
+    }
+
+    if chunks.is_empty() {
+        return Ok(Array2::<f64>::zeros((rows, cols)));
+    }
+
+    let worker_count = config.workers.min(chunks.len());
+    let mut partials = Vec::new();
+    thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(worker_count);
+        for worker_id in 0..worker_count {
+            let left_ref = left;
+            let right_ref = right;
+            let chunks_ref = &chunks;
+            handles.push(scope.spawn(move || {
+                let mut local = Vec::new();
+                let mut chunk_id = worker_id;
+                while chunk_id < chunks_ref.len() {
+                    let (start, end) = chunks_ref[chunk_id];
+                    let block_rows = end - start;
+                    let mut block = Array2::<f64>::zeros((block_rows, cols));
+                    for local_row in 0..block_rows {
+                        let row = start + local_row;
+                        for inner in 0..left_ref.ncols() {
+                            let lhs = left_ref[[row, inner]];
+                            for col in 0..cols {
+                                block[[local_row, col]] += lhs * right_ref[[inner, col]];
+                            }
+                        }
+                    }
+                    local.push((start, block));
+                    chunk_id += worker_count;
+                }
+                local
+            }));
+        }
+
+        for handle in handles {
+            match handle.join() {
+                Ok(worker_chunks) => partials.extend(worker_chunks),
+                Err(_) => return Err(AcceleratorError::WorkerPanicked),
+            }
+        }
+        Ok::<(), AcceleratorError>(())
+    })?;
+
+    let mut output = Array2::<f64>::zeros((rows, cols));
+    for (start, block) in partials {
+        let end = start + block.nrows();
+        output.slice_mut(s![start..end, ..]).assign(&block);
+    }
+    Ok(output)
+}
+
+/// Compute matrix-matrix product using compile-time backend dispatch.
+///
+/// - `CpuBackend`: serial kernel
+/// - `DistributedBackend`: row-sharded distributed kernel with default config
+/// - `CudaBackend`: currently unsupported
+///
+/// # Errors
+/// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
+pub fn matmat_with_backend<B: ComputeBackend>(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+) -> Result<Array2<f64>, AcceleratorError> {
+    match B::KIND {
+        BackendKind::Cpu => matmat_serial(left, right),
+        BackendKind::Distributed => matmat_distributed(left, right, DistributedConfig::default()),
+        BackendKind::Cuda => Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda)),
+    }
 }
 
 /// Compute matrix-matrix product using feature-gated accelerated kernel.
@@ -208,15 +332,15 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_backends_return_error() {
+    fn distributed_backend_executes_operation() {
+        let value = execute::<DistributedBackend, _, _>(|| 7 * 6).unwrap();
+        assert_eq!(value, 42);
+    }
+
+    #[test]
+    fn cuda_backend_returns_error() {
         let cuda = execute::<CudaBackend, _, _>(|| 1);
         assert!(matches!(cuda, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
-
-        let distributed = execute::<DistributedBackend, _, _>(|| 1);
-        assert!(matches!(
-            distributed,
-            Err(AcceleratorError::UnsupportedBackend(BackendKind::Distributed))
-        ));
     }
 
     #[test]
@@ -250,6 +374,59 @@ mod tests {
         assert!((output[[0, 1]] - 2.0).abs() < 1e-12);
         assert!((output[[1, 0]] - 3.0).abs() < 1e-12);
         assert!((output[[1, 1]] - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn distributed_matmat_matches_serial() {
+        let left = Array2::from_shape_vec((5, 4), vec![
+            1.0, 2.0, 0.0, 1.0, 0.0, 1.0, 3.0, 2.0, 2.0, 0.0, 1.0, -1.0, 3.0, 1.0, 0.0, 2.0, 2.0,
+            -1.0, 1.0, 0.0,
+        ])
+        .unwrap();
+        let right = Array2::from_shape_vec((4, 3), vec![
+            1.0, 0.0, 2.0, 2.0, 1.0, -1.0, 1.0, 3.0, 0.0, -1.0, 2.0, 1.0,
+        ])
+        .unwrap();
+
+        let serial = matmat_serial(&left, &right).unwrap();
+        let distributed =
+            matmat_distributed(&left, &right, DistributedConfig { workers: 3, chunk_rows: 2 })
+                .unwrap();
+        for row in 0..serial.nrows() {
+            for col in 0..serial.ncols() {
+                assert!((serial[[row, col]] - distributed[[row, col]]).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn distributed_matmat_rejects_invalid_config() {
+        let left = Array2::<f64>::eye(2);
+        let right = Array2::<f64>::eye(2);
+        let invalid_workers =
+            matmat_distributed(&left, &right, DistributedConfig { workers: 0, chunk_rows: 1 });
+        assert!(matches!(invalid_workers, Err(AcceleratorError::InvalidWorkerCount)));
+
+        let invalid_chunks =
+            matmat_distributed(&left, &right, DistributedConfig { workers: 1, chunk_rows: 0 });
+        assert!(matches!(invalid_chunks, Err(AcceleratorError::InvalidChunkSize)));
+    }
+
+    #[test]
+    fn backend_dispatch_selects_expected_kernel() {
+        let left = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
+        let right = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
+
+        let serial = matmat_with_backend::<CpuBackend>(&left, &right).unwrap();
+        let distributed = matmat_with_backend::<DistributedBackend>(&left, &right).unwrap();
+        for row in 0..serial.nrows() {
+            for col in 0..serial.ncols() {
+                assert!((serial[[row, col]] - distributed[[row, col]]).abs() < 1e-12);
+            }
+        }
+
+        let cuda = matmat_with_backend::<CudaBackend>(&left, &right);
+        assert!(matches!(cuda, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
     }
 
     #[test]

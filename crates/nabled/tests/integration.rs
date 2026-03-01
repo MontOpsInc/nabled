@@ -4,9 +4,10 @@ use approx::assert_relative_eq;
 use nabled::svd::{self as svd, SVDError};
 use nabled::vector::{self as vector, PairwiseCosineWorkspace};
 use nabled::{
-    CpuBackend, CsrMatrix, CudaBackend, IntoNabledError, IterativeConfig, NabledError, accelerator,
-    cholesky, eigen, iterative, lu, matrix, matrix_functions, orthogonalization, pca, polar,
-    regression, schur, sparse, stats, sylvester, tensor, triangular,
+    CpuBackend, CsrMatrix, CudaBackend, DistributedBackend, DistributedConfig, IntoNabledError,
+    IterativeConfig, NabledError, accelerator, cholesky, eigen, iterative, lu, matrix,
+    matrix_functions, orthogonalization, pca, polar, regression, schur, sparse, stats, sylvester,
+    tensor, triangular,
 };
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex64;
@@ -400,10 +401,48 @@ fn assert_sparse_tensor_and_accelerator_paths(dense: &Array2<f64>, dense_rhs: &A
         assert_relative_eq!(*value, 1.0, epsilon = 1e-10);
     }
 
+    assert_accelerator_paths(dense, dense_rhs);
+}
+
+fn assert_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
     let cpu_result = accelerator::execute::<CpuBackend, _, _>(|| 21 + 21).unwrap();
     assert_eq!(cpu_result, 42);
+    let distributed_result = accelerator::execute::<DistributedBackend, _, _>(|| 6 * 7).unwrap();
+    assert_eq!(distributed_result, 42);
     let cuda_result = accelerator::execute::<CudaBackend, _, _>(|| 1);
     assert!(cuda_result.is_err());
+
+    let serial = accelerator::matmat_serial(dense, dense_rhs).unwrap();
+    let distributed = accelerator::matmat_distributed(dense, dense_rhs, DistributedConfig {
+        workers:    2,
+        chunk_rows: 1,
+    })
+    .unwrap();
+    assert_eq!(serial.dim(), distributed.dim());
+    for row in 0..serial.nrows() {
+        for col in 0..serial.ncols() {
+            assert_relative_eq!(serial[[row, col]], distributed[[row, col]], epsilon = 1e-12);
+        }
+    }
+
+    let backend_distributed =
+        accelerator::matmat_with_backend::<DistributedBackend>(dense, dense_rhs).unwrap();
+    for row in 0..serial.nrows() {
+        for col in 0..serial.ncols() {
+            assert_relative_eq!(
+                serial[[row, col]],
+                backend_distributed[[row, col]],
+                epsilon = 1e-12
+            );
+        }
+    }
+
+    let backend_cuda = accelerator::matmat_with_backend::<CudaBackend>(dense, dense_rhs);
+    assert!(matches!(
+        backend_cuda,
+        Err(nabled::AcceleratorError::UnsupportedBackend(nabled::BackendKind::Cuda))
+    ));
+
     let accelerated = accelerator::matmat_accelerated(dense, dense_rhs);
     #[cfg(feature = "accelerator-rayon")]
     {

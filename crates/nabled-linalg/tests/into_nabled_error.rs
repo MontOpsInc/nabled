@@ -247,11 +247,19 @@ fn maps_vector_errors() {
         NabledError::InvalidInput("chunk size must be greater than zero".to_string())
     );
     assert_eq!(
+        AcceleratorError::InvalidWorkerCount.into_nabled_error(),
+        NabledError::InvalidInput("worker count must be greater than zero".to_string())
+    );
+    assert_eq!(
         AcceleratorError::DimensionMismatch.into_nabled_error(),
         NabledError::Shape(ShapeError::DimensionMismatch)
     );
     assert_eq!(
         AcceleratorError::FeatureNotEnabled.into_nabled_error(),
         NabledError::Other("feature `accelerator-rayon` is not enabled".to_string())
+    );
+    assert_eq!(
+        AcceleratorError::WorkerPanicked.into_nabled_error(),
+        NabledError::Other("distributed worker panicked".to_string())
     );
 }

@@ -187,6 +187,7 @@ fn print_missing_criterion_message(candidate_roots: &[&Path]) {
     eprintln!("  cargo bench --bench matrix_benchmarks -- --quick");
     eprintln!("  cargo bench --bench sparse_benchmarks -- --quick");
     eprintln!("  cargo bench --bench tensor_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench accelerator_benchmarks -- --quick");
     eprintln!("  cargo bench --bench schur_benchmarks -- --quick");
     eprintln!("  cargo bench --bench sylvester_benchmarks -- --quick");
     eprintln!("  cargo bench --bench optimization_benchmarks -- --quick");
@@ -277,6 +278,8 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "sparse"
     } else if group_id.starts_with("tensor_") {
         "tensor"
+    } else if group_id.starts_with("accelerator_") {
+        "accelerator"
     } else if group_id.starts_with("schur_") {
         "schur"
     } else if group_id.starts_with("sylvester_") {
@@ -303,6 +306,7 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         | "matrix_nabled_ndarray"
         | "sparse_nabled_ndarray"
         | "tensor_nabled_ndarray"
+        | "accelerator_nabled_ndarray"
         | "schur_nabled_ndarray"
         | "sylvester_nabled_ndarray"
         | "optimization_nabled_ndarray"
@@ -319,6 +323,7 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         }
         "optimization_competitor_manual"
         | "tensor_competitor_manual"
+        | "accelerator_competitor_manual"
         | "schur_competitor_manual"
         | "sylvester_competitor_manual" => ("manual_baseline", "manual_baseline"),
         _ => ("unknown", "unknown"),

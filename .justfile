@@ -93,6 +93,7 @@ bench-smoke:
     cargo bench -p nabled --bench matrix_benchmarks -- --quick
     cargo bench -p nabled --bench sparse_benchmarks -- --quick
     cargo bench -p nabled --bench tensor_benchmarks -- --quick
+    cargo bench -p nabled --bench accelerator_benchmarks -- --quick
     cargo bench -p nabled --bench schur_benchmarks -- --quick
     cargo bench -p nabled --bench sylvester_benchmarks -- --quick
     cargo bench -p nabled --bench optimization_benchmarks -- --quick
@@ -111,6 +112,7 @@ bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench matrix_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sparse_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench tensor_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench accelerator_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench schur_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sylvester_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench optimization_benchmarks -- --quick

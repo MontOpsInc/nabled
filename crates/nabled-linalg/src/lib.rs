@@ -22,7 +22,9 @@ pub mod tensor;
 pub mod triangular;
 pub mod vector;
 
-pub use accelerator::{AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend};
+pub use accelerator::{
+    AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend, DistributedConfig,
+};
 pub use cholesky::{CholeskyError, NdarrayCholeskyResult};
 pub use eigen::{
     EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult, NdarrayNonsymmetricEigenResult,
@@ -57,11 +59,17 @@ impl IntoNabledError for AcceleratorError {
             AcceleratorError::InvalidChunkSize => {
                 NabledError::InvalidInput("chunk size must be greater than zero".to_string())
             }
+            AcceleratorError::InvalidWorkerCount => {
+                NabledError::InvalidInput("worker count must be greater than zero".to_string())
+            }
             AcceleratorError::DimensionMismatch => {
                 NabledError::Shape(ShapeError::DimensionMismatch)
             }
             AcceleratorError::FeatureNotEnabled => {
                 NabledError::Other("feature `accelerator-rayon` is not enabled".to_string())
+            }
+            AcceleratorError::WorkerPanicked => {
+                NabledError::Other("distributed worker panicked".to_string())
             }
         }
     }
@@ -368,11 +376,19 @@ mod tests {
             NabledError::InvalidInput(_)
         ));
         assert!(matches!(
+            AcceleratorError::InvalidWorkerCount.into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
             AcceleratorError::DimensionMismatch.into_nabled_error(),
             NabledError::Shape(ShapeError::DimensionMismatch)
         ));
         assert!(matches!(
             AcceleratorError::FeatureNotEnabled.into_nabled_error(),
+            NabledError::Other(_)
+        ));
+        assert!(matches!(
+            AcceleratorError::WorkerPanicked.into_nabled_error(),
             NabledError::Other(_)
         ));
     }

@@ -84,6 +84,10 @@ name = "tensor_benchmarks"
 harness = false
 
 [[bench]]
+name = "accelerator_benchmarks"
+harness = false
+
+[[bench]]
 name = "schur_benchmarks"
 harness = false
 
