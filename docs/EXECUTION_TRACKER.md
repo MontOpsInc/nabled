@@ -63,12 +63,15 @@ Use this file to resume work quickly after context compaction without re-auditin
 35. `D-035`: Practical manual competitor baselines added for `schur` and `sylvester`.
 36. `D-036`: Allocation-transparency docs completed for allocating `*_view`/convenience wrappers across linalg/ml modules.
 37. `D-037`: Complex parity expanded into LU/Cholesky via provider-backed complex solve/inverse/decomposition paths with explicit no-provider behavior.
+38. `D-038`: Complex parity expanded into Schur and Sylvester/Lyapunov with provider-backed complex APIs, view/into/workspace variants, and explicit no-provider behavior.
 
 ## Next
 
-1. `N-024` (P1): Continue complex parity expansion beyond current coverage (vector, QR, SVD, LU, Cholesky, polar, triangular).
-2. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
-3. `N-027` (P1): Remove avoidable copies in convenience/view APIs where feasible (beyond current explicit documentation pass).
+1. `N-024A` (P1): Expand provider-backed complex parity into remaining candidate dense domains (next: selected matrix-functions paths where numerically well-defined).
+2. `N-024B` (P1): Add provider-free internal complex paths where feasible for currently provider-gated domains (or explicitly lock/justify unsupported cases).
+3. `N-024C` (P1): Complete complex parity validation matrix (owned/view variants, error mappings, integration coverage, and benchmark visibility where practical).
+4. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
+5. `N-027` (P1): Remove avoidable copies in convenience/view APIs where feasible (beyond current explicit documentation pass).
 
 ## Needed
 

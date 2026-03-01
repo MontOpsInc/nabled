@@ -3,11 +3,12 @@
 use std::fmt;
 
 use ndarray::{Array1, Array2, ArrayView2};
+use num_complex::Complex64;
 
 use crate::lu;
 
 /// Error type for Sylvester/Lyapunov solvers.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SylvesterError {
     /// Matrix input is empty.
     EmptyMatrix,
@@ -17,6 +18,8 @@ pub enum SylvesterError {
     DimensionMismatch,
     /// Linear system is singular.
     SingularSystem,
+    /// Invalid input.
+    InvalidInput(String),
 }
 
 impl fmt::Display for SylvesterError {
@@ -26,6 +29,7 @@ impl fmt::Display for SylvesterError {
             SylvesterError::NotSquare => write!(f, "Matrix must be square"),
             SylvesterError::DimensionMismatch => write!(f, "Input dimensions are incompatible"),
             SylvesterError::SingularSystem => write!(f, "Sylvester system is singular"),
+            SylvesterError::InvalidInput(message) => write!(f, "Invalid input: {message}"),
         }
     }
 }
@@ -59,6 +63,38 @@ impl SylvesterWorkspace {
     }
 }
 
+/// Reusable workspace for complex Sylvester/Lyapunov solves.
+#[cfg_attr(not(feature = "openblas-system"), allow(missing_copy_implementations))]
+#[derive(Debug, Clone, Default)]
+pub struct SylvesterComplexWorkspace {
+    #[cfg(feature = "openblas-system")]
+    coefficient: Array2<Complex64>,
+    #[cfg(feature = "openblas-system")]
+    rhs:         Array1<Complex64>,
+    #[cfg(feature = "openblas-system")]
+    solution:    Array1<Complex64>,
+}
+
+impl SylvesterComplexWorkspace {
+    #[cfg(feature = "openblas-system")]
+    fn ensure_dims(&mut self, rows: usize, cols: usize) {
+        let system_size = rows * cols;
+        if self.coefficient.dim() == (system_size, system_size) {
+            self.coefficient.fill(Complex64::new(0.0, 0.0));
+        } else {
+            self.coefficient = Array2::<Complex64>::zeros((system_size, system_size));
+        }
+        if self.rhs.len() == system_size {
+            self.rhs.fill(Complex64::new(0.0, 0.0));
+        } else {
+            self.rhs = Array1::<Complex64>::zeros(system_size);
+        }
+        if self.solution.len() != system_size {
+            self.solution = Array1::<Complex64>::zeros(system_size);
+        }
+    }
+}
+
 fn validate_sylvester_dims(
     matrix_a: &Array2<f64>,
     matrix_b: &Array2<f64>,
@@ -69,6 +105,34 @@ fn validate_sylvester_dims(
     }
     if matrix_a.nrows() != matrix_a.ncols() || matrix_b.nrows() != matrix_b.ncols() {
         return Err(SylvesterError::NotSquare);
+    }
+
+    let n = matrix_a.nrows();
+    let m = matrix_b.nrows();
+    if matrix_c.dim() != (n, m) {
+        return Err(SylvesterError::DimensionMismatch);
+    }
+    Ok((n, m))
+}
+
+fn validate_sylvester_complex_dims(
+    matrix_a: &Array2<Complex64>,
+    matrix_b: &Array2<Complex64>,
+    matrix_c: &Array2<Complex64>,
+) -> Result<(usize, usize), SylvesterError> {
+    if matrix_a.is_empty() || matrix_b.is_empty() || matrix_c.is_empty() {
+        return Err(SylvesterError::EmptyMatrix);
+    }
+    if matrix_a.nrows() != matrix_a.ncols() || matrix_b.nrows() != matrix_b.ncols() {
+        return Err(SylvesterError::NotSquare);
+    }
+    if matrix_a.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        || matrix_b.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        || matrix_c.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+    {
+        return Err(SylvesterError::InvalidInput(
+            "complex matrix inputs must be finite".to_string(),
+        ));
     }
 
     let n = matrix_a.nrows();
@@ -170,6 +234,135 @@ pub fn solve_sylvester_with_workspace_into(
     Ok(())
 }
 
+#[cfg(feature = "openblas-system")]
+fn solve_sylvester_complex_provider_with_workspace_into(
+    matrix_a: &Array2<Complex64>,
+    matrix_b: &Array2<Complex64>,
+    matrix_c: &Array2<Complex64>,
+    output: &mut Array2<Complex64>,
+    workspace: &mut SylvesterComplexWorkspace,
+) -> Result<(), SylvesterError> {
+    let (n, m) = validate_sylvester_complex_dims(matrix_a, matrix_b, matrix_c)?;
+    if output.dim() != (n, m) {
+        return Err(SylvesterError::DimensionMismatch);
+    }
+
+    workspace.ensure_dims(n, m);
+
+    for i in 0..n {
+        for j in 0..m {
+            let row = i * m + j;
+            workspace.rhs[row] = matrix_c[[i, j]];
+
+            for p in 0..n {
+                let col = p * m + j;
+                workspace.coefficient[[row, col]] += matrix_a[[i, p]];
+            }
+            for q in 0..m {
+                let col = i * m + q;
+                workspace.coefficient[[row, col]] += matrix_b[[q, j]];
+            }
+        }
+    }
+
+    workspace.solution = lu::solve_complex(&workspace.coefficient, &workspace.rhs)
+        .map_err(|_| SylvesterError::SingularSystem)?;
+    for i in 0..n {
+        for j in 0..m {
+            output[[i, j]] = workspace.solution[i * m + j];
+        }
+    }
+    Ok(())
+}
+
+/// Solve complex Sylvester equation `A X + X B = C`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular,
+/// or provider support is unavailable.
+pub fn solve_sylvester_complex(
+    matrix_a: &Array2<Complex64>,
+    matrix_b: &Array2<Complex64>,
+    matrix_c: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, SylvesterError> {
+    let (n, m) = validate_sylvester_complex_dims(matrix_a, matrix_b, matrix_c)?;
+    let mut workspace = SylvesterComplexWorkspace::default();
+    let mut output = Array2::<Complex64>::zeros((n, m));
+    solve_sylvester_complex_with_workspace_into(
+        matrix_a,
+        matrix_b,
+        matrix_c,
+        &mut output,
+        &mut workspace,
+    )?;
+    Ok(output)
+}
+
+/// Solve complex Sylvester equation `A X + X B = C` from matrix views.
+///
+/// # Performance
+/// This convenience wrapper materializes owned matrices via `to_owned()`
+/// before dispatching to [`solve_sylvester_complex`].
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular,
+/// or provider support is unavailable.
+pub fn solve_sylvester_complex_view(
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView2<'_, Complex64>,
+    matrix_c: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, SylvesterError> {
+    solve_sylvester_complex(&matrix_a.to_owned(), &matrix_b.to_owned(), &matrix_c.to_owned())
+}
+
+/// Solve complex Sylvester equation `A X + X B = C` into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, output shape mismatches, the
+/// linear system is singular, or provider support is unavailable.
+pub fn solve_sylvester_complex_into(
+    matrix_a: &Array2<Complex64>,
+    matrix_b: &Array2<Complex64>,
+    matrix_c: &Array2<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), SylvesterError> {
+    let mut workspace = SylvesterComplexWorkspace::default();
+    solve_sylvester_complex_with_workspace_into(
+        matrix_a,
+        matrix_b,
+        matrix_c,
+        output,
+        &mut workspace,
+    )
+}
+
+/// Solve complex Sylvester equation `A X + X B = C` into `output` with reusable `workspace`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, output shape mismatches, the
+/// linear system is singular, or provider support is unavailable.
+pub fn solve_sylvester_complex_with_workspace_into(
+    matrix_a: &Array2<Complex64>,
+    matrix_b: &Array2<Complex64>,
+    matrix_c: &Array2<Complex64>,
+    output: &mut Array2<Complex64>,
+    workspace: &mut SylvesterComplexWorkspace,
+) -> Result<(), SylvesterError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        solve_sylvester_complex_provider_with_workspace_into(
+            matrix_a, matrix_b, matrix_c, output, workspace,
+        )
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        let _ = (matrix_a, matrix_b, matrix_c, output, workspace);
+        Err(SylvesterError::InvalidInput(
+            "complex Sylvester/Lyapunov requires `openblas-system` feature".to_string(),
+        ))
+    }
+}
+
 /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0`.
 ///
 /// # Errors
@@ -180,6 +373,23 @@ pub fn solve_lyapunov(a: &Array2<f64>, q: &Array2<f64>) -> Result<Array2<f64>, S
     }
     let neg_q = -q;
     solve_sylvester(a, &a.t().to_owned(), &neg_q)
+}
+
+/// Solve complex continuous Lyapunov equation `A X + X A^H + Q = 0`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular,
+/// or provider support is unavailable.
+pub fn solve_lyapunov_complex(
+    a: &Array2<Complex64>,
+    q: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, SylvesterError> {
+    if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
+        return Err(SylvesterError::DimensionMismatch);
+    }
+    let neg_q = -q;
+    let conjugate_transpose = a.t().mapv(|value| value.conj());
+    solve_sylvester_complex(a, &conjugate_transpose, &neg_q)
 }
 
 /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0` from matrix views.
@@ -195,6 +405,22 @@ pub fn solve_lyapunov_view(
     q: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, SylvesterError> {
     solve_lyapunov(&a.to_owned(), &q.to_owned())
+}
+
+/// Solve complex continuous Lyapunov equation `A X + X A^H + Q = 0` from matrix views.
+///
+/// # Performance
+/// This convenience wrapper materializes owned matrices via `to_owned()`
+/// before dispatching to [`solve_lyapunov_complex`].
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular,
+/// or provider support is unavailable.
+pub fn solve_lyapunov_complex_view(
+    a: &ArrayView2<'_, Complex64>,
+    q: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, SylvesterError> {
+    solve_lyapunov_complex(&a.to_owned(), &q.to_owned())
 }
 
 /// Solve continuous Lyapunov equation into `output`.
@@ -213,9 +439,28 @@ pub fn solve_lyapunov_into(
     solve_sylvester_into(a, &a.t().to_owned(), &neg_q, output)
 }
 
+/// Solve complex continuous Lyapunov equation into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, output shape mismatches, the
+/// linear system is singular, or provider support is unavailable.
+pub fn solve_lyapunov_complex_into(
+    a: &Array2<Complex64>,
+    q: &Array2<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), SylvesterError> {
+    if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
+        return Err(SylvesterError::DimensionMismatch);
+    }
+    let neg_q = -q;
+    let conjugate_transpose = a.t().mapv(|value| value.conj());
+    solve_sylvester_complex_into(a, &conjugate_transpose, &neg_q, output)
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -284,5 +529,114 @@ mod tests {
                 assert!((lyapunov_owned[[i, j]] - lyapunov_viewed[[i, j]]).abs() < 1e-12);
             }
         }
+    }
+
+    #[cfg(feature = "openblas-system")]
+    #[test]
+    fn complex_sylvester_and_lyapunov_paths_work() {
+        let a = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(2.0, 0.5),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(3.0, -0.25),
+        ])
+        .unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 0.75),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(4.0, -0.5),
+        ])
+        .unwrap();
+        let c = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.5, -0.2),
+            Complex64::new(-1.0, 0.4),
+            Complex64::new(2.0, 0.1),
+        ])
+        .unwrap();
+
+        let owned = solve_sylvester_complex(&a, &b, &c).unwrap();
+        let viewed = solve_sylvester_complex_view(&a.view(), &b.view(), &c.view()).unwrap();
+        let residual = a.dot(&owned) + owned.dot(&b) - c.clone();
+        let max_residual = residual.iter().map(|value| value.norm()).fold(0.0_f64, f64::max);
+        assert!(max_residual < 1e-8);
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-10);
+            }
+        }
+
+        let mut into = Array2::<Complex64>::zeros((2, 2));
+        let mut workspace = SylvesterComplexWorkspace::default();
+        solve_sylvester_complex_with_workspace_into(&a, &b, &c, &mut into, &mut workspace).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((owned[[i, j]] - into[[i, j]]).norm() < 1e-10);
+            }
+        }
+
+        let q = Array2::eye(2).mapv(|value| Complex64::new(value, 0.0));
+        let lyapunov = solve_lyapunov_complex(&a, &q).unwrap();
+        let a_h = a.t().mapv(|value| value.conj());
+        let lyapunov_residual = a.dot(&lyapunov) + lyapunov.dot(&a_h) + q.clone();
+        let lyapunov_max =
+            lyapunov_residual.iter().map(|value| value.norm()).fold(0.0_f64, f64::max);
+        assert!(lyapunov_max < 1e-8);
+
+        let lyapunov_viewed = solve_lyapunov_complex_view(&a.view(), &q.view()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((lyapunov[[i, j]] - lyapunov_viewed[[i, j]]).norm() < 1e-10);
+            }
+        }
+
+        let mut lyapunov_into = Array2::<Complex64>::zeros((2, 2));
+        solve_lyapunov_complex_into(&a, &q, &mut lyapunov_into).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((lyapunov[[i, j]] - lyapunov_into[[i, j]]).norm() < 1e-10);
+            }
+        }
+    }
+
+    #[cfg(not(feature = "openblas-system"))]
+    #[test]
+    fn complex_sylvester_without_provider_errors() {
+        let a = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
+        let b = Array2::from_shape_vec((1, 1), vec![Complex64::new(2.0, 0.0)]).unwrap();
+        let c = Array2::from_shape_vec((1, 1), vec![Complex64::new(3.0, 0.0)]).unwrap();
+        let q = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
+
+        assert!(matches!(
+            solve_sylvester_complex(&a, &b, &c),
+            Err(SylvesterError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            solve_sylvester_complex_view(&a.view(), &b.view(), &c.view()),
+            Err(SylvesterError::InvalidInput(_))
+        ));
+
+        let mut output = Array2::<Complex64>::zeros((1, 1));
+        assert!(matches!(
+            solve_sylvester_complex_into(&a, &b, &c, &mut output),
+            Err(SylvesterError::InvalidInput(_))
+        ));
+
+        let mut workspace = SylvesterComplexWorkspace::default();
+        assert!(matches!(
+            solve_sylvester_complex_with_workspace_into(&a, &b, &c, &mut output, &mut workspace),
+            Err(SylvesterError::InvalidInput(_))
+        ));
+
+        assert!(matches!(solve_lyapunov_complex(&a, &q), Err(SylvesterError::InvalidInput(_))));
+        assert!(matches!(
+            solve_lyapunov_complex_view(&a.view(), &q.view()),
+            Err(SylvesterError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            solve_lyapunov_complex_into(&a, &q, &mut output),
+            Err(SylvesterError::InvalidInput(_))
+        ));
     }
 }

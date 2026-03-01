@@ -26,10 +26,13 @@ pub use matrix_functions::{MatrixFunctionError, MatrixFunctionWorkspace};
 pub use orthogonalization::OrthogonalizationError;
 pub use polar::{NdarrayComplexPolarResult, NdarrayPolarResult, PolarError};
 pub use qr::{QRConfig, QRError, QRResult};
-pub use schur::{NdarraySchurResult, SchurError, SchurWorkspace};
+pub use schur::{
+    NdarrayComplexSchurResult, NdarraySchurResult, SchurComplexWorkspace, SchurError,
+    SchurWorkspace,
+};
 pub use sparse::{CooMatrix, CsrMatrix, SparseError};
 pub use svd::{NdarrayComplexSVD, NdarraySVD, PseudoInverseConfig, SVDError};
-pub use sylvester::{SylvesterError, SylvesterWorkspace};
+pub use sylvester::{SylvesterComplexWorkspace, SylvesterError, SylvesterWorkspace};
 pub use triangular::TriangularError;
 pub use vector::{PairwiseCosineWorkspace, VectorError};
 
@@ -162,6 +165,7 @@ impl IntoNabledError for SylvesterError {
             SylvesterError::NotSquare => NabledError::Shape(ShapeError::NotSquare),
             SylvesterError::DimensionMismatch => NabledError::Shape(ShapeError::DimensionMismatch),
             SylvesterError::SingularSystem => NabledError::SingularMatrix,
+            SylvesterError::InvalidInput(message) => NabledError::InvalidInput(message),
         }
     }
 }
@@ -433,6 +437,10 @@ mod tests {
         assert!(matches!(
             SylvesterError::DimensionMismatch.into_nabled_error(),
             NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            SylvesterError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
         ));
 
         assert!(matches!(
