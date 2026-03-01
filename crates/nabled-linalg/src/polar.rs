@@ -6,7 +6,7 @@ use ndarray::{Array2, ArrayView2};
 use num_complex::Complex64;
 
 #[cfg(not(feature = "openblas-system"))]
-use crate::internal::DEFAULT_TOLERANCE;
+use crate::internal::DenseKernelPolicy;
 use crate::internal::{validate_finite, validate_square_non_empty};
 #[cfg(not(feature = "openblas-system"))]
 use crate::lu;
@@ -96,8 +96,8 @@ fn compute_polar_complex_internal(
     matrix: &Array2<Complex64>,
 ) -> Result<NdarrayComplexPolarResult, PolarError> {
     let mut unitary = matrix.clone();
-    let max_iterations = 64;
-    let tolerance = DEFAULT_TOLERANCE.sqrt();
+    let max_iterations = DenseKernelPolicy::POLAR_MAX_ITERATIONS;
+    let tolerance = DenseKernelPolicy::polar_convergence_tolerance();
     let half = Complex64::new(0.5, 0.0);
     let one = Complex64::new(1.0, 0.0);
 

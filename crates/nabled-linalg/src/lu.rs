@@ -6,7 +6,7 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{
-    DEFAULT_TOLERANCE, lu_decompose, validate_finite, validate_square_non_empty,
+    DenseKernelPolicy, lu_decompose, validate_finite, validate_square_non_empty,
 };
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::{inverse_from_lu, lu_solve};
@@ -109,7 +109,7 @@ fn decompose_complex_internal(matrix: &Array2<Complex64>) -> Result<ComplexLUFac
                 pivot_row = i;
             }
         }
-        if pivot_norm <= DEFAULT_TOLERANCE {
+        if pivot_norm <= DenseKernelPolicy::BASE_TOLERANCE {
             return Err(LUError::SingularMatrix);
         }
 
@@ -178,7 +178,7 @@ fn solve_complex_from_factors(
             sum -= u[[i, j]] * x[j];
         }
         let diagonal = u[[i, i]];
-        if diagonal.norm() <= DEFAULT_TOLERANCE {
+        if diagonal.norm() <= DenseKernelPolicy::BASE_TOLERANCE {
             return Err(LUError::SingularMatrix);
         }
         x[i] = sum / diagonal;
@@ -496,7 +496,7 @@ pub fn determinant_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Result<Co
 /// Returns an error if matrix is singular.
 pub fn log_determinant(matrix: &Array2<f64>) -> Result<LogDetResult<f64>, LUError> {
     let determinant = determinant(matrix)?;
-    if determinant.abs() <= DEFAULT_TOLERANCE {
+    if determinant.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
         return Err(LUError::SingularMatrix);
     }
     let sign = if determinant.is_sign_positive() { 1 } else { -1 };

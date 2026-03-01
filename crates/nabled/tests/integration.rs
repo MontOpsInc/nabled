@@ -4,10 +4,15 @@ use approx::assert_relative_eq;
 use nabled::svd::{self as svd, SVDError};
 use nabled::vector::{self as vector, PairwiseCosineWorkspace};
 use nabled::{
-    IterativeConfig, iterative, matrix_functions, orthogonalization, pca, regression, stats,
-    sylvester, triangular,
+    IntoNabledError, IterativeConfig, NabledError, cholesky, iterative, lu, matrix_functions,
+    orthogonalization, pca, polar, regression, schur, stats, sylvester, triangular,
 };
 use ndarray::{Array1, Array2};
+use num_complex::Complex64;
+
+fn conjugate_transpose(matrix: &Array2<Complex64>) -> Array2<Complex64> {
+    matrix.t().mapv(|value| value.conj())
+}
 
 #[test]
 fn test_svd_identity_matrix() {
@@ -143,4 +148,143 @@ fn test_vector_primitives_and_workspace_paths() {
     let mut l2 = Array2::<f64>::zeros((left.nrows(), right.nrows()));
     vector::pairwise_l2_distance_into(&left, &right, &mut l2).unwrap();
     assert_relative_eq!(l2[[0, 0]], 0.0, epsilon = 1e-10);
+}
+
+#[test]
+fn test_complex_dense_parity_pipeline() {
+    let hpd = Array2::from_shape_vec((2, 2), vec![
+        Complex64::new(5.0, 0.0),
+        Complex64::new(1.0, -1.0),
+        Complex64::new(1.0, 1.0),
+        Complex64::new(4.0, 0.0),
+    ])
+    .unwrap();
+    let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
+
+    let chol = cholesky::decompose_complex(&hpd).unwrap();
+    let chol_view = cholesky::decompose_complex_view(&hpd.view()).unwrap();
+    assert_eq!(chol.l.dim(), chol_view.l.dim());
+
+    let chol_solution = cholesky::solve_complex(&hpd, &rhs).unwrap();
+    let chol_solution_view = cholesky::solve_complex_view(&hpd.view(), &rhs.view()).unwrap();
+    for i in 0..rhs.len() {
+        assert!((chol_solution[i] - chol_solution_view[i]).norm() < 1e-10);
+    }
+
+    let lu_solution = lu::solve_complex(&hpd, &rhs).unwrap();
+    let lu_solution_view = lu::solve_complex_view(&hpd.view(), &rhs.view()).unwrap();
+    for i in 0..rhs.len() {
+        assert!((lu_solution[i] - lu_solution_view[i]).norm() < 1e-10);
+    }
+
+    let svd_decomp = svd::decompose_complex(&hpd).unwrap();
+    let reconstructed = svd::reconstruct_matrix_complex(&svd_decomp);
+    for i in 0..2 {
+        for j in 0..2 {
+            assert!((reconstructed[[i, j]] - hpd[[i, j]]).norm() < 1e-8);
+        }
+    }
+
+    let log_h = matrix_functions::matrix_log_eigen_complex(&hpd).unwrap();
+    let roundtrip_h = matrix_functions::matrix_exp_eigen_complex(&log_h).unwrap();
+    for i in 0..2 {
+        for j in 0..2 {
+            assert!((roundtrip_h[[i, j]] - hpd[[i, j]]).norm() < 1e-6);
+        }
+    }
+
+    let signed_h = Array2::from_shape_vec((2, 2), vec![
+        Complex64::new(-4.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(9.0, 0.0),
+    ])
+    .unwrap();
+    let sign_h = matrix_functions::matrix_sign_complex(&signed_h).unwrap();
+    assert!((sign_h[[0, 0]] - Complex64::new(-1.0, 0.0)).norm() < 1e-10);
+    assert!((sign_h[[1, 1]] - Complex64::new(1.0, 0.0)).norm() < 1e-10);
+
+    let polar_result = polar::compute_polar_complex(&hpd).unwrap();
+    let polar_reconstructed = polar_result.u.dot(&polar_result.p);
+    for i in 0..2 {
+        for j in 0..2 {
+            assert!((polar_reconstructed[[i, j]] - hpd[[i, j]]).norm() < 1e-6);
+        }
+    }
+
+    let schur_result = schur::compute_schur_complex(&hpd).unwrap();
+    let schur_reconstructed =
+        schur_result.q.dot(&schur_result.t).dot(&conjugate_transpose(&schur_result.q));
+    for i in 0..2 {
+        for j in 0..2 {
+            assert!((schur_reconstructed[[i, j]] - hpd[[i, j]]).norm() < 1e-6);
+        }
+    }
+
+    let a = Array2::from_shape_vec((2, 2), vec![
+        Complex64::new(2.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(3.0, 0.0),
+    ])
+    .unwrap();
+    let b = Array2::from_shape_vec((2, 2), vec![
+        Complex64::new(4.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(5.0, 0.0),
+    ])
+    .unwrap();
+    let c = Array2::from_shape_vec((2, 2), vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(3.0, 0.0),
+        Complex64::new(4.0, 0.0),
+    ])
+    .unwrap();
+    let x = sylvester::solve_sylvester_complex(&a, &b, &c).unwrap();
+    let residual = a.dot(&x) + x.dot(&b) - c;
+    for value in &residual {
+        assert!(value.norm() < 1e-8);
+    }
+}
+
+#[test]
+fn test_complex_error_mapping_paths() {
+    let non_hermitian = Array2::from_shape_vec((2, 2), vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(3.0, 0.0),
+        Complex64::new(4.0, 0.0),
+    ])
+    .unwrap();
+    let matrix_error = matrix_functions::matrix_log_eigen_complex(&non_hermitian)
+        .expect_err("non-Hermitian input should error")
+        .into_nabled_error();
+    assert!(matches!(matrix_error, NabledError::NotSymmetric));
+
+    let non_hpd = Array2::from_shape_vec((2, 2), vec![
+        Complex64::new(-1.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(2.0, 0.0),
+    ])
+    .unwrap();
+    let cholesky_error = cholesky::decompose_complex(&non_hpd)
+        .expect_err("indefinite Hermitian input should error")
+        .into_nabled_error();
+    assert!(matches!(cholesky_error, NabledError::NotPositiveDefinite));
+
+    let singular = Array2::from_shape_vec((2, 2), vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(4.0, 0.0),
+    ])
+    .unwrap();
+    let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(2.0, 0.0)]);
+    let lu_error = lu::solve_complex(&singular, &rhs)
+        .expect_err("singular solve should error")
+        .into_nabled_error();
+    assert!(matches!(lu_error, NabledError::SingularMatrix));
 }

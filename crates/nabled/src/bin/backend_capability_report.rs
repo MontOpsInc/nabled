@@ -199,9 +199,9 @@ fn tier_b_domains() -> Vec<DomainCapability> {
             domain:           "matrix_functions",
             baseline_kernels: true,
             provider_path:    ProviderPath::Native,
-            notes:            "crates/nabled-linalg/src/matrix_functions.rs (provider-backed \
-                               paths for eigen/SVD operations; Taylor paths remain baseline by \
-                               design)",
+            notes:            "crates/nabled-linalg/src/matrix_functions.rs (complex and real \
+                               paths are available in internal and provider-enabled builds; \
+                               Taylor paths remain baseline by design)",
         },
     ]
 }

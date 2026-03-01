@@ -18,7 +18,7 @@ Workspace migration for library domains is complete.
 10. Sparse baseline is now present (`CSR`, sparse matvec, Jacobi sparse solve).
 11. Sparse baseline expanded with `COO` + COO→CSR conversion and Gauss-Seidel solve.
 12. New benchmark suites now cover `sparse`, `schur`, `sylvester`, `optimization`, `polar`, and `orthogonalization`.
-13. Complex decomposition parity started (`QR` complex path and provider-backed complex SVD).
+13. Complex decomposition parity started (`QR` complex path and complex SVD).
 14. Shared cross-domain taxonomy exists via `nabled-core::errors::NabledError`.
 15. Complex-number vector parity is now present (Hermitian dot, complex norm/cosine).
 16. First-order optimization primitives are now present (line search, gradient descent, Adam).
@@ -29,6 +29,8 @@ Workspace migration for library domains is complete.
 21. Benchmark competitor baselines now exist for vector, sparse, optimization, schur, and sylvester suites.
 22. Targeted per-file coverage lift for `eigen`, `lu`, `orthogonalization`, and `polar` is complete.
 23. Allocation behavior for allocating view/convenience APIs is now explicitly documented in rustdoc.
+24. Complex parity validation matrix is now integration-anchored at facade level (parity + error mapping tests) and benchmark-visible in complex `svd`, `matrix_functions`, and `polar` smoke suites.
+25. Dense numerical policy is now centralized (`internal::DenseKernelPolicy`) and applied consistently across dense kernel tolerance/iteration defaults.
 
 ## Current Code Ownership
 
@@ -64,12 +66,9 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Finish complex-parity hardening and validation depth now that provider-only complex behavior has been removed from current dense domains.
-   Tracking split: `N-024A` provider-backed expansion (complete), `N-024B` internal/no-provider expansion (complete), `N-024C` parity validation matrix.
-2. Define and apply a shared tolerance/config policy across dense kernels.
-3. Remove avoidable copies in selected convenience/view APIs where feasible.
-4. Expand sparse formats/solvers beyond current CSR/COO + Jacobi/Gauss-Seidel baseline.
-5. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
+1. Remove avoidable copies in selected convenience/view APIs where feasible.
+2. Expand sparse formats/solvers beyond current CSR/COO + Jacobi/Gauss-Seidel baseline.
+3. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration
 

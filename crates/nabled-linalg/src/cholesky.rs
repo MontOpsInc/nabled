@@ -6,7 +6,7 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
 #[cfg(not(feature = "openblas-system"))]
-use crate::internal::DEFAULT_TOLERANCE;
+use crate::internal::DenseKernelPolicy;
 use crate::internal::{validate_finite, validate_square_non_empty};
 
 /// Result of Cholesky decomposition.
@@ -94,13 +94,15 @@ fn decompose_complex_internal(
             }
 
             if i == j {
-                if sum.im.abs() > DEFAULT_TOLERANCE || sum.re <= DEFAULT_TOLERANCE {
+                if sum.im.abs() > DenseKernelPolicy::BASE_TOLERANCE
+                    || sum.re <= DenseKernelPolicy::BASE_TOLERANCE
+                {
                     return Err(CholeskyError::NotPositiveDefinite);
                 }
                 l[[i, j]] = Complex64::new(sum.re.sqrt(), 0.0);
             } else {
                 let diagonal = l[[j, j]];
-                if diagonal.norm() <= DEFAULT_TOLERANCE {
+                if diagonal.norm() <= DenseKernelPolicy::BASE_TOLERANCE {
                     return Err(CholeskyError::NotPositiveDefinite);
                 }
                 l[[i, j]] = sum / diagonal;
@@ -127,13 +129,13 @@ fn decompose_internal(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError
             }
 
             if i == j {
-                if sum <= DEFAULT_TOLERANCE {
+                if sum <= DenseKernelPolicy::BASE_TOLERANCE {
                     return Err(CholeskyError::NotPositiveDefinite);
                 }
                 l[[i, j]] = sum.sqrt();
             } else {
                 let diagonal = l[[j, j]];
-                if diagonal.abs() <= DEFAULT_TOLERANCE {
+                if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
                     return Err(CholeskyError::NotPositiveDefinite);
                 }
                 l[[i, j]] = sum / diagonal;
@@ -228,7 +230,7 @@ fn solve_complex_from_factor(
             sum -= lower_factor[[i, j]] * y[j];
         }
         let diagonal = lower_factor[[i, i]];
-        if diagonal.norm() <= DEFAULT_TOLERANCE {
+        if diagonal.norm() <= DenseKernelPolicy::BASE_TOLERANCE {
             return Err(CholeskyError::NotPositiveDefinite);
         }
         y[i] = sum / diagonal;
@@ -242,7 +244,7 @@ fn solve_complex_from_factor(
             sum -= lower_factor[[j, i]].conj() * x[j];
         }
         let diagonal = lower_factor[[i, i]].conj();
-        if diagonal.norm() <= DEFAULT_TOLERANCE {
+        if diagonal.norm() <= DenseKernelPolicy::BASE_TOLERANCE {
             return Err(CholeskyError::NotPositiveDefinite);
         }
         x[i] = sum / diagonal;

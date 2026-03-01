@@ -6,7 +6,7 @@ use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{
-    DEFAULT_TOLERANCE, identity, is_symmetric, usize_to_f64, validate_finite,
+    DenseKernelPolicy, identity, is_symmetric, usize_to_f64, validate_finite,
     validate_square_non_empty,
 };
 #[cfg(not(feature = "openblas-system"))]
@@ -130,7 +130,7 @@ fn taylor_matrix_exp(
         term = term.dot(matrix) / usize_to_f64(k);
         result = &result + &term;
         let delta = term.iter().map(|value| value.abs()).fold(0.0_f64, f64::max);
-        if delta <= tolerance.max(DEFAULT_TOLERANCE) {
+        if delta <= DenseKernelPolicy::taylor_tolerance(tolerance) {
             return Ok(result);
         }
     }
@@ -156,7 +156,7 @@ fn taylor_matrix_exp_complex(
         term = term.dot(matrix) / usize_to_f64(k);
         result = &result + &term;
         let delta = term.iter().map(|value| value.norm()).fold(0.0_f64, f64::max);
-        if delta <= tolerance.max(DEFAULT_TOLERANCE) {
+        if delta <= DenseKernelPolicy::taylor_tolerance(tolerance) {
             return Ok(result);
         }
     }
@@ -220,7 +220,7 @@ fn hermitian_eigen_internal(
         schur::compute_schur_complex(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     let n = matrix.nrows();
     let mut eigenvalues = Array1::<f64>::zeros(n);
-    let imag_tolerance = DEFAULT_TOLERANCE.sqrt();
+    let imag_tolerance = DenseKernelPolicy::polar_convergence_tolerance();
 
     for i in 0..n {
         let lambda = decomposition.t[[i, i]];
@@ -376,8 +376,12 @@ pub fn matrix_exp_complex_with_workspace_into(
 /// Returns an error for invalid input.
 pub fn matrix_exp_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
-    if !is_symmetric(matrix, DEFAULT_TOLERANCE) {
-        return matrix_exp(matrix, 128, 1e-12);
+    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
+        return matrix_exp(
+            matrix,
+            DenseKernelPolicy::MATRIX_FUNCTION_SERIES_TERMS,
+            DenseKernelPolicy::BASE_TOLERANCE,
+        );
     }
 
     let eigen = eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
@@ -412,8 +416,12 @@ pub fn matrix_exp_eigen_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
-    if !is_hermitian(matrix, DEFAULT_TOLERANCE) {
-        return matrix_exp_complex(matrix, 128, 1e-12);
+    if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
+        return matrix_exp_complex(
+            matrix,
+            DenseKernelPolicy::MATRIX_FUNCTION_SERIES_TERMS,
+            DenseKernelPolicy::BASE_TOLERANCE,
+        );
     }
 
     let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
@@ -462,7 +470,7 @@ pub fn matrix_log_taylor(
         term = term.dot(&x);
 
         let delta = term.iter().map(|value| value.abs()).fold(0.0_f64, f64::max);
-        if delta <= tolerance.max(DEFAULT_TOLERANCE) {
+        if delta <= DenseKernelPolicy::taylor_tolerance(tolerance) {
             break;
         }
     }
@@ -525,12 +533,12 @@ pub fn matrix_log_taylor_with_workspace_into(
 /// Returns an error if eigenvalues are non-positive.
 pub fn matrix_log_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
-    if !is_symmetric(matrix, DEFAULT_TOLERANCE) {
+    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
     let eigen = eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    if eigen.eigenvalues.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
+    if eigen.eigenvalues.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
 
@@ -590,12 +598,12 @@ pub fn matrix_log_eigen_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
-    if !is_hermitian(matrix, DEFAULT_TOLERANCE) {
+    if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
     let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
-    if eigenvalues.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
+    if eigenvalues.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
     let log_values = eigenvalues.map(|value| value.ln());
@@ -656,7 +664,7 @@ pub fn matrix_log_eigen_complex_with_workspace_into(
 pub fn matrix_log_svd(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
     let svd = svd::decompose(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    if svd.singular_values.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
+    if svd.singular_values.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
 
@@ -678,7 +686,7 @@ pub fn matrix_log_svd_complex(
         svd::SVDError::ConvergenceFailed => MatrixFunctionError::ConvergenceFailed,
         svd::SVDError::InvalidInput(message) => MatrixFunctionError::InvalidInput(message),
     })?;
-    if svd.singular_values.iter().any(|value| *value <= DEFAULT_TOLERANCE) {
+    if svd.singular_values.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
 
@@ -780,7 +788,7 @@ pub fn matrix_log_svd_complex_with_workspace_into(
 /// Returns an error for non-symmetric inputs.
 pub fn matrix_power(matrix: &Array2<f64>, power: f64) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
-    if !is_symmetric(matrix, DEFAULT_TOLERANCE) {
+    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
@@ -845,7 +853,7 @@ pub fn matrix_power_complex(
     power: f64,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
-    if !is_hermitian(matrix, DEFAULT_TOLERANCE) {
+    if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
@@ -910,15 +918,15 @@ pub fn matrix_power_complex_with_workspace_into(
 /// Returns an error for non-symmetric inputs.
 pub fn matrix_sign(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
     validate_square(matrix)?;
-    if !is_symmetric(matrix, DEFAULT_TOLERANCE) {
+    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
     let eigen = eigen::symmetric(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     let sign_values = eigen.eigenvalues.map(|value| {
-        if *value > DEFAULT_TOLERANCE {
+        if *value > DenseKernelPolicy::BASE_TOLERANCE {
             1.0
-        } else if *value < -DEFAULT_TOLERANCE {
+        } else if *value < -DenseKernelPolicy::BASE_TOLERANCE {
             -1.0
         } else {
             0.0
@@ -977,15 +985,15 @@ pub fn matrix_sign_complex(
     matrix: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
     validate_square_complex(matrix)?;
-    if !is_hermitian(matrix, DEFAULT_TOLERANCE) {
+    if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
     let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
     let sign_values = eigenvalues.map(|value| {
-        if *value > DEFAULT_TOLERANCE {
+        if *value > DenseKernelPolicy::BASE_TOLERANCE {
             1.0
-        } else if *value < -DEFAULT_TOLERANCE {
+        } else if *value < -DenseKernelPolicy::BASE_TOLERANCE {
             -1.0
         } else {
             0.0

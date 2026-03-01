@@ -8,7 +8,7 @@ use crate::cholesky;
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::jacobi_eigen_symmetric;
 use crate::internal::{
-    DEFAULT_TOLERANCE, is_symmetric, sort_eigenpairs_desc, validate_finite,
+    DenseKernelPolicy, is_symmetric, sort_eigenpairs_desc, validate_finite,
     validate_square_non_empty,
 };
 
@@ -77,7 +77,7 @@ fn map_validation_error(error: &'static str) -> EigenError {
 fn validate_symmetric_input(matrix: &Array2<f64>) -> Result<(), EigenError> {
     validate_square_non_empty(matrix).map_err(map_validation_error)?;
     validate_finite(matrix).map_err(map_validation_error)?;
-    if !is_symmetric(matrix, DEFAULT_TOLERANCE) {
+    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(EigenError::NotSymmetric);
     }
     Ok(())
@@ -86,8 +86,12 @@ fn validate_symmetric_input(matrix: &Array2<f64>) -> Result<(), EigenError> {
 #[cfg(not(feature = "openblas-system"))]
 fn symmetric_internal(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError> {
     validate_symmetric_input(matrix)?;
-    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(matrix, DEFAULT_TOLERANCE, 256)
-        .map_err(|_| EigenError::ConvergenceFailed)?;
+    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
+        matrix,
+        DenseKernelPolicy::BASE_TOLERANCE,
+        DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
+    )
+    .map_err(|_| EigenError::ConvergenceFailed)?;
     let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
     Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
 }
@@ -124,8 +128,12 @@ fn generalized_internal(
     let c = b_inverse.dot(matrix_a);
     let symmetric_c = (&c + &c.t()) * 0.5;
 
-    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(&symmetric_c, DEFAULT_TOLERANCE, 256)
-        .map_err(|_| EigenError::ConvergenceFailed)?;
+    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
+        &symmetric_c,
+        DenseKernelPolicy::BASE_TOLERANCE,
+        DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
+    )
+    .map_err(|_| EigenError::ConvergenceFailed)?;
     let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
 
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })

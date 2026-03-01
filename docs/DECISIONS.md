@@ -15,7 +15,8 @@
 11. Decomposition-style APIs use concise domain naming (for example, `svd::decompose`).
 12. Performance-critical kernels expose explicit allocation-control APIs (`*_into`) and optional reusable workspace types.
 13. View/convenience APIs must not hide heap allocations without explicit rustdoc disclosure.
-14. Delivery strategy is domain-first vertical slices: each domain is finalized with API, tests, benchmarks, and docs before expanding horizontally.
+14. Dense-kernel tolerance and iteration defaults are centralized in one shared policy (`nabled-linalg::internal::DenseKernelPolicy`).
+15. Delivery strategy is domain-first vertical slices: each domain is finalized with API, tests, benchmarks, and docs before expanding horizontally.
 
 ## API Purity Model
 

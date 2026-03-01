@@ -5,6 +5,44 @@ use ndarray::{Array1, Array2};
 pub(crate) const DEFAULT_TOLERANCE: f64 = 1.0e-12;
 pub(crate) type LuDecomposition = (Array2<f64>, Array2<f64>, Vec<usize>, i8);
 
+/// Shared tolerance/iteration policy for dense ndarray kernels.
+pub(crate) struct DenseKernelPolicy;
+
+impl DenseKernelPolicy {
+    pub(crate) const BASE_TOLERANCE: f64 = DEFAULT_TOLERANCE;
+    pub(crate) const JACOBI_MAX_ITERATIONS: usize = 256;
+    pub(crate) const MATRIX_FUNCTION_SERIES_TERMS: usize = 128;
+    #[cfg(not(feature = "openblas-system"))]
+    pub(crate) const POLAR_MAX_ITERATIONS: usize = 64;
+    pub(crate) const QR_MAX_ITERATIONS: usize = 100;
+    pub(crate) const SCHUR_MIN_ITERATIONS: usize = 128;
+
+    #[must_use]
+    pub(crate) fn rank_tolerance(requested: f64) -> f64 { requested.max(Self::BASE_TOLERANCE) }
+
+    #[must_use]
+    pub(crate) fn taylor_tolerance(requested: f64) -> f64 { requested.max(Self::BASE_TOLERANCE) }
+
+    #[must_use]
+    pub(crate) fn schur_iterations(requested: usize) -> usize {
+        requested.max(Self::SCHUR_MIN_ITERATIONS)
+    }
+
+    #[cfg(not(feature = "openblas-system"))]
+    #[must_use]
+    pub(crate) fn polar_convergence_tolerance() -> f64 { Self::BASE_TOLERANCE.sqrt() }
+
+    #[must_use]
+    pub(crate) fn svd_relative_tolerance(max_sv: f64, dimension: usize) -> f64 {
+        max_sv * usize_to_f64(dimension) * f64::EPSILON.max(Self::BASE_TOLERANCE)
+    }
+
+    #[must_use]
+    pub(crate) fn rank_estimation_tolerance(max_sv: f64, dimension: usize) -> f64 {
+        max_sv * usize_to_f64(dimension) * f64::EPSILON
+    }
+}
+
 #[must_use]
 pub(crate) fn usize_to_f64(value: usize) -> f64 {
     u32::try_from(value).map_or(f64::from(u32::MAX), f64::from)

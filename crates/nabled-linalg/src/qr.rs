@@ -7,7 +7,7 @@ use num_complex::Complex64;
 
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::qr_gram_schmidt;
-use crate::internal::{DEFAULT_TOLERANCE, identity, validate_finite};
+use crate::internal::{DenseKernelPolicy, identity, validate_finite};
 
 /// Error types for QR decomposition.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,7 +54,11 @@ pub struct QRConfig<T = f64> {
 
 impl Default for QRConfig<f64> {
     fn default() -> Self {
-        Self { rank_tolerance: 1e-12, max_iterations: 100, use_pivoting: false }
+        Self {
+            rank_tolerance: DenseKernelPolicy::BASE_TOLERANCE,
+            max_iterations: DenseKernelPolicy::QR_MAX_ITERATIONS,
+            use_pivoting:   false,
+        }
     }
 }
 
@@ -103,7 +107,8 @@ fn decompose_internal(
 ) -> Result<QRResult<f64>, QRError> {
     validate_qr_input(matrix)?;
 
-    let (q, r, rank) = qr_gram_schmidt(matrix, config.rank_tolerance.max(DEFAULT_TOLERANCE));
+    let (q, r, rank) =
+        qr_gram_schmidt(matrix, DenseKernelPolicy::rank_tolerance(config.rank_tolerance));
     let p = config.use_pivoting.then(|| identity(matrix.ncols()));
     Ok(QRResult { q, r, p, rank })
 }
@@ -121,7 +126,9 @@ fn decompose_provider(
 
     let diagonal = r.nrows().min(r.ncols());
     let rank = (0..diagonal)
-        .filter(|&index| r[[index, index]].abs() > config.rank_tolerance.max(DEFAULT_TOLERANCE))
+        .filter(|&index| {
+            r[[index, index]].abs() > DenseKernelPolicy::rank_tolerance(config.rank_tolerance)
+        })
         .count();
 
     Ok(QRResult { q, r, p, rank })
@@ -154,7 +161,7 @@ fn decompose_complex_internal(
     let mut q = Array2::<Complex64>::zeros((rows, cols));
     let mut r = Array2::<Complex64>::zeros((cols, cols));
     let mut rank = 0_usize;
-    let tolerance = config.rank_tolerance.max(DEFAULT_TOLERANCE);
+    let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
 
     for j in 0..cols {
         let mut v = matrix.column(j).to_owned();
@@ -194,7 +201,9 @@ fn decompose_complex_provider(
     let (q, r) = matrix.qr().map_err(|_| QRError::ConvergenceFailed)?;
     let diagonal = r.nrows().min(r.ncols());
     let rank = (0..diagonal)
-        .filter(|&index| r[[index, index]].norm() > config.rank_tolerance.max(DEFAULT_TOLERANCE))
+        .filter(|&index| {
+            r[[index, index]].norm() > DenseKernelPolicy::rank_tolerance(config.rank_tolerance)
+        })
         .count();
     let p = config.use_pivoting.then(|| complex_identity(matrix.ncols()));
     Ok(QRResult { q, r, p, rank })
@@ -346,7 +355,7 @@ pub fn solve_least_squares(
                 sum -= qr.r[[i, j]] * x[j];
             }
             let diagonal = qr.r[[i, i]];
-            if diagonal.abs() <= config.rank_tolerance.max(DEFAULT_TOLERANCE) {
+            if diagonal.abs() <= DenseKernelPolicy::rank_tolerance(config.rank_tolerance) {
                 return Err(QRError::SingularMatrix);
             }
             x[i] = sum / diagonal;
@@ -424,7 +433,7 @@ pub fn condition_number(qr: &QRResult<f64>) -> f64 {
     for i in 0..n {
         let value = qr.r[[i, i]].abs();
         max_diagonal = max_diagonal.max(value);
-        if value > DEFAULT_TOLERANCE {
+        if value > DenseKernelPolicy::BASE_TOLERANCE {
             min_diagonal = min_diagonal.min(value);
         }
     }

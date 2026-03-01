@@ -3,6 +3,7 @@ use std::hint::black_box;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use nabled::matrix_functions;
 use ndarray::Array2;
+use num_complex::Complex64;
 use rand::RngExt;
 
 fn generate_spd_matrix(size: usize) -> Array2<f64> {
@@ -14,6 +15,10 @@ fn generate_spd_matrix(size: usize) -> Array2<f64> {
         spd[[i, i]] += 1.0;
     }
     spd
+}
+
+fn real_to_complex_hermitian(matrix: &Array2<f64>) -> Array2<Complex64> {
+    matrix.mapv(|value| Complex64::new(value, 0.0))
 }
 
 fn benchmark_ndarray_matrix_functions(c: &mut Criterion) {
@@ -34,6 +39,32 @@ fn benchmark_ndarray_matrix_functions(c: &mut Criterion) {
         _ = group.bench_with_input(BenchmarkId::new("matrix_power_half", size), &size, |b, _| {
             b.iter(|| matrix_functions::matrix_power(black_box(&matrix), black_box(0.5)));
         });
+    }
+
+    for size in [8_usize, 16] {
+        let matrix = generate_spd_matrix(size);
+        let complex_matrix = real_to_complex_hermitian(&matrix);
+
+        _ = group.bench_with_input(
+            BenchmarkId::new("matrix_log_eigen_complex", size),
+            &size,
+            |b, _| {
+                b.iter(|| matrix_functions::matrix_log_eigen_complex(black_box(&complex_matrix)));
+            },
+        );
+
+        _ = group.bench_with_input(
+            BenchmarkId::new("matrix_power_half_complex", size),
+            &size,
+            |b, _| {
+                b.iter(|| {
+                    matrix_functions::matrix_power_complex(
+                        black_box(&complex_matrix),
+                        black_box(0.5),
+                    )
+                });
+            },
+        );
     }
 
     group.finish();

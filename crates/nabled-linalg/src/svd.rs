@@ -7,9 +7,7 @@ use std::fmt;
 use ndarray::{Array1, Array2, ArrayView2, s};
 use num_complex::Complex64;
 
-use crate::internal::{
-    DEFAULT_TOLERANCE, jacobi_eigen_symmetric, sort_eigenpairs_desc, usize_to_f64,
-};
+use crate::internal::{DenseKernelPolicy, jacobi_eigen_symmetric, sort_eigenpairs_desc};
 #[cfg(not(feature = "openblas-system"))]
 use crate::schur;
 
@@ -80,8 +78,12 @@ fn decompose_internal(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
     let k = rows.min(cols);
 
     let ata = matrix.t().dot(matrix);
-    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(&ata, DEFAULT_TOLERANCE, 256)
-        .map_err(|_| SVDError::ConvergenceFailed)?;
+    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
+        &ata,
+        DenseKernelPolicy::BASE_TOLERANCE,
+        DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
+    )
+    .map_err(|_| SVDError::ConvergenceFailed)?;
     let (sorted_values, sorted_vectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
 
     let mut singular_values = Array1::<f64>::zeros(k);
@@ -97,7 +99,7 @@ fn decompose_internal(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
     let mut u = Array2::<f64>::zeros((rows, k));
     for i in 0..k {
         let sigma = singular_values[i];
-        if sigma > DEFAULT_TOLERANCE {
+        if sigma > DenseKernelPolicy::BASE_TOLERANCE {
             let v_i = sorted_vectors.column(i).to_owned();
             let av = matrix.dot(&v_i);
             for row in 0..rows {
@@ -166,7 +168,7 @@ fn decompose_complex_internal(matrix: &Array2<Complex64>) -> Result<NdarrayCompl
             vt[[out, j]] = right_vector[j].conj();
         }
 
-        if sigma > DEFAULT_TOLERANCE {
+        if sigma > DenseKernelPolicy::BASE_TOLERANCE {
             let av = matrix.dot(&right_vector);
             let scale = 1.0_f64 / sigma;
             for i in 0..rows {
@@ -187,14 +189,18 @@ fn null_space_internal(
     }
 
     let ata = matrix.t().dot(matrix);
-    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(&ata, DEFAULT_TOLERANCE, 256)
-        .map_err(|_| SVDError::ConvergenceFailed)?;
+    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
+        &ata,
+        DenseKernelPolicy::BASE_TOLERANCE,
+        DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
+    )
+    .map_err(|_| SVDError::ConvergenceFailed)?;
     let (sorted_values, sorted_vectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
 
     let max_sv =
         sorted_values.iter().copied().map(|value| value.max(0.0).sqrt()).fold(0.0_f64, f64::max);
-    let tol = tolerance
-        .unwrap_or(max_sv * usize_to_f64(matrix.ncols()) * f64::EPSILON.max(DEFAULT_TOLERANCE));
+    let tol =
+        tolerance.unwrap_or(DenseKernelPolicy::svd_relative_tolerance(max_sv, matrix.ncols()));
 
     let mut null_indices = Vec::new();
     for (index, value) in sorted_values.iter().copied().enumerate() {
@@ -389,7 +395,7 @@ pub fn condition_number(svd: &NdarraySVD) -> f64 {
         .singular_values
         .iter()
         .copied()
-        .filter(|value| *value > DEFAULT_TOLERANCE)
+        .filter(|value| *value > DenseKernelPolicy::BASE_TOLERANCE)
         .fold(f64::INFINITY, f64::min);
 
     if min_sv.is_finite() { max_sv / min_sv } else { f64::INFINITY }
@@ -399,7 +405,8 @@ pub fn condition_number(svd: &NdarraySVD) -> f64 {
 #[must_use]
 pub fn rank(svd: &NdarraySVD, tolerance: Option<f64>) -> usize {
     let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
-    let tol = tolerance.unwrap_or(max_sv * usize_to_f64(svd.singular_values.len()) * f64::EPSILON);
+    let tol = tolerance
+        .unwrap_or(DenseKernelPolicy::rank_estimation_tolerance(max_sv, svd.singular_values.len()));
     svd.singular_values.iter().filter(|value| **value > tol).count()
 }
 
@@ -443,7 +450,7 @@ pub fn pseudo_inverse_into(
     let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
     let tolerance = config
         .tolerance
-        .unwrap_or(max_sv * usize_to_f64(rows.max(cols)) * f64::EPSILON.max(DEFAULT_TOLERANCE));
+        .unwrap_or(DenseKernelPolicy::svd_relative_tolerance(max_sv, rows.max(cols)));
 
     output.fill(0.0);
     let k = svd.singular_values.len();

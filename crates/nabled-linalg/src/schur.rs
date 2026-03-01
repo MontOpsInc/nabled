@@ -5,7 +5,7 @@ use std::fmt;
 use ndarray::{Array2, ArrayView2};
 use num_complex::Complex64;
 
-use crate::internal::{DEFAULT_TOLERANCE, identity, validate_finite, validate_square_non_empty};
+use crate::internal::{DenseKernelPolicy, identity, validate_finite, validate_square_non_empty};
 use crate::qr::{self as qr, QRConfig};
 
 /// Error type for Schur decomposition.
@@ -181,11 +181,11 @@ pub fn compute_schur(matrix: &Array2<f64>) -> Result<NdarraySchurResult, SchurEr
     let config = QRConfig::default();
 
     let mut converged = false;
-    for _ in 0..config.max_iterations.max(128) {
+    for _ in 0..DenseKernelPolicy::schur_iterations(config.max_iterations) {
         let qr = qr::decompose(&t, &config).map_err(|_| SchurError::ConvergenceFailed)?;
         t = qr.r.dot(&qr.q);
         q_total = q_total.dot(&qr.q);
-        if off_diagonal_norm(&t) < config.rank_tolerance.max(DEFAULT_TOLERANCE) {
+        if off_diagonal_norm(&t) < DenseKernelPolicy::rank_tolerance(config.rank_tolerance) {
             converged = true;
             break;
         }
@@ -212,11 +212,12 @@ pub fn compute_schur_complex(
     let config = QRConfig::default();
 
     let mut converged = false;
-    for _ in 0..config.max_iterations.max(128) {
+    for _ in 0..DenseKernelPolicy::schur_iterations(config.max_iterations) {
         let qr = qr::decompose_complex(&t, &config).map_err(|_| SchurError::ConvergenceFailed)?;
         t = qr.r.dot(&qr.q);
         q_total = q_total.dot(&qr.q);
-        if off_diagonal_norm_complex(&t) < config.rank_tolerance.max(DEFAULT_TOLERANCE) {
+        if off_diagonal_norm_complex(&t) < DenseKernelPolicy::rank_tolerance(config.rank_tolerance)
+        {
             converged = true;
             break;
         }
