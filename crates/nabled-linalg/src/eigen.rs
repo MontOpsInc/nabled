@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView2};
 
 use crate::cholesky::ndarray_cholesky;
 #[cfg(not(feature = "openblas-system"))]
@@ -175,6 +175,14 @@ pub mod ndarray_eigen {
         }
     }
 
+    /// Compute symmetric eigen decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for non-symmetric input or convergence failure.
+    pub fn symmetric_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
+        symmetric(&matrix.to_owned())
+    }
+
     /// Compute generalized symmetric eigen decomposition `(A, B)`.
     ///
     /// # Errors
@@ -191,6 +199,17 @@ pub mod ndarray_eigen {
         {
             generalized_internal(matrix_a, matrix_b)
         }
+    }
+
+    /// Compute generalized symmetric eigen decomposition `(A, B)` from matrix views.
+    ///
+    /// # Errors
+    /// Returns an error when dimensions are incompatible or `B` is not SPD.
+    pub fn generalized_view(
+        matrix_a: &ArrayView2<'_, f64>,
+        matrix_b: &ArrayView2<'_, f64>,
+    ) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
+        generalized(&matrix_a.to_owned(), &matrix_b.to_owned())
     }
 }
 
@@ -245,6 +264,22 @@ mod tests {
         let b = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, -1.0]).unwrap();
         let result = ndarray_eigen::generalized(&a, &b);
         assert!(matches!(result, Err(EigenError::NotPositiveDefinite)));
+    }
+
+    #[test]
+    fn view_variants_match_owned() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![5.0, 1.0, 1.0, 4.0]).unwrap();
+        let owned = ndarray_eigen::symmetric(&matrix).unwrap();
+        let viewed = ndarray_eigen::symmetric_view(&matrix.view()).unwrap();
+        assert_eq!(owned.eigenvalues.len(), viewed.eigenvalues.len());
+        assert_eq!(owned.eigenvectors.dim(), viewed.eigenvectors.dim());
+
+        let a = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 1.0]).unwrap();
+        let owned_generalized = ndarray_eigen::generalized(&a, &b).unwrap();
+        let viewed_generalized = ndarray_eigen::generalized_view(&a.view(), &b.view()).unwrap();
+        assert_eq!(owned_generalized.eigenvalues.len(), viewed_generalized.eigenvalues.len());
+        assert_eq!(owned_generalized.eigenvectors.dim(), viewed_generalized.eigenvectors.dim());
     }
 
     #[test]

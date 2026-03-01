@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::Array2;
+use ndarray::{Array2, ArrayView2};
 
 use crate::internal::{validate_finite, validate_square_non_empty};
 use crate::svd::ndarray_svd;
@@ -74,6 +74,16 @@ pub mod ndarray_polar {
 
         Ok(NdarrayPolarResult { u: orthogonal_factor, p: psd_factor })
     }
+
+    /// Compute polar decomposition using SVD from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if matrix is invalid or SVD fails.
+    pub fn compute_polar_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<NdarrayPolarResult, PolarError> {
+        compute_polar(&matrix.to_owned())
+    }
 }
 
 #[cfg(test)]
@@ -99,5 +109,18 @@ mod tests {
         let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
         let result = ndarray_polar::compute_polar(&matrix);
         assert!(matches!(result, Err(super::PolarError::NotSquare)));
+    }
+
+    #[test]
+    fn polar_view_matches_owned() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 1.0, 2.0]).unwrap();
+        let owned = ndarray_polar::compute_polar(&matrix).unwrap();
+        let viewed = ndarray_polar::compute_polar_view(&matrix.view()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((owned.u[[i, j]] - viewed.u[[i, j]]).abs() < 1e-12);
+                assert!((owned.p[[i, j]] - viewed.p[[i, j]]).abs() < 1e-12);
+            }
+        }
     }
 }

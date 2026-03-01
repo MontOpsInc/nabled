@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::Array2;
+use ndarray::{Array2, ArrayView2};
 
 use crate::internal::{DEFAULT_TOLERANCE, identity, validate_finite, validate_square_non_empty};
 use crate::qr::{QRConfig, ndarray_qr};
@@ -129,6 +129,16 @@ pub mod ndarray_schur {
         Ok(NdarraySchurResult { q: q_total, t })
     }
 
+    /// Compute Schur decomposition `A = Q T Q^T` from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for invalid input or convergence failure.
+    pub fn compute_schur_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<NdarraySchurResult, SchurError> {
+        compute_schur(&matrix.to_owned())
+    }
+
     /// Compute Schur decomposition into caller-provided outputs.
     ///
     /// # Errors
@@ -140,6 +150,18 @@ pub mod ndarray_schur {
     ) -> Result<(), SchurError> {
         let mut workspace = SchurWorkspace::default();
         compute_schur_with_workspace_into(matrix, output_q, output_t, &mut workspace)
+    }
+
+    /// Compute Schur decomposition into caller-provided outputs from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for invalid inputs, output shapes, or convergence failure.
+    pub fn compute_schur_into_view(
+        matrix: &ArrayView2<'_, f64>,
+        output_q: &mut Array2<f64>,
+        output_t: &mut Array2<f64>,
+    ) -> Result<(), SchurError> {
+        compute_schur_into(&matrix.to_owned(), output_q, output_t)
     }
 
     /// Compute Schur decomposition into caller-provided outputs using reusable `workspace`.
@@ -225,5 +247,28 @@ mod tests {
             ndarray_schur::compute_schur_into(&matrix, &mut bad_q, &mut bad_t),
             Err(SchurError::InvalidInput(_))
         ));
+    }
+
+    #[test]
+    fn schur_view_variants_match_owned() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 0.0, 2.0]).unwrap();
+        let owned = ndarray_schur::compute_schur(&matrix).unwrap();
+        let viewed = ndarray_schur::compute_schur_view(&matrix.view()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((owned.q[[i, j]] - viewed.q[[i, j]]).abs() < 1e-12);
+                assert!((owned.t[[i, j]] - viewed.t[[i, j]]).abs() < 1e-12);
+            }
+        }
+
+        let mut q = Array2::<f64>::zeros((2, 2));
+        let mut t = Array2::<f64>::zeros((2, 2));
+        ndarray_schur::compute_schur_into_view(&matrix.view(), &mut q, &mut t).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((owned.q[[i, j]] - q[[i, j]]).abs() < 1e-12);
+                assert!((owned.t[[i, j]] - t[[i, j]]).abs() < 1e-12);
+            }
+        }
     }
 }

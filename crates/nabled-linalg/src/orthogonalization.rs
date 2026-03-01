@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::Array2;
+use ndarray::{Array2, ArrayView2};
 
 use crate::internal::{DEFAULT_TOLERANCE, qr_gram_schmidt, validate_finite};
 
@@ -45,6 +45,16 @@ pub mod ndarray_orthogonalization {
         Ok(q)
     }
 
+    /// Modified Gram-Schmidt orthogonalization from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for empty or non-finite input.
+    pub fn gram_schmidt_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, OrthogonalizationError> {
+        gram_schmidt(&matrix.to_owned())
+    }
+
     /// Classical Gram-Schmidt orthogonalization.
     ///
     /// # Errors
@@ -53,6 +63,16 @@ pub mod ndarray_orthogonalization {
         matrix: &Array2<f64>,
     ) -> Result<Array2<f64>, OrthogonalizationError> {
         gram_schmidt(matrix)
+    }
+
+    /// Classical Gram-Schmidt orthogonalization from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for empty or non-finite input.
+    pub fn gram_schmidt_classic_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, OrthogonalizationError> {
+        gram_schmidt_classic(&matrix.to_owned())
     }
 }
 
@@ -89,5 +109,22 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
         let result = ndarray_orthogonalization::gram_schmidt(&empty);
         assert!(matches!(result, Err(super::OrthogonalizationError::EmptyMatrix)));
+    }
+
+    #[test]
+    fn view_variants_match_owned() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 1.0, 0.0, 1.0]).unwrap();
+        let modified_owned = ndarray_orthogonalization::gram_schmidt(&matrix).unwrap();
+        let modified_view = ndarray_orthogonalization::gram_schmidt_view(&matrix.view()).unwrap();
+        let classic_owned = ndarray_orthogonalization::gram_schmidt_classic(&matrix).unwrap();
+        let classic_view =
+            ndarray_orthogonalization::gram_schmidt_classic_view(&matrix.view()).unwrap();
+
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((modified_owned[[i, j]] - modified_view[[i, j]]).abs() < 1e-12);
+                assert!((classic_owned[[i, j]] - classic_view[[i, j]]).abs() < 1e-12);
+            }
+        }
     }
 }

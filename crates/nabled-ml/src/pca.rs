@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_linalg::svd::ndarray_svd;
-use ndarray::{Array1, Array2, Axis, s};
+use ndarray::{Array1, Array2, ArrayView2, Axis, s};
 
 /// PCA result for ndarray matrices.
 #[derive(Debug, Clone)]
@@ -103,6 +103,17 @@ pub mod ndarray_pca {
         })
     }
 
+    /// Compute principal component analysis from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for invalid input or decomposition failure.
+    pub fn compute_pca_view(
+        matrix: &ArrayView2<'_, f64>,
+        n_components: Option<usize>,
+    ) -> Result<NdarrayPCAResult, PCAError> {
+        compute_pca(&matrix.to_owned(), n_components)
+    }
+
     /// Project data to PCA score space.
     #[must_use]
     pub fn transform(matrix: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
@@ -115,6 +126,12 @@ pub mod ndarray_pca {
         centered.dot(&pca.components.t())
     }
 
+    /// Project data to PCA score space from a matrix view.
+    #[must_use]
+    pub fn transform_view(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+        transform(&matrix.to_owned(), pca)
+    }
+
     /// Reconstruct from PCA scores.
     #[must_use]
     pub fn inverse_transform(scores: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
@@ -125,6 +142,15 @@ pub mod ndarray_pca {
             }
         }
         reconstructed
+    }
+
+    /// Reconstruct from PCA scores provided as a matrix view.
+    #[must_use]
+    pub fn inverse_transform_view(
+        scores: &ArrayView2<'_, f64>,
+        pca: &NdarrayPCAResult,
+    ) -> Array2<f64> {
+        inverse_transform(&scores.to_owned(), pca)
     }
 }
 
@@ -163,5 +189,29 @@ mod tests {
         let pca = ndarray_pca::compute_pca(&matrix, Some(2)).unwrap();
         let sum = pca.explained_variance_ratio.iter().sum::<f64>();
         assert!((sum - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn pca_view_variants_match_owned() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
+        let pca_owned = ndarray_pca::compute_pca(&matrix, Some(2)).unwrap();
+        let pca_view = ndarray_pca::compute_pca_view(&matrix.view(), Some(2)).unwrap();
+
+        assert_eq!(pca_owned.components.dim(), pca_view.components.dim());
+        assert_eq!(pca_owned.scores.dim(), pca_view.scores.dim());
+
+        let transformed_owned = ndarray_pca::transform(&matrix, &pca_owned);
+        let transformed_view = ndarray_pca::transform_view(&matrix.view(), &pca_owned);
+        let reconstructed_owned = ndarray_pca::inverse_transform(&transformed_owned, &pca_owned);
+        let reconstructed_view =
+            ndarray_pca::inverse_transform_view(&transformed_owned.view(), &pca_owned);
+
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((transformed_owned[[i, j]] - transformed_view[[i, j]]).abs() < 1e-12);
+                assert!((reconstructed_owned[[i, j]] - reconstructed_view[[i, j]]).abs() < 1e-12);
+            }
+        }
     }
 }

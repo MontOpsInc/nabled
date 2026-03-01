@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-02-28
+Last updated: 2026-03-01
 
 ## Purpose
 
@@ -53,14 +53,14 @@ Use this file to resume work quickly after context compaction without re-auditin
 25. `D-025`: Cross-domain error taxonomy consolidated in `nabled-core` via `NabledError` + `IntoNabledError` mappings in linalg/ml crates.
 26. `D-026`: Scoped line coverage restored above gate (`90.63%`) with targeted tests across linalg/ml/core low-coverage paths.
 27. `D-027`: Coverage policy aligned in local/CI: shared ignore regex (`errors|examples|benches|src/bin`), `--lib --tests` scope, and hard `>=90%` gate.
+28. `D-028`: View-first API pass expanded across remaining heavy ndarray APIs (`cholesky`, `lu`, `eigen`, `matrix_functions`, `orthogonalization`, `polar`, `schur`, `sylvester`, `triangular`, `stats`, `regression`, `pca`) with parity tests.
 
 ## Next
 
-1. `N-017` (P0): Expand view-first signatures from initial hot paths to remaining heavy public APIs.
-2. `N-018` (P0): Extend complex parity to additional decomposition/solver domains beyond QR/SVD.
-3. `N-019` (P0): Add dedicated tests for `IntoNabledError` conversion coverage and mapping stability.
-4. `N-020` (P0): Add benchmark competitor baselines for new benchmark suites where practical.
-5. `N-021` (P1): Incrementally raise low per-file coverage in `eigen`, `lu`, `orthogonalization`, and `polar` while keeping API behavior unchanged.
+1. `N-018` (P0): Extend complex parity to additional decomposition/solver domains beyond QR/SVD.
+2. `N-019` (P0): Add dedicated tests for `IntoNabledError` conversion coverage and mapping stability.
+3. `N-020` (P0): Add benchmark competitor baselines for new benchmark suites where practical.
+4. `N-021` (P1): Incrementally raise low per-file coverage in `eigen`, `lu`, `orthogonalization`, and `polar` while keeping API behavior unchanged.
 
 ## Needed
 

@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-02-28
+Last updated: 2026-03-01
 
 ## Summary
 
@@ -22,6 +22,7 @@ Workspace migration for library domains is complete.
 14. Shared cross-domain taxonomy exists via `nabled-core::errors::NabledError`.
 15. Complex-number vector parity is now present (Hermitian dot, complex norm/cosine).
 16. First-order optimization primitives are now present (line search, gradient descent, Adam).
+17. View-first (`ArrayView*`) API coverage is expanded across remaining heavy linalg/ml domains with parity tests.
 
 ## Current Code Ownership
 

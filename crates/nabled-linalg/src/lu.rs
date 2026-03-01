@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 use crate::internal::{
     DEFAULT_TOLERANCE, lu_decompose, validate_finite, validate_square_non_empty,
@@ -118,6 +118,14 @@ pub mod ndarray_lu {
         Ok(result)
     }
 
+    /// Compute LU decomposition with partial pivoting from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if input is invalid or decomposition fails.
+    pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayLUResult, LUError> {
+        decompose(&matrix.to_owned())
+    }
+
     /// Solve `Ax=b` using LU decomposition.
     ///
     /// # Errors
@@ -142,6 +150,17 @@ pub mod ndarray_lu {
         }
     }
 
+    /// Solve `Ax=b` using LU decomposition from matrix/vector views.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are incompatible or matrix is singular.
+    pub fn solve_view(
+        matrix: &ArrayView2<'_, f64>,
+        rhs: &ArrayView1<'_, f64>,
+    ) -> Result<Array1<f64>, LUError> {
+        solve(&matrix.to_owned(), &rhs.to_owned())
+    }
+
     /// Compute matrix inverse via LU decomposition.
     ///
     /// # Errors
@@ -156,6 +175,14 @@ pub mod ndarray_lu {
             let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
             inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error)
         }
+    }
+
+    /// Compute matrix inverse via LU decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if matrix is singular.
+    pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError> {
+        inverse(&matrix.to_owned())
     }
 
     /// Compute determinant via LU decomposition.
@@ -181,6 +208,14 @@ pub mod ndarray_lu {
         }
     }
 
+    /// Compute determinant via LU decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if decomposition fails.
+    pub fn determinant_view(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
+        determinant(&matrix.to_owned())
+    }
+
     /// Compute signed log-determinant via LU decomposition.
     ///
     /// # Errors
@@ -192,6 +227,16 @@ pub mod ndarray_lu {
         }
         let sign = if determinant.is_sign_positive() { 1 } else { -1 };
         Ok(LogDetResult { sign, ln_abs_det: determinant.abs().ln() })
+    }
+
+    /// Compute signed log-determinant via LU decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if matrix is singular.
+    pub fn log_determinant_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<LogDetResult<f64>, LUError> {
+        log_determinant(&matrix.to_owned())
     }
 }
 
@@ -258,5 +303,39 @@ mod tests {
         let lu = ndarray_lu::decompose(&matrix).unwrap();
         assert_eq!(lu.l.dim(), (2, 2));
         assert_eq!(lu.u.dim(), (2, 2));
+    }
+
+    #[test]
+    fn view_variants_match_owned() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 7.0, 2.0, 6.0]).unwrap();
+        let rhs = Array1::from_vec(vec![5.0, 7.0]);
+
+        let owned = ndarray_lu::decompose(&matrix).unwrap();
+        let viewed = ndarray_lu::decompose_view(&matrix.view()).unwrap();
+        assert_eq!(owned.l.dim(), viewed.l.dim());
+        assert_eq!(owned.u.dim(), viewed.u.dim());
+
+        let solution_owned = ndarray_lu::solve(&matrix, &rhs).unwrap();
+        let solution_view = ndarray_lu::solve_view(&matrix.view(), &rhs.view()).unwrap();
+        for i in 0..rhs.len() {
+            assert!((solution_owned[i] - solution_view[i]).abs() < 1e-12);
+        }
+
+        let inverse_owned = ndarray_lu::inverse(&matrix).unwrap();
+        let inverse_view = ndarray_lu::inverse_view(&matrix.view()).unwrap();
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((inverse_owned[[i, j]] - inverse_view[[i, j]]).abs() < 1e-12);
+            }
+        }
+
+        let det_owned = ndarray_lu::determinant(&matrix).unwrap();
+        let det_view = ndarray_lu::determinant_view(&matrix.view()).unwrap();
+        assert!((det_owned - det_view).abs() < 1e-12);
+
+        let logdet_owned = ndarray_lu::log_determinant(&matrix).unwrap();
+        let logdet_view = ndarray_lu::log_determinant_view(&matrix.view()).unwrap();
+        assert_eq!(logdet_owned.sign, logdet_view.sign);
+        assert!((logdet_owned.ln_abs_det - logdet_view.ln_abs_det).abs() < 1e-12);
     }
 }

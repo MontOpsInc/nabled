@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::{Array1, Array2, Axis};
+use ndarray::{Array1, Array2, ArrayView2, Axis};
 
 /// Error type for matrix statistics.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,6 +41,12 @@ pub mod ndarray_stats {
         matrix.mean_axis(Axis(0)).unwrap_or_else(|| Array1::zeros(matrix.ncols()))
     }
 
+    /// Compute column means from a matrix view.
+    #[must_use]
+    pub fn column_means_view(matrix: &ArrayView2<'_, f64>) -> Array1<f64> {
+        column_means(&matrix.to_owned())
+    }
+
     /// Center columns by subtracting their means.
     #[must_use]
     pub fn center_columns(matrix: &Array2<f64>) -> Array2<f64> {
@@ -52,6 +58,12 @@ pub mod ndarray_stats {
             }
         }
         centered
+    }
+
+    /// Center columns by subtracting their means from a matrix view.
+    #[must_use]
+    pub fn center_columns_view(matrix: &ArrayView2<'_, f64>) -> Array2<f64> {
+        center_columns(&matrix.to_owned())
     }
 
     /// Compute sample covariance matrix.
@@ -76,6 +88,14 @@ pub mod ndarray_stats {
         Ok(covariance)
     }
 
+    /// Compute sample covariance matrix from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for empty input or fewer than two samples.
+    pub fn covariance_matrix_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
+        covariance_matrix(&matrix.to_owned())
+    }
+
     /// Compute correlation matrix.
     ///
     /// # Errors
@@ -95,6 +115,16 @@ pub mod ndarray_stats {
         }
 
         Ok(correlation)
+    }
+
+    /// Compute correlation matrix from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if covariance computation fails.
+    pub fn correlation_matrix_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, StatsError> {
+        correlation_matrix(&matrix.to_owned())
     }
 }
 
@@ -157,5 +187,34 @@ mod tests {
         assert!(correlation[[0, 1]].is_finite());
         assert!(correlation[[1, 0]].is_finite());
         assert!(correlation[[1, 1]].is_finite());
+    }
+
+    #[test]
+    fn view_variants_match_owned() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0, 3.0, 2.0, 2.0, 3.0, 1.0, 4.0, 0.0]).unwrap();
+        let means_owned = ndarray_stats::column_means(&matrix);
+        let means_view = ndarray_stats::column_means_view(&matrix.view());
+        let centered_owned = ndarray_stats::center_columns(&matrix);
+        let centered_view = ndarray_stats::center_columns_view(&matrix.view());
+        let covariance_owned = ndarray_stats::covariance_matrix(&matrix).unwrap();
+        let covariance_view = ndarray_stats::covariance_matrix_view(&matrix.view()).unwrap();
+        let correlation_owned = ndarray_stats::correlation_matrix(&matrix).unwrap();
+        let correlation_view = ndarray_stats::correlation_matrix_view(&matrix.view()).unwrap();
+
+        for i in 0..means_owned.len() {
+            assert!((means_owned[i] - means_view[i]).abs() < 1e-12);
+        }
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((centered_owned[[i, j]] - centered_view[[i, j]]).abs() < 1e-12);
+            }
+        }
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((covariance_owned[[i, j]] - covariance_view[[i, j]]).abs() < 1e-12);
+                assert!((correlation_owned[[i, j]] - correlation_view[[i, j]]).abs() < 1e-12);
+            }
+        }
     }
 }

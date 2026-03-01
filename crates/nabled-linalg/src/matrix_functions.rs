@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView2};
 
 use crate::eigen::ndarray_eigen;
 use crate::internal::{
@@ -128,6 +128,18 @@ pub mod ndarray_matrix_functions {
         taylor_matrix_exp(matrix, max_terms, tolerance)
     }
 
+    /// Compute matrix exponential via Taylor series from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for invalid input.
+    pub fn matrix_exp_view(
+        matrix: &ArrayView2<'_, f64>,
+        max_terms: usize,
+        tolerance: f64,
+    ) -> Result<Array2<f64>, MatrixFunctionError> {
+        matrix_exp(&matrix.to_owned(), max_terms, tolerance)
+    }
+
     /// Compute matrix exponential into `output`.
     ///
     /// # Errors
@@ -180,6 +192,18 @@ pub mod ndarray_matrix_functions {
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
     }
 
+    /// Compute matrix exponential via eigen decomposition from a matrix view.
+    ///
+    /// Falls back to Taylor series for non-symmetric matrices.
+    ///
+    /// # Errors
+    /// Returns an error for invalid input.
+    pub fn matrix_exp_eigen_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, MatrixFunctionError> {
+        matrix_exp_eigen(&matrix.to_owned())
+    }
+
     /// Compute matrix logarithm via Taylor expansion around identity.
     ///
     /// # Errors
@@ -209,6 +233,18 @@ pub mod ndarray_matrix_functions {
         }
 
         Ok(result)
+    }
+
+    /// Compute matrix logarithm via Taylor expansion around identity from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for invalid input.
+    pub fn matrix_log_taylor_view(
+        matrix: &ArrayView2<'_, f64>,
+        max_terms: usize,
+        tolerance: f64,
+    ) -> Result<Array2<f64>, MatrixFunctionError> {
+        matrix_log_taylor(&matrix.to_owned(), max_terms, tolerance)
     }
 
     /// Compute matrix logarithm via Taylor expansion into `output`.
@@ -265,6 +301,16 @@ pub mod ndarray_matrix_functions {
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
     }
 
+    /// Compute matrix logarithm via eigen decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if eigenvalues are non-positive.
+    pub fn matrix_log_eigen_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, MatrixFunctionError> {
+        matrix_log_eigen(&matrix.to_owned())
+    }
+
     /// Compute matrix logarithm via eigen decomposition into `output`.
     ///
     /// # Errors
@@ -308,6 +354,16 @@ pub mod ndarray_matrix_functions {
 
         let log_sigma = diagonal_from(&svd.singular_values.map(|value| value.ln()));
         Ok(svd.u.dot(&log_sigma).dot(&svd.vt))
+    }
+
+    /// Compute matrix logarithm via SVD from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if SVD fails.
+    pub fn matrix_log_svd_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, MatrixFunctionError> {
+        matrix_log_svd(&matrix.to_owned())
     }
 
     /// Compute matrix logarithm via SVD into `output`.
@@ -357,6 +413,17 @@ pub mod ndarray_matrix_functions {
         let powered_values = eigen.eigenvalues.map(|value| value.powf(power));
         let diagonal = diagonal_from(&powered_values);
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
+    }
+
+    /// Compute matrix power via eigen decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for non-symmetric inputs.
+    pub fn matrix_power_view(
+        matrix: &ArrayView2<'_, f64>,
+        power: f64,
+    ) -> Result<Array2<f64>, MatrixFunctionError> {
+        matrix_power(&matrix.to_owned(), power)
     }
 
     /// Compute matrix power into `output`.
@@ -413,6 +480,16 @@ pub mod ndarray_matrix_functions {
         });
         let diagonal = diagonal_from(&sign_values);
         Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
+    }
+
+    /// Compute matrix sign via eigen decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error for non-symmetric inputs.
+    pub fn matrix_sign_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, MatrixFunctionError> {
+        matrix_sign(&matrix.to_owned())
     }
 
     /// Compute matrix sign into `output`.
@@ -631,5 +708,47 @@ mod tests {
         let log = ndarray_matrix_functions::matrix_log_taylor(&matrix, 0, 1e-12).unwrap();
         assert!(log[[0, 0]].abs() < 1e-12);
         assert!(log[[1, 1]].abs() < 1e-12);
+    }
+
+    #[test]
+    fn view_variants_match_owned() {
+        let symmetric = Array2::from_shape_vec((2, 2), vec![2.0, 0.2, 0.2, 3.0]).unwrap();
+        let non_symmetric = Array2::from_shape_vec((2, 2), vec![0.0, 1.0, 0.0, 0.0]).unwrap();
+
+        let exp_owned = ndarray_matrix_functions::matrix_exp(&symmetric, 64, 1e-12).unwrap();
+        let exp_view =
+            ndarray_matrix_functions::matrix_exp_view(&symmetric.view(), 64, 1e-12).unwrap();
+        let exp_eigen_owned = ndarray_matrix_functions::matrix_exp_eigen(&non_symmetric).unwrap();
+        let exp_eigen_view =
+            ndarray_matrix_functions::matrix_exp_eigen_view(&non_symmetric.view()).unwrap();
+
+        let log_taylor_owned =
+            ndarray_matrix_functions::matrix_log_taylor(&symmetric, 64, 1e-12).unwrap();
+        let log_taylor_view =
+            ndarray_matrix_functions::matrix_log_taylor_view(&symmetric.view(), 64, 1e-12).unwrap();
+        let log_eigen_owned = ndarray_matrix_functions::matrix_log_eigen(&symmetric).unwrap();
+        let log_eigen_view =
+            ndarray_matrix_functions::matrix_log_eigen_view(&symmetric.view()).unwrap();
+        let log_svd_owned = ndarray_matrix_functions::matrix_log_svd(&symmetric).unwrap();
+        let log_svd_view =
+            ndarray_matrix_functions::matrix_log_svd_view(&symmetric.view()).unwrap();
+
+        let power_owned = ndarray_matrix_functions::matrix_power(&symmetric, 0.5).unwrap();
+        let power_view =
+            ndarray_matrix_functions::matrix_power_view(&symmetric.view(), 0.5).unwrap();
+        let sign_owned = ndarray_matrix_functions::matrix_sign(&symmetric).unwrap();
+        let sign_view = ndarray_matrix_functions::matrix_sign_view(&symmetric.view()).unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((exp_owned[[i, j]] - exp_view[[i, j]]).abs() < 1e-12);
+                assert!((exp_eigen_owned[[i, j]] - exp_eigen_view[[i, j]]).abs() < 1e-12);
+                assert!((log_taylor_owned[[i, j]] - log_taylor_view[[i, j]]).abs() < 1e-12);
+                assert!((log_eigen_owned[[i, j]] - log_eigen_view[[i, j]]).abs() < 1e-12);
+                assert!((log_svd_owned[[i, j]] - log_svd_view[[i, j]]).abs() < 1e-12);
+                assert!((power_owned[[i, j]] - power_view[[i, j]]).abs() < 1e-12);
+                assert!((sign_owned[[i, j]] - sign_view[[i, j]]).abs() < 1e-12);
+            }
+        }
     }
 }

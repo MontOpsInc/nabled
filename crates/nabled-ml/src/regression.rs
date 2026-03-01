@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_linalg::lu::{LUError, ndarray_lu};
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 /// Regression result for ndarray inputs.
 #[derive(Debug, Clone)]
@@ -109,6 +109,18 @@ pub mod ndarray_regression {
 
         Ok(NdarrayRegressionResult { coefficients, fitted_values, residuals, r_squared })
     }
+
+    /// Solve linear regression with optional intercept from matrix/vector views.
+    ///
+    /// # Errors
+    /// Returns an error for invalid dimensions or singular design matrix.
+    pub fn linear_regression_view(
+        x: &ArrayView2<'_, f64>,
+        y: &ArrayView1<'_, f64>,
+        add_intercept: bool,
+    ) -> Result<NdarrayRegressionResult, RegressionError> {
+        linear_regression(&x.to_owned(), &y.to_owned(), add_intercept)
+    }
 }
 
 #[cfg(test)]
@@ -168,5 +180,20 @@ mod tests {
         assert!((result.r_squared - 1.0).abs() < 1e-12);
         assert_eq!(result.fitted_values.len(), y.len());
         assert_eq!(result.residuals.len(), y.len());
+    }
+
+    #[test]
+    fn regression_view_matches_owned() {
+        let x = Array2::from_shape_vec((4, 1), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let y = Array1::from_vec(vec![3.0, 5.0, 7.0, 9.0]);
+        let owned = ndarray_regression::linear_regression(&x, &y, true).unwrap();
+        let viewed =
+            ndarray_regression::linear_regression_view(&x.view(), &y.view(), true).unwrap();
+
+        assert_eq!(owned.coefficients.len(), viewed.coefficients.len());
+        for i in 0..owned.coefficients.len() {
+            assert!((owned.coefficients[i] - viewed.coefficients[i]).abs() < 1e-12);
+        }
+        assert!((owned.r_squared - viewed.r_squared).abs() < 1e-12);
     }
 }

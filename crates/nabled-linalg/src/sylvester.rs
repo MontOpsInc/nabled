@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView2};
 
 use crate::lu::ndarray_lu;
 
@@ -105,6 +105,18 @@ pub mod ndarray_sylvester {
         Ok(output)
     }
 
+    /// Solve Sylvester equation `A X + X B = C` from matrix views.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are invalid or system is singular.
+    pub fn solve_sylvester_view(
+        matrix_a: &ArrayView2<'_, f64>,
+        matrix_b: &ArrayView2<'_, f64>,
+        matrix_c: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, SylvesterError> {
+        solve_sylvester(&matrix_a.to_owned(), &matrix_b.to_owned(), &matrix_c.to_owned())
+    }
+
     /// Solve Sylvester equation `A X + X B = C` into `output`.
     ///
     /// # Errors
@@ -174,6 +186,17 @@ pub mod ndarray_sylvester {
         }
         let neg_q = -q;
         solve_sylvester(a, &a.t().to_owned(), &neg_q)
+    }
+
+    /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0` from matrix views.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are invalid or system is singular.
+    pub fn solve_lyapunov_view(
+        a: &ArrayView2<'_, f64>,
+        q: &ArrayView2<'_, f64>,
+    ) -> Result<Array2<f64>, SylvesterError> {
+        solve_lyapunov(&a.to_owned(), &q.to_owned())
     }
 
     /// Solve continuous Lyapunov equation into `output`.
@@ -247,5 +270,30 @@ mod tests {
         let mut output = Array2::<f64>::zeros((1, 1));
         let result = ndarray_sylvester::solve_lyapunov_into(&a, &q, &mut output);
         assert!(matches!(result, Err(super::SylvesterError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn view_variants_match_owned() {
+        let a = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 3.0]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 4.0]).unwrap();
+        let c = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+
+        let owned = ndarray_sylvester::solve_sylvester(&a, &b, &c).unwrap();
+        let viewed =
+            ndarray_sylvester::solve_sylvester_view(&a.view(), &b.view(), &c.view()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((owned[[i, j]] - viewed[[i, j]]).abs() < 1e-12);
+            }
+        }
+
+        let q = Array2::eye(2);
+        let lyapunov_owned = ndarray_sylvester::solve_lyapunov(&a, &q).unwrap();
+        let lyapunov_viewed = ndarray_sylvester::solve_lyapunov_view(&a.view(), &q.view()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((lyapunov_owned[[i, j]] - lyapunov_viewed[[i, j]]).abs() < 1e-12);
+            }
+        }
     }
 }

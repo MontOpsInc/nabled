@@ -2,7 +2,7 @@
 
 use nabled_core::errors::ShapeError;
 use nabled_core::validation::validate_square_system;
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_traits::Float;
 use thiserror::Error;
 
@@ -96,6 +96,20 @@ pub mod ndarray_triangular {
         Ok(output)
     }
 
+    /// Solve `Lx = b` with forward substitution from matrix/vector views.
+    ///
+    /// # Errors
+    /// Returns an error for shape mismatches or singular pivots.
+    pub fn solve_lower_view<T>(
+        matrix: &ArrayView2<'_, T>,
+        rhs: &ArrayView1<'_, T>,
+    ) -> Result<Array1<T>, TriangularError>
+    where
+        T: Float,
+    {
+        solve_lower(&matrix.to_owned(), &rhs.to_owned())
+    }
+
     /// Solve `Lx = b` with forward substitution into `output`.
     ///
     /// # Errors
@@ -122,6 +136,20 @@ pub mod ndarray_triangular {
         let mut output = Array1::<T>::zeros(rhs.len());
         solve_upper_into(matrix, rhs, &mut output)?;
         Ok(output)
+    }
+
+    /// Solve `Ux = b` with back substitution from matrix/vector views.
+    ///
+    /// # Errors
+    /// Returns an error for shape mismatches or singular pivots.
+    pub fn solve_upper_view<T>(
+        matrix: &ArrayView2<'_, T>,
+        rhs: &ArrayView1<'_, T>,
+    ) -> Result<Array1<T>, TriangularError>
+    where
+        T: Float,
+    {
+        solve_upper(&matrix.to_owned(), &rhs.to_owned())
     }
 
     /// Solve `Ux = b` with back substitution into `output`.
@@ -189,5 +217,22 @@ mod tests {
 
         let result = ndarray_triangular::solve_upper(&non_square, &rhs);
         assert!(matches!(result, Err(TriangularError::Shape(ShapeError::NotSquare))));
+    }
+
+    #[test]
+    fn view_variants_match_owned() {
+        let lower = arr2(&[[2.0_f64, 0.0], [1.0, 3.0]]);
+        let upper = arr2(&[[2.0_f64, 1.0], [0.0, 3.0]]);
+        let rhs = arr1(&[4.0_f64, 9.0]);
+
+        let lower_owned = ndarray_triangular::solve_lower(&lower, &rhs).unwrap();
+        let lower_view = ndarray_triangular::solve_lower_view(&lower.view(), &rhs.view()).unwrap();
+        let upper_owned = ndarray_triangular::solve_upper(&upper, &rhs).unwrap();
+        let upper_view = ndarray_triangular::solve_upper_view(&upper.view(), &rhs.view()).unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((lower_owned[i] - lower_view[i]).abs() < 1e-12);
+            assert!((upper_owned[i] - upper_view[i]).abs() < 1e-12);
+        }
     }
 }

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::DEFAULT_TOLERANCE;
@@ -140,6 +140,16 @@ pub mod ndarray_cholesky {
         Ok(NdarrayCholeskyResult { l })
     }
 
+    /// Compute Cholesky decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if matrix is not SPD.
+    pub fn decompose_view(
+        matrix: &ArrayView2<'_, f64>,
+    ) -> Result<NdarrayCholeskyResult, CholeskyError> {
+        decompose(&matrix.to_owned())
+    }
+
     /// Solve `Ax=b` using Cholesky decomposition.
     ///
     /// # Errors
@@ -155,6 +165,17 @@ pub mod ndarray_cholesky {
             solve_into(matrix, rhs, &mut output)?;
             Ok(output)
         }
+    }
+
+    /// Solve `Ax=b` using Cholesky decomposition from matrix/vector views.
+    ///
+    /// # Errors
+    /// Returns an error for invalid dimensions or non-SPD matrix.
+    pub fn solve_view(
+        matrix: &ArrayView2<'_, f64>,
+        rhs: &ArrayView1<'_, f64>,
+    ) -> Result<Array1<f64>, CholeskyError> {
+        solve(&matrix.to_owned(), &rhs.to_owned())
     }
 
     /// Solve `Ax=b` into `output` using Cholesky decomposition.
@@ -239,6 +260,14 @@ pub mod ndarray_cholesky {
             Ok(inverse)
         }
     }
+
+    /// Compute inverse via Cholesky decomposition from a matrix view.
+    ///
+    /// # Errors
+    /// Returns an error if matrix is not SPD.
+    pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
+        inverse(&matrix.to_owned())
+    }
 }
 
 #[cfg(test)]
@@ -255,6 +284,30 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn cholesky_view_variants_match_owned() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![9.0, 3.0, 3.0, 5.0]).unwrap();
+        let rhs = Array1::from_vec(vec![12.0, 8.0]);
+
+        let owned = ndarray_cholesky::decompose(&matrix).unwrap();
+        let viewed = ndarray_cholesky::decompose_view(&matrix.view()).unwrap();
+        assert_eq!(owned.l.dim(), viewed.l.dim());
+
+        let solution_owned = ndarray_cholesky::solve(&matrix, &rhs).unwrap();
+        let solution_viewed = ndarray_cholesky::solve_view(&matrix.view(), &rhs.view()).unwrap();
+        for i in 0..rhs.len() {
+            assert!((solution_owned[i] - solution_viewed[i]).abs() < 1e-12);
+        }
+
+        let inverse_owned = ndarray_cholesky::inverse(&matrix).unwrap();
+        let inverse_viewed = ndarray_cholesky::inverse_view(&matrix.view()).unwrap();
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((inverse_owned[[i, j]] - inverse_viewed[[i, j]]).abs() < 1e-12);
             }
         }
     }
