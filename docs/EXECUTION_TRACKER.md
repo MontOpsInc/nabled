@@ -65,14 +65,15 @@ Use this file to resume work quickly after context compaction without re-auditin
 37. `D-037`: Complex parity expanded into LU/Cholesky via provider-backed complex solve/inverse/decomposition paths with explicit no-provider behavior.
 38. `D-038`: Complex parity expanded into Schur and Sylvester/Lyapunov with provider-backed complex APIs, view/into/workspace variants, and explicit no-provider behavior.
 39. `D-039`: Complex matrix-functions parity baseline added (complex `matrix_exp*` Taylor path and provider-backed complex `matrix_log_svd*` with owned/view/into/workspace APIs and feature-split tests).
+40. `D-040`: Complex matrix-functions parity expanded to Hermitian eigen-based `exp/log/power/sign` paths (owned/view/into/workspace), with explicit no-provider behavior where provider-backed eigendecomposition is required.
+41. `D-041`: `N-024A` complete for currently identified dense domains.
 
 ## Next
 
-1. `N-024A` (P1): Expand provider-backed complex parity into remaining candidate dense domains (next: remaining matrix-functions branches where numerically sound, e.g. eigen/power/sign complex policy).
-2. `N-024B` (P1): Add provider-free internal complex paths where feasible for currently provider-gated domains (or explicitly lock/justify unsupported cases).
-3. `N-024C` (P1): Complete complex parity validation matrix (owned/view variants, error mappings, integration coverage, and benchmark visibility where practical).
-4. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
-5. `N-027` (P1): Remove avoidable copies in convenience/view APIs where feasible (beyond current explicit documentation pass).
+1. `N-024B` (P1): Add provider-free internal complex paths where feasible for currently provider-gated domains (or explicitly lock/justify unsupported cases).
+2. `N-024C` (P1): Complete complex parity validation matrix (owned/view variants, error mappings, integration coverage, and benchmark visibility where practical).
+3. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
+4. `N-027` (P1): Remove avoidable copies in convenience/view APIs where feasible (beyond current explicit documentation pass).
 
 ## Needed
 
