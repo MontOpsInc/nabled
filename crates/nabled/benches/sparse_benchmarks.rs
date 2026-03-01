@@ -1,5 +1,6 @@
 use std::hint::black_box;
 
+use criterion::measurement::WallTime;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use nabled::sparse::{self as sparse, CsrMatrix};
 use ndarray::{Array1, Array2};
@@ -46,95 +47,127 @@ fn csr_to_dense(matrix: &CsrMatrix) -> Array2<f64> {
     dense
 }
 
+fn benchmark_sparse_solvers(
+    group: &mut criterion::BenchmarkGroup<'_, WallTime>,
+    id: &str,
+    size: usize,
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+) {
+    let mut output = Array1::<f64>::zeros(size);
+
+    _ = group.bench_with_input(BenchmarkId::new("csr_matvec", id), &size, |bench, _| {
+        bench.iter(|| sparse::matvec(black_box(matrix), black_box(rhs)));
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("csr_matvec_into", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::matvec_into(black_box(matrix), black_box(rhs), black_box(&mut output))
+        });
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("jacobi_solve", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::jacobi_solve(
+                black_box(matrix),
+                black_box(rhs),
+                black_box(1e-8),
+                black_box(10_000),
+            )
+        });
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("pcg_solve", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::pcg_solve(black_box(matrix), black_box(rhs), black_box(1e-8), black_box(10_000))
+        });
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("pcg_ic0_solve", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::pcg_ic0_solve(
+                black_box(matrix),
+                black_box(rhs),
+                black_box(1e-8),
+                black_box(10_000),
+            )
+        });
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("bicgstab_solve", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::bicgstab_solve(
+                black_box(matrix),
+                black_box(rhs),
+                black_box(1e-8),
+                black_box(10_000),
+            )
+        });
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("bicgstab_ilu0_solve", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::bicgstab_ilu0_solve(
+                black_box(matrix),
+                black_box(rhs),
+                black_box(1e-8),
+                black_box(10_000),
+            )
+        });
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("bicgstab_ilut_solve", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::bicgstab_ilut_solve(
+                black_box(matrix),
+                black_box(rhs),
+                black_box(1e-8),
+                black_box(10_000),
+                black_box(0.0),
+                black_box(16),
+            )
+        });
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("gmres_ilut_solve", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::gmres_ilut_solve(
+                black_box(matrix),
+                black_box(rhs),
+                black_box(1e-8),
+                black_box(128),
+                black_box(0.0),
+                black_box(16),
+            )
+        });
+    });
+}
+
+fn benchmark_sparse_matmul(
+    group: &mut criterion::BenchmarkGroup<'_, WallTime>,
+    id: &str,
+    size: usize,
+    matrix: &CsrMatrix,
+    dense_rhs: &Array2<f64>,
+) {
+    _ = group.bench_with_input(BenchmarkId::new("csr_matmat_dense", id), &size, |bench, _| {
+        bench.iter(|| sparse::matmat_dense(black_box(matrix), black_box(dense_rhs)));
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("csr_matmat_sparse", id), &size, |bench, _| {
+        bench.iter(|| sparse::matmat_sparse(black_box(matrix), black_box(matrix)));
+    });
+}
+
 fn benchmark_sparse_nabled(c: &mut Criterion) {
     let mut group = c.benchmark_group("sparse_nabled_ndarray");
     for size in [128_usize, 256, 512] {
         let matrix = make_diagonally_dominant_tridiagonal(size);
         let rhs = random_vector(size);
-        let mut output = Array1::<f64>::zeros(size);
         let dense_rhs = Array2::<f64>::ones((size, 8));
         let id = format!("square-{size}x{size}");
-
-        _ = group.bench_with_input(BenchmarkId::new("csr_matvec", &id), &size, |bench, _| {
-            bench.iter(|| sparse::matvec(black_box(&matrix), black_box(&rhs)));
-        });
-
-        _ = group.bench_with_input(BenchmarkId::new("csr_matvec_into", &id), &size, |bench, _| {
-            bench.iter(|| {
-                sparse::matvec_into(black_box(&matrix), black_box(&rhs), black_box(&mut output))
-            });
-        });
-
-        _ = group.bench_with_input(BenchmarkId::new("jacobi_solve", &id), &size, |bench, _| {
-            bench.iter(|| {
-                sparse::jacobi_solve(
-                    black_box(&matrix),
-                    black_box(&rhs),
-                    black_box(1e-8),
-                    black_box(10_000),
-                )
-            });
-        });
-
-        _ = group.bench_with_input(BenchmarkId::new("pcg_solve", &id), &size, |bench, _| {
-            bench.iter(|| {
-                sparse::pcg_solve(
-                    black_box(&matrix),
-                    black_box(&rhs),
-                    black_box(1e-8),
-                    black_box(10_000),
-                )
-            });
-        });
-
-        _ = group.bench_with_input(BenchmarkId::new("pcg_ic0_solve", &id), &size, |bench, _| {
-            bench.iter(|| {
-                sparse::pcg_ic0_solve(
-                    black_box(&matrix),
-                    black_box(&rhs),
-                    black_box(1e-8),
-                    black_box(10_000),
-                )
-            });
-        });
-
-        _ = group.bench_with_input(BenchmarkId::new("bicgstab_solve", &id), &size, |bench, _| {
-            bench.iter(|| {
-                sparse::bicgstab_solve(
-                    black_box(&matrix),
-                    black_box(&rhs),
-                    black_box(1e-8),
-                    black_box(10_000),
-                )
-            });
-        });
-
-        _ = group.bench_with_input(
-            BenchmarkId::new("bicgstab_ilu0_solve", &id),
-            &size,
-            |bench, _| {
-                bench.iter(|| {
-                    sparse::bicgstab_ilu0_solve(
-                        black_box(&matrix),
-                        black_box(&rhs),
-                        black_box(1e-8),
-                        black_box(10_000),
-                    )
-                });
-            },
-        );
-
-        _ = group.bench_with_input(BenchmarkId::new("csr_matmat_dense", &id), &size, |bench, _| {
-            bench.iter(|| sparse::matmat_dense(black_box(&matrix), black_box(&dense_rhs)));
-        });
-
-        _ = group.bench_with_input(
-            BenchmarkId::new("csr_matmat_sparse", &id),
-            &size,
-            |bench, _| {
-                bench.iter(|| sparse::matmat_sparse(black_box(&matrix), black_box(&matrix)));
-            },
-        );
+        benchmark_sparse_solvers(&mut group, &id, size, &matrix, &rhs);
+        benchmark_sparse_matmul(&mut group, &id, size, &matrix, &dense_rhs);
     }
     group.finish();
 }

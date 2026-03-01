@@ -1,6 +1,6 @@
 //! Sparse matrix primitives and iterative solves over CSR/CSC/COO structures.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ndarray::{Array1, Array2};
 use thiserror::Error;
@@ -210,6 +210,55 @@ pub struct ILU0Factorization {
     pub l: CsrMatrix,
     /// Upper factor.
     pub u: CsrMatrix,
+}
+
+/// Incomplete LU with threshold/drop tolerance (ILUT) sparse factorization.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ILUTFactorization {
+    /// Unit-lower factor.
+    pub l: CsrMatrix,
+    /// Upper factor.
+    pub u: CsrMatrix,
+}
+
+/// Configuration for ILUT-based sparse factorization and solves.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ILUTConfig {
+    /// Drop entries with absolute magnitude less than or equal to this value.
+    pub drop_tolerance: f64,
+    /// Maximum number of retained off-diagonal entries per row in each factor.
+    pub max_fill:       usize,
+}
+
+impl ILUTConfig {
+    /// Conservative profile prioritizing sparsity.
+    #[must_use]
+    pub const fn conservative() -> Self { Self { drop_tolerance: 1e-6, max_fill: 8 } }
+
+    /// Balanced profile for general sparse workloads.
+    #[must_use]
+    pub const fn balanced() -> Self { Self { drop_tolerance: 1e-8, max_fill: 16 } }
+
+    /// Aggressive profile prioritizing preconditioner quality.
+    #[must_use]
+    pub const fn aggressive() -> Self { Self { drop_tolerance: 1e-10, max_fill: 32 } }
+
+    /// Size-aware default profile.
+    #[must_use]
+    pub fn for_dimension(dimension: usize) -> Self {
+        let fill = if dimension <= 32 {
+            8
+        } else if dimension <= 256 {
+            16
+        } else {
+            32
+        };
+        Self { drop_tolerance: 1e-8, max_fill: fill.min(dimension.max(1)) }
+    }
+}
+
+impl Default for ILUTConfig {
+    fn default() -> Self { Self::balanced() }
 }
 
 /// Incomplete Cholesky(0) sparse factorization for SPD systems.
@@ -568,23 +617,160 @@ pub fn ilu0_factor(matrix: &CsrMatrix) -> Result<ILU0Factorization, SparseError>
     Ok(ILU0Factorization { l, u })
 }
 
-/// Apply an ILU(0) preconditioner to a dense vector.
+fn retain_strongest_entries(entries: &mut Vec<(usize, f64)>, max_entries: usize) {
+    if entries.len() <= max_entries {
+        entries.sort_unstable_by_key(|&(col, _)| col);
+        return;
+    }
+    entries.sort_unstable_by(|left, right| right.1.abs().total_cmp(&left.1.abs()));
+    entries.truncate(max_entries);
+    entries.sort_unstable_by_key(|&(col, _)| col);
+}
+
+/// Compute incomplete LU with threshold/drop tolerance (ILUT) factorization.
 ///
-/// Solves `L U x = rhs` where `L` and `U` come from [`ilu0_factor`].
+/// `drop_tolerance` controls magnitude pruning and `max_fill` limits the
+/// retained sub/super-diagonal entries per row.
 ///
 /// # Errors
-/// Returns an error if dimensions are incompatible or factors are singular.
-pub fn apply_ilu0_preconditioner(
-    factorization: &ILU0Factorization,
-    rhs: &Array1<f64>,
-) -> Result<Array1<f64>, SparseError> {
-    if factorization.l.nrows != factorization.l.ncols
-        || factorization.u.nrows != factorization.u.ncols
-        || factorization.l.nrows != factorization.u.nrows
-    {
+/// Returns an error if dimensions are incompatible or the factorization breaks down.
+#[allow(clippy::many_single_char_names)]
+pub fn ilut_factor(
+    matrix: &CsrMatrix,
+    drop_tolerance: f64,
+    max_fill: usize,
+) -> Result<ILUTFactorization, SparseError> {
+    if matrix.nrows != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
-    if rhs.len() != factorization.l.nrows {
+
+    let n = matrix.nrows;
+    let tolerance = drop_tolerance.max(0.0);
+    let mut lower_rows = Vec::<Vec<(usize, f64)>>::with_capacity(n);
+    let mut upper_rows = Vec::<Vec<(usize, f64)>>::with_capacity(n);
+    let mut upper_diagonal = vec![0.0_f64; n];
+
+    for row in 0..n {
+        let mut working = BTreeMap::<usize, f64>::new();
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            let col = matrix.indices[entry];
+            let value = matrix.data[entry];
+            if col == row || value.abs() > tolerance {
+                let _ = working.insert(col, value);
+            }
+        }
+
+        let mut lower_candidates = Vec::<(usize, f64)>::new();
+        let lower_columns = working.keys().copied().filter(|&col| col < row).collect::<Vec<_>>();
+        for col_j in lower_columns {
+            let Some(value) = working.remove(&col_j) else {
+                continue;
+            };
+            if value.abs() <= tolerance {
+                continue;
+            }
+
+            let diagonal = upper_diagonal[col_j];
+            if diagonal.abs() <= DEFAULT_TOLERANCE {
+                return Err(SparseError::SingularMatrix);
+            }
+            let multiplier = value / diagonal;
+            if multiplier.abs() <= tolerance {
+                continue;
+            }
+            lower_candidates.push((col_j, multiplier));
+
+            for &(col_k, upper_value) in &upper_rows[col_j] {
+                if col_k <= col_j {
+                    continue;
+                }
+                let updated =
+                    working.get(&col_k).copied().unwrap_or(0.0) - multiplier * upper_value;
+                if updated.abs() <= tolerance {
+                    let _ = working.remove(&col_k);
+                } else {
+                    let _ = working.insert(col_k, updated);
+                }
+            }
+        }
+
+        let Some(diagonal) = working.remove(&row) else {
+            return Err(SparseError::SingularMatrix);
+        };
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        upper_diagonal[row] = diagonal;
+
+        let mut upper_candidates = working
+            .into_iter()
+            .filter(|&(col, value)| col > row && value.abs() > tolerance)
+            .collect::<Vec<_>>();
+
+        retain_strongest_entries(&mut lower_candidates, max_fill);
+        retain_strongest_entries(&mut upper_candidates, max_fill);
+
+        let mut lower_row = lower_candidates;
+        lower_row.push((row, 1.0));
+        lower_row.sort_unstable_by_key(|&(col, _)| col);
+
+        let mut upper_row = Vec::<(usize, f64)>::with_capacity(upper_candidates.len() + 1);
+        upper_row.push((row, diagonal));
+        upper_row.extend(upper_candidates);
+        upper_row.sort_unstable_by_key(|&(col, _)| col);
+
+        lower_rows.push(lower_row);
+        upper_rows.push(upper_row);
+    }
+
+    let mut l_indptr = Vec::<usize>::with_capacity(n + 1);
+    let mut l_indices = Vec::<usize>::new();
+    let mut l_data = Vec::<f64>::new();
+    l_indptr.push(0);
+
+    let mut u_indptr = Vec::<usize>::with_capacity(n + 1);
+    let mut u_indices = Vec::<usize>::new();
+    let mut u_data = Vec::<f64>::new();
+    u_indptr.push(0);
+
+    for row in 0..n {
+        for &(col, value) in &lower_rows[row] {
+            l_indices.push(col);
+            l_data.push(value);
+        }
+        for &(col, value) in &upper_rows[row] {
+            u_indices.push(col);
+            u_data.push(value);
+        }
+        l_indptr.push(l_indices.len());
+        u_indptr.push(u_indices.len());
+    }
+
+    let l = CsrMatrix::new(n, n, l_indptr, l_indices, l_data)?;
+    let u = CsrMatrix::new(n, n, u_indptr, u_indices, u_data)?;
+    Ok(ILUTFactorization { l, u })
+}
+
+/// Compute ILUT factorization using a configuration profile.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or the factorization breaks down.
+pub fn ilut_factor_with_config(
+    matrix: &CsrMatrix,
+    config: ILUTConfig,
+) -> Result<ILUTFactorization, SparseError> {
+    ilut_factor(matrix, config.drop_tolerance, config.max_fill)
+}
+
+fn apply_lu_preconditioner(
+    lower: &CsrMatrix,
+    upper: &CsrMatrix,
+    rhs: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    if lower.nrows != lower.ncols || upper.nrows != upper.ncols || lower.nrows != upper.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != lower.nrows {
         return Err(SparseError::DimensionMismatch);
     }
 
@@ -592,10 +778,10 @@ pub fn apply_ilu0_preconditioner(
     let mut intermediate = Array1::<f64>::zeros(n);
     for row in 0..n {
         let mut sum = rhs[row];
-        for entry in factorization.l.indptr[row]..factorization.l.indptr[row + 1] {
-            let col = factorization.l.indices[entry];
+        for entry in lower.indptr[row]..lower.indptr[row + 1] {
+            let col = lower.indices[entry];
             if col < row {
-                sum -= factorization.l.data[entry] * intermediate[col];
+                sum -= lower.data[entry] * intermediate[col];
             }
         }
         intermediate[row] = sum;
@@ -606,9 +792,9 @@ pub fn apply_ilu0_preconditioner(
         let row = n - 1 - row_reverse;
         let mut sum = intermediate[row];
         let mut diagonal = None;
-        for entry in factorization.u.indptr[row]..factorization.u.indptr[row + 1] {
-            let col = factorization.u.indices[entry];
-            let value = factorization.u.data[entry];
+        for entry in upper.indptr[row]..upper.indptr[row + 1] {
+            let col = upper.indices[entry];
+            let value = upper.data[entry];
             if col == row {
                 diagonal = Some(value);
             } else if col > row {
@@ -626,6 +812,32 @@ pub fn apply_ilu0_preconditioner(
     }
 
     Ok(output)
+}
+
+/// Apply an ILU(0) preconditioner to a dense vector.
+///
+/// Solves `L U x = rhs` where `L` and `U` come from [`ilu0_factor`].
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or factors are singular.
+pub fn apply_ilu0_preconditioner(
+    factorization: &ILU0Factorization,
+    rhs: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    apply_lu_preconditioner(&factorization.l, &factorization.u, rhs)
+}
+
+/// Apply an ILUT preconditioner to a dense vector.
+///
+/// Solves `L U x = rhs` where `L` and `U` come from [`ilut_factor`].
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or factors are singular.
+pub fn apply_ilut_preconditioner(
+    factorization: &ILUTFactorization,
+    rhs: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    apply_lu_preconditioner(&factorization.l, &factorization.u, rhs)
 }
 
 /// Compute incomplete Cholesky(0) factorization for an SPD sparse matrix.
@@ -1257,6 +1469,129 @@ pub fn pcg_ic0_solve(
     Err(SparseError::MaxIterationsExceeded)
 }
 
+/// Solve sparse linear system `A x = b` with ILUT-preconditioned GMRES.
+///
+/// This routine supports general non-symmetric matrices.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+#[allow(clippy::many_single_char_names)]
+pub fn gmres_ilut_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    drop_tolerance: f64,
+    max_fill: usize,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let factorization = ilut_factor(matrix, drop_tolerance, max_fill)?;
+    let n = rhs.len();
+    let m = n.min(max_iterations.max(1));
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+
+    let mut basis = Array2::<f64>::zeros((n, m + 1));
+    let mut hessenberg = Array2::<f64>::zeros((m + 1, m));
+
+    let preconditioned_rhs = apply_ilut_preconditioner(&factorization, rhs)?;
+    let beta = dot(&preconditioned_rhs, &preconditioned_rhs)?.sqrt();
+    if beta <= tolerance {
+        return Ok(Array1::<f64>::zeros(n));
+    }
+    for row in 0..n {
+        basis[[row, 0]] = preconditioned_rhs[row] / beta;
+    }
+
+    let mut effective_m = m;
+    for j in 0..m {
+        let mut vj = Array1::<f64>::zeros(n);
+        for row in 0..n {
+            vj[row] = basis[[row, j]];
+        }
+
+        let av = matvec(matrix, &vj)?;
+        let mut w = apply_ilut_preconditioner(&factorization, &av)?;
+
+        for i in 0..=j {
+            let mut hij = 0.0_f64;
+            for row in 0..n {
+                hij += basis[[row, i]] * w[row];
+            }
+            hessenberg[[i, j]] = hij;
+            for row in 0..n {
+                w[row] -= hij * basis[[row, i]];
+            }
+        }
+
+        let norm_w = dot(&w, &w)?.sqrt();
+        hessenberg[[j + 1, j]] = norm_w;
+        if norm_w <= tolerance {
+            effective_m = j + 1;
+            break;
+        }
+        for row in 0..n {
+            basis[[row, j + 1]] = w[row] / norm_w;
+        }
+    }
+
+    let mut h = Array2::<f64>::zeros((effective_m + 1, effective_m));
+    for row in 0..=effective_m {
+        for col in 0..effective_m {
+            h[[row, col]] = hessenberg[[row, col]];
+        }
+    }
+    let ht = h.t();
+    let normal_matrix = ht.dot(&h);
+
+    let mut rhs_ls = Array1::<f64>::zeros(effective_m + 1);
+    rhs_ls[0] = beta;
+    let normal_rhs = ht.dot(&rhs_ls);
+
+    let y =
+        crate::lu::solve(&normal_matrix, &normal_rhs).map_err(|_| SparseError::SingularMatrix)?;
+
+    let mut solution = Array1::<f64>::zeros(n);
+    for row in 0..n {
+        let mut sum = 0.0_f64;
+        for col in 0..effective_m {
+            sum += basis[[row, col]] * y[col];
+        }
+        solution[row] = sum;
+    }
+
+    let residual = rhs - &matvec(matrix, &solution)?;
+    if dot(&residual, &residual)?.sqrt() <= tolerance {
+        Ok(solution)
+    } else {
+        Err(SparseError::MaxIterationsExceeded)
+    }
+}
+
+/// Solve sparse linear system `A x = b` with ILUT-preconditioned GMRES.
+///
+/// Uses an [`ILUTConfig`] profile for factorization parameters.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn gmres_ilut_solve_with_config(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    config: ILUTConfig,
+) -> Result<Array1<f64>, SparseError> {
+    gmres_ilut_solve(matrix, rhs, tolerance, max_iterations, config.drop_tolerance, config.max_fill)
+}
+
 /// Solve sparse linear system `A x = b` with `BiCGSTAB` iteration.
 ///
 /// This routine supports general non-symmetric matrices.
@@ -1442,6 +1777,115 @@ pub fn bicgstab_ilu0_solve(
 
         let preconditioned_auxiliary =
             apply_ilu0_preconditioner(&factorization, &auxiliary_residual)?;
+        let transformed_auxiliary = matvec(matrix, &preconditioned_auxiliary)?;
+        let transformed_norm_sq = dot(&transformed_auxiliary, &transformed_auxiliary)?;
+        if transformed_norm_sq.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        omega = dot(&transformed_auxiliary, &auxiliary_residual)? / transformed_norm_sq;
+        if omega.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        for i in 0..dimension {
+            solution[i] += alpha * preconditioned_search[i] + omega * preconditioned_auxiliary[i];
+        }
+
+        for i in 0..dimension {
+            residual[i] = auxiliary_residual[i] - omega * transformed_auxiliary[i];
+        }
+
+        if dot(&residual, &residual)?.sqrt() <= tolerance {
+            return Ok(solution);
+        }
+
+        rho_prev = rho;
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
+/// Solve sparse linear system `A x = b` with ILUT-preconditioned `BiCGSTAB`.
+///
+/// This routine supports general non-symmetric matrices.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ilut_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    drop_tolerance: f64,
+    max_fill: usize,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let factorization = ilut_factor(matrix, drop_tolerance, max_fill)?;
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+    let dimension = rhs.len();
+    let mut solution = Array1::<f64>::zeros(dimension);
+    let mut residual = rhs.clone();
+    let residual_shadow = residual.clone();
+    let mut rho_prev = 1.0_f64;
+    let mut alpha = 1.0_f64;
+    let mut omega = 1.0_f64;
+    let mut krylov_vector = Array1::<f64>::zeros(dimension);
+    let mut search_direction = Array1::<f64>::zeros(dimension);
+
+    if dot(&residual, &residual)?.sqrt() <= tolerance {
+        return Ok(solution);
+    }
+
+    for iteration in 0..max_iterations.max(1) {
+        let rho = dot(&residual_shadow, &residual)?;
+        if rho.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        if iteration == 0 {
+            search_direction.assign(&residual);
+        } else {
+            if omega.abs() <= DEFAULT_TOLERANCE {
+                return Err(SparseError::SingularMatrix);
+            }
+            let beta = (rho / rho_prev) * (alpha / omega);
+            for i in 0..dimension {
+                search_direction[i] =
+                    residual[i] + beta * (search_direction[i] - omega * krylov_vector[i]);
+            }
+        }
+
+        let preconditioned_search = apply_ilut_preconditioner(&factorization, &search_direction)?;
+        krylov_vector = matvec(matrix, &preconditioned_search)?;
+        let denominator = dot(&residual_shadow, &krylov_vector)?;
+        if denominator.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+        alpha = rho / denominator;
+
+        let mut auxiliary_residual = residual.clone();
+        for i in 0..dimension {
+            auxiliary_residual[i] -= alpha * krylov_vector[i];
+        }
+
+        if dot(&auxiliary_residual, &auxiliary_residual)?.sqrt() <= tolerance {
+            for i in 0..dimension {
+                solution[i] += alpha * preconditioned_search[i];
+            }
+            return Ok(solution);
+        }
+
+        let preconditioned_auxiliary =
+            apply_ilut_preconditioner(&factorization, &auxiliary_residual)?;
         let transformed_auxiliary = matvec(matrix, &preconditioned_auxiliary)?;
         let transformed_norm_sq = dot(&transformed_auxiliary, &transformed_auxiliary)?;
         if transformed_norm_sq.abs() <= DEFAULT_TOLERANCE {
@@ -1703,6 +2147,32 @@ mod tests {
     }
 
     #[test]
+    fn ilut_factorization_reconstructs_toy_matrix() {
+        let matrix = toy_matrix();
+        let factorization = ilut_factor(&matrix, 0.0, 8).unwrap();
+
+        let dense_l = csr_to_dense(&factorization.l);
+        let dense_u = csr_to_dense(&factorization.u);
+        let reconstructed = dense_l.dot(&dense_u);
+        let expected = csr_to_dense(&matrix);
+
+        for row in 0..matrix.nrows {
+            for col in 0..matrix.ncols {
+                assert!((reconstructed[[row, col]] - expected[[row, col]]).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn apply_ilut_preconditioner_rejects_bad_dimensions() {
+        let matrix = toy_matrix();
+        let factorization = ilut_factor(&matrix, 0.0, 8).unwrap();
+        let rhs = arr1(&[1.0_f64, 2.0]);
+        let result = apply_ilut_preconditioner(&factorization, &rhs);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
     fn ic0_factorization_reconstructs_toy_matrix() {
         let matrix = toy_matrix();
         let factorization = ic0_factor(&matrix).unwrap();
@@ -1750,5 +2220,74 @@ mod tests {
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
         }
+    }
+
+    #[test]
+    fn bicgstab_ilut_solves_nonsymmetric_system() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution = bicgstab_ilut_solve(&matrix, &rhs, 1e-10, 5000, 0.0, 8).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn gmres_ilut_solves_nonsymmetric_system() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution = gmres_ilut_solve(&matrix, &rhs, 1e-10, 10, 0.0, 8).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn gmres_ilut_with_config_solves_nonsymmetric_system() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution =
+            gmres_ilut_solve_with_config(&matrix, &rhs, 1e-10, 10, ILUTConfig::aggressive())
+                .unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn ilut_config_profiles_are_ordered() {
+        let conservative = ILUTConfig::conservative();
+        let balanced = ILUTConfig::balanced();
+        let aggressive = ILUTConfig::aggressive();
+        assert!(conservative.drop_tolerance >= balanced.drop_tolerance);
+        assert!(balanced.drop_tolerance >= aggressive.drop_tolerance);
+        assert!(conservative.max_fill <= balanced.max_fill);
+        assert!(balanced.max_fill <= aggressive.max_fill);
+
+        let small = ILUTConfig::for_dimension(16);
+        let medium = ILUTConfig::for_dimension(128);
+        let large = ILUTConfig::for_dimension(2048);
+        assert!(small.max_fill <= medium.max_fill);
+        assert!(medium.max_fill <= large.max_fill);
+    }
+
+    #[test]
+    fn gmres_ilut_rejects_dimension_mismatch() {
+        let matrix = toy_matrix();
+        let rhs = arr1(&[1.0_f64, 2.0]);
+        let result = gmres_ilut_solve(&matrix, &rhs, 1e-8, 10, 0.0, 8);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
     }
 }

@@ -91,10 +91,12 @@ Use this file to resume work quickly after context compaction without re-auditin
 61. `D-061`: Copy-elision pass expanded through additional core linalg domains (`lu`, `cholesky`, `eigen`, `triangular`) with view-native validation/dispatch and no wrapper-level `to_owned()` in no-provider view paths.
 62. `D-062`: Copy-elision pass extended through remaining convenience view wrappers in `polar` and `pca`, and provider-side view dispatch in `lu`/`cholesky`/`eigen` now avoids wrapper-level owned materialization.
 63. `D-063`: Sparse factorization depth expanded with IC(0): `ic0_factor`, `apply_ic0_preconditioner`, and `pcg_ic0_solve`, with tests and sparse benchmark coverage.
+64. `D-064`: Sparse factorization depth expanded with ILUT: `ilut_factor`, `apply_ilut_preconditioner`, and `bicgstab_ilut_solve`, with tests and sparse benchmark coverage.
+65. `D-065`: ILUT ergonomics and solver breadth expanded with `ILUTConfig` policy helpers, config-driven factorization/solve APIs, and ILUT-preconditioned `gmres` sparse solve (`gmres_ilut_solve` / `gmres_ilut_solve_with_config`), plus tests and benchmark coverage.
 
 ## Next
 
-1. `N-060` (P1): Continue sparse depth expansion beyond ILU(0)+IC(0) baseline into broader factorization-grade workflows.
+1. `N-060` (P1): Continue sparse depth expansion beyond ILU(0)+IC(0)+ILUT baseline into broader factorization-grade workflows.
 2. `N-061` (P0/P1): Complete copy-elision audit for remaining algorithm-internal owned materializations and document/optimize unavoidable cases.
 3. `N-062` (P2): Expand tensor APIs beyond current last-axis `ArrayD` operations into richer higher-rank algebra/contraction workflows.
 4. `N-063` (P2): Convert accelerator contracts from CPU/feature-gated parallel baseline into concrete GPU/distributed kernels.
