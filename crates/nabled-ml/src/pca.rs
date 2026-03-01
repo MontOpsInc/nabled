@@ -95,6 +95,10 @@ pub fn compute_pca(
 
 /// Compute principal component analysis from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`compute_pca`].
+///
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
 pub fn compute_pca_view(
@@ -117,6 +121,10 @@ pub fn transform(matrix: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
 }
 
 /// Project data to PCA score space from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`transform`].
 #[must_use]
 pub fn transform_view(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
     transform(&matrix.to_owned(), pca)
@@ -135,6 +143,10 @@ pub fn inverse_transform(scores: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2
 }
 
 /// Reconstruct from PCA scores provided as a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`inverse_transform`].
 #[must_use]
 pub fn inverse_transform_view(scores: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
     inverse_transform(&scores.to_owned(), pca)

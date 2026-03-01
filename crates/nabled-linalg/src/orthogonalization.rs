@@ -43,6 +43,10 @@ pub fn gram_schmidt(matrix: &Array2<f64>) -> Result<Array2<f64>, Orthogonalizati
 
 /// Modified Gram-Schmidt orthogonalization from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`gram_schmidt`].
+///
 /// # Errors
 /// Returns an error for empty or non-finite input.
 pub fn gram_schmidt_view(
@@ -60,6 +64,10 @@ pub fn gram_schmidt_classic(matrix: &Array2<f64>) -> Result<Array2<f64>, Orthogo
 }
 
 /// Classical Gram-Schmidt orthogonalization from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`gram_schmidt_classic`].
 ///
 /// # Errors
 /// Returns an error for empty or non-finite input.

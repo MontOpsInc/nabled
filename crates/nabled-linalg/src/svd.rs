@@ -178,6 +178,10 @@ pub fn decompose(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
 
 /// Compute the SVD of `matrix` from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`decompose`].
+///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
@@ -209,6 +213,10 @@ pub fn decompose_complex(matrix: &Array2<Complex64>) -> Result<NdarrayComplexSVD
 }
 
 /// Compute complex SVD from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`decompose_complex`].
 ///
 /// # Errors
 /// Returns an error if provider support is unavailable or decomposition fails.

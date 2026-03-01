@@ -151,6 +151,10 @@ where
 
 /// Solve `Lx = b` with forward substitution from matrix/vector views.
 ///
+/// # Performance
+/// This convenience wrapper materializes owned inputs via `to_owned()`
+/// before dispatching to [`solve_lower`].
+///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
 pub fn solve_lower_view<T>(
@@ -192,6 +196,10 @@ where
 }
 
 /// Solve `Ux = b` with back substitution from matrix/vector views.
+///
+/// # Performance
+/// This convenience wrapper materializes owned inputs via `to_owned()`
+/// before dispatching to [`solve_upper`].
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
@@ -235,6 +243,10 @@ pub fn solve_lower_complex(
 
 /// Solve `Lx = b` for complex-valued lower-triangular systems from views.
 ///
+/// # Performance
+/// This convenience wrapper materializes owned inputs via `to_owned()`
+/// before dispatching to [`solve_lower_complex`].
+///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
 pub fn solve_lower_complex_view(
@@ -270,6 +282,10 @@ pub fn solve_upper_complex(
 }
 
 /// Solve `Ux = b` for complex-valued upper-triangular systems from views.
+///
+/// # Performance
+/// This convenience wrapper materializes owned inputs via `to_owned()`
+/// before dispatching to [`solve_upper_complex`].
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.

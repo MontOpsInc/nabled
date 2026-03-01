@@ -94,6 +94,8 @@ bench-smoke:
     cargo bench -p nabled --bench schur_benchmarks -- --quick
     cargo bench -p nabled --bench sylvester_benchmarks -- --quick
     cargo bench -p nabled --bench optimization_benchmarks -- --quick
+    cargo bench -p nabled --bench polar_benchmarks -- --quick
+    cargo bench -p nabled --bench orthogonalization_benchmarks -- --quick
 
 bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench svd_benchmarks -- --quick
@@ -108,6 +110,8 @@ bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench schur_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sylvester_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench optimization_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench polar_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench orthogonalization_benchmarks -- --quick
 
 bench-report:
     cargo run -p nabled --bin benchmark_report

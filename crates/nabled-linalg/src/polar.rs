@@ -100,6 +100,10 @@ pub fn compute_polar(matrix: &Array2<f64>) -> Result<NdarrayPolarResult, PolarEr
 
 /// Compute polar decomposition using SVD from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`compute_polar`].
+///
 /// # Errors
 /// Returns an error if matrix is invalid or SVD fails.
 pub fn compute_polar_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarResult, PolarError> {
@@ -140,6 +144,10 @@ pub fn compute_polar_complex(
 }
 
 /// Compute complex polar decomposition from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`compute_polar_complex`].
 ///
 /// # Errors
 /// Returns an error if matrix is invalid or complex SVD fails.

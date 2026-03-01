@@ -84,3 +84,11 @@ harness = false
 [[bench]]
 name = "optimization_benchmarks"
 harness = false
+
+[[bench]]
+name = "polar_benchmarks"
+harness = false
+
+[[bench]]
+name = "orthogonalization_benchmarks"
+harness = false

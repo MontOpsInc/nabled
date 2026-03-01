@@ -125,6 +125,10 @@ pub fn matrix_exp(
 
 /// Compute matrix exponential via Taylor series from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_exp`].
+///
 /// # Errors
 /// Returns an error for invalid input.
 pub fn matrix_exp_view(
@@ -190,6 +194,10 @@ pub fn matrix_exp_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunct
 ///
 /// Falls back to Taylor series for non-symmetric matrices.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_exp_eigen`].
+///
 /// # Errors
 /// Returns an error for invalid input.
 pub fn matrix_exp_eigen_view(
@@ -230,6 +238,10 @@ pub fn matrix_log_taylor(
 }
 
 /// Compute matrix logarithm via Taylor expansion around identity from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_log_taylor`].
 ///
 /// # Errors
 /// Returns an error for invalid input.
@@ -296,6 +308,10 @@ pub fn matrix_log_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunct
 
 /// Compute matrix logarithm via eigen decomposition from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_log_eigen`].
+///
 /// # Errors
 /// Returns an error if eigenvalues are non-positive.
 pub fn matrix_log_eigen_view(
@@ -349,6 +365,10 @@ pub fn matrix_log_svd(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctio
 }
 
 /// Compute matrix logarithm via SVD from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_log_svd`].
 ///
 /// # Errors
 /// Returns an error if SVD fails.
@@ -404,6 +424,10 @@ pub fn matrix_power(matrix: &Array2<f64>, power: f64) -> Result<Array2<f64>, Mat
 }
 
 /// Compute matrix power via eigen decomposition from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_power`].
 ///
 /// # Errors
 /// Returns an error for non-symmetric inputs.
@@ -470,6 +494,10 @@ pub fn matrix_sign(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionEr
 }
 
 /// Compute matrix sign via eigen decomposition from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`matrix_sign`].
 ///
 /// # Errors
 /// Returns an error for non-symmetric inputs.

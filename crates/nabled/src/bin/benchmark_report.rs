@@ -188,6 +188,8 @@ fn print_missing_criterion_message(candidate_roots: &[&Path]) {
     eprintln!("  cargo bench --bench schur_benchmarks -- --quick");
     eprintln!("  cargo bench --bench sylvester_benchmarks -- --quick");
     eprintln!("  cargo bench --bench optimization_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench polar_benchmarks -- --quick");
+    eprintln!("  cargo bench --bench orthogonalization_benchmarks -- --quick");
 }
 
 fn now_unix_secs() -> u64 {
@@ -275,6 +277,10 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "sylvester"
     } else if group_id.starts_with("optimization_") {
         "optimization"
+    } else if group_id.starts_with("polar_") {
+        "polar"
+    } else if group_id.starts_with("orthogonalization_") {
+        "orthogonalization"
     } else {
         "unknown"
     };
@@ -291,7 +297,9 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         | "sparse_nabled_ndarray"
         | "schur_nabled_ndarray"
         | "sylvester_nabled_ndarray"
-        | "optimization_nabled_ndarray" => ("ndarray", "none"),
+        | "optimization_nabled_ndarray"
+        | "polar_nabled_ndarray"
+        | "orthogonalization_nabled_ndarray" => ("ndarray", "none"),
         "svd_competitor_faer_direct" | "qr_competitor_faer_direct" => {
             ("faer_direct", "faer_direct")
         }
@@ -301,7 +309,9 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "vector_competitor_ndarray" | "sparse_competitor_ndarray" => {
             ("ndarray_baseline", "ndarray_baseline")
         }
-        "optimization_competitor_manual" => ("manual_baseline", "manual_baseline"),
+        "optimization_competitor_manual"
+        | "schur_competitor_manual"
+        | "sylvester_competitor_manual" => ("manual_baseline", "manual_baseline"),
         _ => ("unknown", "unknown"),
     };
 

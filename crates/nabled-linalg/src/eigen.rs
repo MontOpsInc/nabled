@@ -173,6 +173,10 @@ pub fn symmetric(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError>
 
 /// Compute symmetric eigen decomposition from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`symmetric`].
+///
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
 pub fn symmetric_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
@@ -198,6 +202,10 @@ pub fn generalized(
 }
 
 /// Compute generalized symmetric eigen decomposition `(A, B)` from matrix views.
+///
+/// # Performance
+/// This convenience wrapper materializes owned matrices via `to_owned()`
+/// before dispatching to [`generalized`].
 ///
 /// # Errors
 /// Returns an error when dimensions are incompatible or `B` is not SPD.

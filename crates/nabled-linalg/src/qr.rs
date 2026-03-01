@@ -250,6 +250,10 @@ pub fn decompose_complex(
 
 /// Compute full complex QR decomposition from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper currently materializes an owned matrix via
+/// `to_owned()` before dispatching to [`decompose_complex`].
+///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn decompose_complex_view(
@@ -353,6 +357,10 @@ pub fn solve_least_squares(
 }
 
 /// Solve least squares from matrix/vector views.
+///
+/// # Performance
+/// This convenience wrapper currently materializes owned inputs via
+/// `to_owned()` before dispatching to [`solve_least_squares`].
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or rank-deficient systems.

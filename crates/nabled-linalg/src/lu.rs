@@ -3,6 +3,7 @@
 use std::fmt;
 
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use num_complex::Complex64;
 
 use crate::internal::{
     DEFAULT_TOLERANCE, lu_decompose, validate_finite, validate_square_non_empty,
@@ -67,6 +68,20 @@ fn map_lu_error(error: &'static str) -> LUError {
     }
 }
 
+#[cfg(feature = "openblas-system")]
+fn validate_complex_square_non_empty(matrix: &Array2<Complex64>) -> Result<(), LUError> {
+    if matrix.is_empty() {
+        return Err(LUError::EmptyMatrix);
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(LUError::NotSquare);
+    }
+    if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
+        return Err(LUError::NumericalInstability);
+    }
+    Ok(())
+}
+
 fn decompose_internal(matrix: &Array2<f64>) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
     let (l, u, pivots, sign) = lu_decompose(matrix).map_err(map_lu_error)?;
     Ok((NdarrayLUResult { l, u }, pivots, sign))
@@ -99,6 +114,36 @@ fn determinant_provider(matrix: &Array2<f64>) -> Result<f64, LUError> {
     matrix.det().map_err(|_| LUError::SingularMatrix)
 }
 
+#[cfg(feature = "openblas-system")]
+fn solve_complex_provider(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+) -> Result<Array1<Complex64>, LUError> {
+    use ndarray_linalg::Solve as _;
+
+    validate_complex_square_non_empty(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
+    }
+    matrix.solve(rhs).map_err(|_| LUError::SingularMatrix)
+}
+
+#[cfg(feature = "openblas-system")]
+fn inverse_complex_provider(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, LUError> {
+    use ndarray_linalg::Inverse as _;
+
+    validate_complex_square_non_empty(matrix)?;
+    matrix.inv().map_err(|_| LUError::SingularMatrix)
+}
+
+#[cfg(feature = "openblas-system")]
+fn determinant_complex_provider(matrix: &Array2<Complex64>) -> Result<Complex64, LUError> {
+    use ndarray_linalg::Determinant as _;
+
+    validate_complex_square_non_empty(matrix)?;
+    matrix.det().map_err(|_| LUError::SingularMatrix)
+}
+
 fn decompose_with_metadata(
     matrix: &Array2<f64>,
 ) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
@@ -115,6 +160,10 @@ pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayLUResult, LUError> {
 }
 
 /// Compute LU decomposition with partial pivoting from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`decompose`].
 ///
 /// # Errors
 /// Returns an error if input is invalid or decomposition fails.
@@ -144,7 +193,31 @@ pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, LUE
     }
 }
 
+/// Solve complex-valued `Ax=b` using LU decomposition.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible, matrix is singular, or
+/// provider support is unavailable.
+pub fn solve_complex(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+) -> Result<Array1<Complex64>, LUError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        solve_complex_provider(matrix, rhs)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        let _ = (matrix, rhs);
+        Err(LUError::InvalidInput("complex LU requires `openblas-system` feature".to_string()))
+    }
+}
+
 /// Solve `Ax=b` using LU decomposition from matrix/vector views.
+///
+/// # Performance
+/// This convenience wrapper materializes owned inputs via `to_owned()`
+/// before dispatching to [`solve`].
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or matrix is singular.
@@ -153,6 +226,22 @@ pub fn solve_view(
     rhs: &ArrayView1<'_, f64>,
 ) -> Result<Array1<f64>, LUError> {
     solve(&matrix.to_owned(), &rhs.to_owned())
+}
+
+/// Solve complex-valued `Ax=b` from matrix/vector views.
+///
+/// # Performance
+/// This convenience wrapper materializes owned inputs via `to_owned()`
+/// before dispatching to [`solve_complex`].
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible, matrix is singular, or
+/// provider support is unavailable.
+pub fn solve_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<Array1<Complex64>, LUError> {
+    solve_complex(&matrix.to_owned(), &rhs.to_owned())
 }
 
 /// Compute matrix inverse via LU decomposition.
@@ -171,12 +260,46 @@ pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> {
     }
 }
 
+/// Compute complex matrix inverse via LU decomposition.
+///
+/// # Errors
+/// Returns an error if matrix is singular or provider support is unavailable.
+pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, LUError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        inverse_complex_provider(matrix)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        let _ = matrix;
+        Err(LUError::InvalidInput("complex LU requires `openblas-system` feature".to_string()))
+    }
+}
+
 /// Compute matrix inverse via LU decomposition from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`inverse`].
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
 pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError> {
     inverse(&matrix.to_owned())
+}
+
+/// Compute complex matrix inverse from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`inverse_complex`].
+///
+/// # Errors
+/// Returns an error if matrix is singular or provider support is unavailable.
+pub fn inverse_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, LUError> {
+    inverse_complex(&matrix.to_owned())
 }
 
 /// Compute determinant via LU decomposition.
@@ -202,12 +325,44 @@ pub fn determinant(matrix: &Array2<f64>) -> Result<f64, LUError> {
     }
 }
 
+/// Compute complex determinant via LU decomposition.
+///
+/// # Errors
+/// Returns an error if decomposition fails or provider support is unavailable.
+pub fn determinant_complex(matrix: &Array2<Complex64>) -> Result<Complex64, LUError> {
+    #[cfg(feature = "openblas-system")]
+    {
+        determinant_complex_provider(matrix)
+    }
+    #[cfg(not(feature = "openblas-system"))]
+    {
+        let _ = matrix;
+        Err(LUError::InvalidInput("complex LU requires `openblas-system` feature".to_string()))
+    }
+}
+
 /// Compute determinant via LU decomposition from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`determinant`].
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn determinant_view(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
     determinant(&matrix.to_owned())
+}
+
+/// Compute complex determinant from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`determinant_complex`].
+///
+/// # Errors
+/// Returns an error if decomposition fails or provider support is unavailable.
+pub fn determinant_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
+    determinant_complex(&matrix.to_owned())
 }
 
 /// Compute signed log-determinant via LU decomposition.
@@ -225,6 +380,10 @@ pub fn log_determinant(matrix: &Array2<f64>) -> Result<LogDetResult<f64>, LUErro
 
 /// Compute signed log-determinant via LU decomposition from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`log_determinant`].
+///
 /// # Errors
 /// Returns an error if matrix is singular.
 pub fn log_determinant_view(matrix: &ArrayView2<'_, f64>) -> Result<LogDetResult<f64>, LUError> {
@@ -234,6 +393,7 @@ pub fn log_determinant_view(matrix: &ArrayView2<'_, f64>) -> Result<LogDetResult
 #[cfg(test)]
 mod tests {
     use ndarray::{Array1, Array2};
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -328,5 +488,64 @@ mod tests {
         let logdet_view = log_determinant_view(&matrix.view()).unwrap();
         assert_eq!(logdet_owned.sign, logdet_view.sign);
         assert!((logdet_owned.ln_abs_det - logdet_view.ln_abs_det).abs() < 1e-12);
+    }
+
+    #[cfg(feature = "openblas-system")]
+    #[test]
+    fn complex_lu_paths_solve_inverse_and_determinant() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(2.0, 1.0),
+            Complex64::new(1.0, -1.0),
+            Complex64::new(0.5, 0.25),
+            Complex64::new(3.0, -0.5),
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
+
+        let solution = solve_complex(&matrix, &rhs).unwrap();
+        let reconstructed = matrix.dot(&solution);
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).norm() < 1e-8);
+        }
+
+        let inverse = inverse_complex(&matrix).unwrap();
+        let product = matrix.dot(&inverse);
+        assert!((product[[0, 0]] - Complex64::new(1.0, 0.0)).norm() < 1e-8);
+        assert!((product[[1, 1]] - Complex64::new(1.0, 0.0)).norm() < 1e-8);
+        assert!(product[[0, 1]].norm() < 1e-8);
+        assert!(product[[1, 0]].norm() < 1e-8);
+
+        let determinant = determinant_complex(&matrix).unwrap();
+        assert!(determinant.norm() > 1e-8);
+
+        let solution_view = solve_complex_view(&matrix.view(), &rhs.view()).unwrap();
+        let inverse_viewed = inverse_complex_view(&matrix.view()).unwrap();
+        let determinant_viewed = determinant_complex_view(&matrix.view()).unwrap();
+        for i in 0..rhs.len() {
+            assert!((solution_view[i] - solution[i]).norm() < 1e-10);
+        }
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((inverse_viewed[[i, j]] - inverse[[i, j]]).norm() < 1e-10);
+            }
+        }
+        assert!((determinant_viewed - determinant).norm() < 1e-10);
+    }
+
+    #[cfg(not(feature = "openblas-system"))]
+    #[test]
+    fn complex_lu_without_provider_errors() {
+        let matrix = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0, 0.0)]).unwrap();
+        let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0)]);
+
+        assert!(matches!(solve_complex(&matrix, &rhs), Err(LUError::InvalidInput(_))));
+        assert!(matches!(inverse_complex(&matrix), Err(LUError::InvalidInput(_))));
+        assert!(matches!(determinant_complex(&matrix), Err(LUError::InvalidInput(_))));
+        assert!(matches!(
+            solve_complex_view(&matrix.view(), &rhs.view()),
+            Err(LUError::InvalidInput(_))
+        ));
+        assert!(matches!(inverse_complex_view(&matrix.view()), Err(LUError::InvalidInput(_))));
+        assert!(matches!(determinant_complex_view(&matrix.view()), Err(LUError::InvalidInput(_))));
     }
 }

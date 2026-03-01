@@ -38,6 +38,10 @@ pub fn column_means(matrix: &Array2<f64>) -> Array1<f64> {
 }
 
 /// Compute column means from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`column_means`].
 #[must_use]
 pub fn column_means_view(matrix: &ArrayView2<'_, f64>) -> Array1<f64> {
     column_means(&matrix.to_owned())
@@ -57,6 +61,10 @@ pub fn center_columns(matrix: &Array2<f64>) -> Array2<f64> {
 }
 
 /// Center columns by subtracting their means from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`center_columns`].
 #[must_use]
 pub fn center_columns_view(matrix: &ArrayView2<'_, f64>) -> Array2<f64> {
     center_columns(&matrix.to_owned())
@@ -86,6 +94,10 @@ pub fn covariance_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError
 
 /// Compute sample covariance matrix from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`covariance_matrix`].
+///
 /// # Errors
 /// Returns an error for empty input or fewer than two samples.
 pub fn covariance_matrix_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
@@ -114,6 +126,10 @@ pub fn correlation_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsErro
 }
 
 /// Compute correlation matrix from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`correlation_matrix`].
 ///
 /// # Errors
 /// Returns an error if covariance computation fails.

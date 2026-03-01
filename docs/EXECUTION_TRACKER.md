@@ -59,14 +59,16 @@ Use this file to resume work quickly after context compaction without re-auditin
 31. `D-031`: Dedicated `IntoNabledError` mapping-stability tests added for `nabled-linalg` and `nabled-ml`.
 32. `D-032`: Competitor benchmark baselines added where practical (`vector`, `sparse`, `optimization`) with report classifier support.
 33. `D-033`: Low per-file coverage targets completed for `eigen`, `lu`, `orthogonalization`, and `polar`.
+34. `D-034`: Dedicated benchmark suites added for `polar` and `orthogonalization`, with smoke/report wiring and classifier support.
+35. `D-035`: Practical manual competitor baselines added for `schur` and `sylvester`.
+36. `D-036`: Allocation-transparency docs completed for allocating `*_view`/convenience wrappers across linalg/ml modules.
+37. `D-037`: Complex parity expanded into LU/Cholesky via provider-backed complex solve/inverse/decomposition paths with explicit no-provider behavior.
 
 ## Next
 
-1. `N-022` (P0): Add dedicated benchmark suites for polar and orthogonalization domains.
-2. `N-023` (P0): Add competitor benchmark baselines for schur/sylvester domains where practical.
-3. `N-024` (P1): Continue complex parity expansion into additional decomposition/solver domains.
-4. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
-5. `N-026` (P0): Complete allocation-transparency pass for `*_view`/convenience APIs (document copies now; remove hidden copies where feasible).
+1. `N-024` (P1): Continue complex parity expansion beyond current coverage (vector, QR, SVD, LU, Cholesky, polar, triangular).
+2. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
+3. `N-027` (P1): Remove avoidable copies in convenience/view APIs where feasible (beyond current explicit documentation pass).
 
 ## Needed
 

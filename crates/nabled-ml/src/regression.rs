@@ -108,6 +108,10 @@ pub fn linear_regression(
 
 /// Solve linear regression with optional intercept from matrix/vector views.
 ///
+/// # Performance
+/// This convenience wrapper materializes owned inputs via `to_owned()`
+/// before dispatching to [`linear_regression`].
+///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
 pub fn linear_regression_view(

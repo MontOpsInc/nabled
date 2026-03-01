@@ -17,17 +17,18 @@ Workspace migration for library domains is complete.
 9. Tier-A benchmark surface expanded beyond four suites (LU/Cholesky/Eigen/Vector added).
 10. Sparse baseline is now present (`CSR`, sparse matvec, Jacobi sparse solve).
 11. Sparse baseline expanded with `COO` + COO→CSR conversion and Gauss-Seidel solve.
-12. New benchmark suites now cover `sparse`, `schur`, `sylvester`, and `optimization`.
+12. New benchmark suites now cover `sparse`, `schur`, `sylvester`, `optimization`, `polar`, and `orthogonalization`.
 13. Complex decomposition parity started (`QR` complex path and provider-backed complex SVD).
 14. Shared cross-domain taxonomy exists via `nabled-core::errors::NabledError`.
 15. Complex-number vector parity is now present (Hermitian dot, complex norm/cosine).
 16. First-order optimization primitives are now present (line search, gradient descent, Adam).
 17. View-first (`ArrayView*`) API coverage is expanded across remaining heavy linalg/ml domains with parity tests.
 18. Public API namespaces are flattened; `ndarray_*` wrapper modules are removed in favor of direct domain APIs.
-19. Complex parity now extends beyond QR/SVD into polar decomposition and triangular solves.
+19. Complex parity now extends beyond QR/SVD into LU, Cholesky, polar decomposition, and triangular solves.
 20. Dedicated `IntoNabledError` mapping-stability tests now exist in `nabled-linalg` and `nabled-ml`.
-21. Benchmark competitor baselines now exist for vector, sparse, and optimization suites.
+21. Benchmark competitor baselines now exist for vector, sparse, optimization, schur, and sylvester suites.
 22. Targeted per-file coverage lift for `eigen`, `lu`, `orthogonalization`, and `polar` is complete.
+23. Allocation behavior for allocating view/convenience APIs is now explicitly documented in rustdoc.
 
 ## Current Code Ownership
 
@@ -64,9 +65,9 @@ Workspace migration for library domains is complete.
 Harden workspace contracts and release readiness:
 
 1. Expand complex-number parity into additional dense/sparse solver domains beyond the current set.
-2. Add dedicated benchmark suites for currently unbenchmarked domains (notably polar and orthogonalization).
-3. Broaden competitor baseline coverage where practical (next: schur/sylvester domains).
-4. Complete allocation-transparency cleanup for `*_view` and other convenience wrappers.
+2. Define and apply a shared tolerance/config policy across dense kernels.
+3. Remove avoidable copies in selected convenience/view APIs where feasible.
+4. Expand sparse formats/solvers beyond current CSR/COO + Jacobi/Gauss-Seidel baseline.
 5. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration

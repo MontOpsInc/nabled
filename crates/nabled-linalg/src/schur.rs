@@ -126,6 +126,10 @@ pub fn compute_schur(matrix: &Array2<f64>) -> Result<NdarraySchurResult, SchurEr
 
 /// Compute Schur decomposition `A = Q T Q^T` from a matrix view.
 ///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`compute_schur`].
+///
 /// # Errors
 /// Returns an error for invalid input or convergence failure.
 pub fn compute_schur_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySchurResult, SchurError> {
@@ -146,6 +150,10 @@ pub fn compute_schur_into(
 }
 
 /// Compute Schur decomposition into caller-provided outputs from a matrix view.
+///
+/// # Performance
+/// This convenience wrapper materializes an owned matrix via `to_owned()`
+/// before dispatching to [`compute_schur_into`].
 ///
 /// # Errors
 /// Returns an error for invalid inputs, output shapes, or convergence failure.

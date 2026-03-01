@@ -97,6 +97,10 @@ pub fn solve_sylvester(
 
 /// Solve Sylvester equation `A X + X B = C` from matrix views.
 ///
+/// # Performance
+/// This convenience wrapper materializes owned matrices via `to_owned()`
+/// before dispatching to [`solve_sylvester`].
+///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
 pub fn solve_sylvester_view(
@@ -179,6 +183,10 @@ pub fn solve_lyapunov(a: &Array2<f64>, q: &Array2<f64>) -> Result<Array2<f64>, S
 }
 
 /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0` from matrix views.
+///
+/// # Performance
+/// This convenience wrapper materializes owned matrices via `to_owned()`
+/// before dispatching to [`solve_lyapunov`].
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
