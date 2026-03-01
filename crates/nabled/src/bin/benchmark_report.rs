@@ -298,6 +298,10 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         "svd_competitor_ndarray_linalg" | "qr_competitor_ndarray_linalg" => {
             ("ndarray_linalg", "ndarray_linalg")
         }
+        "vector_competitor_ndarray" | "sparse_competitor_ndarray" => {
+            ("ndarray_baseline", "ndarray_baseline")
+        }
+        "optimization_competitor_manual" => ("manual_baseline", "manual_baseline"),
         _ => ("unknown", "unknown"),
     };
 

@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use nabled::sparse::{self as sparse, CsrMatrix};
-use ndarray::Array1;
+use ndarray::{Array1, Array2};
 use rand::RngExt;
 
 fn make_diagonally_dominant_tridiagonal(size: usize) -> CsrMatrix {
@@ -34,38 +34,77 @@ fn random_vector(size: usize) -> Array1<f64> {
     Array1::from_vec(values)
 }
 
+fn csr_to_dense(matrix: &CsrMatrix) -> Array2<f64> {
+    let mut dense = Array2::<f64>::zeros((matrix.nrows, matrix.ncols));
+    for row in 0..matrix.nrows {
+        let start = matrix.indptr[row];
+        let end = matrix.indptr[row + 1];
+        for idx in start..end {
+            dense[[row, matrix.indices[idx]]] = matrix.data[idx];
+        }
+    }
+    dense
+}
+
 fn benchmark_sparse(c: &mut Criterion) {
-    let mut group = c.benchmark_group("sparse_nabled_ndarray");
+    {
+        let mut group = c.benchmark_group("sparse_nabled_ndarray");
+        for size in [128_usize, 256, 512] {
+            let matrix = make_diagonally_dominant_tridiagonal(size);
+            let rhs = random_vector(size);
+            let mut output = Array1::<f64>::zeros(size);
+            let id = format!("square-{size}x{size}");
 
-    for size in [128_usize, 256, 512] {
-        let matrix = make_diagonally_dominant_tridiagonal(size);
-        let rhs = random_vector(size);
-        let mut output = Array1::<f64>::zeros(size);
-        let id = format!("square-{size}x{size}");
-
-        _ = group.bench_with_input(BenchmarkId::new("csr_matvec", &id), &size, |bench, _| {
-            bench.iter(|| sparse::matvec(black_box(&matrix), black_box(&rhs)));
-        });
-
-        _ = group.bench_with_input(BenchmarkId::new("csr_matvec_into", &id), &size, |bench, _| {
-            bench.iter(|| {
-                sparse::matvec_into(black_box(&matrix), black_box(&rhs), black_box(&mut output))
+            _ = group.bench_with_input(BenchmarkId::new("csr_matvec", &id), &size, |bench, _| {
+                bench.iter(|| sparse::matvec(black_box(&matrix), black_box(&rhs)));
             });
-        });
 
-        _ = group.bench_with_input(BenchmarkId::new("jacobi_solve", &id), &size, |bench, _| {
-            bench.iter(|| {
-                sparse::jacobi_solve(
-                    black_box(&matrix),
-                    black_box(&rhs),
-                    black_box(1e-8),
-                    black_box(10_000),
-                )
+            _ = group.bench_with_input(
+                BenchmarkId::new("csr_matvec_into", &id),
+                &size,
+                |bench, _| {
+                    bench.iter(|| {
+                        sparse::matvec_into(
+                            black_box(&matrix),
+                            black_box(&rhs),
+                            black_box(&mut output),
+                        )
+                    });
+                },
+            );
+
+            _ = group.bench_with_input(BenchmarkId::new("jacobi_solve", &id), &size, |bench, _| {
+                bench.iter(|| {
+                    sparse::jacobi_solve(
+                        black_box(&matrix),
+                        black_box(&rhs),
+                        black_box(1e-8),
+                        black_box(10_000),
+                    )
+                });
             });
-        });
+        }
+        group.finish();
     }
 
-    group.finish();
+    {
+        let mut competitor_group = c.benchmark_group("sparse_competitor_ndarray");
+        for size in [128_usize, 256, 512] {
+            let matrix = make_diagonally_dominant_tridiagonal(size);
+            let dense_matrix = csr_to_dense(&matrix);
+            let rhs = random_vector(size);
+            let id = format!("square-{size}x{size}");
+
+            _ = competitor_group.bench_with_input(
+                BenchmarkId::new("dense_matvec", &id),
+                &size,
+                |bench, _| {
+                    bench.iter(|| dense_matrix.dot(black_box(&rhs)));
+                },
+            );
+        }
+        competitor_group.finish();
+    }
 }
 
 criterion_group!(benches, benchmark_sparse);

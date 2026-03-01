@@ -6,9 +6,9 @@ pub use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 pub use nabled_core::prelude;
 pub use nabled_linalg::{
     CholeskyError, CooMatrix, CsrMatrix, EigenError, LUError, LogDetResult, MatrixFunctionError,
-    MatrixFunctionWorkspace, NdarrayCholeskyResult, NdarrayComplexSVD, NdarrayEigenResult,
-    NdarrayGeneralizedEigenResult, NdarrayLUResult, NdarrayPolarResult, NdarraySVD,
-    NdarraySchurResult, OrthogonalizationError, PairwiseCosineWorkspace, PolarError,
+    MatrixFunctionWorkspace, NdarrayCholeskyResult, NdarrayComplexPolarResult, NdarrayComplexSVD,
+    NdarrayEigenResult, NdarrayGeneralizedEigenResult, NdarrayLUResult, NdarrayPolarResult,
+    NdarraySVD, NdarraySchurResult, OrthogonalizationError, PairwiseCosineWorkspace, PolarError,
     PseudoInverseConfig, QRConfig, QRError, QRResult, SVDError, SchurError, SchurWorkspace,
     SparseError, SylvesterError, SylvesterWorkspace, TriangularError, VectorError, cholesky, eigen,
     lu, matrix_functions, orthogonalization, polar, qr, schur, sparse, svd, sylvester, triangular,

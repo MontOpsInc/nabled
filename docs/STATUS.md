@@ -24,6 +24,10 @@ Workspace migration for library domains is complete.
 16. First-order optimization primitives are now present (line search, gradient descent, Adam).
 17. View-first (`ArrayView*`) API coverage is expanded across remaining heavy linalg/ml domains with parity tests.
 18. Public API namespaces are flattened; `ndarray_*` wrapper modules are removed in favor of direct domain APIs.
+19. Complex parity now extends beyond QR/SVD into polar decomposition and triangular solves.
+20. Dedicated `IntoNabledError` mapping-stability tests now exist in `nabled-linalg` and `nabled-ml`.
+21. Benchmark competitor baselines now exist for vector, sparse, and optimization suites.
+22. Targeted per-file coverage lift for `eigen`, `lu`, `orthogonalization`, and `polar` is complete.
 
 ## Current Code Ownership
 
@@ -59,9 +63,9 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Expand complex-number parity beyond QR/SVD and vector kernels.
-2. Add explicit tests for `IntoNabledError` mappings and maintain mapping stability.
-3. Add benchmark competitor baselines for newly added benchmark domains.
+1. Expand complex-number parity into additional dense/sparse solver domains beyond the current set.
+2. Add dedicated benchmark suites for currently unbenchmarked domains (notably polar and orthogonalization).
+3. Broaden competitor baseline coverage where practical (next: schur/sylvester domains).
 4. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration

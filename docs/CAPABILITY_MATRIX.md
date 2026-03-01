@@ -1,6 +1,6 @@
 # Capability Matrix
 
-Last updated: 2026-02-28
+Last updated: 2026-03-01
 
 ## Purpose
 
@@ -24,25 +24,25 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 |---|---|---|---|---|---|
 | Core validation | shape checks for matrix/system inputs | `nabled-core::validation` | Implemented | No | Shared helpers exist; error model still minimal. |
 | Core errors | common shape errors + shared taxonomy (`NabledError`) | `nabled-core::errors` | Implemented | No | Domain errors remain local, but normalization path exists via `IntoNabledError`. |
-| Cholesky | factorization, solve, inverse | `nabled-linalg::cholesky::ndarray_cholesky` | Implemented | Yes | Bench exists (`cholesky_benchmarks`). |
-| Eigen | symmetric + generalized SPD-B eigen | `nabled-linalg::eigen::ndarray_eigen` | Partial | Yes | No general non-symmetric dense eigensolver API. |
-| LU | factorization, solve, inverse, det/logdet | `nabled-linalg::lu::ndarray_lu` | Implemented | Yes | Bench exists (`lu_benchmarks`). |
-| QR | full/reduced QR, pivoting, least-squares | `nabled-linalg::qr::ndarray_qr` | Implemented | Yes | Bench exists (`qr_benchmarks`). |
-| SVD | full/truncated/toleranced SVD, rank, cond, pinv, null space | `nabled-linalg::svd::ndarray_svd` | Implemented | Yes | Bench exists (`svd_benchmarks`). |
-| Triangular solves | lower/upper substitution | `nabled-linalg::triangular` / `ndarray_triangular` | Implemented | Yes | Includes allocation-controlled `*_into` paths. |
-| Vector primitives | dot/norm/cosine/pairwise/batched dot (+ complex vector baseline) | `nabled-linalg::vector::ndarray_vector` | Implemented | Yes | Bench exists (`vector_benchmarks`); complex Hermitian dot/norm/cosine landed. |
-| Schur | Schur decomposition | `nabled-linalg::schur::ndarray_schur` | Implemented | Yes | Bench exists (`schur_benchmarks`). |
-| Polar | polar decomposition | `nabled-linalg::polar::ndarray_polar` | Implemented | No | No dedicated benchmark yet. |
-| Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester::ndarray_sylvester` | Implemented | Yes | Bench exists (`sylvester_benchmarks`). |
-| Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions::ndarray_matrix_functions` | Implemented | Yes | Bench exists (`matrix_functions_benchmarks`). |
-| Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization::ndarray_orthogonalization` | Implemented | No | No dedicated benchmark yet. |
-| Iterative solvers | CG, GMRES | `nabled-ml::iterative::ndarray_iterative` | Implemented | No | Good foundation for larger optimization stack. |
-| Sparse kernels | CSR/COO primitives, sparse matvec, Jacobi + Gauss-Seidel | `nabled-linalg::sparse::ndarray_sparse` | Implemented | Yes | Bench exists (`sparse_benchmarks`). |
-| Optimization | line search, gradient descent, Adam | `nabled-ml::optimization::ndarray_optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`). |
-| Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian::ndarray_jacobian` | Implemented | No | Finite-difference based. |
-| PCA | PCA + transform/inverse-transform | `nabled-ml::pca::ndarray_pca` | Implemented | No | |
-| Regression | linear regression | `nabled-ml::regression::ndarray_regression` | Implemented | No | |
-| Stats | means/centering/covariance/correlation | `nabled-ml::stats::ndarray_stats` | Implemented | No | |
+| Cholesky | factorization, solve, inverse | `nabled-linalg::cholesky` | Implemented | Yes | Bench exists (`cholesky_benchmarks`). |
+| Eigen | symmetric + generalized SPD-B eigen | `nabled-linalg::eigen` | Partial | Yes | No general non-symmetric dense eigensolver API. |
+| LU | factorization, solve, inverse, det/logdet | `nabled-linalg::lu` | Implemented | Yes | Bench exists (`lu_benchmarks`). |
+| QR | full/reduced QR, pivoting, least-squares | `nabled-linalg::qr` | Implemented | Yes | Bench exists (`qr_benchmarks`). |
+| SVD | full/truncated/toleranced SVD, rank, cond, pinv, null space | `nabled-linalg::svd` | Implemented | Yes | Bench exists (`svd_benchmarks`). |
+| Triangular solves | lower/upper substitution (+ complex variants) | `nabled-linalg::triangular` | Implemented | Yes | Includes allocation-controlled `*_into` paths and complex solve entrypoints. |
+| Vector primitives | dot/norm/cosine/pairwise/batched dot (+ complex Hermitian baseline) | `nabled-linalg::vector` | Implemented | Yes | Bench exists (`vector_benchmarks`) with ndarray competitor baselines. |
+| Schur | Schur decomposition | `nabled-linalg::schur` | Implemented | Yes | Bench exists (`schur_benchmarks`). |
+| Polar | polar decomposition (+ complex variant) | `nabled-linalg::polar` | Implemented | No | Complex path exists; dedicated benchmark still missing. |
+| Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester` | Implemented | Yes | Bench exists (`sylvester_benchmarks`). |
+| Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Bench exists (`matrix_functions_benchmarks`). |
+| Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization` | Implemented | No | No dedicated benchmark yet. |
+| Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Good foundation for larger optimization stack. |
+| Sparse kernels | CSR/COO primitives, sparse matvec, Jacobi + Gauss-Seidel | `nabled-linalg::sparse` | Implemented | Yes | Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
+| Optimization | line search, gradient descent, Adam | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
+| Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
+| PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
+| Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
+| Stats | means/centering/covariance/correlation | `nabled-ml::stats` | Implemented | No | |
 
 ## Target Scope Matrix (Aligned to Project Goals)
 
@@ -50,13 +50,13 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 
 | Capability Group | Current Status | Gap |
 |---|---|---|
-| Stable ndarray-first dense decomposition suite | Partial | API contract is normalized; provider-native kernels are still pending for several domains. |
+| Stable ndarray-first dense decomposition suite | Partial | Hot dense kernels are provider-enabled; remaining depth is broader non-symmetric eigensolver coverage and provider-native depth in selected secondary domains. |
 | Vector-first primitives for embeddings workflows | Implemented | Dot/norm/cosine/pairwise distance/batched dot are available; sparse and higher-rank follow-ons remain. |
 | Matrix-vector and matrix-matrix pipeline primitives | Partial | Relying on ndarray directly today; nabled-level APIs/compositional helpers are missing. |
-| Unified error taxonomy and API contracts | Partial | Domain-local errors exist; core shared error architecture is not consolidated yet. |
+| Unified error taxonomy and API contracts | Partial | Shared taxonomy exists and is now covered by dedicated mapping-stability tests; full cross-crate error ergonomics can still be expanded. |
 | Performance-contract APIs (explicit allocations/workspaces) | Partial | `*_into` and workspace patterns now include vector/triangular/cholesky/svd/qr/matrix_functions/schur/sylvester; view-first (`ArrayView*`) pass is underway. |
 | Numeric robustness controls | Partial | Tolerances exist in places; policy and consistency are not unified across domains. |
-| Benchmark coverage for all Tier-A kernels | Partial | Coverage expanded with LU/Cholesky/Eigen/Vector; Schur/Polar/Sylvester/ML domains still need dedicated suites. |
+| Benchmark coverage for all Tier-A kernels | Partial | Suite coverage is broad; remaining gap is dedicated benches for polar/orthogonalization and broader competitor parity in schur/sylvester domains. |
 
 ### P1: Required for broader "go-to" linalg/ML scope
 
@@ -64,7 +64,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 |---|---|---|
 | Batched operations over many vectors/matrices | Partial | Vector batched dot and pairwise kernels exist; matrix-batch and sparse-batch APIs still missing. |
 | Sparse linear algebra primitives | Partial | CSR baseline exists (`matvec`, `matvec_into`, Jacobi solve); more formats and solver breadth still missing. |
-| Complex-number parity across major algorithms | Partial | Complex vector baseline exists; decomposition/kernel parity is still mostly f64-only. |
+| Complex-number parity across major algorithms | Partial | Complex parity now includes vector kernels, QR, SVD, polar decomposition, and triangular solves; many other domains remain f64-only. |
 | Non-symmetric dense eigen coverage | Partial | Symmetric/generalized-SPD available; broader eigen support missing. |
 | More optimization primitives | Partial | CG/GMRES + line search + gradient descent + Adam exist; constrained/stochastic/advanced second-order breadth is still missing. |
 
@@ -82,17 +82,17 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 
 Concretely, the largest missing pieces are:
 1. Sparse breadth beyond CSR/Jacobi and broader batch semantics beyond the current vector baseline.
-2. Complex-number parity expansion beyond vector kernels.
+2. Complex-number parity expansion beyond the currently covered domains (vector/QR/SVD/polar/triangular).
 3. Explicit performance-contract APIs across the remaining heavy-kernel surface.
-4. Broader benchmark/perf coverage in Schur/Polar/Sylvester/sparse/optimization domains.
+4. Broader benchmark/perf coverage for currently unbenchmarked domains (for example polar and orthogonalization) and more competitor parity for schur/sylvester.
 
 ## Execution Order Driven by This Matrix
 
-1. Add dedicated benchmarks for newly landed sparse/Schur/Sylvester/optimization domains.
-2. Extend complex-number parity into decomposition kernels.
-3. Expand sparse formats and sparse solver breadth.
-4. Apply view-first API normalization to reduce caller-side allocations.
-5. Consolidate cross-domain error taxonomy in `nabled-core`.
+1. Add dedicated polar and orthogonalization benchmark suites.
+2. Expand competitor baselines where practical (especially schur/sylvester).
+3. Extend complex-number parity into additional decomposition/solver domains.
+4. Expand sparse formats and sparse solver breadth.
+5. Harden cross-domain API ergonomics around the shared `NabledError` taxonomy.
 
 ## Definition of Done for This Document
 

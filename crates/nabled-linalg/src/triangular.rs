@@ -3,6 +3,7 @@
 use nabled_core::errors::ShapeError;
 use nabled_core::validation::validate_square_system;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use num_complex::Complex64;
 use num_traits::Float;
 use thiserror::Error;
 
@@ -74,6 +75,62 @@ where
         }
 
         output[i] = (rhs[i] - sum) / matrix[[i, i]];
+    }
+
+    Ok(())
+}
+
+fn solve_lower_complex_into_internal(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), TriangularError> {
+    validate_square_system(matrix, rhs)?;
+    if output.len() != rhs.len() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
+
+    let n = matrix.nrows();
+    output.assign(rhs);
+    for i in 0..n {
+        let pivot = matrix[[i, i]];
+        if pivot.norm() <= f64::EPSILON {
+            return Err(TriangularError::Singular);
+        }
+
+        let mut sum = Complex64::new(0.0, 0.0);
+        for j in 0..i {
+            sum += matrix[[i, j]] * output[j];
+        }
+        output[i] = (rhs[i] - sum) / pivot;
+    }
+
+    Ok(())
+}
+
+fn solve_upper_complex_into_internal(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), TriangularError> {
+    validate_square_system(matrix, rhs)?;
+    if output.len() != rhs.len() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
+
+    let n = matrix.nrows();
+    output.assign(rhs);
+    for i in (0..n).rev() {
+        let pivot = matrix[[i, i]];
+        if pivot.norm() <= f64::EPSILON {
+            return Err(TriangularError::Singular);
+        }
+
+        let mut sum = Complex64::new(0.0, 0.0);
+        for j in (i + 1)..n {
+            sum += matrix[[i, j]] * output[j];
+        }
+        output[i] = (rhs[i] - sum) / pivot;
     }
 
     Ok(())
@@ -163,10 +220,83 @@ where
     solve_upper_into_internal(matrix, rhs, output)
 }
 
+/// Solve `Lx = b` for complex-valued lower-triangular systems.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_complex(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+) -> Result<Array1<Complex64>, TriangularError> {
+    let mut output = Array1::<Complex64>::zeros(rhs.len());
+    solve_lower_complex_into(matrix, rhs, &mut output)?;
+    Ok(output)
+}
+
+/// Solve `Lx = b` for complex-valued lower-triangular systems from views.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<Array1<Complex64>, TriangularError> {
+    solve_lower_complex(&matrix.to_owned(), &rhs.to_owned())
+}
+
+/// Solve `Lx = b` for complex-valued lower-triangular systems into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_complex_into(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), TriangularError> {
+    solve_lower_complex_into_internal(matrix, rhs, output)
+}
+
+/// Solve `Ux = b` for complex-valued upper-triangular systems.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_complex(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+) -> Result<Array1<Complex64>, TriangularError> {
+    let mut output = Array1::<Complex64>::zeros(rhs.len());
+    solve_upper_complex_into(matrix, rhs, &mut output)?;
+    Ok(output)
+}
+
+/// Solve `Ux = b` for complex-valued upper-triangular systems from views.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<Array1<Complex64>, TriangularError> {
+    solve_upper_complex(&matrix.to_owned(), &rhs.to_owned())
+}
+
+/// Solve `Ux = b` for complex-valued upper-triangular systems into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_complex_into(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), TriangularError> {
+    solve_upper_complex_into_internal(matrix, rhs, output)
+}
+
 #[cfg(test)]
 mod tests {
     use nabled_core::errors::ShapeError;
     use ndarray::{arr1, arr2};
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -227,5 +357,62 @@ mod tests {
             assert!((lower_owned[i] - lower_view[i]).abs() < 1e-12);
             assert!((upper_owned[i] - upper_view[i]).abs() < 1e-12);
         }
+    }
+
+    #[test]
+    fn complex_lower_and_upper_reconstruct_rhs() {
+        let lower = arr2(&[[Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)], [
+            Complex64::new(1.0, -1.0),
+            Complex64::new(3.0, 0.5),
+        ]]);
+        let upper = arr2(&[[Complex64::new(2.5, 0.25), Complex64::new(-1.0, 0.5)], [
+            Complex64::new(0.0, 0.0),
+            Complex64::new(1.5, -0.25),
+        ]]);
+        let rhs = arr1(&[Complex64::new(2.0, 1.0), Complex64::new(4.0, -2.0)]);
+
+        let lower_solution = solve_lower_complex(&lower, &rhs).unwrap();
+        let upper_solution = solve_upper_complex(&upper, &rhs).unwrap();
+        let lower_reconstructed = lower.dot(&lower_solution);
+        let upper_reconstructed = upper.dot(&upper_solution);
+
+        for i in 0..rhs.len() {
+            assert!((lower_reconstructed[i] - rhs[i]).norm() < 1e-10);
+            assert!((upper_reconstructed[i] - rhs[i]).norm() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn complex_view_variants_match_owned() {
+        let lower = arr2(&[[Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)], [
+            Complex64::new(0.5, 0.25),
+            Complex64::new(1.5, -0.5),
+        ]]);
+        let upper = arr2(&[[Complex64::new(3.0, 0.0), Complex64::new(0.2, -0.1)], [
+            Complex64::new(0.0, 0.0),
+            Complex64::new(2.0, 0.75),
+        ]]);
+        let rhs = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(-0.5, 1.0)]);
+
+        let lower_owned = solve_lower_complex(&lower, &rhs).unwrap();
+        let lower_view = solve_lower_complex_view(&lower.view(), &rhs.view()).unwrap();
+        let upper_owned = solve_upper_complex(&upper, &rhs).unwrap();
+        let upper_view = solve_upper_complex_view(&upper.view(), &rhs.view()).unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((lower_owned[i] - lower_view[i]).norm() < 1e-12);
+            assert!((upper_owned[i] - upper_view[i]).norm() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn complex_singular_matrix_errors() {
+        let lower = arr2(&[[Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0)], [
+            Complex64::new(1.0, 0.0),
+            Complex64::new(1.0, 0.0),
+        ]]);
+        let rhs = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(2.0, 0.0)]);
+        let result = solve_lower_complex(&lower, &rhs);
+        assert!(matches!(result, Err(TriangularError::Singular)));
     }
 }

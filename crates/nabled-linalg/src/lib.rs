@@ -24,7 +24,7 @@ pub use eigen::{EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult};
 pub use lu::{LUError, LogDetResult, NdarrayLUResult};
 pub use matrix_functions::{MatrixFunctionError, MatrixFunctionWorkspace};
 pub use orthogonalization::OrthogonalizationError;
-pub use polar::{NdarrayPolarResult, PolarError};
+pub use polar::{NdarrayComplexPolarResult, NdarrayPolarResult, PolarError};
 pub use qr::{QRConfig, QRError, QRResult};
 pub use schur::{NdarraySchurResult, SchurError, SchurWorkspace};
 pub use sparse::{CooMatrix, CsrMatrix, SparseError};

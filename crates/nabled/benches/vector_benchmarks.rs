@@ -17,9 +17,35 @@ fn generate_random_matrix(rows: usize, cols: usize) -> Array2<f64> {
     Array2::from_shape_vec((rows, cols), data).expect("shape should match data length")
 }
 
-fn benchmark_ndarray_vector(c: &mut Criterion) {
-    let mut group = c.benchmark_group("vector_nabled_ndarray");
+fn cosine_similarity_ndarray_baseline(a: &Array1<f64>, b: &Array1<f64>) -> Option<f64> {
+    if a.len() != b.len() || a.is_empty() {
+        return None;
+    }
+    let dot = a.dot(b);
+    let norm_a = a.dot(a).sqrt();
+    let norm_b = b.dot(b).sqrt();
+    let denom = norm_a * norm_b;
+    if denom <= f64::EPSILON {
+        return None;
+    }
+    Some(dot / denom)
+}
 
+fn pairwise_l2_naive(left: &Array2<f64>, right: &Array2<f64>, output: &mut Array2<f64>) {
+    for i in 0..left.nrows() {
+        for j in 0..right.nrows() {
+            let mut sum = 0.0_f64;
+            for k in 0..left.ncols() {
+                let delta = left[[i, k]] - right[[j, k]];
+                sum += delta * delta;
+            }
+            output[[i, j]] = sum.sqrt();
+        }
+    }
+}
+
+fn bench_nabled_vector(c: &mut Criterion) {
+    let mut group = c.benchmark_group("vector_nabled_ndarray");
     for size in [128_usize, 256, 512] {
         let a = generate_random_vector(size);
         let b = generate_random_vector(size);
@@ -73,6 +99,60 @@ fn benchmark_ndarray_vector(c: &mut Criterion) {
     }
 
     group.finish();
+}
+
+fn bench_competitor_vector(c: &mut Criterion) {
+    let mut competitor_group = c.benchmark_group("vector_competitor_ndarray");
+    for size in [128_usize, 256, 512] {
+        let a = generate_random_vector(size);
+        let b = generate_random_vector(size);
+
+        _ = competitor_group.bench_with_input(
+            BenchmarkId::new("cosine_similarity", size),
+            &size,
+            |bench, _| {
+                bench.iter(|| cosine_similarity_ndarray_baseline(black_box(&a), black_box(&b)));
+            },
+        );
+
+        _ = competitor_group.bench_with_input(BenchmarkId::new("dot", size), &size, |bench, _| {
+            bench.iter(|| {
+                if a.len() != b.len() || a.is_empty() {
+                    return None;
+                }
+                Some(a.dot(black_box(&b)))
+            });
+        });
+    }
+
+    for rows in [32_usize, 64] {
+        let cols = 128_usize;
+        let left = generate_random_matrix(rows, cols);
+        let right = generate_random_matrix(rows, cols);
+        let mut l2_competitor_out = Array2::<f64>::zeros((rows, rows));
+        let id = format!("square-{rows}x{rows}");
+
+        _ = competitor_group.bench_with_input(
+            BenchmarkId::new("pairwise_l2_naive", &id),
+            &rows,
+            |bench, _| {
+                bench.iter(|| {
+                    pairwise_l2_naive(
+                        black_box(&left),
+                        black_box(&right),
+                        black_box(&mut l2_competitor_out),
+                    );
+                });
+            },
+        );
+    }
+
+    competitor_group.finish();
+}
+
+fn benchmark_ndarray_vector(c: &mut Criterion) {
+    bench_nabled_vector(c);
+    bench_competitor_vector(c);
 }
 
 criterion_group!(benches, benchmark_ndarray_vector);

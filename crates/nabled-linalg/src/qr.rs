@@ -215,6 +215,7 @@ pub fn decompose(matrix: &Array2<f64>, config: &QRConfig<f64>) -> Result<QRResul
     }
 }
 
+// TODO: Remove - or keep, but address the allocation being hidden
 /// Compute full QR decomposition from a matrix view.
 ///
 /// # Errors

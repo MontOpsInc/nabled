@@ -55,13 +55,17 @@ Use this file to resume work quickly after context compaction without re-auditin
 27. `D-027`: Coverage policy aligned in local/CI: shared ignore regex (`errors|examples|benches|src/bin`), `--lib --tests` scope, and hard `>=90%` gate.
 28. `D-028`: View-first API pass expanded across remaining heavy ndarray APIs (`cholesky`, `lu`, `eigen`, `matrix_functions`, `orthogonalization`, `polar`, `schur`, `sylvester`, `triangular`, `stats`, `regression`, `pca`) with parity tests.
 29. `D-029`: Flattened public API namespaces by removing `ndarray_*` wrapper modules across linalg/ml domains; public call surface is now direct per-domain (`nabled::cholesky::decompose`, etc.) and all workspace call sites (tests/benches/examples) were migrated.
+30. `D-030`: Complex parity expanded beyond QR/SVD into polar decomposition and triangular solves.
+31. `D-031`: Dedicated `IntoNabledError` mapping-stability tests added for `nabled-linalg` and `nabled-ml`.
+32. `D-032`: Competitor benchmark baselines added where practical (`vector`, `sparse`, `optimization`) with report classifier support.
+33. `D-033`: Low per-file coverage targets completed for `eigen`, `lu`, `orthogonalization`, and `polar`.
 
 ## Next
 
-1. `N-018` (P0): Extend complex parity to additional decomposition/solver domains beyond QR/SVD.
-2. `N-019` (P0): Add dedicated tests for `IntoNabledError` conversion coverage and mapping stability.
-3. `N-020` (P0): Add benchmark competitor baselines for new benchmark suites where practical.
-4. `N-021` (P1): Incrementally raise low per-file coverage in `eigen`, `lu`, `orthogonalization`, and `polar` while keeping API behavior unchanged.
+1. `N-022` (P0): Add dedicated benchmark suites for polar and orthogonalization domains.
+2. `N-023` (P0): Add competitor benchmark baselines for schur/sylvester domains where practical.
+3. `N-024` (P1): Continue complex parity expansion into additional decomposition/solver domains.
+4. `N-025` (P1): Define and apply a shared tolerance/config policy across dense kernels.
 
 ## Needed
 

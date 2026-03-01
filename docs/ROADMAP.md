@@ -41,7 +41,7 @@ Exit criteria:
 Current status:
 1. Feature contract and API surface cleanup are complete.
 2. Dense module dispatch and naming consistency pass is complete for Tier-A kernels.
-3. Remaining work is provider-native implementation depth for non-SVD dense kernels.
+3. Remaining backend-depth work is concentrated in selected secondary domains and broader provider parity.
 
 ## Phase 4: Kernel Realignment
 
