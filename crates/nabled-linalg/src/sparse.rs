@@ -1469,20 +1469,36 @@ pub fn pcg_ic0_solve(
     Err(SparseError::MaxIterationsExceeded)
 }
 
-/// Solve sparse linear system `A x = b` with ILUT-preconditioned GMRES.
+/// Solve sparse linear system `A x = b` with ILU(0)-preconditioned GMRES.
 ///
 /// This routine supports general non-symmetric matrices.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
 #[allow(clippy::many_single_char_names)]
-pub fn gmres_ilut_solve(
+pub fn gmres_ilu0_solve(
     matrix: &CsrMatrix,
     rhs: &Array1<f64>,
     tolerance: f64,
     max_iterations: usize,
-    drop_tolerance: f64,
-    max_fill: usize,
+) -> Result<Array1<f64>, SparseError> {
+    let factorization = ilu0_factor(matrix)?;
+    gmres_ilu0_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with ILU(0)-preconditioned GMRES.
+///
+/// Uses a precomputed factorization to avoid repeated setup for multiple RHS solves.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+#[allow(clippy::many_single_char_names)]
+pub fn gmres_ilu0_solve_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILU0Factorization,
 ) -> Result<Array1<f64>, SparseError> {
     if matrix.nrows != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
@@ -1494,7 +1510,6 @@ pub fn gmres_ilut_solve(
         return Err(SparseError::EmptyInput);
     }
 
-    let factorization = ilut_factor(matrix, drop_tolerance, max_fill)?;
     let n = rhs.len();
     let m = n.min(max_iterations.max(1));
     let tolerance = tolerance.max(DEFAULT_TOLERANCE);
@@ -1502,7 +1517,7 @@ pub fn gmres_ilut_solve(
     let mut basis = Array2::<f64>::zeros((n, m + 1));
     let mut hessenberg = Array2::<f64>::zeros((m + 1, m));
 
-    let preconditioned_rhs = apply_ilut_preconditioner(&factorization, rhs)?;
+    let preconditioned_rhs = apply_ilu0_preconditioner(factorization, rhs)?;
     let beta = dot(&preconditioned_rhs, &preconditioned_rhs)?.sqrt();
     if beta <= tolerance {
         return Ok(Array1::<f64>::zeros(n));
@@ -1519,7 +1534,131 @@ pub fn gmres_ilut_solve(
         }
 
         let av = matvec(matrix, &vj)?;
-        let mut w = apply_ilut_preconditioner(&factorization, &av)?;
+        let mut w = apply_ilu0_preconditioner(factorization, &av)?;
+
+        for i in 0..=j {
+            let mut hij = 0.0_f64;
+            for row in 0..n {
+                hij += basis[[row, i]] * w[row];
+            }
+            hessenberg[[i, j]] = hij;
+            for row in 0..n {
+                w[row] -= hij * basis[[row, i]];
+            }
+        }
+
+        let norm_w = dot(&w, &w)?.sqrt();
+        hessenberg[[j + 1, j]] = norm_w;
+        if norm_w <= tolerance {
+            effective_m = j + 1;
+            break;
+        }
+        for row in 0..n {
+            basis[[row, j + 1]] = w[row] / norm_w;
+        }
+    }
+
+    let mut h = Array2::<f64>::zeros((effective_m + 1, effective_m));
+    for row in 0..=effective_m {
+        for col in 0..effective_m {
+            h[[row, col]] = hessenberg[[row, col]];
+        }
+    }
+    let ht = h.t();
+    let normal_matrix = ht.dot(&h);
+
+    let mut rhs_ls = Array1::<f64>::zeros(effective_m + 1);
+    rhs_ls[0] = beta;
+    let normal_rhs = ht.dot(&rhs_ls);
+
+    let y =
+        crate::lu::solve(&normal_matrix, &normal_rhs).map_err(|_| SparseError::SingularMatrix)?;
+
+    let mut solution = Array1::<f64>::zeros(n);
+    for row in 0..n {
+        let mut sum = 0.0_f64;
+        for col in 0..effective_m {
+            sum += basis[[row, col]] * y[col];
+        }
+        solution[row] = sum;
+    }
+
+    let residual = rhs - &matvec(matrix, &solution)?;
+    if dot(&residual, &residual)?.sqrt() <= tolerance {
+        Ok(solution)
+    } else {
+        Err(SparseError::MaxIterationsExceeded)
+    }
+}
+
+/// Solve sparse linear system `A x = b` with ILUT-preconditioned GMRES.
+///
+/// This routine supports general non-symmetric matrices.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+#[allow(clippy::many_single_char_names)]
+pub fn gmres_ilut_solve(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    drop_tolerance: f64,
+    max_fill: usize,
+) -> Result<Array1<f64>, SparseError> {
+    let factorization = ilut_factor(matrix, drop_tolerance, max_fill)?;
+    gmres_ilut_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with ILUT-preconditioned GMRES.
+///
+/// Uses a precomputed factorization to avoid repeated setup for multiple RHS solves.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+#[allow(clippy::many_single_char_names)]
+pub fn gmres_ilut_solve_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILUTFactorization,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let n = rhs.len();
+    let m = n.min(max_iterations.max(1));
+    let tolerance = tolerance.max(DEFAULT_TOLERANCE);
+
+    let mut basis = Array2::<f64>::zeros((n, m + 1));
+    let mut hessenberg = Array2::<f64>::zeros((m + 1, m));
+
+    let preconditioned_rhs = apply_ilut_preconditioner(factorization, rhs)?;
+    let beta = dot(&preconditioned_rhs, &preconditioned_rhs)?.sqrt();
+    if beta <= tolerance {
+        return Ok(Array1::<f64>::zeros(n));
+    }
+    for row in 0..n {
+        basis[[row, 0]] = preconditioned_rhs[row] / beta;
+    }
+
+    let mut effective_m = m;
+    for j in 0..m {
+        let mut vj = Array1::<f64>::zeros(n);
+        for row in 0..n {
+            vj[row] = basis[[row, j]];
+        }
+
+        let av = matvec(matrix, &vj)?;
+        let mut w = apply_ilut_preconditioner(factorization, &av)?;
 
         for i in 0..=j {
             let mut hij = 0.0_f64;
@@ -1589,7 +1728,8 @@ pub fn gmres_ilut_solve_with_config(
     max_iterations: usize,
     config: ILUTConfig,
 ) -> Result<Array1<f64>, SparseError> {
-    gmres_ilut_solve(matrix, rhs, tolerance, max_iterations, config.drop_tolerance, config.max_fill)
+    let factorization = ilut_factor_with_config(matrix, config)?;
+    gmres_ilut_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
 }
 
 /// Solve sparse linear system `A x = b` with `BiCGSTAB` iteration.
@@ -1710,6 +1850,23 @@ pub fn bicgstab_ilu0_solve(
     tolerance: f64,
     max_iterations: usize,
 ) -> Result<Array1<f64>, SparseError> {
+    let factorization = ilu0_factor(matrix)?;
+    bicgstab_ilu0_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with ILU(0)-preconditioned `BiCGSTAB`.
+///
+/// Uses a precomputed factorization to avoid repeated setup for multiple RHS solves.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ilu0_solve_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILU0Factorization,
+) -> Result<Array1<f64>, SparseError> {
     if matrix.nrows != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
@@ -1720,7 +1877,6 @@ pub fn bicgstab_ilu0_solve(
         return Err(SparseError::EmptyInput);
     }
 
-    let factorization = ilu0_factor(matrix)?;
     let tolerance = tolerance.max(DEFAULT_TOLERANCE);
     let dimension = rhs.len();
     let mut solution = Array1::<f64>::zeros(dimension);
@@ -1755,7 +1911,7 @@ pub fn bicgstab_ilu0_solve(
             }
         }
 
-        let preconditioned_search = apply_ilu0_preconditioner(&factorization, &search_direction)?;
+        let preconditioned_search = apply_ilu0_preconditioner(factorization, &search_direction)?;
         krylov_vector = matvec(matrix, &preconditioned_search)?;
         let denominator = dot(&residual_shadow, &krylov_vector)?;
         if denominator.abs() <= DEFAULT_TOLERANCE {
@@ -1776,7 +1932,7 @@ pub fn bicgstab_ilu0_solve(
         }
 
         let preconditioned_auxiliary =
-            apply_ilu0_preconditioner(&factorization, &auxiliary_residual)?;
+            apply_ilu0_preconditioner(factorization, &auxiliary_residual)?;
         let transformed_auxiliary = matvec(matrix, &preconditioned_auxiliary)?;
         let transformed_norm_sq = dot(&transformed_auxiliary, &transformed_auxiliary)?;
         if transformed_norm_sq.abs() <= DEFAULT_TOLERANCE {
@@ -1819,6 +1975,23 @@ pub fn bicgstab_ilut_solve(
     drop_tolerance: f64,
     max_fill: usize,
 ) -> Result<Array1<f64>, SparseError> {
+    let factorization = ilut_factor(matrix, drop_tolerance, max_fill)?;
+    bicgstab_ilut_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with ILUT-preconditioned `BiCGSTAB`.
+///
+/// Uses a precomputed factorization to avoid repeated setup for multiple RHS solves.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ilut_solve_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    factorization: &ILUTFactorization,
+) -> Result<Array1<f64>, SparseError> {
     if matrix.nrows != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
@@ -1829,7 +2002,6 @@ pub fn bicgstab_ilut_solve(
         return Err(SparseError::EmptyInput);
     }
 
-    let factorization = ilut_factor(matrix, drop_tolerance, max_fill)?;
     let tolerance = tolerance.max(DEFAULT_TOLERANCE);
     let dimension = rhs.len();
     let mut solution = Array1::<f64>::zeros(dimension);
@@ -1864,7 +2036,7 @@ pub fn bicgstab_ilut_solve(
             }
         }
 
-        let preconditioned_search = apply_ilut_preconditioner(&factorization, &search_direction)?;
+        let preconditioned_search = apply_ilut_preconditioner(factorization, &search_direction)?;
         krylov_vector = matvec(matrix, &preconditioned_search)?;
         let denominator = dot(&residual_shadow, &krylov_vector)?;
         if denominator.abs() <= DEFAULT_TOLERANCE {
@@ -1885,7 +2057,7 @@ pub fn bicgstab_ilut_solve(
         }
 
         let preconditioned_auxiliary =
-            apply_ilut_preconditioner(&factorization, &auxiliary_residual)?;
+            apply_ilut_preconditioner(factorization, &auxiliary_residual)?;
         let transformed_auxiliary = matvec(matrix, &preconditioned_auxiliary)?;
         let transformed_norm_sq = dot(&transformed_auxiliary, &transformed_auxiliary)?;
         if transformed_norm_sq.abs() <= DEFAULT_TOLERANCE {
@@ -1912,6 +2084,23 @@ pub fn bicgstab_ilut_solve(
     }
 
     Err(SparseError::MaxIterationsExceeded)
+}
+
+/// Solve sparse linear system `A x = b` with ILUT-preconditioned `BiCGSTAB`.
+///
+/// Uses an [`ILUTConfig`] profile for factorization parameters.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn bicgstab_ilut_solve_with_config(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    config: ILUTConfig,
+) -> Result<Array1<f64>, SparseError> {
+    let factorization = ilut_factor_with_config(matrix, config)?;
+    bicgstab_ilut_solve_with_factorization(matrix, rhs, tolerance, max_iterations, &factorization)
 }
 
 #[cfg(test)]
@@ -2223,6 +2412,25 @@ mod tests {
     }
 
     #[test]
+    fn bicgstab_ilu0_with_factorization_matches_direct() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let factorization = ilu0_factor(&matrix).unwrap();
+
+        let direct = bicgstab_ilu0_solve(&matrix, &rhs, 1e-10, 5000).unwrap();
+        let reused =
+            bicgstab_ilu0_solve_with_factorization(&matrix, &rhs, 1e-10, 5000, &factorization)
+                .unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn bicgstab_ilut_solves_nonsymmetric_system() {
         let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
             4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
@@ -2237,6 +2445,73 @@ mod tests {
     }
 
     #[test]
+    fn bicgstab_ilut_with_config_solves_nonsymmetric_system() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution =
+            bicgstab_ilut_solve_with_config(&matrix, &rhs, 1e-10, 5000, ILUTConfig::balanced())
+                .unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn bicgstab_ilut_with_factorization_matches_direct() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let factorization = ilut_factor(&matrix, 0.0, 8).unwrap();
+
+        let direct = bicgstab_ilut_solve(&matrix, &rhs, 1e-10, 5000, 0.0, 8).unwrap();
+        let reused =
+            bicgstab_ilut_solve_with_factorization(&matrix, &rhs, 1e-10, 5000, &factorization)
+                .unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn gmres_ilu0_solves_nonsymmetric_system() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution = gmres_ilu0_solve(&matrix, &rhs, 1e-10, 10).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn gmres_ilu0_with_factorization_matches_direct() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let factorization = ilu0_factor(&matrix).unwrap();
+
+        let direct = gmres_ilu0_solve(&matrix, &rhs, 1e-10, 10).unwrap();
+        let reused =
+            gmres_ilu0_solve_with_factorization(&matrix, &rhs, 1e-10, 10, &factorization).unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn gmres_ilut_solves_nonsymmetric_system() {
         let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
             4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
@@ -2247,6 +2522,24 @@ mod tests {
         let reconstructed = matvec(&matrix, &solution).unwrap();
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn gmres_ilut_with_factorization_matches_direct() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let factorization = ilut_factor(&matrix, 0.0, 8).unwrap();
+
+        let direct = gmres_ilut_solve(&matrix, &rhs, 1e-10, 10, 0.0, 8).unwrap();
+        let reused =
+            gmres_ilut_solve_with_factorization(&matrix, &rhs, 1e-10, 10, &factorization).unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-9);
         }
     }
 
@@ -2288,6 +2581,14 @@ mod tests {
         let matrix = toy_matrix();
         let rhs = arr1(&[1.0_f64, 2.0]);
         let result = gmres_ilut_solve(&matrix, &rhs, 1e-8, 10, 0.0, 8);
+        assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn gmres_ilu0_rejects_dimension_mismatch() {
+        let matrix = toy_matrix();
+        let rhs = arr1(&[1.0_f64, 2.0]);
+        let result = gmres_ilu0_solve(&matrix, &rhs, 1e-8, 10);
         assert!(matches!(result, Err(SparseError::DimensionMismatch)));
     }
 }
