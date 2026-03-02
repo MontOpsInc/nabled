@@ -232,6 +232,17 @@ pub struct ILUKFactorization {
     pub level_of_fill: usize,
 }
 
+/// Sparse direct LU factorization with partial row pivoting.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SparseLUFactorization {
+    /// Unit-lower factor.
+    pub l:           CsrMatrix,
+    /// Upper factor.
+    pub u:           CsrMatrix,
+    /// Row permutation such that `P * A = L * U`.
+    pub permutation: Vec<usize>,
+}
+
 /// Configuration for ILUT-based sparse factorization and solves.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ILUTConfig {
@@ -1026,6 +1037,186 @@ pub fn iluk_factor_with_config(
     config: ILUKConfig,
 ) -> Result<ILUKFactorization, SparseError> {
     iluk_factor(matrix, config.level_of_fill)
+}
+
+fn csr_rows_as_maps(matrix: &CsrMatrix) -> Vec<BTreeMap<usize, f64>> {
+    let mut rows = Vec::<BTreeMap<usize, f64>>::with_capacity(matrix.nrows);
+    for row in 0..matrix.nrows {
+        let mut map = BTreeMap::<usize, f64>::new();
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            let _ = map.insert(matrix.indices[entry], matrix.data[entry]);
+        }
+        rows.push(map);
+    }
+    rows
+}
+
+fn split_lu_rows_to_csr(
+    rows: &[BTreeMap<usize, f64>],
+) -> Result<(CsrMatrix, CsrMatrix), SparseError> {
+    let n = rows.len();
+    let mut l_indptr = Vec::<usize>::with_capacity(n + 1);
+    let mut l_indices = Vec::<usize>::new();
+    let mut l_data = Vec::<f64>::new();
+    l_indptr.push(0);
+
+    let mut u_indptr = Vec::<usize>::with_capacity(n + 1);
+    let mut u_indices = Vec::<usize>::new();
+    let mut u_data = Vec::<f64>::new();
+    u_indptr.push(0);
+
+    for (row, row_map) in rows.iter().enumerate() {
+        l_indices.push(row);
+        l_data.push(1.0);
+
+        for (&col, &value) in row_map {
+            if col < row {
+                l_indices.push(col);
+                l_data.push(value);
+            } else {
+                u_indices.push(col);
+                u_data.push(value);
+            }
+        }
+
+        l_indptr.push(l_indices.len());
+        u_indptr.push(u_indices.len());
+    }
+
+    let l = CsrMatrix::new(n, n, l_indptr, l_indices, l_data)?;
+    let u = CsrMatrix::new(n, n, u_indptr, u_indices, u_data)?;
+    Ok((l, u))
+}
+
+/// Compute sparse direct LU factorization with partial row pivoting.
+///
+/// The resulting factorization satisfies `P * A = L * U`.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or factorization breaks down.
+#[allow(clippy::many_single_char_names)]
+pub fn sparse_lu_factor(matrix: &CsrMatrix) -> Result<SparseLUFactorization, SparseError> {
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if matrix.nrows == 0 {
+        return Err(SparseError::EmptyInput);
+    }
+
+    let n = matrix.nrows;
+    let mut rows = csr_rows_as_maps(matrix);
+    let mut permutation = (0..n).collect::<Vec<_>>();
+
+    for k in 0..n {
+        let mut pivot_row = k;
+        let mut pivot_value = rows[k].get(&k).copied().unwrap_or(0.0).abs();
+        for (candidate_row, row_map) in rows.iter().enumerate().skip(k + 1) {
+            let candidate = row_map.get(&k).copied().unwrap_or(0.0).abs();
+            if candidate > pivot_value {
+                pivot_value = candidate;
+                pivot_row = candidate_row;
+            }
+        }
+        if pivot_value <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        if pivot_row != k {
+            rows.swap(k, pivot_row);
+            permutation.swap(k, pivot_row);
+        }
+
+        let diagonal = rows[k].get(&k).copied().unwrap_or(0.0);
+        if diagonal.abs() <= DEFAULT_TOLERANCE {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        for row in (k + 1)..n {
+            let Some(entry_ik) = rows[row].get(&k).copied() else {
+                continue;
+            };
+            let multiplier = entry_ik / diagonal;
+            if multiplier.abs() <= DEFAULT_TOLERANCE {
+                let _ = rows[row].remove(&k);
+                continue;
+            }
+            let _ = rows[row].insert(k, multiplier);
+
+            let pivot_updates = rows[k]
+                .iter()
+                .filter_map(|(&col, &value)| (col > k).then_some((col, value)))
+                .collect::<Vec<_>>();
+            for (col, pivot_value_col) in pivot_updates {
+                let updated =
+                    rows[row].get(&col).copied().unwrap_or(0.0) - multiplier * pivot_value_col;
+                if updated.abs() <= DEFAULT_TOLERANCE {
+                    let _ = rows[row].remove(&col);
+                } else {
+                    let _ = rows[row].insert(col, updated);
+                }
+            }
+        }
+    }
+
+    let (l, u) = split_lu_rows_to_csr(&rows)?;
+    Ok(SparseLUFactorization { l, u, permutation })
+}
+
+fn apply_sparse_row_permutation(
+    permutation: &[usize],
+    rhs: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    if permutation.len() != rhs.len() {
+        return Err(SparseError::DimensionMismatch);
+    }
+    let mut permuted = Array1::<f64>::zeros(rhs.len());
+    for (row, source_index) in permutation.iter().copied().enumerate() {
+        permuted[row] = rhs[source_index];
+    }
+    Ok(permuted)
+}
+
+/// Solve sparse linear system `A x = b` using direct sparse LU factorization.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or singular systems.
+pub fn sparse_lu_solve(matrix: &CsrMatrix, rhs: &Array1<f64>) -> Result<Array1<f64>, SparseError> {
+    let factorization = sparse_lu_factor(matrix)?;
+    sparse_lu_solve_with_factorization(matrix, rhs, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with a precomputed sparse LU factorization.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or singular factors.
+pub fn sparse_lu_solve_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    factorization: &SparseLUFactorization,
+) -> Result<Array1<f64>, SparseError> {
+    if matrix.nrows != matrix.ncols
+        || factorization.l.nrows != matrix.nrows
+        || factorization.u.nrows != matrix.nrows
+        || factorization.permutation.len() != matrix.nrows
+    {
+        return Err(SparseError::DimensionMismatch);
+    }
+    let permuted_rhs = apply_sparse_row_permutation(&factorization.permutation, rhs)?;
+    apply_lu_preconditioner(&factorization.l, &factorization.u, &permuted_rhs)
+}
+
+/// Solve sparse linear systems `A X = B` using a precomputed sparse LU factorization.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or singular factors.
+pub fn sparse_lu_solve_multiple_with_factorization(
+    matrix: &CsrMatrix,
+    rhs: &Array2<f64>,
+    factorization: &SparseLUFactorization,
+) -> Result<Array2<f64>, SparseError> {
+    solve_multiple_rhs_with_solver(matrix, rhs, |rhs_column| {
+        sparse_lu_solve_with_factorization(matrix, rhs_column, factorization)
+    })
 }
 
 fn apply_lu_preconditioner(
@@ -3594,6 +3785,88 @@ mod tests {
         let rhs = arr1(&[1.0_f64, 2.0]);
         let result = apply_iluk_preconditioner(&factorization, &rhs);
         assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn sparse_lu_factorization_reconstructs_permuted_matrix() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            0.0, 2.0, 3.0, 4.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let factorization = sparse_lu_factor(&matrix).unwrap();
+        let dense_l = csr_to_dense(&factorization.l);
+        let dense_u = csr_to_dense(&factorization.u);
+        let lu = dense_l.dot(&dense_u);
+        let dense_a = csr_to_dense(&matrix);
+
+        for row in 0..matrix.nrows {
+            let original_row = factorization.permutation[row];
+            for col in 0..matrix.ncols {
+                assert!((lu[[row, col]] - dense_a[[original_row, col]]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn sparse_lu_solve_reconstructs_rhs() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            0.0, 2.0, 3.0, 4.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let solution = sparse_lu_solve(&matrix, &rhs).unwrap();
+        let reconstructed = matvec(&matrix, &solution).unwrap();
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).abs() < 1e-7);
+        }
+    }
+
+    #[test]
+    fn sparse_lu_reuse_matches_direct() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            0.0, 2.0, 3.0, 4.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = arr1(&[1.0_f64, -2.0, 3.0]);
+        let factorization = sparse_lu_factor(&matrix).unwrap();
+        let direct = sparse_lu_solve(&matrix, &rhs).unwrap();
+        let reused = sparse_lu_solve_with_factorization(&matrix, &rhs, &factorization).unwrap();
+        for i in 0..rhs.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn sparse_lu_multi_rhs_matches_single_column_reuse() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            0.0, 2.0, 3.0, 4.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let rhs = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, -2.0, 1.5, 3.0, -1.0]).unwrap();
+        let factorization = sparse_lu_factor(&matrix).unwrap();
+        let multi =
+            sparse_lu_solve_multiple_with_factorization(&matrix, &rhs, &factorization).unwrap();
+        for col in 0..rhs.ncols() {
+            let single = sparse_lu_solve_with_factorization(
+                &matrix,
+                &rhs.column(col).to_owned(),
+                &factorization,
+            )
+            .unwrap();
+            for row in 0..rhs.nrows() {
+                assert!((multi[[row, col]] - single[row]).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn sparse_lu_rejects_singular_matrix() {
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 4, 6], vec![0, 1, 0, 1, 1, 2], vec![
+            1.0, 2.0, 2.0, 4.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let result = sparse_lu_factor(&matrix);
+        assert!(matches!(result, Err(SparseError::SingularMatrix)));
     }
 
     #[test]

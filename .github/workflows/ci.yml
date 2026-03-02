@@ -197,21 +197,27 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Install provider system libraries
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libopenblas-dev liblapack-dev
+
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
 
     - name: Generate code coverage
       run: |
         cargo llvm-cov clean --workspace
-        cargo llvm-cov --workspace --lib --tests --lcov --no-report --ignore-filename-regex "(errors|examples|benches|src/bin).*"
-        cargo llvm-cov report --summary-only --fail-under-lines 90 --ignore-filename-regex "(errors|examples|benches|src/bin).*"
-        cargo llvm-cov report --lcov --output-path lcov.info
+        cargo llvm-cov --workspace --exclude nabled --lib --tests --no-default-features --no-report
+        cargo llvm-cov --workspace --exclude nabled --lib --tests --no-default-features --features openblas-system --no-report
+        cargo llvm-cov report --summary-only --fail-under-lines 90
+        cargo llvm-cov report --lcov --output-path coverage/lcov.info
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: lcov.info
+        files: coverage/lcov.info
         fail_ci_if_error: true
         disable_telem: true
 

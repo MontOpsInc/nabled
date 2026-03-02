@@ -39,6 +39,42 @@ pub struct NdarrayNonsymmetricEigenResult {
     pub schur_vectors: Array2<Complex64>,
 }
 
+/// Result of non-symmetric eigen decomposition with matched left/right eigenvectors.
+#[derive(Debug, Clone)]
+pub struct NdarrayNonsymmetricBiEigenResult {
+    /// Eigenvalues.
+    pub eigenvalues:        Array1<Complex64>,
+    /// Right eigenvectors (by column) for the original unbalanced matrix.
+    pub right_eigenvectors: Array2<Complex64>,
+    /// Left eigenvectors (by column) for the original unbalanced matrix.
+    pub left_eigenvectors:  Array2<Complex64>,
+    /// Balancing diagonal scales used before decomposition.
+    pub balancing_diagonal: Array1<f64>,
+    /// Matrix used for eigendecomposition after optional balancing.
+    pub balanced_matrix:    Array2<f64>,
+}
+
+/// Configuration for non-symmetric balancing and bi-eigen decomposition.
+#[derive(Debug, Clone, Copy)]
+pub struct NonsymmetricEigenConfig {
+    /// Whether to apply Osborne balancing before eigendecomposition.
+    pub balance:                bool,
+    /// Maximum balancing sweeps.
+    pub balance_max_iterations: usize,
+    /// Relative improvement threshold for applying a balance update.
+    pub balance_tolerance:      f64,
+}
+
+impl Default for NonsymmetricEigenConfig {
+    fn default() -> Self {
+        Self {
+            balance:                true,
+            balance_max_iterations: 32,
+            balance_tolerance:      0.05,
+        }
+    }
+}
+
 /// Error type for eigen operations.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EigenError {
@@ -120,6 +156,113 @@ fn validate_complex_square_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<
         return Err(EigenError::NumericalInstability);
     }
     Ok(())
+}
+
+fn balance_nonsymmetric_matrix(
+    matrix: &ArrayView2<'_, f64>,
+    config: &NonsymmetricEigenConfig,
+) -> (Array2<f64>, Array1<f64>) {
+    if !config.balance || matrix.nrows() <= 1 {
+        return (matrix.to_owned(), Array1::<f64>::ones(matrix.nrows()));
+    }
+
+    let mut balanced = matrix.to_owned();
+    let mut diagonal = Array1::<f64>::ones(matrix.nrows());
+    let radix = 2.0_f64;
+    let threshold = config.balance_tolerance.clamp(1.0e-6, 0.5);
+    let max_iterations = config.balance_max_iterations.max(1);
+
+    for _ in 0..max_iterations {
+        let mut changed = false;
+        for i in 0..balanced.nrows() {
+            let mut row_norm = 0.0_f64;
+            let mut col_norm = 0.0_f64;
+            for j in 0..balanced.ncols() {
+                if i != j {
+                    row_norm += balanced[[i, j]].abs();
+                    col_norm += balanced[[j, i]].abs();
+                }
+            }
+
+            if row_norm <= f64::EPSILON || col_norm <= f64::EPSILON {
+                continue;
+            }
+
+            let mut factor = 1.0_f64;
+            let mut col = col_norm;
+            let row = row_norm;
+            while col < row / radix {
+                factor *= radix;
+                col *= radix * radix;
+            }
+            while col > row * radix {
+                factor /= radix;
+                col /= radix * radix;
+            }
+
+            if (col + row) < (1.0 - threshold) * (col_norm + row_norm) {
+                changed = true;
+                diagonal[i] *= factor;
+                for j in 0..balanced.ncols() {
+                    balanced[[i, j]] *= factor;
+                    balanced[[j, i]] /= factor;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    (balanced, diagonal)
+}
+
+fn normalize_complex_columns(vectors: &mut Array2<Complex64>) {
+    for col in 0..vectors.ncols() {
+        let mut norm_sq = 0.0_f64;
+        for row in 0..vectors.nrows() {
+            norm_sq += vectors[[row, col]].norm_sqr();
+        }
+        let norm = norm_sq.sqrt().max(f64::EPSILON);
+        for row in 0..vectors.nrows() {
+            vectors[[row, col]] /= norm;
+        }
+    }
+}
+
+fn match_left_eigenvectors(
+    target_eigenvalues: &Array1<Complex64>,
+    source_eigenvalues: &Array1<Complex64>,
+    source_vectors: &Array2<Complex64>,
+) -> Array2<Complex64> {
+    let mut matched = Array2::<Complex64>::zeros((source_vectors.nrows(), source_vectors.ncols()));
+    let mut used = vec![false; source_eigenvalues.len()];
+
+    for target_col in 0..target_eigenvalues.len() {
+        let target = target_eigenvalues[target_col].conj();
+        let mut best_index = None;
+        let mut best_distance = f64::MAX;
+
+        for source_col in 0..source_eigenvalues.len() {
+            if used[source_col] {
+                continue;
+            }
+            let distance = (source_eigenvalues[source_col] - target).norm();
+            if distance < best_distance {
+                best_distance = distance;
+                best_index = Some(source_col);
+            }
+        }
+
+        if let Some(source_col) = best_index {
+            used[source_col] = true;
+            for row in 0..source_vectors.nrows() {
+                matched[[row, target_col]] = source_vectors[[row, source_col]];
+            }
+        }
+    }
+
+    matched
 }
 
 #[cfg(not(feature = "openblas-system"))]
@@ -408,6 +551,83 @@ pub fn nonsymmetric_complex_view(
     nonsymmetric_complex_impl(matrix)
 }
 
+/// Balance a real non-symmetric matrix using diagonal similarity scaling.
+///
+/// # Errors
+/// Returns an error for non-square or non-finite input.
+pub fn balance_nonsymmetric(
+    matrix: &Array2<f64>,
+    config: &NonsymmetricEigenConfig,
+) -> Result<(Array2<f64>, Array1<f64>), EigenError> {
+    balance_nonsymmetric_view(&matrix.view(), config)
+}
+
+/// Balance a real non-symmetric matrix view using diagonal similarity scaling.
+///
+/// # Errors
+/// Returns an error for non-square or non-finite input.
+pub fn balance_nonsymmetric_view(
+    matrix: &ArrayView2<'_, f64>,
+    config: &NonsymmetricEigenConfig,
+) -> Result<(Array2<f64>, Array1<f64>), EigenError> {
+    validate_nonsymmetric_input(matrix)?;
+    Ok(balance_nonsymmetric_matrix(matrix, config))
+}
+
+/// Compute non-symmetric eigen decomposition with matched left/right eigenvectors.
+///
+/// When balancing is enabled in `config`, decomposition runs on the balanced matrix and
+/// vectors are mapped back to the original matrix coordinates.
+///
+/// # Errors
+/// Returns an error for non-square, non-finite, or non-convergent inputs.
+pub fn nonsymmetric_bi(
+    matrix: &Array2<f64>,
+    config: &NonsymmetricEigenConfig,
+) -> Result<NdarrayNonsymmetricBiEigenResult, EigenError> {
+    nonsymmetric_bi_view(&matrix.view(), config)
+}
+
+/// Compute non-symmetric eigen decomposition with matched left/right eigenvectors from a view.
+///
+/// # Errors
+/// Returns an error for non-square, non-finite, or non-convergent inputs.
+pub fn nonsymmetric_bi_view(
+    matrix: &ArrayView2<'_, f64>,
+    config: &NonsymmetricEigenConfig,
+) -> Result<NdarrayNonsymmetricBiEigenResult, EigenError> {
+    validate_nonsymmetric_input(matrix)?;
+    let (balanced_matrix, balancing_diagonal) = balance_nonsymmetric_matrix(matrix, config);
+    let right = nonsymmetric_impl(&balanced_matrix.view())?;
+
+    let balanced_conjugate_transpose = balanced_matrix.t().mapv(|value| Complex64::new(value, 0.0));
+    let left_seed = nonsymmetric_complex_impl(&balanced_conjugate_transpose.view())?;
+    let mut left_eigenvectors = match_left_eigenvectors(
+        &right.eigenvalues,
+        &left_seed.eigenvalues,
+        &left_seed.schur_vectors,
+    );
+    let mut right_eigenvectors = right.schur_vectors;
+
+    for row in 0..balanced_matrix.nrows() {
+        let scale = balancing_diagonal[row].max(f64::EPSILON);
+        for col in 0..right_eigenvectors.ncols() {
+            right_eigenvectors[[row, col]] /= scale;
+            left_eigenvectors[[row, col]] *= scale;
+        }
+    }
+    normalize_complex_columns(&mut right_eigenvectors);
+    normalize_complex_columns(&mut left_eigenvectors);
+
+    Ok(NdarrayNonsymmetricBiEigenResult {
+        eigenvalues: right.eigenvalues,
+        right_eigenvectors,
+        left_eigenvectors,
+        balancing_diagonal,
+        balanced_matrix,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
@@ -560,5 +780,65 @@ mod tests {
         assert!((real_parts[0] + 3.0).abs() < 1e-8);
         assert!((real_parts[1] - 2.5).abs() < 1e-8);
         assert!((real_parts[2] - 4.0).abs() < 1e-8);
+    }
+
+    #[test]
+    fn balancing_changes_scale_but_preserves_shape() {
+        let matrix = Array2::from_shape_vec((3, 3), vec![
+            1.0, 200.0, 0.0, //
+            0.001, 2.0, 30.0, //
+            0.0, 0.02, 3.0,
+        ])
+        .unwrap();
+        let config = NonsymmetricEigenConfig::default();
+        let (balanced, diagonal) = balance_nonsymmetric(&matrix, &config).unwrap();
+        assert_eq!(balanced.dim(), matrix.dim());
+        assert_eq!(diagonal.len(), matrix.nrows());
+        assert!(diagonal.iter().all(|value| value.is_finite() && *value > 0.0));
+    }
+
+    #[test]
+    fn nonsymmetric_bi_produces_left_and_right_vectors() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 4.0, -1.0, 3.0]).unwrap();
+        let result = nonsymmetric_bi(&matrix, &NonsymmetricEigenConfig::default()).unwrap();
+        assert_eq!(result.eigenvalues.len(), 2);
+        assert_eq!(result.right_eigenvectors.dim(), (2, 2));
+        assert_eq!(result.left_eigenvectors.dim(), (2, 2));
+        assert_eq!(result.balancing_diagonal.len(), 2);
+
+        let reference = nonsymmetric(&result.balanced_matrix).unwrap();
+        let mut result_values = result.eigenvalues.iter().copied().collect::<Vec<_>>();
+        let mut reference_values = reference.eigenvalues.iter().copied().collect::<Vec<_>>();
+        result_values.sort_by(|lhs, rhs| {
+            lhs.re
+                .partial_cmp(&rhs.re)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(lhs.im.partial_cmp(&rhs.im).unwrap_or(std::cmp::Ordering::Equal))
+        });
+        reference_values.sort_by(|lhs, rhs| {
+            lhs.re
+                .partial_cmp(&rhs.re)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(lhs.im.partial_cmp(&rhs.im).unwrap_or(std::cmp::Ordering::Equal))
+        });
+        for col in 0..2 {
+            assert!((result_values[col] - reference_values[col]).norm() < 1e-8);
+            let right_norm = result
+                .right_eigenvectors
+                .column(col)
+                .iter()
+                .map(Complex64::norm_sqr)
+                .sum::<f64>()
+                .sqrt();
+            let left_norm = result
+                .left_eigenvectors
+                .column(col)
+                .iter()
+                .map(Complex64::norm_sqr)
+                .sum::<f64>()
+                .sqrt();
+            assert!((right_norm - 1.0).abs() < 1e-8);
+            assert!((left_norm - 1.0).abs() < 1e-8);
+        }
     }
 }

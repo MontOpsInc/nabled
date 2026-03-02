@@ -488,6 +488,176 @@ pub fn batched_matmat_view_into(
     Ok(())
 }
 
+/// Compute batched dense matrix-matrix products with a broadcast right matrix.
+///
+/// Inputs are `(batch, m, k)` and `(k, n)` and output is `(batch, m, n)`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_matmat_broadcast_right(
+    left_batches: &Array3<f64>,
+    right: &Array2<f64>,
+) -> Result<Array3<f64>, MatrixError> {
+    let mut output =
+        Array3::<f64>::zeros((left_batches.dim().0, left_batches.dim().1, right.ncols()));
+    batched_matmat_broadcast_right_view_into(
+        &left_batches.view(),
+        &right.view(),
+        output.view_mut(),
+    )?;
+    Ok(output)
+}
+
+/// Compute batched dense matrix-matrix products with a broadcast right matrix from views.
+///
+/// Inputs are `(batch, m, k)` and `(k, n)` and output is `(batch, m, n)`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_matmat_broadcast_right_view(
+    left_batches: &ArrayView3<'_, f64>,
+    right: &ArrayView2<'_, f64>,
+) -> Result<Array3<f64>, MatrixError> {
+    let mut output =
+        Array3::<f64>::zeros((left_batches.dim().0, left_batches.dim().1, right.ncols()));
+    batched_matmat_broadcast_right_view_into(left_batches, right, output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute batched dense matrix-matrix products with a broadcast right matrix into `output`.
+///
+/// Inputs are `(batch, m, k)` and `(k, n)` and output is `(batch, m, n)`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_matmat_broadcast_right_into(
+    left_batches: &Array3<f64>,
+    right: &Array2<f64>,
+    output: &mut Array3<f64>,
+) -> Result<(), MatrixError> {
+    batched_matmat_broadcast_right_view_into(&left_batches.view(), &right.view(), output.view_mut())
+}
+
+/// Compute batched dense matrix-matrix products with a broadcast right matrix from views into
+/// `output`.
+///
+/// Inputs are `(batch, m, k)` and `(k, n)` and output is `(batch, m, n)`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_matmat_broadcast_right_view_into(
+    left_batches: &ArrayView3<'_, f64>,
+    right: &ArrayView2<'_, f64>,
+    mut output: ArrayViewMut3<'_, f64>,
+) -> Result<(), MatrixError> {
+    validate_tensor_non_empty(left_batches)?;
+    validate_matrix_non_empty(right)?;
+    if left_batches.dim().2 != right.nrows()
+        || output.dim() != (left_batches.dim().0, left_batches.dim().1, right.ncols())
+    {
+        return Err(MatrixError::DimensionMismatch);
+    }
+
+    output.fill(0.0);
+    let (batch, rows, inner) = left_batches.dim();
+    for b in 0..batch {
+        for row in 0..rows {
+            for k in 0..inner {
+                let lhs = left_batches[[b, row, k]];
+                for col in 0..right.ncols() {
+                    output[[b, row, col]] += lhs * right[[k, col]];
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Compute batched dense matrix-matrix products with a broadcast left matrix.
+///
+/// Inputs are `(m, k)` and `(batch, k, n)` and output is `(batch, m, n)`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_matmat_broadcast_left(
+    left: &Array2<f64>,
+    right_batches: &Array3<f64>,
+) -> Result<Array3<f64>, MatrixError> {
+    let mut output =
+        Array3::<f64>::zeros((right_batches.dim().0, left.nrows(), right_batches.dim().2));
+    batched_matmat_broadcast_left_view_into(
+        &left.view(),
+        &right_batches.view(),
+        output.view_mut(),
+    )?;
+    Ok(output)
+}
+
+/// Compute batched dense matrix-matrix products with a broadcast left matrix from views.
+///
+/// Inputs are `(m, k)` and `(batch, k, n)` and output is `(batch, m, n)`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_matmat_broadcast_left_view(
+    left: &ArrayView2<'_, f64>,
+    right_batches: &ArrayView3<'_, f64>,
+) -> Result<Array3<f64>, MatrixError> {
+    let mut output =
+        Array3::<f64>::zeros((right_batches.dim().0, left.nrows(), right_batches.dim().2));
+    batched_matmat_broadcast_left_view_into(left, right_batches, output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute batched dense matrix-matrix products with a broadcast left matrix into `output`.
+///
+/// Inputs are `(m, k)` and `(batch, k, n)` and output is `(batch, m, n)`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_matmat_broadcast_left_into(
+    left: &Array2<f64>,
+    right_batches: &Array3<f64>,
+    output: &mut Array3<f64>,
+) -> Result<(), MatrixError> {
+    batched_matmat_broadcast_left_view_into(&left.view(), &right_batches.view(), output.view_mut())
+}
+
+/// Compute batched dense matrix-matrix products with a broadcast left matrix from views into
+/// `output`.
+///
+/// Inputs are `(m, k)` and `(batch, k, n)` and output is `(batch, m, n)`.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_matmat_broadcast_left_view_into(
+    left: &ArrayView2<'_, f64>,
+    right_batches: &ArrayView3<'_, f64>,
+    mut output: ArrayViewMut3<'_, f64>,
+) -> Result<(), MatrixError> {
+    validate_matrix_non_empty(left)?;
+    validate_tensor_non_empty(right_batches)?;
+    if left.ncols() != right_batches.dim().1
+        || output.dim() != (right_batches.dim().0, left.nrows(), right_batches.dim().2)
+    {
+        return Err(MatrixError::DimensionMismatch);
+    }
+
+    output.fill(0.0);
+    let (batch, inner, cols) = right_batches.dim();
+    for b in 0..batch {
+        for row in 0..left.nrows() {
+            for k in 0..inner {
+                let lhs = left[[row, k]];
+                for col in 0..cols {
+                    output[[b, row, col]] += lhs * right_batches[[b, k, col]];
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::{Array1, Array2, Array3};
@@ -661,5 +831,52 @@ mod tests {
         assert!((allocating[[0, 0, 1]] - 2.0).abs() < 1e-12);
         assert!((allocating[[0, 1, 0]] - 3.0).abs() < 1e-12);
         assert!((allocating[[0, 1, 1]] - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn batched_matmat_broadcast_variants_match() {
+        let left_batches = Array3::from_shape_vec((2, 2, 3), vec![
+            1.0, 2.0, 0.0, 0.0, 1.0, 1.0, //
+            2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+        ])
+        .unwrap();
+        let right = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
+
+        let right_alloc = batched_matmat_broadcast_right(&left_batches, &right).unwrap();
+        let right_view =
+            batched_matmat_broadcast_right_view(&left_batches.view(), &right.view()).unwrap();
+        let mut right_into = Array3::<f64>::zeros((2, 2, 2));
+        batched_matmat_broadcast_right_into(&left_batches, &right, &mut right_into).unwrap();
+
+        for b in 0..2 {
+            for i in 0..2 {
+                for j in 0..2 {
+                    assert!((right_alloc[[b, i, j]] - right_view[[b, i, j]]).abs() < 1e-12);
+                    assert!((right_alloc[[b, i, j]] - right_into[[b, i, j]]).abs() < 1e-12);
+                }
+            }
+        }
+
+        let left = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
+        let right_batches = Array3::from_shape_vec((2, 3, 2), vec![
+            1.0, 0.0, 2.0, 1.0, 1.0, 3.0, //
+            0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+        ])
+        .unwrap();
+
+        let left_alloc = batched_matmat_broadcast_left(&left, &right_batches).unwrap();
+        let left_view =
+            batched_matmat_broadcast_left_view(&left.view(), &right_batches.view()).unwrap();
+        let mut left_into = Array3::<f64>::zeros((2, 2, 2));
+        batched_matmat_broadcast_left_into(&left, &right_batches, &mut left_into).unwrap();
+
+        for b in 0..2 {
+            for i in 0..2 {
+                for j in 0..2 {
+                    assert!((left_alloc[[b, i, j]] - left_view[[b, i, j]]).abs() < 1e-12);
+                    assert!((left_alloc[[b, i, j]] - left_into[[b, i, j]]).abs() < 1e-12);
+                }
+            }
+        }
     }
 }

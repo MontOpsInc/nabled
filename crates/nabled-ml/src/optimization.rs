@@ -1,8 +1,8 @@
-//! First-order optimization primitives over ndarray vectors.
+//! Optimization primitives over ndarray vectors.
 
 use std::fmt;
 
-use ndarray::Array1;
+use ndarray::{Array1, Array2};
 
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
 
@@ -155,6 +155,45 @@ impl Default for RMSPropConfig {
     }
 }
 
+/// Configuration for projected gradient descent with box constraints.
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectedGradientConfig {
+    /// Base learning rate.
+    pub learning_rate:  f64,
+    /// Maximum optimization iterations.
+    pub max_iterations: usize,
+    /// Gradient norm tolerance for convergence.
+    pub tolerance:      f64,
+}
+
+impl Default for ProjectedGradientConfig {
+    fn default() -> Self { Self { learning_rate: 1e-2, max_iterations: 10_000, tolerance: 1e-8 } }
+}
+
+/// Configuration for `BFGS` quasi-Newton optimization.
+#[derive(Debug, Clone, Copy)]
+pub struct BFGSConfig {
+    /// Initial step size multiplier.
+    pub step_size:           f64,
+    /// Maximum optimization iterations.
+    pub max_iterations:      usize,
+    /// Gradient norm tolerance for convergence.
+    pub tolerance:           f64,
+    /// Minimum curvature `s^T y` required for Hessian updates.
+    pub curvature_tolerance: f64,
+}
+
+impl Default for BFGSConfig {
+    fn default() -> Self {
+        Self {
+            step_size:           1.0,
+            max_iterations:      2_000,
+            tolerance:           1e-8,
+            curvature_tolerance: 1e-12,
+        }
+    }
+}
+
 fn l2_norm(vector: &Array1<f64>) -> f64 {
     vector.iter().map(|value| value * value).sum::<f64>().sqrt()
 }
@@ -221,6 +260,65 @@ fn validate_rmsprop_config(config: &RMSPropConfig) -> Result<(), OptimizationErr
         return Err(OptimizationError::InvalidConfig);
     }
     Ok(())
+}
+
+fn validate_projected_gradient_config(
+    config: &ProjectedGradientConfig,
+) -> Result<(), OptimizationError> {
+    if config.learning_rate <= 0.0 || config.max_iterations == 0 || config.tolerance < 0.0 {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_bfgs_config(config: &BFGSConfig) -> Result<(), OptimizationError> {
+    if config.step_size <= 0.0
+        || config.max_iterations == 0
+        || config.tolerance < 0.0
+        || config.curvature_tolerance <= 0.0
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_bounds(
+    initial: &Array1<f64>,
+    lower_bounds: &Array1<f64>,
+    upper_bounds: &Array1<f64>,
+) -> Result<(), OptimizationError> {
+    if initial.len() != lower_bounds.len() || initial.len() != upper_bounds.len() {
+        return Err(OptimizationError::DimensionMismatch);
+    }
+    for i in 0..initial.len() {
+        if !lower_bounds[i].is_finite()
+            || !upper_bounds[i].is_finite()
+            || lower_bounds[i] > upper_bounds[i]
+        {
+            return Err(OptimizationError::InvalidConfig);
+        }
+    }
+    Ok(())
+}
+
+fn project_to_bounds(
+    point: &mut Array1<f64>,
+    lower_bounds: &Array1<f64>,
+    upper_bounds: &Array1<f64>,
+) {
+    for i in 0..point.len() {
+        point[i] = point[i].clamp(lower_bounds[i], upper_bounds[i]);
+    }
+}
+
+fn outer_product(left: &Array1<f64>, right: &Array1<f64>) -> Array2<f64> {
+    let mut output = Array2::<f64>::zeros((left.len(), right.len()));
+    for row in 0..left.len() {
+        for col in 0..right.len() {
+            output[[row, col]] = left[row] * right[col];
+        }
+    }
+    output
 }
 
 /// Perform Armijo backtracking line search.
@@ -436,6 +534,143 @@ where
     Err(OptimizationError::MaxIterationsExceeded)
 }
 
+/// Minimize objective with projected gradient descent under box constraints.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration, invalid bounds, or non-finite gradients.
+pub fn projected_gradient_descent_box<F, G>(
+    initial: &Array1<f64>,
+    objective: F,
+    gradient: G,
+    lower_bounds: &Array1<f64>,
+    upper_bounds: &Array1<f64>,
+    config: &ProjectedGradientConfig,
+) -> Result<Array1<f64>, OptimizationError>
+where
+    F: Fn(&Array1<f64>) -> f64,
+    G: Fn(&Array1<f64>) -> Array1<f64>,
+{
+    validate_vector(initial)?;
+    validate_vector(lower_bounds)?;
+    validate_vector(upper_bounds)?;
+    validate_projected_gradient_config(config)?;
+    validate_bounds(initial, lower_bounds, upper_bounds)?;
+
+    let mut x = initial.clone();
+    project_to_bounds(&mut x, lower_bounds, upper_bounds);
+    let _ = objective(&x);
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        let previous = x.clone();
+        x = &x - &(config.learning_rate * &grad);
+        project_to_bounds(&mut x, lower_bounds, upper_bounds);
+        let step_norm = l2_norm(&(&x - &previous));
+        if step_norm <= tolerance || l2_norm(&grad) <= tolerance {
+            return Ok(x);
+        }
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with stochastic gradient descent.
+///
+/// `stochastic_gradient` receives `(current_point, iteration)` and returns a gradient sample.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn stochastic_gradient_descent<G>(
+    initial: &Array1<f64>,
+    stochastic_gradient: G,
+    config: &SGDConfig,
+) -> Result<Array1<f64>, OptimizationError>
+where
+    G: Fn(&Array1<f64>, usize) -> Array1<f64>,
+{
+    validate_vector(initial)?;
+    validate_sgd_config(config)?;
+
+    let mut x = initial.clone();
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    for iteration in 0..config.max_iterations {
+        let grad = stochastic_gradient(&x, iteration);
+        if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm(&grad) <= tolerance {
+            return Ok(x);
+        }
+        x = &x - &(config.learning_rate * &grad);
+    }
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with `BFGS` quasi-Newton updates.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn bfgs<F, G>(
+    initial: &Array1<f64>,
+    objective: F,
+    gradient: G,
+    config: &BFGSConfig,
+) -> Result<Array1<f64>, OptimizationError>
+where
+    F: Fn(&Array1<f64>) -> f64,
+    G: Fn(&Array1<f64>) -> Array1<f64>,
+{
+    validate_vector(initial)?;
+    validate_bfgs_config(config)?;
+
+    let dimension = initial.len();
+    let mut x = initial.clone();
+    let mut h_inv = Array2::<f64>::eye(dimension);
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    let _ = objective(&x);
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm(&grad) <= tolerance {
+            return Ok(x);
+        }
+
+        let direction = -h_inv.dot(&grad);
+        let step = config.step_size;
+        let x_next = &x + &(step * &direction);
+        let grad_next = gradient(&x_next);
+        if grad_next.len() != x.len() || grad_next.iter().any(|value| !value.is_finite()) {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+
+        let s = &x_next - &x;
+        let y = &grad_next - &grad;
+        let ys = y.dot(&s);
+        if ys.abs() > config.curvature_tolerance {
+            let rho = 1.0 / ys;
+            let identity = Array2::<f64>::eye(dimension);
+            let sy = outer_product(&s, &y);
+            let ys_outer = outer_product(&y, &s);
+            let ss = outer_product(&s, &s);
+
+            let left = &identity - &(rho * sy);
+            let right = &identity - &(rho * ys_outer);
+            h_inv = left.dot(&h_inv).dot(&right) + rho * ss;
+        }
+
+        x = x_next;
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::arr1;
@@ -541,5 +776,65 @@ mod tests {
         let bad_rmsprop = RMSPropConfig { rho: 1.0, ..RMSPropConfig::default() };
         let rmsprop_invalid = rmsprop(&x0, objective, gradient, &bad_rmsprop);
         assert!(matches!(rmsprop_invalid, Err(OptimizationError::InvalidConfig)));
+    }
+
+    #[test]
+    fn projected_gradient_descent_respects_bounds() {
+        let x0 = arr1(&[-10.0_f64]);
+        let lower = arr1(&[0.0_f64]);
+        let upper = arr1(&[2.5_f64]);
+        let solution = projected_gradient_descent_box(
+            &x0,
+            objective,
+            gradient,
+            &lower,
+            &upper,
+            &ProjectedGradientConfig::default(),
+        )
+        .unwrap();
+        assert!((solution[0] - 2.5).abs() < 1e-8);
+    }
+
+    #[test]
+    fn stochastic_gradient_descent_converges_on_quadratic() {
+        let x0 = arr1(&[-3.0_f64]);
+        let solution = stochastic_gradient_descent(
+            &x0,
+            |x, _iteration| arr1(&[2.0 * (x[0] - 3.0)]),
+            &SGDConfig { learning_rate: 5e-2, max_iterations: 2_000, tolerance: 1e-6 },
+        )
+        .unwrap();
+        assert!((solution[0] - 3.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn bfgs_converges_on_quadratic() {
+        let x0 = arr1(&[-8.0_f64]);
+        let solution = bfgs(&x0, objective, gradient, &BFGSConfig::default()).unwrap();
+        assert!((solution[0] - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn advanced_optimizers_reject_invalid_inputs() {
+        let x0 = arr1(&[0.0_f64]);
+        let lower = arr1(&[2.0_f64]);
+        let upper = arr1(&[1.0_f64]);
+        let projected = projected_gradient_descent_box(
+            &x0,
+            objective,
+            gradient,
+            &lower,
+            &upper,
+            &ProjectedGradientConfig::default(),
+        );
+        assert!(matches!(projected, Err(OptimizationError::InvalidConfig)));
+
+        let sgd_non_finite =
+            stochastic_gradient_descent(&x0, |_x, _| arr1(&[f64::NAN]), &SGDConfig::default());
+        assert!(matches!(sgd_non_finite, Err(OptimizationError::NonFiniteInput)));
+
+        let bfgs_invalid =
+            bfgs(&x0, objective, gradient, &BFGSConfig { step_size: 0.0, ..BFGSConfig::default() });
+        assert!(matches!(bfgs_invalid, Err(OptimizationError::InvalidConfig)));
     }
 }

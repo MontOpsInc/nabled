@@ -7,6 +7,7 @@ use ndarray::{Array1, Array2};
 use rand::RngExt;
 
 struct SparseFactorizations<'a> {
+    direct:    &'a sparse::SparseLUFactorization,
     zero_fill: &'a sparse::ILU0Factorization,
     threshold: &'a sparse::ILUTFactorization,
     level:     &'a sparse::ILUKFactorization,
@@ -63,18 +64,20 @@ fn benchmark_sparse_solvers(
 ) {
     let mut output = Array1::<f64>::zeros(size);
     let rhs_matrix = Array2::<f64>::ones((size, 4));
+    let direct_factorization = sparse::sparse_lu_factor(matrix).expect("sparse lu factorization");
     let zero_fill_factorization = sparse::ilu0_factor(matrix).expect("ilu0 factorization");
     let threshold_factorization = sparse::ilut_factor(matrix, 0.0, 16).expect("ilut factorization");
     let level_factorization = sparse::iluk_factor(matrix, 1).expect("iluk factorization");
     let symmetric_factorization = sparse::ildl0_factor(matrix).expect("ildl0 factorization");
     let factorizations = SparseFactorizations {
+        direct:    &direct_factorization,
         zero_fill: &zero_fill_factorization,
         threshold: &threshold_factorization,
         level:     &level_factorization,
         symmetric: &symmetric_factorization,
     };
 
-    benchmark_sparse_core(group, id, size, matrix, rhs, &mut output);
+    benchmark_sparse_core(group, id, size, matrix, rhs, &mut output, &factorizations);
     benchmark_sparse_bicgstab(group, id, size, matrix, rhs, &rhs_matrix, &factorizations);
     benchmark_sparse_gmres(group, id, size, matrix, rhs, &rhs_matrix, &factorizations);
 }
@@ -86,6 +89,7 @@ fn benchmark_sparse_core(
     matrix: &CsrMatrix,
     rhs: &Array1<f64>,
     mut output: &mut Array1<f64>,
+    factorizations: &SparseFactorizations<'_>,
 ) {
     _ = group.bench_with_input(BenchmarkId::new("csr_matvec", id), &size, |bench, _| {
         bench.iter(|| sparse::matvec(black_box(matrix), black_box(rhs)));
@@ -111,6 +115,20 @@ fn benchmark_sparse_core(
     _ = group.bench_with_input(BenchmarkId::new("pcg_solve", id), &size, |bench, _| {
         bench.iter(|| {
             sparse::pcg_solve(black_box(matrix), black_box(rhs), black_box(1e-8), black_box(10_000))
+        });
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("sparse_lu_solve", id), &size, |bench, _| {
+        bench.iter(|| sparse::sparse_lu_solve(black_box(matrix), black_box(rhs)));
+    });
+
+    _ = group.bench_with_input(BenchmarkId::new("sparse_lu_solve_reuse", id), &size, |bench, _| {
+        bench.iter(|| {
+            sparse::sparse_lu_solve_with_factorization(
+                black_box(matrix),
+                black_box(rhs),
+                black_box(factorizations.direct),
+            )
         });
     });
 }

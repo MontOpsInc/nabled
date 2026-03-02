@@ -1,10 +1,14 @@
 //! Compile-time backend contracts for future accelerator/distributed kernels.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{fmt, thread};
 
 use ndarray::{Array2, ArrayView2, s};
 #[cfg(feature = "accelerator-rayon")]
 use rayon::prelude::*;
+#[cfg(feature = "accelerator-wgpu")]
+use wgpu::util::DeviceExt;
 
 /// Backend category for compile-time kernel selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +38,10 @@ pub enum AcceleratorError {
     FeatureNotEnabled,
     /// A distributed worker panicked while executing a kernel.
     WorkerPanicked,
+    /// No suitable GPU device was found.
+    DeviceUnavailable,
+    /// GPU kernel execution failed.
+    KernelExecutionFailed,
 }
 
 impl fmt::Display for AcceleratorError {
@@ -53,10 +61,14 @@ impl fmt::Display for AcceleratorError {
                 write!(f, "matrix dimensions are incompatible")
             }
             AcceleratorError::FeatureNotEnabled => {
-                write!(f, "feature `accelerator-rayon` is not enabled")
+                write!(f, "requested accelerator feature is not enabled")
             }
             AcceleratorError::WorkerPanicked => {
                 write!(f, "distributed worker panicked")
+            }
+            AcceleratorError::DeviceUnavailable => write!(f, "no suitable GPU device is available"),
+            AcceleratorError::KernelExecutionFailed => {
+                write!(f, "GPU kernel execution failed")
             }
         }
     }
@@ -101,10 +113,23 @@ pub struct DistributedConfig {
     pub workers:    usize,
     /// Rows per work chunk.
     pub chunk_rows: usize,
+    /// Scheduling policy across workers.
+    pub schedule:   DistributedSchedule,
+}
+
+/// Scheduling policy for distributed CPU kernels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistributedSchedule {
+    /// Static worker partitioning by strided chunk id.
+    Static,
+    /// Dynamic queue-based chunk stealing.
+    Dynamic,
 }
 
 impl Default for DistributedConfig {
-    fn default() -> Self { Self { workers: 4, chunk_rows: 64 } }
+    fn default() -> Self {
+        Self { workers: 4, chunk_rows: 64, schedule: DistributedSchedule::Static }
+    }
 }
 
 /// Execute a closure with compile-time backend selection.
@@ -207,30 +232,64 @@ pub fn matmat_distributed(
     }
 
     let worker_count = config.workers.min(chunks.len());
+    let partials = match config.schedule {
+        DistributedSchedule::Static => {
+            matmat_distributed_static(left, right, cols, &chunks, worker_count)?
+        }
+        DistributedSchedule::Dynamic => {
+            matmat_distributed_dynamic(left, right, cols, &chunks, worker_count)?
+        }
+    };
+
+    let mut output = Array2::<f64>::zeros((rows, cols));
+    for (start, block) in partials {
+        let end = start + block.nrows();
+        output.slice_mut(s![start..end, ..]).assign(&block);
+    }
+    Ok(output)
+}
+
+fn compute_chunk_matmat(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+    start: usize,
+    end: usize,
+    cols: usize,
+) -> Array2<f64> {
+    let mut block = Array2::<f64>::zeros((end - start, cols));
+    for local_row in 0..(end - start) {
+        let row = start + local_row;
+        for inner in 0..left.ncols() {
+            let lhs = left[[row, inner]];
+            for col in 0..cols {
+                block[[local_row, col]] += lhs * right[[inner, col]];
+            }
+        }
+    }
+    block
+}
+
+fn matmat_distributed_static(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+    cols: usize,
+    chunks: &[(usize, usize)],
+    worker_count: usize,
+) -> Result<Vec<(usize, Array2<f64>)>, AcceleratorError> {
     let mut partials = Vec::new();
     thread::scope(|scope| {
         let mut handles = Vec::with_capacity(worker_count);
         for worker_id in 0..worker_count {
             let left_ref = left;
             let right_ref = right;
-            let chunks_ref = &chunks;
+            let chunks_ref = chunks;
             handles.push(scope.spawn(move || {
                 let mut local = Vec::new();
                 let mut chunk_id = worker_id;
                 while chunk_id < chunks_ref.len() {
                     let (start, end) = chunks_ref[chunk_id];
-                    let block_rows = end - start;
-                    let mut block = Array2::<f64>::zeros((block_rows, cols));
-                    for local_row in 0..block_rows {
-                        let row = start + local_row;
-                        for inner in 0..left_ref.ncols() {
-                            let lhs = left_ref[[row, inner]];
-                            for col in 0..cols {
-                                block[[local_row, col]] += lhs * right_ref[[inner, col]];
-                            }
-                        }
-                    }
-                    local.push((start, block));
+                    local
+                        .push((start, compute_chunk_matmat(left_ref, right_ref, start, end, cols)));
                     chunk_id += worker_count;
                 }
                 local
@@ -245,13 +304,49 @@ pub fn matmat_distributed(
         }
         Ok::<(), AcceleratorError>(())
     })?;
+    Ok(partials)
+}
 
-    let mut output = Array2::<f64>::zeros((rows, cols));
-    for (start, block) in partials {
-        let end = start + block.nrows();
-        output.slice_mut(s![start..end, ..]).assign(&block);
-    }
-    Ok(output)
+fn matmat_distributed_dynamic(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+    cols: usize,
+    chunks: &[(usize, usize)],
+    worker_count: usize,
+) -> Result<Vec<(usize, Array2<f64>)>, AcceleratorError> {
+    let mut partials = Vec::new();
+    let next_chunk = Arc::new(AtomicUsize::new(0));
+    thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(worker_count);
+        for _worker_id in 0..worker_count {
+            let left_ref = left;
+            let right_ref = right;
+            let chunks_ref = chunks;
+            let next_chunk_ref = Arc::clone(&next_chunk);
+            handles.push(scope.spawn(move || {
+                let mut local = Vec::new();
+                loop {
+                    let chunk_id = next_chunk_ref.fetch_add(1, Ordering::Relaxed);
+                    if chunk_id >= chunks_ref.len() {
+                        break;
+                    }
+                    let (start, end) = chunks_ref[chunk_id];
+                    local
+                        .push((start, compute_chunk_matmat(left_ref, right_ref, start, end, cols)));
+                }
+                local
+            }));
+        }
+
+        for handle in handles {
+            match handle.join() {
+                Ok(worker_chunks) => partials.extend(worker_chunks),
+                Err(_) => return Err(AcceleratorError::WorkerPanicked),
+            }
+        }
+        Ok::<(), AcceleratorError>(())
+    })?;
+    Ok(partials)
 }
 
 /// Compute matrix-matrix product with tiled distributed CPU execution.
@@ -418,6 +513,346 @@ pub fn matmat_accelerated(
     }
 }
 
+fn matmat_serial_f32(
+    left: &Array2<f32>,
+    right: &Array2<f32>,
+) -> Result<Array2<f32>, AcceleratorError> {
+    if left.ncols() != right.nrows() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let mut output = Array2::<f32>::zeros((left.nrows(), right.ncols()));
+    for row in 0..left.nrows() {
+        for inner in 0..left.ncols() {
+            let lhs = left[[row, inner]];
+            for col in 0..right.ncols() {
+                output[[row, col]] += lhs * right[[inner, col]];
+            }
+        }
+    }
+    Ok(output)
+}
+
+/// Compute matrix-matrix product using compile-time backend dispatch for `f32`.
+///
+/// This exposes GPU execution via [`CudaBackend`] when `accelerator-wgpu` is enabled.
+///
+/// # Errors
+/// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
+pub fn matmat_with_backend_f32<B: ComputeBackend>(
+    left: &Array2<f32>,
+    right: &Array2<f32>,
+) -> Result<Array2<f32>, AcceleratorError> {
+    match B::KIND {
+        BackendKind::Cpu | BackendKind::Distributed => matmat_serial_f32(left, right),
+        BackendKind::Cuda => matmat_gpu_f32(left, right),
+    }
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GpuMatMulParams {
+    rows:  u32,
+    cols:  u32,
+    inner: u32,
+    _pad:  u32,
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+const WGSL_MATMUL: &str = r"
+struct Params {
+    rows: u32,
+    cols: u32,
+    inner: u32,
+    _pad: u32,
+};
+
+@group(0) @binding(0) var<storage, read> left: array<f32>;
+@group(0) @binding(1) var<storage, read> right: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out: array<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size(16, 16, 1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let col = gid.x;
+    let row = gid.y;
+    if (row >= params.rows || col >= params.cols) {
+        return;
+    }
+
+    var acc: f32 = 0.0;
+    for (var k: u32 = 0u; k < params.inner; k = k + 1u) {
+        let lhs = left[row * params.inner + k];
+        let rhs = right[k * params.cols + col];
+        acc = acc + lhs * rhs;
+    }
+    out[row * params.cols + col] = acc;
+}
+";
+
+#[cfg(feature = "accelerator-wgpu")]
+struct GpuBuffers {
+    output_buffer:   wgpu::Buffer,
+    readback_buffer: wgpu::Buffer,
+    _params_buffer:  wgpu::Buffer,
+    bind_group:      wgpu::BindGroup,
+    rows_u32:        u32,
+    cols_u32:        u32,
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn output_size_bytes(rows: usize, cols: usize) -> Result<u64, AcceleratorError> {
+    use std::mem::size_of;
+
+    let bytes = rows
+        .checked_mul(cols)
+        .and_then(|elements| elements.checked_mul(size_of::<f32>()))
+        .ok_or(AcceleratorError::KernelExecutionFailed)?;
+    u64::try_from(bytes).map_err(|_| AcceleratorError::KernelExecutionFailed)
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn request_wgpu_device() -> Result<(wgpu::Device, wgpu::Queue), AcceleratorError> {
+    let instance = wgpu::Instance::default();
+    let adapter =
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+            .map_err(|_| AcceleratorError::DeviceUnavailable)?;
+    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+        .map_err(|_| AcceleratorError::DeviceUnavailable)
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn create_pipeline_and_layout(
+    device: &wgpu::Device,
+) -> (wgpu::ComputePipeline, wgpu::BindGroupLayout) {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label:  Some("nabled.gpu.matmul"),
+        source: wgpu::ShaderSource::Wgsl(WGSL_MATMUL.into()),
+    });
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label:   Some("nabled.gpu.bind_group_layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding:    0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty:         wgpu::BindingType::Buffer {
+                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size:   None,
+                },
+                count:      None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding:    1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty:         wgpu::BindingType::Buffer {
+                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size:   None,
+                },
+                count:      None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding:    2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty:         wgpu::BindingType::Buffer {
+                    ty:                 wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size:   None,
+                },
+                count:      None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding:    3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty:         wgpu::BindingType::Buffer {
+                    ty:                 wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size:   None,
+                },
+                count:      None,
+            },
+        ],
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label:                Some("nabled.gpu.pipeline_layout"),
+        bind_group_layouts:   &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label:               Some("nabled.gpu.pipeline"),
+        layout:              Some(&pipeline_layout),
+        module:              &shader,
+        entry_point:         Some("main"),
+        cache:               None,
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+    });
+    (pipeline, bind_group_layout)
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn create_buffers_and_bind_group(
+    device: &wgpu::Device,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    left: &Array2<f32>,
+    right: &Array2<f32>,
+) -> Result<GpuBuffers, AcceleratorError> {
+    let rows = left.nrows();
+    let cols = right.ncols();
+    let inner = left.ncols();
+    let output_size = output_size_bytes(rows, cols)?;
+    let rows_u32 = u32::try_from(rows).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
+    let cols_u32 = u32::try_from(cols).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
+    let inner_u32 = u32::try_from(inner).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
+
+    let left_data = left.iter().copied().collect::<Vec<_>>();
+    let right_data = right.iter().copied().collect::<Vec<_>>();
+    let params = GpuMatMulParams { rows: rows_u32, cols: cols_u32, inner: inner_u32, _pad: 0 };
+
+    let left_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label:    Some("nabled.gpu.left"),
+        contents: bytemuck::cast_slice(&left_data),
+        usage:    wgpu::BufferUsages::STORAGE,
+    });
+    let right_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label:    Some("nabled.gpu.right"),
+        contents: bytemuck::cast_slice(&right_data),
+        usage:    wgpu::BufferUsages::STORAGE,
+    });
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label:              Some("nabled.gpu.output"),
+        size:               output_size,
+        usage:              wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label:    Some("nabled.gpu.params"),
+        contents: bytemuck::bytes_of(&params),
+        usage:    wgpu::BufferUsages::UNIFORM,
+    });
+    let readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label:              Some("nabled.gpu.readback"),
+        size:               output_size,
+        usage:              wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label:   Some("nabled.gpu.bind_group"),
+        layout:  bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: left_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: right_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: output_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 3, resource: params_buffer.as_entire_binding() },
+        ],
+    });
+
+    Ok(GpuBuffers {
+        output_buffer,
+        readback_buffer,
+        _params_buffer: params_buffer,
+        bind_group,
+        rows_u32,
+        cols_u32,
+    })
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn dispatch_gpu_kernel(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    pipeline: &wgpu::ComputePipeline,
+    buffers: &GpuBuffers,
+) -> Result<(), AcceleratorError> {
+    let rows =
+        usize::try_from(buffers.rows_u32).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
+    let cols =
+        usize::try_from(buffers.cols_u32).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
+    let output_size = output_size_bytes(rows, cols)?;
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("nabled.gpu.encoder"),
+    });
+    {
+        let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+        compute.set_pipeline(pipeline);
+        compute.set_bind_group(0, &buffers.bind_group, &[]);
+        let workgroups_x = buffers.cols_u32.div_ceil(16);
+        let workgroups_y = buffers.rows_u32.div_ceil(16);
+        compute.dispatch_workgroups(workgroups_x, workgroups_y, 1);
+    }
+    encoder.copy_buffer_to_buffer(
+        &buffers.output_buffer,
+        0,
+        &buffers.readback_buffer,
+        0,
+        output_size,
+    );
+    let _submission_index = queue.submit(Some(encoder.finish()));
+
+    let readback_slice = buffers.readback_buffer.slice(..);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    readback_slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = sender.send(result);
+    });
+    let _poll_status = device.poll(wgpu::PollType::wait());
+    match receiver.recv() {
+        Ok(Ok(())) => Ok(()),
+        _ => Err(AcceleratorError::KernelExecutionFailed),
+    }
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn read_gpu_output(
+    readback_buffer: &wgpu::Buffer,
+    rows: usize,
+    cols: usize,
+) -> Result<Array2<f32>, AcceleratorError> {
+    let mapped = readback_buffer.slice(..).get_mapped_range();
+    let values = bytemuck::cast_slice::<u8, f32>(&mapped).to_vec();
+    drop(mapped);
+    readback_buffer.unmap();
+    Array2::from_shape_vec((rows, cols), values)
+        .map_err(|_| AcceleratorError::KernelExecutionFailed)
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn matmat_gpu_f32_wgpu(
+    left: &Array2<f32>,
+    right: &Array2<f32>,
+) -> Result<Array2<f32>, AcceleratorError> {
+    let (device, queue) = request_wgpu_device()?;
+    let (pipeline, bind_group_layout) = create_pipeline_and_layout(&device);
+    let buffers = create_buffers_and_bind_group(&device, &bind_group_layout, left, right)?;
+    dispatch_gpu_kernel(&device, &queue, &pipeline, &buffers)?;
+    read_gpu_output(&buffers.readback_buffer, left.nrows(), right.ncols())
+}
+
+/// Compute matrix-matrix product on GPU for `f32` inputs using `wgpu`.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, or kernel failures.
+pub fn matmat_gpu_f32(
+    left: &Array2<f32>,
+    right: &Array2<f32>,
+) -> Result<Array2<f32>, AcceleratorError> {
+    if left.ncols() != right.nrows() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    {
+        matmat_gpu_f32_wgpu(left, right)
+    }
+
+    #[cfg(not(feature = "accelerator-wgpu"))]
+    {
+        let _ = left;
+        let _ = right;
+        Err(AcceleratorError::FeatureNotEnabled)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
@@ -488,9 +923,12 @@ mod tests {
         .unwrap();
 
         let serial = matmat_serial(&left, &right).unwrap();
-        let distributed =
-            matmat_distributed(&left, &right, DistributedConfig { workers: 3, chunk_rows: 2 })
-                .unwrap();
+        let distributed = matmat_distributed(&left, &right, DistributedConfig {
+            workers:    3,
+            chunk_rows: 2,
+            schedule:   DistributedSchedule::Static,
+        })
+        .unwrap();
         for row in 0..serial.nrows() {
             for col in 0..serial.ncols() {
                 assert!((serial[[row, col]] - distributed[[row, col]]).abs() < 1e-12);
@@ -502,13 +940,47 @@ mod tests {
     fn distributed_matmat_rejects_invalid_config() {
         let left = Array2::<f64>::eye(2);
         let right = Array2::<f64>::eye(2);
-        let invalid_workers =
-            matmat_distributed(&left, &right, DistributedConfig { workers: 0, chunk_rows: 1 });
+        let invalid_workers = matmat_distributed(&left, &right, DistributedConfig {
+            workers:    0,
+            chunk_rows: 1,
+            schedule:   DistributedSchedule::Static,
+        });
         assert!(matches!(invalid_workers, Err(AcceleratorError::InvalidWorkerCount)));
 
-        let invalid_chunks =
-            matmat_distributed(&left, &right, DistributedConfig { workers: 1, chunk_rows: 0 });
+        let invalid_chunks = matmat_distributed(&left, &right, DistributedConfig {
+            workers:    1,
+            chunk_rows: 0,
+            schedule:   DistributedSchedule::Static,
+        });
         assert!(matches!(invalid_chunks, Err(AcceleratorError::InvalidChunkSize)));
+    }
+
+    #[test]
+    fn distributed_dynamic_matches_static() {
+        let left =
+            Array2::from_shape_vec((8, 5), (0..40).map(|value| f64::from(value) * 0.125).collect())
+                .unwrap();
+        let right =
+            Array2::from_shape_vec((5, 7), (0..35).map(|value| f64::from(value) * -0.25).collect())
+                .unwrap();
+
+        let static_result = matmat_distributed(&left, &right, DistributedConfig {
+            workers:    3,
+            chunk_rows: 2,
+            schedule:   DistributedSchedule::Static,
+        })
+        .unwrap();
+        let dynamic_result = matmat_distributed(&left, &right, DistributedConfig {
+            workers:    3,
+            chunk_rows: 2,
+            schedule:   DistributedSchedule::Dynamic,
+        })
+        .unwrap();
+        for row in 0..static_result.nrows() {
+            for col in 0..static_result.ncols() {
+                assert!((static_result[[row, col]] - dynamic_result[[row, col]]).abs() < 1e-12);
+            }
+        }
     }
 
     #[test]
@@ -577,6 +1049,33 @@ mod tests {
         let right = Array2::<f64>::eye(2);
         let result = matmat_accelerated(&left, &right);
         assert!(matches!(result, Err(AcceleratorError::FeatureNotEnabled)));
+    }
+
+    #[cfg(not(feature = "accelerator-wgpu"))]
+    #[test]
+    fn gpu_matmat_requires_feature() {
+        let left = Array2::<f32>::eye(2);
+        let right = Array2::<f32>::eye(2);
+        let result = matmat_gpu_f32(&left, &right);
+        assert!(matches!(result, Err(AcceleratorError::FeatureNotEnabled)));
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
+    fn gpu_matmat_matches_cpu_or_reports_unavailable_device() {
+        let left = Array2::from_shape_vec((2, 3), vec![1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
+        let right = Array2::from_shape_vec((3, 2), vec![1.0_f32, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
+        let cpu = matmat_with_backend_f32::<CpuBackend>(&left, &right).unwrap();
+        match matmat_with_backend_f32::<CudaBackend>(&left, &right) {
+            Ok(gpu) => {
+                for row in 0..cpu.nrows() {
+                    for col in 0..cpu.ncols() {
+                        assert!((cpu[[row, col]] - gpu[[row, col]]).abs() < 1e-4);
+                    }
+                }
+            }
+            Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
+        }
     }
 
     #[cfg(feature = "accelerator-rayon")]

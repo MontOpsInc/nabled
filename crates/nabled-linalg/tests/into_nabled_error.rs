@@ -260,7 +260,7 @@ fn maps_vector_errors() {
     );
     assert_eq!(
         AcceleratorError::FeatureNotEnabled.into_nabled_error(),
-        NabledError::Other("feature `accelerator-rayon` is not enabled".to_string())
+        NabledError::Other("requested accelerator feature is not enabled".to_string())
     );
     assert_eq!(
         AcceleratorError::WorkerPanicked.into_nabled_error(),

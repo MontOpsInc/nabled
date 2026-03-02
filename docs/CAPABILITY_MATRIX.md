@@ -1,6 +1,6 @@
 # Capability Matrix
 
-Last updated: 2026-03-01
+Last updated: 2026-03-02
 
 ## Purpose
 
@@ -25,23 +25,24 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Core validation | shape checks for matrix/system inputs | `nabled-core::validation` | Implemented | No | Shared helpers exist; error model still minimal. |
 | Core errors | common shape errors + shared taxonomy (`NabledError`) | `nabled-core::errors` | Implemented | No | Domain errors remain local, but normalization path exists via `IntoNabledError`. |
 | Cholesky | factorization, solve, inverse (+ complex paths) | `nabled-linalg::cholesky` | Implemented | Yes | Complex APIs execute in both internal and provider-enabled builds. Bench exists (`cholesky_benchmarks`). |
-| Eigen | symmetric/generalized/non-symmetric dense eigen | `nabled-linalg::eigen` | Implemented | Yes | Non-symmetric APIs now run in internal mode (complex Schur/closed-form small cases) and provider mode (`Eig`). |
+| Eigen | symmetric/generalized/non-symmetric dense eigen (+ balancing and left/right non-symmetric surfaces) | `nabled-linalg::eigen` | Implemented | Yes | Non-symmetric APIs run in internal/provider modes; balancing (`balance_nonsymmetric*`) and matched left/right surfaces (`nonsymmetric_bi*`) are now available. |
 | LU | factorization, solve, inverse, det/logdet (+ complex paths) | `nabled-linalg::lu` | Implemented | Yes | Complex solve/inverse/determinant APIs execute in both internal and provider-enabled builds. Bench exists (`lu_benchmarks`). |
 | QR | full/reduced QR, pivoting, least-squares | `nabled-linalg::qr` | Implemented | Yes | Bench exists (`qr_benchmarks`). |
 | SVD | full/truncated/toleranced SVD, rank, cond, pinv, null space | `nabled-linalg::svd` | Implemented | Yes | Real and complex paths execute in both internal and provider-enabled builds. Bench exists (`svd_benchmarks`) with complex cases. |
 | Triangular solves | lower/upper substitution (+ complex variants) | `nabled-linalg::triangular` | Implemented | Yes | Includes allocation-controlled `*_into` paths and complex solve entrypoints. |
 | Vector primitives | dot/norm/cosine/pairwise/batched dot (+ complex Hermitian baseline) | `nabled-linalg::vector` | Implemented | Yes | Bench exists (`vector_benchmarks`) with ndarray competitor baselines. |
-| Matrix primitives | matvec/matmat + batched matrix-kernels (`*_into`, views) | `nabled-linalg::matrix` | Implemented | No | Dense pipeline APIs exist as first-class nabled surfaces, including real/complex matvec+matmat parity and batched real kernels. |
+| Matrix primitives | matvec/matmat + batched matrix-kernels (`*_into`, views, broadcasted batch matmat) | `nabled-linalg::matrix` | Implemented | No | Dense pipeline APIs exist as first-class nabled surfaces, including real/complex matvec+matmat parity, batched kernels, and broadcast-left/right batched matmat semantics. |
+| Batched decomposition helpers | batched QR/SVD/LU/Cholesky/symmetric eigen over matrix stacks | `nabled-linalg::batched` | Implemented | No | Batch entrypoints expose decomposition-level workflows without requiring caller-side loops. |
 | Schur | Schur decomposition | `nabled-linalg::schur` | Implemented | Yes | Includes complex parity in both internal and provider-enabled builds; bench exists (`schur_benchmarks`) with manual competitor baseline. |
 | Polar | polar decomposition (+ complex variant) | `nabled-linalg::polar` | Implemented | Yes | Complex variant executes in both internal and provider-enabled builds; dedicated benchmark exists (`polar_benchmarks`) with complex cases. |
 | Sylvester/Lyapunov | dense equation solves | `nabled-linalg::sylvester` | Implemented | Yes | Includes complex parity in both internal and provider-enabled builds; bench exists (`sylvester_benchmarks`) with manual competitor baseline. |
 | Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Includes complex `exp/log/power/sign` coverage in both internal and provider-enabled builds. Bench exists (`matrix_functions_benchmarks`) with complex cases. |
 | Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization` | Implemented | Yes | Includes complex Gram-Schmidt parity and dedicated benchmark coverage (`orthogonalization_benchmarks`). |
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Includes real and complex CG/GMRES APIs. |
-| Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, and ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
-| Optimization | line search, gradient descent, Adam, momentum, RMSProp | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
-| Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) | `nabled-linalg::tensor` | Partial | Yes | Rank-3 APIs are present with owned/view/into variants in real and complex forms; higher-rank baseline now includes last-axis reductions/normalization/batched dot plus axis-permute/contract/batched-matmul primitives for real and complex tensors. |
-| Accelerator contracts | compile-time backend trait + CPU execution/chunking + concrete distributed row-sharded/tiled matmat + feature-gated accelerated matmat + CUDA placeholder | `nabled-linalg::accelerator` | Partial | Yes | Distributed backend now executes concrete row-sharded and tiled matmat kernels in safe Rust; accelerated CPU path (`accelerator-rayon`) exists; CUDA/distributed multi-process/GPU kernels remain open. |
+| Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows + direct sparse LU solve/reuse paths | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths, and direct sparse LU solve/reuse workflows. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
+| Optimization | line search, gradient descent, Adam, momentum, RMSProp, projected GD, stochastic GD, BFGS | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
+| Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) + rank-3 HOSVD + einsum-style binary contractions | `nabled-linalg::tensor` | Partial | Yes | Rank-3 APIs are present with owned/view/into variants in real and complex forms; higher-rank baseline now includes last-axis reductions/normalization/batched dot plus axis-permute/contract/batched-matmul primitives for real and complex tensors, plus `hosvd3` and binary einsum ergonomics. |
+| Accelerator contracts | compile-time backend trait + CPU execution/chunking + concrete distributed row-sharded/tiled matmat + feature-gated accelerated matmat + feature-gated GPU matmat (`wgpu`) + CUDA placeholder | `nabled-linalg::accelerator` | Partial | Yes | Distributed backend executes concrete row-sharded/tiled kernels with static/dynamic scheduling in safe Rust; accelerated CPU path (`accelerator-rayon`) and feature-gated GPU `f32` matmat path (`accelerator-wgpu`) exist; multi-process/distributed orchestration and CUDA-native kernels remain open. |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
@@ -65,18 +66,18 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 
 | Capability Group | Current Status | Gap |
 |---|---|---|
-| Batched operations over many vectors/matrices | Implemented | Vector, dense matrix, sparse matrix, and cube-level batched primitives are now exposed with explicit allocation-control paths. |
+| Batched operations over many vectors/matrices | Implemented | Vector, dense matrix, sparse matrix, and cube-level batched primitives are exposed with explicit allocation-control paths; decomposition-level batch APIs now exist in `nabled-linalg::batched`. |
 | Sparse linear algebra primitives | Implemented | Sparse primitives now span CSR/CSC/COO formats, sparse-dense/sparse-sparse products, iterative solve breadth including `BiCGSTAB`/`GMRES`, and ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0)-backed preconditioned solve and reuse paths. |
 | Complex-number parity across major algorithms | Implemented | Complex parity now covers core linalg kernels (vector/matrix/tensor), dense decompositions/solvers (QR/SVD/LU/Cholesky/Schur/Sylvester/Triangular/Polar), matrix-functions (`exp/log/power/sign`), and iterative solvers (CG/GMRES) across internal/provider builds, with integration tests and benchmark visibility in selected dense suites. |
-| Non-symmetric dense eigen coverage | Implemented | Non-symmetric real/complex eigen APIs exist with internal and provider-enabled execution paths. |
-| More optimization primitives | Implemented | First-order suite now includes line search, gradient descent, Adam, momentum, and `RMSProp`; advanced second-order and constrained methods remain future enhancements. |
+| Non-symmetric dense eigen coverage | Implemented | Non-symmetric real/complex APIs exist with internal/provider execution, plus balancing and matched left/right eigenvector surfaces. |
+| More optimization primitives | Implemented | Optimization breadth now includes constrained (`projected_gradient_descent_box`), stochastic (`stochastic_gradient_descent`), and quasi-Newton (`bfgs`) paths in addition to first-order baselines. |
 
 ### P2: Out of immediate scope (documented future direction)
 
 | Capability Group | Current Status | Gap |
 |---|---|---|
-| Tensor/cube-focused higher-rank APIs | Partial | Rank-3 cube primitives plus higher-rank baseline (`last-axis` reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) are present; broader tensor algebra depth (decompositions/networks/einsum-style ergonomics) is still missing. |
-| GPU/distributed kernels | Partial | Distributed CPU-sharded kernel baseline is now implemented; concrete GPU kernels and true multi-process/distributed execution remain open. |
+| Tensor/cube-focused higher-rank APIs | Partial | Rank-3 cube primitives plus higher-rank baseline (`last-axis` reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul), `hosvd3`, and binary einsum ergonomics are present; broader tensor algebra depth (higher-order decompositions/networks) is still missing. |
+| GPU/distributed kernels | Partial | Distributed CPU-sharded/tiled baseline now includes static/dynamic scheduling and a feature-gated GPU `f32` matmat kernel path; multi-process orchestration and deeper GPU kernel breadth remain open. |
 | Arrow-aware API surface in `nabled` | Intentionally omitted | Per project decision, Arrow interop belongs to downstream crates. |
 
 ## Sufficiency Verdict
@@ -84,8 +85,8 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 `nabled` is sufficient as a strong ndarray-native dense-core base, but not yet sufficient for the full target scope described for embedding-centric and broad production workflows.
 
 Concretely, the largest missing pieces are now:
-1. Sparse depth beyond the current iterative/preconditioned baseline (direct/factorization-grade sparse workflows and broader sparse algebra ergonomics).
-2. Concrete accelerator/tensor depth beyond the new baseline seams (actual GPU/distributed kernels and broader higher-rank tensor algebra).
+1. Sparse depth beyond the current iterative/preconditioned + direct-LU baseline (broader factorization-grade sparse workflows and sparse algebra ergonomics).
+2. Concrete accelerator/tensor depth beyond the current seams (broader GPU/distributed kernel coverage and higher-rank tensor algebra breadth).
 
 ## Execution Order Driven by This Matrix
 

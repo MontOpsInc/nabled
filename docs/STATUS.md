@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-01
+Last updated: 2026-03-02
 
 ## Summary
 
@@ -57,6 +57,13 @@ Workspace migration for library domains is complete.
 49. Accelerator baseline now includes concrete distributed row-sharded matmat, backend-dispatched distributed execution, and dedicated accelerator benchmark coverage in smoke/report pipelines.
 50. Accelerator distributed depth now includes tiled scheduling (`matmat_distributed_tiled`) with explicit tile validation and coverage in tests/benchmarks.
 51. Sparse factorization depth now includes ILU(k) (`ILUKConfig`, factorization/apply APIs) with ILUK-preconditioned GMRES/BiCGSTAB (direct, factorization-reuse, and multi-RHS workflows), plus sparse benchmark coverage.
+52. Sparse depth now includes direct sparse LU factorization workflows (`sparse_lu_factor`, direct/reuse/multi-RHS solve paths) with unit and benchmark coverage.
+53. Tensor depth now includes rank-3 HOSVD (`hosvd3`, reconstruction) and binary einsum ergonomics for real and complex tensors.
+54. Accelerator depth now includes distributed scheduling policies (static/dynamic) and feature-gated concrete GPU `f32` matmat execution via `accelerator-wgpu`.
+55. Batched decomposition-level workflows are now first-class (`nabled-linalg::batched`) for QR/SVD/LU/Cholesky/symmetric eigen.
+56. Dense batched broadcast semantics now include broadcast-left/right matrix products over batch stacks.
+57. Non-symmetric eigen depth now includes balancing APIs and matched left/right eigenvector outputs.
+58. Advanced optimization breadth now includes constrained (`projected_gradient_descent_box`), stochastic (`stochastic_gradient_descent`), and quasi-Newton (`bfgs`) methods.
 
 ## Current Code Ownership
 
@@ -93,8 +100,8 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Expand sparse depth from current ILU(0)+IC(0)+ILUT baseline into broader factorization-grade sparse workflows.
-2. Expand tensor beyond the new contraction/matmul baseline and advance accelerator from distributed CPU baseline toward concrete GPU kernels and richer distributed execution semantics.
+1. Resolve `K-*` architecture decisions now that P1 backlog is closed.
+2. Run benchmark/regression optimization passes (outlier triage, allocation audit, SIMD/threading opportunities).
 3. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 
 ## Completion Criteria For Migration

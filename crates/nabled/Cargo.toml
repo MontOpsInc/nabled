@@ -19,6 +19,7 @@ test-utils = []
 blas = ["nabled-linalg/blas", "nabled-ml/blas"]
 openblas-system = ["blas", "nabled-linalg/openblas-system", "nabled-ml/openblas-system"]
 accelerator-rayon = ["nabled-linalg/accelerator-rayon"]
+accelerator-wgpu = ["nabled-linalg/accelerator-wgpu"]
 
 [dependencies]
 nabled-core.workspace = true

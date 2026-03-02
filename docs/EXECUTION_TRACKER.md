@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-01
+Last updated: 2026-03-02
 
 ## Purpose
 
@@ -102,12 +102,21 @@ Use this file to resume work quickly after context compaction without re-auditin
 72. `D-072`: Accelerator baseline advanced with concrete distributed row-sharded matmat (`matmat_distributed`, `matmat_with_backend::<DistributedBackend>`), expanded error mapping, integration/unit coverage, and new `accelerator_benchmarks` wired into smoke/report pipelines.
 73. `D-073`: Accelerator distributed depth expanded with tiled scheduling (`matmat_distributed_tiled`) and validation/error contracts (`InvalidTileSize`), with unit/integration coverage and benchmark visibility (`matmat_distributed_tiled` case).
 74. `D-074`: Sparse factorization depth expanded with ILU(k) (`iluk_factor`, `apply_iluk_preconditioner`, `ILUKConfig`) and ILUK-preconditioned GMRES/BiCGSTAB (including factorization-reuse/multi-RHS APIs), plus tests and sparse benchmark coverage.
+75. `D-075`: `N-060` sparse depth continued with direct sparse LU workflows (`sparse_lu_factor`, direct/reuse/multi-RHS solve APIs), unit coverage, and sparse benchmark smoke/report cases for setup-vs-reuse visibility.
+76. `D-076`: `N-062` tensor depth continued with rank-3 HOSVD (`hosvd3` + reconstruction) and two-operand einsum ergonomics for real/complex tensors, with parity/error tests.
+77. `D-077`: `N-063` accelerator depth continued with distributed static/dynamic scheduling semantics and feature-gated concrete GPU `f32` matmat kernel execution path (`accelerator-wgpu`) plus provider-aware tests.
+78. `D-078`: `B-P1-001` completed with batched decomposition-level APIs (`nabled-linalg::batched` for QR/SVD/LU/Cholesky/symmetric eigen) and richer dense broadcast semantics (`batched_matmat_broadcast_left/right` owned/view/into variants).
+79. `D-079`: `B-P1-002` closed for current scope with direct sparse LU factorization-grade workflows (factor/reuse/multi-RHS), extending preconditioned iterative sparse depth into direct solve pipelines.
+80. `D-080`: `B-P1-004` completed with non-symmetric eigen depth improvements: balancing APIs (`balance_nonsymmetric*`) and matched left/right eigenvector surface (`nonsymmetric_bi*`) with configuration controls.
+81. `D-081`: `B-P1-005` completed with advanced optimization breadth (`projected_gradient_descent_box`, `stochastic_gradient_descent`, `bfgs`) plus config validation and convergence/error tests.
 
 ## Next
 
-1. `N-060` (P2): Continue sparse depth expansion beyond ILU(0)+ILU(k)+IC(0)+ILUT+ILDL(0) baseline into broader factorization-grade workflows.
-2. `N-062` (P2): Continue tensor depth beyond the new contraction baseline toward broader higher-rank algebra (decompositions/networks/einsum-grade ergonomics).
-3. `N-063` (P2): Continue accelerator depth from distributed CPU baseline into concrete GPU kernels and richer distributed execution semantics.
+1. `K-001`: Finalize API policy for view-first signatures versus owned-only entrypoints in remaining convenience surfaces.
+2. `K-002`: Finalize workspace contract for reusable workspace/state objects (domain-local vs shared patterns).
+3. `K-003`: Re-rank sparse format/solver entrypoint priorities for post-P1 expansion (`CSR/CSC/COO` + direct/preconditioned hybrids).
+4. `K-004`: Decide provider expansion policy beyond `openblas-system` and reflect it in feature/docs/CI strategy.
+5. `K-005`: Start benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
 
 ## Needed
 
@@ -118,11 +127,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 
 ## Backlog (From Capability Matrix)
 
-1. `B-P1-001`: Batched decomposition-level APIs and richer broadcast semantics.
-2. `B-P1-002`: Sparse preconditioners and factorization-grade sparse workflows.
 3. `B-P2-001`: Complex parity for higher-level ML/statistical domains that remain real-first (`stats`, `regression`, `pca`, `optimization`).
-4. `B-P1-004`: Left-eigenvector and balancing-depth improvements for non-symmetric eigen APIs.
-5. `B-P1-005`: Advanced optimization breadth (constrained, stochastic variants, quasi-Newton/second-order).
 
 ## Resume Protocol (Compaction-Friendly)
 

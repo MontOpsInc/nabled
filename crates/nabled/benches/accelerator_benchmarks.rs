@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::{DistributedConfig, accelerator};
+use nabled::{DistributedConfig, DistributedSchedule, accelerator};
 use ndarray::Array2;
 use rand::RngExt;
 
@@ -48,7 +48,11 @@ fn benchmark_accelerator(c: &mut Criterion) {
                         accelerator::matmat_distributed(
                             black_box(&left),
                             black_box(&right),
-                            DistributedConfig { workers: 4, chunk_rows: 32 },
+                            DistributedConfig {
+                                workers:    4,
+                                chunk_rows: 32,
+                                schedule:   DistributedSchedule::Dynamic,
+                            },
                         )
                     });
                 },

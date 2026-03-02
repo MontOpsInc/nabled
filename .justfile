@@ -3,7 +3,6 @@ features := 'blas openblas-system accelerator-rayon'
 provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
 provider_features := 'openblas-system'
 provider_bench_features := 'openblas-system'
-coverage_ignore_regex := "(errors|examples|benches|src/bin).*"
 coverage_line_threshold := "90"
 
 # List of Examples
@@ -35,24 +34,28 @@ test-integration test_name:
     RUST_LOG={{ LOG }} cargo test -p nabled --test "{{ test_name }}" -- --nocapture --show-output
 
 coverage:
-    cargo llvm-cov --workspace --lib --tests --html \
-     --ignore-filename-regex "{{ coverage_ignore_regex }}" \
-     --output-dir coverage --open
+    cargo llvm-cov clean --workspace
+    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features openblas-system --no-report --exclude 'nabled'
+    cargo llvm-cov report -vv --html --output-dir coverage --open
 
 coverage-json:
-    cargo llvm-cov --workspace --lib --tests --json \
-    --ignore-filename-regex "{{ coverage_ignore_regex }}" \
-    --output-path coverage/cov.json
+    cargo llvm-cov clean --workspace
+    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features openblas-system --no-report --exclude 'nabled'
+    cargo llvm-cov report --json --output-path coverage/cov.json
 
 coverage-lcov:
-    cargo llvm-cov --workspace --lib --tests --lcov \
-    --ignore-filename-regex "{{ coverage_ignore_regex }}" \
-    --output-path coverage/lcov.info
+    cargo llvm-cov clean --workspace
+    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features openblas-system --no-report --exclude 'nabled'
+    cargo llvm-cov report --lcov --output-path coverage/lcov.info
 
 coverage-check:
-    cargo llvm-cov --workspace --lib --tests --summary-only \
-    --fail-under-lines {{ coverage_line_threshold }} \
-    --ignore-filename-regex "{{ coverage_ignore_regex }}"
+    cargo llvm-cov clean --workspace
+    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features openblas-system --no-report --exclude 'nabled'
+    cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }}
 
 # --- DOCS ---
 docs:

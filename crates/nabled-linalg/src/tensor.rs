@@ -5,9 +5,11 @@ use std::ops::{AddAssign, Mul};
 
 use ndarray::{
     Array2, Array3, ArrayD, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2, ArrayViewMut3, Axis,
-    IxDyn,
+    IxDyn, s,
 };
 use num_complex::Complex64;
+
+use crate::svd;
 
 /// Error type for tensor/cube operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +30,21 @@ impl fmt::Display for TensorError {
 }
 
 impl std::error::Error for TensorError {}
+
+/// HOSVD decomposition result for rank-3 real tensors.
+#[derive(Debug, Clone)]
+pub struct Hosvd3Result {
+    /// Core tensor with shape `(r0, r1, r2)`.
+    pub core: Array3<f64>,
+    /// Mode-0 factor matrix `(i0, r0)`.
+    pub u0:   Array2<f64>,
+    /// Mode-1 factor matrix `(i1, r1)`.
+    pub u1:   Array2<f64>,
+    /// Mode-2 factor matrix `(i2, r2)`.
+    pub u2:   Array2<f64>,
+}
+
+type EinsumOperands = (Vec<char>, Vec<char>, Vec<char>);
 
 fn validate_cube_non_empty(cube: &ArrayView3<'_, f64>) -> Result<(), TensorError> {
     if cube.is_empty() {
@@ -1035,6 +1052,458 @@ pub fn batched_matmul_last_two_complex_into(
     batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
 }
 
+fn parse_einsum_two_operands(expression: &str) -> Result<EinsumOperands, TensorError> {
+    let Some((inputs, output)) = expression.split_once("->") else {
+        return Err(TensorError::DimensionMismatch);
+    };
+    let mut input_parts = inputs.split(',');
+    let Some(left_part) = input_parts.next() else {
+        return Err(TensorError::DimensionMismatch);
+    };
+    let Some(right_part) = input_parts.next() else {
+        return Err(TensorError::DimensionMismatch);
+    };
+    if input_parts.next().is_some() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let left_labels = left_part.chars().collect::<Vec<_>>();
+    let right_labels = right_part.chars().collect::<Vec<_>>();
+    let output_labels = output.chars().collect::<Vec<_>>();
+    if left_labels.is_empty() || right_labels.is_empty() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    Ok((left_labels, right_labels, output_labels))
+}
+
+fn validate_einsum_label_set(labels: &[char]) -> bool {
+    let mut seen = std::collections::BTreeSet::<char>::new();
+    for &label in labels {
+        if !label.is_ascii_alphabetic() || !seen.insert(label) {
+            return false;
+        }
+    }
+    true
+}
+
+fn decode_flat_index(mut index: usize, shape: &[usize], coords: &mut [usize]) {
+    if shape.is_empty() {
+        return;
+    }
+    for axis_rev in (0..shape.len()).rev() {
+        let extent = shape[axis_rev].max(1);
+        coords[axis_rev] = index % extent;
+        index /= extent;
+    }
+}
+
+fn label_index_map(labels: &[char]) -> std::collections::BTreeMap<char, usize> {
+    let mut map = std::collections::BTreeMap::<char, usize>::new();
+    for (idx, label) in labels.iter().copied().enumerate() {
+        let _ = map.insert(label, idx);
+    }
+    map
+}
+
+fn union_labels(left: &[char], right: &[char]) -> Vec<char> {
+    let mut labels = std::collections::BTreeSet::<char>::new();
+    for label in left.iter().copied().chain(right.iter().copied()) {
+        let _ = labels.insert(label);
+    }
+    labels.into_iter().collect::<Vec<_>>()
+}
+
+fn build_einsum_dimensions(
+    left: &ArrayViewD<'_, f64>,
+    right: &ArrayViewD<'_, f64>,
+    left_labels: &[char],
+    right_labels: &[char],
+) -> Result<std::collections::BTreeMap<char, usize>, TensorError> {
+    let mut dims = std::collections::BTreeMap::<char, usize>::new();
+    for (&label, &extent) in left_labels.iter().zip(left.shape().iter()) {
+        if let Some(existing) = dims.get(&label).copied() {
+            if existing != extent {
+                return Err(TensorError::DimensionMismatch);
+            }
+        } else {
+            let _ = dims.insert(label, extent);
+        }
+    }
+    for (&label, &extent) in right_labels.iter().zip(right.shape().iter()) {
+        if let Some(existing) = dims.get(&label).copied() {
+            if existing != extent {
+                return Err(TensorError::DimensionMismatch);
+            }
+        } else {
+            let _ = dims.insert(label, extent);
+        }
+    }
+    Ok(dims)
+}
+
+fn build_einsum_dimensions_complex(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
+    left_labels: &[char],
+    right_labels: &[char],
+) -> Result<std::collections::BTreeMap<char, usize>, TensorError> {
+    let mut dims = std::collections::BTreeMap::<char, usize>::new();
+    for (&label, &extent) in left_labels.iter().zip(left.shape().iter()) {
+        if let Some(existing) = dims.get(&label).copied() {
+            if existing != extent {
+                return Err(TensorError::DimensionMismatch);
+            }
+        } else {
+            let _ = dims.insert(label, extent);
+        }
+    }
+    for (&label, &extent) in right_labels.iter().zip(right.shape().iter()) {
+        if let Some(existing) = dims.get(&label).copied() {
+            if existing != extent {
+                return Err(TensorError::DimensionMismatch);
+            }
+        } else {
+            let _ = dims.insert(label, extent);
+        }
+    }
+    Ok(dims)
+}
+
+fn einsum_binary_impl(
+    left: &ArrayViewD<'_, f64>,
+    right: &ArrayViewD<'_, f64>,
+    left_labels: &[char],
+    right_labels: &[char],
+    output_labels: &[char],
+) -> Result<ArrayD<f64>, TensorError> {
+    if left_labels.len() != left.ndim() || right_labels.len() != right.ndim() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if !validate_einsum_label_set(left_labels)
+        || !validate_einsum_label_set(right_labels)
+        || !validate_einsum_label_set(output_labels)
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let dims = build_einsum_dimensions(left, right, left_labels, right_labels)?;
+    for label in output_labels {
+        if !dims.contains_key(label) {
+            return Err(TensorError::DimensionMismatch);
+        }
+    }
+
+    let union = union_labels(left_labels, right_labels);
+    let sum_labels =
+        union.iter().copied().filter(|label| !output_labels.contains(label)).collect::<Vec<_>>();
+    let output_shape = output_labels
+        .iter()
+        .map(|label| dims.get(label).copied().unwrap_or(0))
+        .collect::<Vec<_>>();
+    let sum_shape =
+        sum_labels.iter().map(|label| dims.get(label).copied().unwrap_or(0)).collect::<Vec<_>>();
+    let output_size = shape_product(&output_shape);
+    let sum_size = shape_product(&sum_shape);
+
+    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    let mut output_coords = vec![0_usize; output_shape.len()];
+    let mut sum_coords = vec![0_usize; sum_shape.len()];
+    let label_to_slot = label_index_map(&union);
+    let mut label_values = vec![0_usize; union.len()];
+    let left_label_pos = label_index_map(left_labels);
+    let right_label_pos = label_index_map(right_labels);
+
+    for output_flat in 0..output_size {
+        decode_flat_index(output_flat, &output_shape, &mut output_coords);
+        for (&label, &coord) in output_labels.iter().zip(output_coords.iter()) {
+            let slot = label_to_slot[&label];
+            label_values[slot] = coord;
+        }
+
+        let mut sum = 0.0_f64;
+        for sum_flat in 0..sum_size {
+            decode_flat_index(sum_flat, &sum_shape, &mut sum_coords);
+            for (&label, &coord) in sum_labels.iter().zip(sum_coords.iter()) {
+                let slot = label_to_slot[&label];
+                label_values[slot] = coord;
+            }
+
+            let mut left_index = vec![0_usize; left_labels.len()];
+            for (&label, &position) in &left_label_pos {
+                let slot = label_to_slot[&label];
+                left_index[position] = label_values[slot];
+            }
+            let mut right_index = vec![0_usize; right_labels.len()];
+            for (&label, &position) in &right_label_pos {
+                let slot = label_to_slot[&label];
+                right_index[position] = label_values[slot];
+            }
+            sum += left[IxDyn(&left_index)] * right[IxDyn(&right_index)];
+        }
+
+        output[IxDyn(&output_coords)] = sum;
+    }
+
+    Ok(output)
+}
+
+fn einsum_binary_impl_complex(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
+    left_labels: &[char],
+    right_labels: &[char],
+    output_labels: &[char],
+) -> Result<ArrayD<Complex64>, TensorError> {
+    if left_labels.len() != left.ndim() || right_labels.len() != right.ndim() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if !validate_einsum_label_set(left_labels)
+        || !validate_einsum_label_set(right_labels)
+        || !validate_einsum_label_set(output_labels)
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let dims = build_einsum_dimensions_complex(left, right, left_labels, right_labels)?;
+    for label in output_labels {
+        if !dims.contains_key(label) {
+            return Err(TensorError::DimensionMismatch);
+        }
+    }
+
+    let union = union_labels(left_labels, right_labels);
+    let sum_labels =
+        union.iter().copied().filter(|label| !output_labels.contains(label)).collect::<Vec<_>>();
+    let output_shape = output_labels
+        .iter()
+        .map(|label| dims.get(label).copied().unwrap_or(0))
+        .collect::<Vec<_>>();
+    let sum_shape =
+        sum_labels.iter().map(|label| dims.get(label).copied().unwrap_or(0)).collect::<Vec<_>>();
+    let output_size = shape_product(&output_shape);
+    let sum_size = shape_product(&sum_shape);
+
+    let mut output = ArrayD::<Complex64>::zeros(IxDyn(&output_shape));
+    let mut output_coords = vec![0_usize; output_shape.len()];
+    let mut sum_coords = vec![0_usize; sum_shape.len()];
+    let label_to_slot = label_index_map(&union);
+    let mut label_values = vec![0_usize; union.len()];
+    let left_label_pos = label_index_map(left_labels);
+    let right_label_pos = label_index_map(right_labels);
+
+    for output_flat in 0..output_size {
+        decode_flat_index(output_flat, &output_shape, &mut output_coords);
+        for (&label, &coord) in output_labels.iter().zip(output_coords.iter()) {
+            let slot = label_to_slot[&label];
+            label_values[slot] = coord;
+        }
+
+        let mut sum = Complex64::new(0.0, 0.0);
+        for sum_flat in 0..sum_size {
+            decode_flat_index(sum_flat, &sum_shape, &mut sum_coords);
+            for (&label, &coord) in sum_labels.iter().zip(sum_coords.iter()) {
+                let slot = label_to_slot[&label];
+                label_values[slot] = coord;
+            }
+
+            let mut left_index = vec![0_usize; left_labels.len()];
+            for (&label, &position) in &left_label_pos {
+                let slot = label_to_slot[&label];
+                left_index[position] = label_values[slot];
+            }
+            let mut right_index = vec![0_usize; right_labels.len()];
+            for (&label, &position) in &right_label_pos {
+                let slot = label_to_slot[&label];
+                right_index[position] = label_values[slot];
+            }
+            sum += left[IxDyn(&left_index)] * right[IxDyn(&right_index)];
+        }
+
+        output[IxDyn(&output_coords)] = sum;
+    }
+
+    Ok(output)
+}
+
+/// Evaluate two-operand Einstein summation over real tensors.
+///
+/// Expression format: `"labels_left,labels_right->labels_out"`, for example
+/// `"bij,bjk->bik"` or `"ab,bc->ac"`.
+///
+/// # Errors
+/// Returns an error if expression syntax is invalid or dimensions are incompatible.
+pub fn einsum(
+    expression: &str,
+    left: &ArrayD<f64>,
+    right: &ArrayD<f64>,
+) -> Result<ArrayD<f64>, TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    let (left_labels, right_labels, output_labels) = parse_einsum_two_operands(expression)?;
+    einsum_binary_impl(&left_view, &right_view, &left_labels, &right_labels, &output_labels)
+}
+
+/// Evaluate two-operand Einstein summation over complex tensors.
+///
+/// Expression format: `"labels_left,labels_right->labels_out"`, for example
+/// `"bij,bjk->bik"` or `"ab,bc->ac"`.
+///
+/// # Errors
+/// Returns an error if expression syntax is invalid or dimensions are incompatible.
+pub fn einsum_complex(
+    expression: &str,
+    left: &ArrayD<Complex64>,
+    right: &ArrayD<Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+    let (left_labels, right_labels, output_labels) = parse_einsum_two_operands(expression)?;
+    einsum_binary_impl_complex(&left_view, &right_view, &left_labels, &right_labels, &output_labels)
+}
+
+fn mode0_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f64>, TensorError> {
+    let (i0, i1, i2) = tensor.dim();
+    if matrix.ncols() != i0 {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let mut output = Array3::<f64>::zeros((matrix.nrows(), i1, i2));
+    for r in 0..matrix.nrows() {
+        for i in 0..i0 {
+            let weight = matrix[[r, i]];
+            for j in 0..i1 {
+                for k in 0..i2 {
+                    output[[r, j, k]] += weight * tensor[[i, j, k]];
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn mode1_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f64>, TensorError> {
+    let (i0, i1, i2) = tensor.dim();
+    if matrix.ncols() != i1 {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let mut output = Array3::<f64>::zeros((i0, matrix.nrows(), i2));
+    for r in 0..matrix.nrows() {
+        for j in 0..i1 {
+            let weight = matrix[[r, j]];
+            for i in 0..i0 {
+                for k in 0..i2 {
+                    output[[i, r, k]] += weight * tensor[[i, j, k]];
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn mode2_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f64>, TensorError> {
+    let (i0, i1, i2) = tensor.dim();
+    if matrix.ncols() != i2 {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let mut output = Array3::<f64>::zeros((i0, i1, matrix.nrows()));
+    for r in 0..matrix.nrows() {
+        for k in 0..i2 {
+            let weight = matrix[[r, k]];
+            for i in 0..i0 {
+                for j in 0..i1 {
+                    output[[i, j, r]] += weight * tensor[[i, j, k]];
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn unfold_mode0(tensor: &Array3<f64>) -> Array2<f64> {
+    let (i0, i1, i2) = tensor.dim();
+    let mut unfolded = Array2::<f64>::zeros((i0, i1 * i2));
+    for i in 0..i0 {
+        for j in 0..i1 {
+            for k in 0..i2 {
+                unfolded[[i, j * i2 + k]] = tensor[[i, j, k]];
+            }
+        }
+    }
+    unfolded
+}
+
+fn unfold_mode1(tensor: &Array3<f64>) -> Array2<f64> {
+    let (i0, i1, i2) = tensor.dim();
+    let mut unfolded = Array2::<f64>::zeros((i1, i0 * i2));
+    for j in 0..i1 {
+        for i in 0..i0 {
+            for k in 0..i2 {
+                unfolded[[j, i * i2 + k]] = tensor[[i, j, k]];
+            }
+        }
+    }
+    unfolded
+}
+
+fn unfold_mode2(tensor: &Array3<f64>) -> Array2<f64> {
+    let (i0, i1, i2) = tensor.dim();
+    let mut unfolded = Array2::<f64>::zeros((i2, i0 * i1));
+    for k in 0..i2 {
+        for i in 0..i0 {
+            for j in 0..i1 {
+                unfolded[[k, i * i1 + j]] = tensor[[i, j, k]];
+            }
+        }
+    }
+    unfolded
+}
+
+/// Compute rank-truncated HOSVD for a rank-3 real tensor.
+///
+/// # Errors
+/// Returns an error if input is empty, ranks are invalid, or factorization fails.
+pub fn hosvd3(
+    cube: &Array3<f64>,
+    ranks: (usize, usize, usize),
+) -> Result<Hosvd3Result, TensorError> {
+    let cube_view = cube.view();
+    validate_cube_non_empty(&cube_view)?;
+    let (i0, i1, i2) = cube.dim();
+    if ranks.0 == 0 || ranks.1 == 0 || ranks.2 == 0 || ranks.0 > i0 || ranks.1 > i1 || ranks.2 > i2
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let u0_full =
+        svd::decompose(&unfold_mode0(cube)).map_err(|_| TensorError::DimensionMismatch)?.u;
+    let u1_full =
+        svd::decompose(&unfold_mode1(cube)).map_err(|_| TensorError::DimensionMismatch)?.u;
+    let u2_full =
+        svd::decompose(&unfold_mode2(cube)).map_err(|_| TensorError::DimensionMismatch)?.u;
+
+    let u0 = u0_full.slice(s![.., 0..ranks.0]).to_owned();
+    let u1 = u1_full.slice(s![.., 0..ranks.1]).to_owned();
+    let u2 = u2_full.slice(s![.., 0..ranks.2]).to_owned();
+
+    let core_mode0 = mode0_product(cube, &u0.t().to_owned())?;
+    let core_mode1 = mode1_product(&core_mode0, &u1.t().to_owned())?;
+    let core = mode2_product(&core_mode1, &u2.t().to_owned())?;
+    Ok(Hosvd3Result { core, u0, u1, u2 })
+}
+
+/// Reconstruct a rank-3 tensor from HOSVD factors.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn hosvd3_reconstruct(result: &Hosvd3Result) -> Result<Array3<f64>, TensorError> {
+    let mode0 = mode0_product(&result.core, &result.u0)?;
+    let mode1 = mode1_product(&mode0, &result.u1)?;
+    mode2_product(&mode1, &result.u2)
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::{Array2, Array3, ArrayD, IxDyn};
@@ -1400,6 +1869,81 @@ mod tests {
     }
 
     #[test]
+    fn einsum_matches_matrix_multiply_and_batch_path() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 3]), vec![
+            1.0, 2.0, 3.0, //
+            4.0, 5.0, 6.0,
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[3, 2]), vec![
+            7.0, 8.0, //
+            9.0, 10.0, //
+            11.0, 12.0,
+        ])
+        .unwrap();
+        let product = einsum("ab,bc->ac", &left, &right).unwrap();
+        assert_eq!(product.shape(), &[2, 2]);
+        assert!((product[[0, 0]] - 58.0).abs() < 1e-12);
+        assert!((product[[0, 1]] - 64.0).abs() < 1e-12);
+        assert!((product[[1, 0]] - 139.0).abs() < 1e-12);
+        assert!((product[[1, 1]] - 154.0).abs() < 1e-12);
+
+        let left_batch = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
+            1.0, 2.0, 0.0, 0.0, 1.0, 1.0, //
+            2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+        ])
+        .unwrap();
+        let right_batch = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
+            1.0, 0.0, 2.0, 1.0, 1.0, 3.0, //
+            0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+        ])
+        .unwrap();
+        let batch_product = einsum("bij,bjk->bik", &left_batch, &right_batch).unwrap();
+        let nd_output = batched_matmul_last_two(&left_batch, &right_batch).unwrap();
+        for (lhs, rhs) in batch_product.iter().zip(nd_output.iter()) {
+            assert!((lhs - rhs).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn complex_einsum_matches_manual() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, -1.0),
+            Complex64::new(1.0, 2.0),
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(-1.0, 1.0),
+        ])
+        .unwrap();
+        let product = einsum_complex("ab,bc->ac", &left, &right).unwrap();
+        let reference = contract_axes_complex(&left, &right, &[1], &[0]).unwrap();
+        for (lhs, rhs) in product.iter().zip(reference.iter()) {
+            assert!((*lhs - *rhs).norm() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn hosvd3_roundtrip_is_consistent() {
+        let cube = Array3::from_shape_vec((3, 3, 2), vec![
+            1.0, 0.5, 2.0, -1.0, 0.0, 1.0, 0.0, 2.0, 1.0, 1.5, 3.0, 0.0, -1.0, 1.0, 2.5, -0.5, 0.5,
+            2.0,
+        ])
+        .unwrap();
+        let decomposition = hosvd3(&cube, (3, 3, 2)).unwrap();
+        let reconstructed = hosvd3_reconstruct(&decomposition).unwrap();
+        assert_eq!(reconstructed.dim(), cube.dim());
+        for (lhs, rhs) in reconstructed.iter().zip(cube.iter()) {
+            assert!((lhs - rhs).abs() < 1e-8);
+        }
+    }
+
+    #[test]
     fn arrayd_ops_reject_invalid_dimensions() {
         let scalar = ArrayD::from_shape_vec(IxDyn(&[]), vec![1.0]).unwrap();
         assert!(matches!(sum_last_axis(&scalar), Err(TensorError::DimensionMismatch)));
@@ -1417,8 +1961,15 @@ mod tests {
         let bad_contract = contract_axes(&left, &right, &[2], &[1]);
         assert!(matches!(bad_contract, Err(TensorError::DimensionMismatch)));
 
+        let bad_einsum = einsum("ab,bc->ad", &left, &right);
+        assert!(matches!(bad_einsum, Err(TensorError::DimensionMismatch)));
+
         let mut bad_output = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 3]));
         let matmul_into = batched_matmul_last_two_into(&left, &left, &mut bad_output);
         assert!(matches!(matmul_into, Err(TensorError::DimensionMismatch)));
+
+        let cube = Array3::<f64>::zeros((2, 2, 2));
+        let bad_hosvd = hosvd3(&cube, (3, 1, 1));
+        assert!(matches!(bad_hosvd, Err(TensorError::DimensionMismatch)));
     }
 }

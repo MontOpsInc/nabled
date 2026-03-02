@@ -4,10 +4,10 @@ use approx::assert_relative_eq;
 use nabled::svd::{self as svd, SVDError};
 use nabled::vector::{self as vector, PairwiseCosineWorkspace};
 use nabled::{
-    CpuBackend, CsrMatrix, CudaBackend, DistributedBackend, DistributedConfig, IntoNabledError,
-    IterativeConfig, NabledError, accelerator, cholesky, eigen, iterative, lu, matrix,
-    matrix_functions, orthogonalization, pca, polar, regression, schur, sparse, stats, sylvester,
-    tensor, triangular,
+    CpuBackend, CsrMatrix, CudaBackend, DistributedBackend, DistributedConfig, DistributedSchedule,
+    IntoNabledError, IterativeConfig, NabledError, accelerator, cholesky, eigen, iterative, lu,
+    matrix, matrix_functions, orthogonalization, pca, polar, regression, schur, sparse, stats,
+    sylvester, tensor, triangular,
 };
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex64;
@@ -416,6 +416,7 @@ fn assert_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
     let distributed = accelerator::matmat_distributed(dense, dense_rhs, DistributedConfig {
         workers:    2,
         chunk_rows: 1,
+        schedule:   DistributedSchedule::Dynamic,
     })
     .unwrap();
     let distributed_tiled =

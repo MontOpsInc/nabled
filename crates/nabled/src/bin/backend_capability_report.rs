@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -6,6 +8,7 @@ use std::{env, fs, io};
 
 use serde::Serialize;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[derive(Debug, Serialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 #[allow(dead_code)]
@@ -14,6 +17,7 @@ enum ProviderPath {
     Fallback,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[derive(Debug, Serialize)]
 struct DomainCapability {
     tier:             &'static str,
@@ -23,6 +27,7 @@ struct DomainCapability {
     notes:            &'static str,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[derive(Debug, Serialize)]
 struct CapabilityReport {
     generated_at_unix:         u64,
@@ -37,6 +42,7 @@ struct CapabilityReport {
     domains:                   Vec<DomainCapability>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn main() -> io::Result<()> {
     let output_dir = parse_output_dir()?;
     fs::create_dir_all(&output_dir)?;
@@ -49,6 +55,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn parse_output_dir() -> io::Result<PathBuf> {
     let mut args = env::args().skip(1);
     let mut output_dir = PathBuf::from("coverage/backend-capabilities");
@@ -76,6 +83,7 @@ fn parse_output_dir() -> io::Result<PathBuf> {
     Ok(output_dir)
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn build_report() -> CapabilityReport {
     let mut domains = tier_a_domains();
     domains.extend(tier_b_domains());
@@ -103,6 +111,7 @@ fn build_report() -> CapabilityReport {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn tier_a_domains() -> Vec<DomainCapability> {
     vec![
         DomainCapability {
@@ -164,6 +173,7 @@ fn tier_a_domains() -> Vec<DomainCapability> {
     ]
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn tier_b_domains() -> Vec<DomainCapability> {
     vec![
         DomainCapability {
@@ -223,10 +233,12 @@ fn tier_b_domains() -> Vec<DomainCapability> {
     ]
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn now_unix_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_secs())
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn command_output(program: &str, args: &[&str]) -> String {
     let output = Command::new(program).args(args).output();
     match output {

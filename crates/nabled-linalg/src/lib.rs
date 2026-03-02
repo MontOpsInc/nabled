@@ -4,6 +4,7 @@ use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 pub use nabled_core::prelude;
 
 pub mod accelerator;
+pub mod batched;
 mod internal;
 
 pub mod cholesky;
@@ -24,10 +25,12 @@ pub mod vector;
 
 pub use accelerator::{
     AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend, DistributedConfig,
+    DistributedSchedule,
 };
 pub use cholesky::{CholeskyError, NdarrayCholeskyResult};
 pub use eigen::{
-    EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult, NdarrayNonsymmetricEigenResult,
+    EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult,
+    NdarrayNonsymmetricBiEigenResult, NdarrayNonsymmetricEigenResult, NonsymmetricEigenConfig,
 };
 pub use lu::{LUError, LogDetResult, NdarrayLUResult};
 pub use matrix::MatrixError;
@@ -42,11 +45,13 @@ pub use schur::{
     SchurWorkspace,
 };
 pub use sparse::{
-    CooMatrix, CscMatrix, CsrMatrix, ILU0Factorization, JacobiPreconditioner, SparseError,
+    CooMatrix, CscMatrix, CsrMatrix, IC0Factorization, ILDL0Factorization, ILU0Factorization,
+    ILUKConfig, ILUKFactorization, ILUTConfig, ILUTFactorization, JacobiPreconditioner,
+    SparseError, SparseLUFactorization,
 };
 pub use svd::{NdarrayComplexSVD, NdarraySVD, PseudoInverseConfig, SVDError};
 pub use sylvester::{SylvesterComplexWorkspace, SylvesterError, SylvesterWorkspace};
-pub use tensor::TensorError;
+pub use tensor::{Hosvd3Result, TensorError};
 pub use triangular::TriangularError;
 pub use vector::{PairwiseCosineWorkspace, VectorError};
 
@@ -69,10 +74,16 @@ impl IntoNabledError for AcceleratorError {
                 NabledError::Shape(ShapeError::DimensionMismatch)
             }
             AcceleratorError::FeatureNotEnabled => {
-                NabledError::Other("feature `accelerator-rayon` is not enabled".to_string())
+                NabledError::Other("requested accelerator feature is not enabled".to_string())
             }
             AcceleratorError::WorkerPanicked => {
                 NabledError::Other("distributed worker panicked".to_string())
+            }
+            AcceleratorError::DeviceUnavailable => {
+                NabledError::Other("no suitable GPU device is available".to_string())
+            }
+            AcceleratorError::KernelExecutionFailed => {
+                NabledError::Other("GPU kernel execution failed".to_string())
             }
         }
     }
