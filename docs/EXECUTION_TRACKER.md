@@ -109,6 +109,13 @@ Use this file to resume work quickly after context compaction without re-auditin
 79. `D-079`: `B-P1-002` closed for current scope with direct sparse LU factorization-grade workflows (factor/reuse/multi-RHS), extending preconditioned iterative sparse depth into direct solve pipelines.
 80. `D-080`: `B-P1-004` completed with non-symmetric eigen depth improvements: balancing APIs (`balance_nonsymmetric*`) and matched left/right eigenvector surface (`nonsymmetric_bi*`) with configuration controls.
 81. `D-081`: `B-P1-005` completed with advanced optimization breadth (`projected_gradient_descent_box`, `stochastic_gradient_descent`, `bfgs`) plus config validation and convergence/error tests.
+82. `D-082`: Accelerator architecture refactored into modern module layout (`accelerator.rs` + `accelerator/*`), separating backend markers, CPU/distributed/GPU kernels, and backend dispatch with per-operation kernel traits (`MatMatKernel<T>`) to keep future accelerator expansion composable.
+83. `D-083`: Documentation model clarified and locked around orthogonal execution axes (`Provider / Backend / Kernel`) with corresponding tracker follow-on items (`K-006..K-008`).
+84. `D-084`: Initial execution-axis normalization landed in code: expanded backend kernel dispatch for matrix-vector operations (`MatVecKernel<T>`, backend dispatch entrypoints, and tests) while keeping provider selection compile-time in domain modules.
+85. `D-085`: Benchmark-driven optimization loop executed for dense matrix/vector hot paths: `matrix` and CPU-kernel multiply paths now use ndarray optimized kernels (`dot`/`general_mat_mul`) instead of manual triple loops, and vector scalar kernels now use optimized `dot`-based implementations; benchmark reruns show matrix/vector parity moved from major regressions to near-equal competitor ranges in smoke sizes.
+86. `D-086`: `K-007` kernel expansion advanced: added `BatchedMatMatKernel<T>` and `SparseMatVecKernel`, implemented backend dispatch for CPU/distributed/CUDA-placeholder, added coverage tests, and wired stable allocating matrix/sparse APIs (`matrix::matvec`, `matrix::matmat`, `matrix::batched_matmat`, `sparse::matvec`) through compile-time backend dispatch.
+87. `D-087`: Kernel model scope is now explicitly locked in `docs/KERNEL_CATALOG.md`; full v1 kernel-family inventory and status (`Wired/Dispatch/Contract`) is documented with orchestration baseline rules for `K-008`.
+88. `D-088`: `K-007` is now complete for the v1 kernel catalog: remaining kernel families are wired end-to-end (CPU/distributed dispatch + CUDA placeholders where applicable) across dense/sparse/vector/tensor/triangular APIs, with dispatch tests and full quality-gate verification.
 
 ## Next
 
@@ -117,6 +124,8 @@ Use this file to resume work quickly after context compaction without re-auditin
 3. `K-003`: Re-rank sparse format/solver entrypoint priorities for post-P1 expansion (`CSR/CSC/COO` + direct/preconditioned hybrids).
 4. `K-004`: Decide provider expansion policy beyond `openblas-system` and reflect it in feature/docs/CI strategy.
 5. `K-005`: Start benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
+6. `K-006`: Normalize architecture language and code organization around explicit `Provider / Backend / Kernel` axes.
+7. `K-008`: Codify orchestration rules from `docs/KERNEL_CATALOG.md` into test matrix coverage for mixed provider/backend flows.
 
 ## Needed
 
@@ -124,6 +133,8 @@ Use this file to resume work quickly after context compaction without re-auditin
 2. `K-002`: Decision on standardized workspace type pattern (per-domain workspace vs shared core workspace).
 3. `K-003`: Priority order for sparse matrix formats and sparse solver entrypoints.
 4. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
+5. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
+6. `K-008`: Lock testing policy for mixed provider/backend execution paths (internal/provider x backend feature combinations).
 
 ## Backlog (From Capability Matrix)
 
@@ -135,6 +146,7 @@ Use this file to resume work quickly after context compaction without re-auditin
    - `docs/README.md`
    - `docs/DECISIONS.md`
    - `docs/CAPABILITY_MATRIX.md`
+   - `docs/KERNEL_CATALOG.md`
    - `docs/PERFORMANCE_CONTRACTS.md`
    - `docs/EXECUTION_TRACKER.md`
    - `docs/STATUS.md`

@@ -4,6 +4,11 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 use thiserror::Error;
 
+use crate::accelerator::backends::{AcceleratorError, CpuBackend};
+use crate::accelerator::dispatch::{
+    dot_with_backend, pairwise_cosine_with_backend, pairwise_l2_with_backend,
+};
+
 /// Errors for vector primitives.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum VectorError {
@@ -37,6 +42,13 @@ impl PairwiseCosineWorkspace {
     }
 }
 
+fn map_accelerator_error_to_vector(error: AcceleratorError) -> VectorError {
+    match error {
+        AcceleratorError::KernelExecutionFailed => VectorError::ZeroNorm,
+        _ => VectorError::DimensionMismatch,
+    }
+}
+
 fn validate_vector_pair(a: &Array1<f64>, b: &Array1<f64>) -> Result<(), VectorError> {
     if a.is_empty() || b.is_empty() {
         return Err(VectorError::EmptyInput);
@@ -63,7 +75,7 @@ fn validate_pairwise_inputs(left: &Array2<f64>, right: &Array2<f64>) -> Result<(
 /// Returns an error when vector lengths mismatch or either input is empty.
 pub fn dot(a: &Array1<f64>, b: &Array1<f64>) -> Result<f64, VectorError> {
     validate_vector_pair(a, b)?;
-    Ok(a.iter().zip(b.iter()).map(|(x, y)| x * y).sum())
+    dot_with_backend::<CpuBackend>(a, b).map_err(map_accelerator_error_to_vector)
 }
 
 /// Compute dot product of two vector views.
@@ -77,7 +89,7 @@ pub fn dot_view(a: &ArrayView1<'_, f64>, b: &ArrayView1<'_, f64>) -> Result<f64,
     if a.len() != b.len() {
         return Err(VectorError::DimensionMismatch);
     }
-    Ok(a.iter().zip(b.iter()).map(|(x, y)| x * y).sum())
+    Ok(a.dot(b))
 }
 
 /// Compute Hermitian dot product `a^H b` for complex vectors.
@@ -105,7 +117,7 @@ pub fn l2_norm(v: &Array1<f64>) -> Result<f64, VectorError> {
     if v.is_empty() {
         return Err(VectorError::EmptyInput);
     }
-    Ok(v.iter().map(|value| value * value).sum::<f64>().sqrt())
+    Ok(v.dot(v).sqrt())
 }
 
 /// Compute L2 norm of a complex vector.
@@ -124,10 +136,9 @@ pub fn l2_norm_complex(v: &Array1<Complex64>) -> Result<f64, VectorError> {
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm vectors.
 pub fn cosine_similarity(a: &Array1<f64>, b: &Array1<f64>) -> Result<f64, VectorError> {
-    let dot_value = dot(a, b)?;
-    let norm_a = l2_norm(a)?;
-    let norm_b = l2_norm(b)?;
-    let denominator = norm_a * norm_b;
+    validate_vector_pair(a, b)?;
+    let dot_value = a.dot(b);
+    let denominator = a.dot(a).sqrt() * b.dot(b).sqrt();
     if denominator <= f64::EPSILON {
         return Err(VectorError::ZeroNorm);
     }
@@ -142,10 +153,14 @@ pub fn cosine_similarity_view(
     a: &ArrayView1<'_, f64>,
     b: &ArrayView1<'_, f64>,
 ) -> Result<f64, VectorError> {
-    let dot_value = dot_view(a, b)?;
-    let norm_a = a.iter().map(|value| value * value).sum::<f64>().sqrt();
-    let norm_b = b.iter().map(|value| value * value).sum::<f64>().sqrt();
-    let denominator = norm_a * norm_b;
+    if a.is_empty() || b.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if a.len() != b.len() {
+        return Err(VectorError::DimensionMismatch);
+    }
+    let dot_value = a.dot(b);
+    let denominator = a.dot(a).sqrt() * b.dot(b).sqrt();
     if denominator <= f64::EPSILON {
         return Err(VectorError::ZeroNorm);
     }
@@ -186,9 +201,8 @@ pub fn pairwise_l2_distance(
     left: &Array2<f64>,
     right: &Array2<f64>,
 ) -> Result<Array2<f64>, VectorError> {
-    let mut output = Array2::<f64>::zeros((left.nrows(), right.nrows()));
-    pairwise_l2_distance_into(left, right, &mut output)?;
-    Ok(output)
+    validate_pairwise_inputs(left, right)?;
+    pairwise_l2_with_backend::<CpuBackend>(left, right).map_err(map_accelerator_error_to_vector)
 }
 
 /// Compute pairwise L2 distances into `output`.
@@ -200,22 +214,11 @@ pub fn pairwise_l2_distance_into(
     right: &Array2<f64>,
     output: &mut Array2<f64>,
 ) -> Result<(), VectorError> {
-    validate_pairwise_inputs(left, right)?;
-    if output.dim() != (left.nrows(), right.nrows()) {
+    let distances = pairwise_l2_distance(left, right)?;
+    if output.dim() != distances.dim() {
         return Err(VectorError::DimensionMismatch);
     }
-
-    for i in 0..left.nrows() {
-        for j in 0..right.nrows() {
-            let mut sum = 0.0_f64;
-            for k in 0..left.ncols() {
-                let delta = left[[i, k]] - right[[j, k]];
-                sum += delta * delta;
-            }
-            output[[i, j]] = sum.sqrt();
-        }
-    }
-
+    output.assign(&distances);
     Ok(())
 }
 
@@ -257,10 +260,8 @@ pub fn pairwise_cosine_similarity(
     left: &Array2<f64>,
     right: &Array2<f64>,
 ) -> Result<Array2<f64>, VectorError> {
-    let mut output = Array2::<f64>::zeros((left.nrows(), right.nrows()));
-    let mut workspace = PairwiseCosineWorkspace::default();
-    pairwise_cosine_similarity_with_workspace_into(left, right, &mut output, &mut workspace)?;
-    Ok(output)
+    validate_pairwise_inputs(left, right)?;
+    pairwise_cosine_with_backend::<CpuBackend>(left, right).map_err(map_accelerator_error_to_vector)
 }
 
 /// Compute pairwise cosine similarity into `output`.
@@ -272,8 +273,12 @@ pub fn pairwise_cosine_similarity_into(
     right: &Array2<f64>,
     output: &mut Array2<f64>,
 ) -> Result<(), VectorError> {
-    let mut workspace = PairwiseCosineWorkspace::default();
-    pairwise_cosine_similarity_with_workspace_into(left, right, output, &mut workspace)
+    let cosine = pairwise_cosine_similarity(left, right)?;
+    if output.dim() != cosine.dim() {
+        return Err(VectorError::DimensionMismatch);
+    }
+    output.assign(&cosine);
+    Ok(())
 }
 
 /// Compute pairwise cosine similarity into `output` using reusable `workspace`.

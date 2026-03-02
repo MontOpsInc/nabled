@@ -1,9 +1,20 @@
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
-use nabled_linalg::{
-    AcceleratorError, BackendKind, CholeskyError, EigenError, LUError, MatrixError,
-    MatrixFunctionError, OrthogonalizationError, PolarError, QRError, SVDError, SchurError,
-    SparseError, SylvesterError, TensorError, TriangularError, VectorError,
-};
+use nabled_linalg::accelerator::backends::{AcceleratorError, BackendKind};
+use nabled_linalg::cholesky::CholeskyError;
+use nabled_linalg::eigen::EigenError;
+use nabled_linalg::lu::LUError;
+use nabled_linalg::matrix::MatrixError;
+use nabled_linalg::matrix_functions::MatrixFunctionError;
+use nabled_linalg::orthogonalization::OrthogonalizationError;
+use nabled_linalg::polar::PolarError;
+use nabled_linalg::qr::QRError;
+use nabled_linalg::schur::SchurError;
+use nabled_linalg::sparse::SparseError;
+use nabled_linalg::svd::SVDError;
+use nabled_linalg::sylvester::SylvesterError;
+use nabled_linalg::tensor::TensorError;
+use nabled_linalg::triangular::TriangularError;
+use nabled_linalg::vector::VectorError;
 
 #[test]
 fn maps_cholesky_eigen_lu_matrix_functions() {

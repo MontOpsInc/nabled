@@ -2,11 +2,18 @@
 
 use std::fmt;
 
+use ndarray::linalg::general_mat_mul;
 use ndarray::{
     Array1, Array2, Array3, ArrayView1, ArrayView2, ArrayView3, ArrayViewMut1, ArrayViewMut2,
-    ArrayViewMut3,
+    ArrayViewMut3, s,
 };
 use num_complex::Complex64;
+
+use crate::accelerator::backends::{AcceleratorError, CpuBackend};
+use crate::accelerator::dispatch::{
+    batched_matmat_with_backend, batched_row_matvec_with_backend, matmat_with_backend,
+    matvec_with_backend,
+};
 
 /// Error type for dense matrix operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +34,10 @@ impl fmt::Display for MatrixError {
 }
 
 impl std::error::Error for MatrixError {}
+
+fn map_accelerator_error_to_matrix(_error: AcceleratorError) -> MatrixError {
+    MatrixError::DimensionMismatch
+}
 
 fn validate_matrix_non_empty(matrix: &ArrayView2<'_, f64>) -> Result<(), MatrixError> {
     if matrix.is_empty() {
@@ -72,11 +83,14 @@ fn validate_vector_non_empty_complex(
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
 pub fn matvec(matrix: &Array2<f64>, vector: &Array1<f64>) -> Result<Array1<f64>, MatrixError> {
-    let mut output = Array1::<f64>::zeros(matrix.nrows());
     let matrix_view = matrix.view();
     let vector_view = vector.view();
-    matvec_view_into(&matrix_view, &vector_view, output.view_mut())?;
-    Ok(output)
+    validate_matrix_non_empty(&matrix_view)?;
+    validate_vector_non_empty(&vector_view)?;
+    if vector.len() != matrix.ncols() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    matvec_with_backend::<CpuBackend>(matrix, vector).map_err(map_accelerator_error_to_matrix)
 }
 
 /// Compute dense matrix-vector product `y = A x` from views.
@@ -87,9 +101,12 @@ pub fn matvec_view(
     matrix: &ArrayView2<'_, f64>,
     vector: &ArrayView1<'_, f64>,
 ) -> Result<Array1<f64>, MatrixError> {
-    let mut output = Array1::<f64>::zeros(matrix.nrows());
-    matvec_view_into(matrix, vector, output.view_mut())?;
-    Ok(output)
+    validate_matrix_non_empty(matrix)?;
+    validate_vector_non_empty(vector)?;
+    if vector.len() != matrix.ncols() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    Ok(matrix.dot(vector))
 }
 
 /// Compute dense matrix-vector product `y = A x` into `output`.
@@ -139,9 +156,14 @@ pub fn matvec_complex(
     matrix: &Array2<Complex64>,
     vector: &Array1<Complex64>,
 ) -> Result<Array1<Complex64>, MatrixError> {
-    let mut output = Array1::<Complex64>::zeros(matrix.nrows());
-    matvec_complex_view_into(&matrix.view(), &vector.view(), output.view_mut())?;
-    Ok(output)
+    let matrix_view = matrix.view();
+    let vector_view = vector.view();
+    validate_matrix_non_empty_complex(&matrix_view)?;
+    validate_vector_non_empty_complex(&vector_view)?;
+    if vector.len() != matrix.ncols() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    Ok(matrix.dot(vector))
 }
 
 /// Compute complex dense matrix-vector product `y = A x` from views.
@@ -152,9 +174,12 @@ pub fn matvec_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
     vector: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, MatrixError> {
-    let mut output = Array1::<Complex64>::zeros(matrix.nrows());
-    matvec_complex_view_into(matrix, vector, output.view_mut())?;
-    Ok(output)
+    validate_matrix_non_empty_complex(matrix)?;
+    validate_vector_non_empty_complex(vector)?;
+    if vector.len() != matrix.ncols() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    Ok(matrix.dot(vector))
 }
 
 /// Compute complex dense matrix-vector product `y = A x` into `output`.
@@ -199,11 +224,14 @@ pub fn matvec_complex_view_into(
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
 pub fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, MatrixError> {
-    let mut output = Array2::<f64>::zeros((left.nrows(), right.ncols()));
     let left_view = left.view();
     let right_view = right.view();
-    matmat_view_into(&left_view, &right_view, output.view_mut())?;
-    Ok(output)
+    validate_matrix_non_empty(&left_view)?;
+    validate_matrix_non_empty(&right_view)?;
+    if left.ncols() != right.nrows() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    matmat_with_backend::<CpuBackend>(left, right).map_err(map_accelerator_error_to_matrix)
 }
 
 /// Compute dense matrix-matrix product `C = A B` from views.
@@ -214,9 +242,12 @@ pub fn matmat_view(
     left: &ArrayView2<'_, f64>,
     right: &ArrayView2<'_, f64>,
 ) -> Result<Array2<f64>, MatrixError> {
-    let mut output = Array2::<f64>::zeros((left.nrows(), right.ncols()));
-    matmat_view_into(left, right, output.view_mut())?;
-    Ok(output)
+    validate_matrix_non_empty(left)?;
+    validate_matrix_non_empty(right)?;
+    if left.ncols() != right.nrows() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    Ok(left.dot(right))
 }
 
 /// Compute dense matrix-matrix product `C = A B` into `output`.
@@ -248,15 +279,7 @@ pub fn matmat_view_into(
         return Err(MatrixError::DimensionMismatch);
     }
 
-    output.fill(0.0);
-    for row in 0..left.nrows() {
-        for k in 0..left.ncols() {
-            let lhs = left[[row, k]];
-            for col in 0..right.ncols() {
-                output[[row, col]] += lhs * right[[k, col]];
-            }
-        }
-    }
+    general_mat_mul(1.0_f64, left, right, 0.0_f64, &mut output);
     Ok(())
 }
 
@@ -268,9 +291,14 @@ pub fn matmat_complex(
     left: &Array2<Complex64>,
     right: &Array2<Complex64>,
 ) -> Result<Array2<Complex64>, MatrixError> {
-    let mut output = Array2::<Complex64>::zeros((left.nrows(), right.ncols()));
-    matmat_complex_view_into(&left.view(), &right.view(), output.view_mut())?;
-    Ok(output)
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_matrix_non_empty_complex(&left_view)?;
+    validate_matrix_non_empty_complex(&right_view)?;
+    if left.ncols() != right.nrows() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    Ok(left.dot(right))
 }
 
 /// Compute complex dense matrix-matrix product `C = A B` from views.
@@ -281,9 +309,12 @@ pub fn matmat_complex_view(
     left: &ArrayView2<'_, Complex64>,
     right: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixError> {
-    let mut output = Array2::<Complex64>::zeros((left.nrows(), right.ncols()));
-    matmat_complex_view_into(left, right, output.view_mut())?;
-    Ok(output)
+    validate_matrix_non_empty_complex(left)?;
+    validate_matrix_non_empty_complex(right)?;
+    if left.ncols() != right.nrows() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    Ok(left.dot(right))
 }
 
 /// Compute complex dense matrix-matrix product `C = A B` into `output`.
@@ -313,15 +344,7 @@ pub fn matmat_complex_view_into(
         return Err(MatrixError::DimensionMismatch);
     }
 
-    output.fill(Complex64::new(0.0, 0.0));
-    for row in 0..left.nrows() {
-        for k in 0..left.ncols() {
-            let lhs = left[[row, k]];
-            for col in 0..right.ncols() {
-                output[[row, col]] += lhs * right[[k, col]];
-            }
-        }
-    }
+    general_mat_mul(Complex64::new(1.0, 0.0), left, right, Complex64::new(0.0, 0.0), &mut output);
     Ok(())
 }
 
@@ -335,11 +358,16 @@ pub fn batched_row_matvec(
     batch_vectors: &Array2<f64>,
     matrix: &Array2<f64>,
 ) -> Result<Array2<f64>, MatrixError> {
-    let mut output = Array2::<f64>::zeros((batch_vectors.nrows(), matrix.nrows()));
     let batch_view = batch_vectors.view();
     let matrix_view = matrix.view();
-    batched_row_matvec_view_into(&batch_view, &matrix_view, output.view_mut())?;
-    Ok(output)
+    validate_matrix_non_empty(&batch_view)?;
+    validate_matrix_non_empty(&matrix_view)?;
+    if batch_vectors.ncols() != matrix.ncols() {
+        return Err(MatrixError::DimensionMismatch);
+    }
+
+    batched_row_matvec_with_backend::<CpuBackend>(batch_vectors, matrix)
+        .map_err(map_accelerator_error_to_matrix)
 }
 
 /// Apply one matrix to a batch of row-vectors from views.
@@ -415,10 +443,17 @@ pub fn batched_matmat(
     left_batches: &Array3<f64>,
     right_batches: &Array3<f64>,
 ) -> Result<Array3<f64>, MatrixError> {
-    let mut output =
-        Array3::<f64>::zeros((left_batches.dim().0, left_batches.dim().1, right_batches.dim().2));
-    batched_matmat_view_into(&left_batches.view(), &right_batches.view(), output.view_mut())?;
-    Ok(output)
+    let left_view = left_batches.view();
+    let right_view = right_batches.view();
+    validate_tensor_non_empty(&left_view)?;
+    validate_tensor_non_empty(&right_view)?;
+    if left_batches.dim().0 != right_batches.dim().0
+        || left_batches.dim().2 != right_batches.dim().1
+    {
+        return Err(MatrixError::DimensionMismatch);
+    }
+    batched_matmat_with_backend::<CpuBackend>(left_batches, right_batches)
+        .map_err(map_accelerator_error_to_matrix)
 }
 
 /// Compute batched dense matrix-matrix products from views.
@@ -471,18 +506,12 @@ pub fn batched_matmat_view_into(
         return Err(MatrixError::DimensionMismatch);
     }
 
-    output.fill(0.0);
-    let (batch, rows, inner) = left_batches.dim();
-    let cols = right_batches.dim().2;
+    let batch = left_batches.dim().0;
     for b in 0..batch {
-        for row in 0..rows {
-            for k in 0..inner {
-                let lhs = left_batches[[b, row, k]];
-                for col in 0..cols {
-                    output[[b, row, col]] += lhs * right_batches[[b, k, col]];
-                }
-            }
-        }
+        let left_matrix = left_batches.slice(s![b, .., ..]);
+        let right_matrix = right_batches.slice(s![b, .., ..]);
+        let mut out_matrix = output.slice_mut(s![b, .., ..]);
+        general_mat_mul(1.0_f64, &left_matrix, &right_matrix, 0.0_f64, &mut out_matrix);
     }
 
     Ok(())
@@ -558,17 +587,11 @@ pub fn batched_matmat_broadcast_right_view_into(
         return Err(MatrixError::DimensionMismatch);
     }
 
-    output.fill(0.0);
-    let (batch, rows, inner) = left_batches.dim();
+    let batch = left_batches.dim().0;
     for b in 0..batch {
-        for row in 0..rows {
-            for k in 0..inner {
-                let lhs = left_batches[[b, row, k]];
-                for col in 0..right.ncols() {
-                    output[[b, row, col]] += lhs * right[[k, col]];
-                }
-            }
-        }
+        let left_matrix = left_batches.slice(s![b, .., ..]);
+        let mut out_matrix = output.slice_mut(s![b, .., ..]);
+        general_mat_mul(1.0_f64, &left_matrix, right, 0.0_f64, &mut out_matrix);
     }
     Ok(())
 }
@@ -643,17 +666,11 @@ pub fn batched_matmat_broadcast_left_view_into(
         return Err(MatrixError::DimensionMismatch);
     }
 
-    output.fill(0.0);
-    let (batch, inner, cols) = right_batches.dim();
+    let batch = right_batches.dim().0;
     for b in 0..batch {
-        for row in 0..left.nrows() {
-            for k in 0..inner {
-                let lhs = left[[row, k]];
-                for col in 0..cols {
-                    output[[b, row, col]] += lhs * right_batches[[b, k, col]];
-                }
-            }
-        }
+        let right_matrix = right_batches.slice(s![b, .., ..]);
+        let mut out_matrix = output.slice_mut(s![b, .., ..]);
+        general_mat_mul(1.0_f64, left, &right_matrix, 0.0_f64, &mut out_matrix);
     }
     Ok(())
 }

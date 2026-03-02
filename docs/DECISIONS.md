@@ -18,6 +18,14 @@
 14. Dense-kernel tolerance and iteration defaults are centralized in one shared policy (`nabled-linalg::internal::DenseKernelPolicy`).
 15. Delivery strategy is domain-first vertical slices: each domain is finalized with API, tests, benchmarks, and docs before expanding horizontally.
 16. P2 kickoff is incremental: establish rank-3 tensor/cube APIs and compile-time accelerator contracts first, then add concrete GPU/distributed kernels.
+17. Execution terminology is explicit and stable:
+   - `Provider`: decomposition implementation source (for example, internal vs OpenBLAS-backed).
+   - `Backend`: primitive-kernel execution target (for example, CPU, distributed CPU, GPU).
+   - `Kernel`: operation-family contract implemented by backends (for example, matrix-matrix multiply).
+18. Provider and backend are orthogonal axes and may both be used within one public algorithm flow.
+19. Kernel implementations do not directly invoke provider selection; orchestration of provider-backed decomposition and backend-backed kernels lives in domain APIs.
+20. Provider selection remains compile-time via feature gating (`#[cfg]`) in domain code; no runtime provider-dispatch API is required.
+21. Kernel-family scope is explicitly cataloged (`docs/KERNEL_CATALOG.md`) and treated as finite/planned work, not ad hoc expansion.
 
 ## API Purity Model
 
@@ -40,7 +48,7 @@
 
 These are deferred until the ndarray-first core is complete and stable.
 
-## Backend Feature Contract
+## Provider and Backend Contract
 
 1. `blas` is a baseline feature for enabling BLAS-accelerated ndarray paths where available.
 2. LAPACK acceleration is provider-driven, not a separate runtime backend layer.
@@ -48,3 +56,5 @@ These are deferred until the ndarray-first core is complete and stable.
 4. Provider features imply `blas` so users do not have to compose low-level flags manually.
 5. LAPACK-accelerated code should be gated by feature selection, not by hardcoded `target_os` branching.
 6. Current platform intent is macOS and Linux first; Windows support is deferred.
+7. Backend acceleration is compile-time feature-gated and operation-specific.
+8. Backend acceleration does not imply provider acceleration, and provider acceleration does not imply backend acceleration.

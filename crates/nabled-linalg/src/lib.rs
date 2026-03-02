@@ -1,7 +1,23 @@
 //! Ndarray-native linear algebra domain crate.
 
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
-pub use nabled_core::prelude;
+
+use crate::accelerator::backends::AcceleratorError;
+use crate::cholesky::CholeskyError;
+use crate::eigen::EigenError;
+use crate::lu::LUError;
+use crate::matrix::MatrixError;
+use crate::matrix_functions::MatrixFunctionError;
+use crate::orthogonalization::OrthogonalizationError;
+use crate::polar::PolarError;
+use crate::qr::QRError;
+use crate::schur::SchurError;
+use crate::sparse::SparseError;
+use crate::svd::SVDError;
+use crate::sylvester::SylvesterError;
+use crate::tensor::TensorError;
+use crate::triangular::TriangularError;
+use crate::vector::VectorError;
 
 pub mod accelerator;
 pub mod batched;
@@ -22,38 +38,6 @@ pub mod sylvester;
 pub mod tensor;
 pub mod triangular;
 pub mod vector;
-
-pub use accelerator::{
-    AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend, DistributedConfig,
-    DistributedSchedule,
-};
-pub use cholesky::{CholeskyError, NdarrayCholeskyResult};
-pub use eigen::{
-    EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult,
-    NdarrayNonsymmetricBiEigenResult, NdarrayNonsymmetricEigenResult, NonsymmetricEigenConfig,
-};
-pub use lu::{LUError, LogDetResult, NdarrayLUResult};
-pub use matrix::MatrixError;
-pub use matrix_functions::{
-    MatrixFunctionComplexWorkspace, MatrixFunctionError, MatrixFunctionWorkspace,
-};
-pub use orthogonalization::OrthogonalizationError;
-pub use polar::{NdarrayComplexPolarResult, NdarrayPolarResult, PolarError};
-pub use qr::{QRConfig, QRError, QRResult};
-pub use schur::{
-    NdarrayComplexSchurResult, NdarraySchurResult, SchurComplexWorkspace, SchurError,
-    SchurWorkspace,
-};
-pub use sparse::{
-    CooMatrix, CscMatrix, CsrMatrix, IC0Factorization, ILDL0Factorization, ILU0Factorization,
-    ILUKConfig, ILUKFactorization, ILUTConfig, ILUTFactorization, JacobiPreconditioner,
-    SparseError, SparseLUFactorization,
-};
-pub use svd::{NdarrayComplexSVD, NdarraySVD, PseudoInverseConfig, SVDError};
-pub use sylvester::{SylvesterComplexWorkspace, SylvesterError, SylvesterWorkspace};
-pub use tensor::{Hosvd3Result, TensorError};
-pub use triangular::TriangularError;
-pub use vector::{PairwiseCosineWorkspace, VectorError};
 
 impl IntoNabledError for AcceleratorError {
     fn into_nabled_error(self) -> NabledError {
@@ -267,6 +251,7 @@ mod tests {
     use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 
     use super::*;
+    use crate::accelerator::backends::BackendKind;
 
     #[test]
     fn linalg_errors_map_to_shared_taxonomy() {

@@ -36,7 +36,9 @@ fn benchmark_accelerator(c: &mut Criterion) {
                 BenchmarkId::new("matmat_serial", &id),
                 &size,
                 |bench, _| {
-                    bench.iter(|| accelerator::matmat_serial(black_box(&left), black_box(&right)));
+                    bench.iter(|| {
+                        accelerator::cpu::matmat_serial(black_box(&left), black_box(&right))
+                    });
                 },
             );
 
@@ -45,7 +47,7 @@ fn benchmark_accelerator(c: &mut Criterion) {
                 &size,
                 |bench, _| {
                     bench.iter(|| {
-                        accelerator::matmat_distributed(
+                        accelerator::distributed::matmat_distributed(
                             black_box(&left),
                             black_box(&right),
                             DistributedConfig {
@@ -63,7 +65,7 @@ fn benchmark_accelerator(c: &mut Criterion) {
                 &size,
                 |bench, _| {
                     bench.iter(|| {
-                        accelerator::matmat_distributed_tiled(
+                        accelerator::distributed::matmat_distributed_tiled(
                             black_box(&left),
                             black_box(&right),
                             4,
@@ -81,7 +83,10 @@ fn benchmark_accelerator(c: &mut Criterion) {
                     &size,
                     |bench, _| {
                         bench.iter(|| {
-                            accelerator::matmat_accelerated(black_box(&left), black_box(&right))
+                            accelerator::cpu::matmat_accelerated(
+                                black_box(&left),
+                                black_box(&right),
+                            )
                         });
                     },
                 );

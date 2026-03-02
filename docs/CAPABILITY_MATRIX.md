@@ -30,8 +30,8 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | QR | full/reduced QR, pivoting, least-squares | `nabled-linalg::qr` | Implemented | Yes | Bench exists (`qr_benchmarks`). |
 | SVD | full/truncated/toleranced SVD, rank, cond, pinv, null space | `nabled-linalg::svd` | Implemented | Yes | Real and complex paths execute in both internal and provider-enabled builds. Bench exists (`svd_benchmarks`) with complex cases. |
 | Triangular solves | lower/upper substitution (+ complex variants) | `nabled-linalg::triangular` | Implemented | Yes | Includes allocation-controlled `*_into` paths and complex solve entrypoints. |
-| Vector primitives | dot/norm/cosine/pairwise/batched dot (+ complex Hermitian baseline) | `nabled-linalg::vector` | Implemented | Yes | Bench exists (`vector_benchmarks`) with ndarray competitor baselines. |
-| Matrix primitives | matvec/matmat + batched matrix-kernels (`*_into`, views, broadcasted batch matmat) | `nabled-linalg::matrix` | Implemented | No | Dense pipeline APIs exist as first-class nabled surfaces, including real/complex matvec+matmat parity, batched kernels, and broadcast-left/right batched matmat semantics. |
+| Vector primitives | dot/norm/cosine/pairwise/batched dot (+ complex Hermitian baseline) | `nabled-linalg::vector` | Implemented | Yes | Stable allocating `dot`/pairwise entrypoints are compile-time backend-kernel dispatched; bench exists (`vector_benchmarks`) with ndarray competitor baselines. |
+| Matrix primitives | matvec/matmat + batched matrix-kernels (`*_into`, views, broadcasted batch matmat) | `nabled-linalg::matrix` | Implemented | No | Dense pipeline APIs exist as first-class nabled surfaces, including real/complex parity and batched/broadcast semantics; stable allocating owned entrypoints (`matvec`, `matmat`, `batched_matmat`, `batched_row_matvec`) dispatch through compile-time backend kernels. |
 | Batched decomposition helpers | batched QR/SVD/LU/Cholesky/symmetric eigen over matrix stacks | `nabled-linalg::batched` | Implemented | No | Batch entrypoints expose decomposition-level workflows without requiring caller-side loops. |
 | Schur | Schur decomposition | `nabled-linalg::schur` | Implemented | Yes | Includes complex parity in both internal and provider-enabled builds; bench exists (`schur_benchmarks`) with manual competitor baseline. |
 | Polar | polar decomposition (+ complex variant) | `nabled-linalg::polar` | Implemented | Yes | Complex variant executes in both internal and provider-enabled builds; dedicated benchmark exists (`polar_benchmarks`) with complex cases. |
@@ -39,14 +39,30 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Includes complex `exp/log/power/sign` coverage in both internal and provider-enabled builds. Bench exists (`matrix_functions_benchmarks`) with complex cases. |
 | Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization` | Implemented | Yes | Includes complex Gram-Schmidt parity and dedicated benchmark coverage (`orthogonalization_benchmarks`). |
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Includes real and complex CG/GMRES APIs. |
-| Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows + direct sparse LU solve/reuse paths | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths, and direct sparse LU solve/reuse workflows. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
+| Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows + direct sparse LU solve/reuse paths | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths, and direct sparse LU solve/reuse workflows; stable allocating sparse matvec/matmat entrypoints now use compile-time backend kernel dispatch. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
 | Optimization | line search, gradient descent, Adam, momentum, RMSProp, projected GD, stochastic GD, BFGS | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
-| Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) + rank-3 HOSVD + einsum-style binary contractions | `nabled-linalg::tensor` | Partial | Yes | Rank-3 APIs are present with owned/view/into variants in real and complex forms; higher-rank baseline now includes last-axis reductions/normalization/batched dot plus axis-permute/contract/batched-matmul primitives for real and complex tensors, plus `hosvd3` and binary einsum ergonomics. |
-| Accelerator contracts | compile-time backend trait + CPU execution/chunking + concrete distributed row-sharded/tiled matmat + feature-gated accelerated matmat + feature-gated GPU matmat (`wgpu`) + CUDA placeholder | `nabled-linalg::accelerator` | Partial | Yes | Distributed backend executes concrete row-sharded/tiled kernels with static/dynamic scheduling in safe Rust; accelerated CPU path (`accelerator-rayon`) and feature-gated GPU `f32` matmat path (`accelerator-wgpu`) exist; multi-process/distributed orchestration and CUDA-native kernels remain open. |
+| Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) + rank-3 HOSVD + einsum-style binary contractions | `nabled-linalg::tensor` | Partial | Yes | Rank-3 APIs are present with owned/view/into variants in real and complex forms; higher-rank baseline now includes last-axis reductions/normalization/batched dot plus axis-permute/contract/batched-matmul primitives for real and complex tensors, plus `hosvd3` and binary einsum ergonomics. Stable allocating last-axis/contract/matmul entrypoints are compile-time backend-kernel dispatched. |
+| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + concrete distributed row-sharded/tiled matmat + feature-gated accelerated matmat + feature-gated GPU matmat (`wgpu`) + CUDA placeholder | `nabled-linalg::accelerator` | Partial | Yes | Distributed backend executes concrete row-sharded/tiled kernels with static/dynamic scheduling in safe Rust; v1 kernel catalog families (dense/sparse/vector/tensor/triangular) are now wired through compile-time backend dispatch on stable allocating entrypoints. Accelerated CPU path (`accelerator-rayon`) and feature-gated GPU `f32` matmat path (`accelerator-wgpu`) exist; internals are modularized by backend/kernel to support cleaner future expansion. Multi-process orchestration and broader GPU kernel coverage remain open. |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
 | Stats | means/centering/covariance/correlation | `nabled-ml::stats` | Implemented | No | |
+
+## Execution Axes Model
+
+`nabled-linalg` currently operates on three distinct execution concepts:
+
+1. `Provider`: decomposition implementation source (`internal` or `openblas-system`).
+2. `Backend`: primitive-kernel execution target (`CpuBackend`, `DistributedBackend`, `CudaBackend`).
+3. `Kernel`: operation-family contract implemented per backend (dense/sparse/vector/tensor/triangular families; see `docs/KERNEL_CATALOG.md`).
+
+These axes are intentionally orthogonal:
+
+1. Provider selection controls decomposition-style paths.
+2. Backend/kernel selection controls operation-kernel paths.
+3. A single public algorithm may use both axes in sequence.
+
+Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATALOG.md`.
 
 ## Target Scope Matrix (Aligned to Project Goals)
 

@@ -6,6 +6,11 @@ use num_complex::Complex64;
 use num_traits::Float;
 use thiserror::Error;
 
+use crate::accelerator::backends::{AcceleratorError, CpuBackend};
+use crate::accelerator::dispatch::{
+    triangular_solve_mat_with_backend, triangular_solve_vec_with_backend,
+};
+
 /// Error returned by triangular solve kernels.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum TriangularError {
@@ -15,6 +20,66 @@ pub enum TriangularError {
     /// A zero pivot was encountered.
     #[error("matrix is singular (zero on diagonal)")]
     Singular,
+}
+
+fn map_accelerator_error(error: AcceleratorError) -> TriangularError {
+    match error {
+        AcceleratorError::KernelExecutionFailed => TriangularError::Singular,
+        AcceleratorError::DimensionMismatch => {
+            TriangularError::Shape(ShapeError::DimensionMismatch)
+        }
+        _ => TriangularError::Shape(ShapeError::DimensionMismatch),
+    }
+}
+
+fn validate_real_triangular_system<T>(
+    matrix: &Array2<T>,
+    rhs_length: usize,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    if matrix.is_empty() || rhs_length == 0 {
+        return Err(TriangularError::Shape(ShapeError::EmptyInput));
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(TriangularError::Shape(ShapeError::NotSquare));
+    }
+    if matrix.nrows() != rhs_length {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
+    Ok(())
+}
+
+fn validate_real_triangular_matrix_system<T>(
+    matrix: &Array2<T>,
+    rhs: &Array2<T>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    if matrix.is_empty() || rhs.is_empty() {
+        return Err(TriangularError::Shape(ShapeError::EmptyInput));
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err(TriangularError::Shape(ShapeError::NotSquare));
+    }
+    if matrix.nrows() != rhs.nrows() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
+    Ok(())
+}
+
+fn validate_non_singular_diagonal<T>(matrix: &Array2<T>) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    for i in 0..matrix.nrows() {
+        if matrix[[i, i]] == T::zero() {
+            return Err(TriangularError::Singular);
+        }
+    }
+    Ok(())
 }
 
 fn solve_lower_into_internal<T>(
@@ -175,9 +240,10 @@ pub fn solve_lower<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, 
 where
     T: Float,
 {
-    let mut output = Array1::<T>::zeros(rhs.len());
-    solve_lower_into_internal(&matrix.view(), &rhs.view(), &mut output)?;
-    Ok(output)
+    validate_real_triangular_system(matrix, rhs.len())?;
+    validate_non_singular_diagonal(matrix)?;
+    triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, true, false)
+        .map_err(map_accelerator_error)
 }
 
 /// Solve `Lx = b` with forward substitution from matrix/vector views.
@@ -208,7 +274,15 @@ pub fn solve_lower_into<T>(
 where
     T: Float,
 {
-    solve_lower_into_internal(&matrix.view(), &rhs.view(), output)
+    validate_real_triangular_system(matrix, rhs.len())?;
+    if output.len() != rhs.len() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
+    validate_non_singular_diagonal(matrix)?;
+    let solution = triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, true, false)
+        .map_err(map_accelerator_error)?;
+    output.assign(&solution);
+    Ok(())
 }
 
 /// Solve `Ux = b` with back substitution.
@@ -219,9 +293,10 @@ pub fn solve_upper<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, 
 where
     T: Float,
 {
-    let mut output = Array1::<T>::zeros(rhs.len());
-    solve_upper_into_internal(&matrix.view(), &rhs.view(), &mut output)?;
-    Ok(output)
+    validate_real_triangular_system(matrix, rhs.len())?;
+    validate_non_singular_diagonal(matrix)?;
+    triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, false, false)
+        .map_err(map_accelerator_error)
 }
 
 /// Solve `Ux = b` with back substitution from matrix/vector views.
@@ -252,7 +327,89 @@ pub fn solve_upper_into<T>(
 where
     T: Float,
 {
-    solve_upper_into_internal(&matrix.view(), &rhs.view(), output)
+    validate_real_triangular_system(matrix, rhs.len())?;
+    if output.len() != rhs.len() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
+    validate_non_singular_diagonal(matrix)?;
+    let solution = triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, false, false)
+        .map_err(map_accelerator_error)?;
+    output.assign(&solution);
+    Ok(())
+}
+
+/// Solve `LX = B` with forward substitution.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_matrix<T>(
+    matrix: &Array2<T>,
+    rhs: &Array2<T>,
+) -> Result<Array2<T>, TriangularError>
+where
+    T: Float,
+{
+    validate_real_triangular_matrix_system(matrix, rhs)?;
+    validate_non_singular_diagonal(matrix)?;
+    triangular_solve_mat_with_backend::<CpuBackend, T>(matrix, rhs, true, false)
+        .map_err(map_accelerator_error)
+}
+
+/// Solve `LX = B` with forward substitution into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_matrix_into<T>(
+    matrix: &Array2<T>,
+    rhs: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    let solution = solve_lower_matrix(matrix, rhs)?;
+    if output.dim() != solution.dim() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
+    output.assign(&solution);
+    Ok(())
+}
+
+/// Solve `UX = B` with back substitution.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_matrix<T>(
+    matrix: &Array2<T>,
+    rhs: &Array2<T>,
+) -> Result<Array2<T>, TriangularError>
+where
+    T: Float,
+{
+    validate_real_triangular_matrix_system(matrix, rhs)?;
+    validate_non_singular_diagonal(matrix)?;
+    triangular_solve_mat_with_backend::<CpuBackend, T>(matrix, rhs, false, false)
+        .map_err(map_accelerator_error)
+}
+
+/// Solve `UX = B` with back substitution into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_matrix_into<T>(
+    matrix: &Array2<T>,
+    rhs: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    let solution = solve_upper_matrix(matrix, rhs)?;
+    if output.dim() != solution.dim() {
+        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
+    }
+    output.assign(&solution);
+    Ok(())
 }
 
 /// Solve `Lx = b` for complex-valued lower-triangular systems.
@@ -453,5 +610,46 @@ mod tests {
         let rhs = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(2.0, 0.0)]);
         let result = solve_lower_complex(&lower, &rhs);
         assert!(matches!(result, Err(TriangularError::Singular)));
+    }
+
+    #[test]
+    fn matrix_rhs_solve_reconstructs_rhs() {
+        let lower = arr2(&[[2.0_f64, 0.0], [1.0, 3.0]]);
+        let upper = arr2(&[[2.0_f64, 1.0], [0.0, 3.0]]);
+        let rhs = arr2(&[[4.0_f64, 2.0], [8.0, 7.0]]);
+
+        let lower_solution = solve_lower_matrix(&lower, &rhs).unwrap();
+        let upper_solution = solve_upper_matrix(&upper, &rhs).unwrap();
+        let lower_reconstructed = lower.dot(&lower_solution);
+        let upper_reconstructed = upper.dot(&upper_solution);
+
+        for row in 0..rhs.nrows() {
+            for col in 0..rhs.ncols() {
+                assert!((lower_reconstructed[[row, col]] - rhs[[row, col]]).abs() < 1e-10);
+                assert!((upper_reconstructed[[row, col]] - rhs[[row, col]]).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn matrix_rhs_into_variants_match_allocating() {
+        let lower = arr2(&[[3.0_f64, 0.0], [2.0, 4.0]]);
+        let upper = arr2(&[[5.0_f64, 1.0], [0.0, 2.0]]);
+        let rhs = arr2(&[[6.0_f64, 1.0], [10.0, 4.0]]);
+
+        let lower_alloc = solve_lower_matrix(&lower, &rhs).unwrap();
+        let upper_alloc = solve_upper_matrix(&upper, &rhs).unwrap();
+
+        let mut lower_into = Array2::<f64>::zeros((2, 2));
+        let mut upper_into = Array2::<f64>::zeros((2, 2));
+        solve_lower_matrix_into(&lower, &rhs, &mut lower_into).unwrap();
+        solve_upper_matrix_into(&upper, &rhs, &mut upper_into).unwrap();
+
+        for row in 0..rhs.nrows() {
+            for col in 0..rhs.ncols() {
+                assert!((lower_alloc[[row, col]] - lower_into[[row, col]]).abs() < 1e-12);
+                assert!((upper_alloc[[row, col]] - upper_into[[row, col]]).abs() < 1e-12);
+            }
+        }
     }
 }

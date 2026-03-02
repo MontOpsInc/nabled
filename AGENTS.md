@@ -38,6 +38,10 @@ Do not infer status from memory. Use:
 6. No legacy compatibility shims for unreleased APIs; prefer clean replacements over aliases/wrappers.
 7. Use concise domain API naming (for example, decomposition modules expose `decompose`).
 8. Performance-sensitive kernels should provide explicit allocation-control paths (`*_into`) and reusable workspace types when beneficial.
+9. Keep execution-axis terminology explicit and consistent:
+   - `Provider` = decomposition implementation source,
+   - `Backend` = primitive-kernel execution target,
+   - `Kernel` = operation-family backend contract.
 
 ## Workspace Migration Rules
 

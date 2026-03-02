@@ -5,6 +5,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ndarray::{Array1, Array2};
 use thiserror::Error;
 
+use crate::accelerator::backends::{AcceleratorError, CpuBackend};
+use crate::accelerator::dispatch::{
+    sparse_matmat_dense_with_backend, sparse_matmat_sparse_with_backend, sparse_matvec_with_backend,
+};
+
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
 
 fn dot(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, SparseError> {
@@ -16,6 +21,13 @@ fn dot(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, SparseError> {
         sum += left[i] * right[i];
     }
     Ok(sum)
+}
+
+fn map_accelerator_error_to_sparse(error: AcceleratorError) -> SparseError {
+    match error {
+        AcceleratorError::DimensionMismatch => SparseError::DimensionMismatch,
+        _ => SparseError::InvalidStructure,
+    }
 }
 
 /// Error type for sparse matrix operations.
@@ -401,9 +413,8 @@ impl CooMatrix {
 /// # Errors
 /// Returns an error if vector length mismatches matrix columns.
 pub fn matvec(matrix: &CsrMatrix, vector: &Array1<f64>) -> Result<Array1<f64>, SparseError> {
-    let mut output = Array1::<f64>::zeros(matrix.nrows);
-    matvec_into(matrix, vector, &mut output)?;
-    Ok(output)
+    sparse_matvec_with_backend::<CpuBackend>(matrix, vector)
+        .map_err(map_accelerator_error_to_sparse)
 }
 
 /// Compute sparse matrix-vector product `y = A x` into `output`.
@@ -1653,9 +1664,8 @@ pub fn apply_ildl0_preconditioner(
 /// # Errors
 /// Returns an error if dimensions are incompatible.
 pub fn matmat_dense(matrix: &CsrMatrix, dense: &Array2<f64>) -> Result<Array2<f64>, SparseError> {
-    let mut output = Array2::<f64>::zeros((matrix.nrows, dense.ncols()));
-    matmat_dense_into(matrix, dense, &mut output)?;
-    Ok(output)
+    sparse_matmat_dense_with_backend::<CpuBackend>(matrix, dense)
+        .map_err(map_accelerator_error_to_sparse)
 }
 
 /// Compute sparse-dense matrix multiplication `Y = A B` into `output`.
@@ -1667,50 +1677,12 @@ pub fn matmat_dense_into(
     dense: &Array2<f64>,
     output: &mut Array2<f64>,
 ) -> Result<(), SparseError> {
-    if dense.nrows() != matrix.ncols || output.dim() != (matrix.nrows, dense.ncols()) {
+    let product = matmat_dense(matrix, dense)?;
+    if output.dim() != product.dim() {
         return Err(SparseError::DimensionMismatch);
     }
-
-    output.fill(0.0);
-    for row in 0..matrix.nrows {
-        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
-            let col = matrix.indices[entry];
-            let value = matrix.data[entry];
-            for dense_col in 0..dense.ncols() {
-                output[[row, dense_col]] += value * dense[[col, dense_col]];
-            }
-        }
-    }
+    output.assign(&product);
     Ok(())
-}
-
-fn sparse_row_dot(
-    left_indices: &[usize],
-    left_data: &[f64],
-    right_indices: &[usize],
-    right_data: &[f64],
-) -> f64 {
-    let mut left_ptr = 0_usize;
-    let mut right_ptr = 0_usize;
-    let mut sum = 0.0_f64;
-
-    while left_ptr < left_indices.len() && right_ptr < right_indices.len() {
-        match left_indices[left_ptr].cmp(&right_indices[right_ptr]) {
-            std::cmp::Ordering::Equal => {
-                sum += left_data[left_ptr] * right_data[right_ptr];
-                left_ptr += 1;
-                right_ptr += 1;
-            }
-            std::cmp::Ordering::Less => {
-                left_ptr += 1;
-            }
-            std::cmp::Ordering::Greater => {
-                right_ptr += 1;
-            }
-        }
-    }
-
-    sum
 }
 
 /// Compute sparse-sparse matrix multiplication `C = A B` in CSR format.
@@ -1718,40 +1690,8 @@ fn sparse_row_dot(
 /// # Errors
 /// Returns an error if dimensions are incompatible or sparse structure is invalid.
 pub fn matmat_sparse(left: &CsrMatrix, right: &CsrMatrix) -> Result<CsrMatrix, SparseError> {
-    if left.ncols != right.nrows {
-        return Err(SparseError::DimensionMismatch);
-    }
-
-    let right_transposed = transpose(right)?;
-
-    let mut indptr = Vec::<usize>::with_capacity(left.nrows + 1);
-    let mut indices = Vec::<usize>::new();
-    let mut data = Vec::<f64>::new();
-    indptr.push(0);
-
-    for row in 0..left.nrows {
-        let left_start = left.indptr[row];
-        let left_end = left.indptr[row + 1];
-        let left_indices = &left.indices[left_start..left_end];
-        let left_data = &left.data[left_start..left_end];
-
-        for col in 0..right.ncols {
-            let right_start = right_transposed.indptr[col];
-            let right_end = right_transposed.indptr[col + 1];
-            let right_indices = &right_transposed.indices[right_start..right_end];
-            let right_data = &right_transposed.data[right_start..right_end];
-
-            let value = sparse_row_dot(left_indices, left_data, right_indices, right_data);
-            if value.abs() > DEFAULT_TOLERANCE {
-                indices.push(col);
-                data.push(value);
-            }
-        }
-
-        indptr.push(indices.len());
-    }
-
-    CsrMatrix::new(left.nrows, right.ncols, indptr, indices, data)
+    sparse_matmat_sparse_with_backend::<CpuBackend>(left, right)
+        .map_err(map_accelerator_error_to_sparse)
 }
 
 /// Compute batched sparse matrix-vector products.

@@ -1,7 +1,10 @@
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
-use nabled_ml::{
-    IterativeError, JacobianError, OptimizationError, PCAError, RegressionError, StatsError,
-};
+use nabled_ml::iterative::IterativeError;
+use nabled_ml::jacobian::JacobianError;
+use nabled_ml::optimization::OptimizationError;
+use nabled_ml::pca::PCAError;
+use nabled_ml::regression::RegressionError;
+use nabled_ml::stats::StatsError;
 
 #[test]
 fn ml_error_mappings_are_stable_and_exhaustive() {

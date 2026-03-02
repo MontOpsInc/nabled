@@ -9,6 +9,11 @@ use ndarray::{
 };
 use num_complex::Complex64;
 
+use crate::accelerator::backends::{AcceleratorError, CpuBackend};
+use crate::accelerator::dispatch::{
+    tensor_batched_matmul_last_two_with_backend, tensor_contract_axes_with_backend,
+    tensor_sum_last_axis_with_backend,
+};
 use crate::svd;
 
 /// Error type for tensor/cube operations.
@@ -30,6 +35,10 @@ impl fmt::Display for TensorError {
 }
 
 impl std::error::Error for TensorError {}
+
+fn map_accelerator_error_to_tensor(_error: AcceleratorError) -> TensorError {
+    TensorError::DimensionMismatch
+}
 
 /// HOSVD decomposition result for rank-3 real tensors.
 #[derive(Debug, Clone)]
@@ -136,7 +145,7 @@ fn uncontracted_axes(ndim: usize, contracted: &[usize]) -> Vec<usize> {
 
 fn shape_product(shape: &[usize]) -> usize { shape.iter().copied().product::<usize>().max(1) }
 
-fn contract_view_into_impl<T>(
+pub(crate) fn contract_view_into_impl<T>(
     left: &ArrayViewD<'_, T>,
     right: &ArrayViewD<'_, T>,
     left_axes: &[usize],
@@ -216,7 +225,7 @@ where
     Ok(())
 }
 
-fn batched_matmul_last_two_view_into_impl<T>(
+pub(crate) fn batched_matmul_last_two_view_into_impl<T>(
     left: &ArrayViewD<'_, T>,
     right: &ArrayViewD<'_, T>,
     output: &mut ArrayD<T>,
@@ -613,9 +622,8 @@ pub fn flatten_cubes(cube: &Array3<f64>) -> Result<Array2<f64>, TensorError> {
 pub fn sum_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
-    let axis = Axis(tensor_view.ndim() - 1);
-    let reduced = tensor_view.sum_axis(axis);
-    Ok(reduced.into_dyn())
+    tensor_sum_last_axis_with_backend::<CpuBackend, f64>(tensor)
+        .map_err(map_accelerator_error_to_tensor)
 }
 
 /// Compute L2 norm along the last axis of a tensor.
@@ -732,6 +740,16 @@ pub fn contract_axes(
         return Err(TensorError::DimensionMismatch);
     }
 
+    if left_axes.len() == 1 {
+        return tensor_contract_axes_with_backend::<CpuBackend, f64>(
+            left,
+            right,
+            left_axes[0],
+            right_axes[0],
+        )
+        .map_err(map_accelerator_error_to_tensor);
+    }
+
     let left_free_axes = uncontracted_axes(left_view.ndim(), left_axes);
     let right_free_axes = uncontracted_axes(right_view.ndim(), right_axes);
     let mut output_shape =
@@ -757,11 +775,12 @@ pub fn contract_axes_into(
     right_axes: &[usize],
     output: &mut ArrayD<f64>,
 ) -> Result<(), TensorError> {
-    let left_view = left.view();
-    let right_view = right.view();
-    validate_tensor_nd_non_empty(&left_view)?;
-    validate_tensor_nd_non_empty(&right_view)?;
-    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, output)
+    let contracted = contract_axes(left, right, left_axes, right_axes)?;
+    if output.shape() != contracted.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    output.assign(&contracted);
+    Ok(())
 }
 
 /// Perform N-D batched matrix multiplication over the last two axes.
@@ -795,12 +814,8 @@ pub fn batched_matmul_last_two(
         return Err(TensorError::DimensionMismatch);
     }
 
-    let mut output_shape = left_view.shape()[..batch_ndim].to_vec();
-    output_shape.push(left_view.shape()[left_view.ndim() - 2]);
-    output_shape.push(right_view.shape()[right_view.ndim() - 1]);
-    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
-    batched_matmul_last_two_view_into_impl(&left_view, &right_view, &mut output)?;
-    Ok(output)
+    tensor_batched_matmul_last_two_with_backend::<CpuBackend, f64>(left, right)
+        .map_err(map_accelerator_error_to_tensor)
 }
 
 /// Perform N-D batched matrix multiplication over the last two axes into `output`.
@@ -819,11 +834,12 @@ pub fn batched_matmul_last_two_into(
     right: &ArrayD<f64>,
     output: &mut ArrayD<f64>,
 ) -> Result<(), TensorError> {
-    let left_view = left.view();
-    let right_view = right.view();
-    validate_tensor_nd_non_empty(&left_view)?;
-    validate_tensor_nd_non_empty(&right_view)?;
-    batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
+    let batched = batched_matmul_last_two(left, right)?;
+    if output.shape() != batched.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    output.assign(&batched);
+    Ok(())
 }
 
 /// Reduce a complex tensor along its last axis by summation.
@@ -833,9 +849,8 @@ pub fn batched_matmul_last_two_into(
 pub fn sum_last_axis_complex(tensor: &ArrayD<Complex64>) -> Result<ArrayD<Complex64>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
-    let axis = Axis(tensor_view.ndim() - 1);
-    let reduced = tensor_view.sum_axis(axis);
-    Ok(reduced.into_dyn())
+    tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(tensor)
+        .map_err(map_accelerator_error_to_tensor)
 }
 
 /// Compute L2 norm along the last axis of a complex tensor.
@@ -958,6 +973,16 @@ pub fn contract_axes_complex(
         return Err(TensorError::DimensionMismatch);
     }
 
+    if left_axes.len() == 1 {
+        return tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
+            left,
+            right,
+            left_axes[0],
+            right_axes[0],
+        )
+        .map_err(map_accelerator_error_to_tensor);
+    }
+
     let left_free_axes = uncontracted_axes(left_view.ndim(), left_axes);
     let right_free_axes = uncontracted_axes(right_view.ndim(), right_axes);
     let mut output_shape =
@@ -983,11 +1008,12 @@ pub fn contract_axes_complex_into(
     right_axes: &[usize],
     output: &mut ArrayD<Complex64>,
 ) -> Result<(), TensorError> {
-    let left_view = left.view();
-    let right_view = right.view();
-    validate_tensor_nd_non_empty_complex(&left_view)?;
-    validate_tensor_nd_non_empty_complex(&right_view)?;
-    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, output)
+    let contracted = contract_axes_complex(left, right, left_axes, right_axes)?;
+    if output.shape() != contracted.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    output.assign(&contracted);
+    Ok(())
 }
 
 /// Perform N-D batched complex matrix multiplication over the last two axes.
@@ -1021,12 +1047,8 @@ pub fn batched_matmul_last_two_complex(
         return Err(TensorError::DimensionMismatch);
     }
 
-    let mut output_shape = left_view.shape()[..batch_ndim].to_vec();
-    output_shape.push(left_view.shape()[left_view.ndim() - 2]);
-    output_shape.push(right_view.shape()[right_view.ndim() - 1]);
-    let mut output = ArrayD::<Complex64>::zeros(IxDyn(&output_shape));
-    batched_matmul_last_two_view_into_impl(&left_view, &right_view, &mut output)?;
-    Ok(output)
+    tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(left, right)
+        .map_err(map_accelerator_error_to_tensor)
 }
 
 /// Perform N-D batched complex matrix multiplication over the last two axes into `output`.
@@ -1045,11 +1067,12 @@ pub fn batched_matmul_last_two_complex_into(
     right: &ArrayD<Complex64>,
     output: &mut ArrayD<Complex64>,
 ) -> Result<(), TensorError> {
-    let left_view = left.view();
-    let right_view = right.view();
-    validate_tensor_nd_non_empty_complex(&left_view)?;
-    validate_tensor_nd_non_empty_complex(&right_view)?;
-    batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
+    let batched = batched_matmul_last_two_complex(left, right)?;
+    if output.shape() != batched.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    output.assign(&batched);
+    Ok(())
 }
 
 fn parse_einsum_two_operands(expression: &str) -> Result<EinsumOperands, TensorError> {
