@@ -25,6 +25,17 @@ Use this file to resume work quickly after context compaction without re-auditin
 4. macOS OpenBLAS environment wiring is centralized in `.justfile` for provider-enabled recipes.
 5. Quality gates continue to pass in both internal and provider-enabled modes after capability expansion.
 6. Benchmark smoke/report coverage now includes matrix/tensor suites in addition to prior dense/sparse suites.
+7. Ordered v1 stability gate (`V1-G1..V1-G6`) is complete and signed off.
+
+## V1 Stability Gate (Ordered, Required)
+
+`nabled` is considered **100% stable for v1** only when all items below are complete, in order:
+
+1. Required tensor API surface is fully explicit and complete (owned/view/into, real/complex where applicable, stable allocation semantics).
+2. Required GPU kernel surface is concrete (no placeholder behavior for in-scope kernels) and documented by dtype/operation support.
+3. Mixed execution paths are deterministic and unsurprising (provider/backend/kernel combinations have explicit behavior and docs).
+4. Required feature/build matrix is fully exercised in CI and local checks (including provider-enabled and GPU-enabled paths where applicable).
+5. Final no-surprises audit passes (allocation contracts, error semantics, fallback rules, and docs all aligned with behavior).
 
 ## Done
 
@@ -116,29 +127,33 @@ Use this file to resume work quickly after context compaction without re-auditin
 86. `D-086`: `K-007` kernel expansion advanced: added `BatchedMatMatKernel<T>` and `SparseMatVecKernel`, implemented backend dispatch for CPU/distributed/CUDA-placeholder, added coverage tests, and wired stable allocating matrix/sparse APIs (`matrix::matvec`, `matrix::matmat`, `matrix::batched_matmat`, `sparse::matvec`) through compile-time backend dispatch.
 87. `D-087`: Kernel model scope is now explicitly locked in `docs/KERNEL_CATALOG.md`; full v1 kernel-family inventory and status (`Wired/Dispatch/Contract`) is documented with orchestration baseline rules for `K-008`.
 88. `D-088`: `K-007` is now complete for the v1 kernel catalog: remaining kernel families are wired end-to-end (CPU/distributed dispatch + CUDA placeholders where applicable) across dense/sparse/vector/tensor/triangular APIs, with dispatch tests and full quality-gate verification.
+89. `D-089`: GPU baseline capability expanded beyond single-op matmul: `CudaBackend` now supports `f32` matvec and batched matmat dispatch via `wgpu`, and tensor batched-last-two `f32` dispatch is backed by GPU matmul composition.
+90. `D-090`: Tensor higher-rank API ergonomics expanded with explicit view-first entrypoints (`*_view`, `*_view_into`) for last-axis reductions, axis contractions, and N-D batched last-two matmul across real and complex paths.
+91. `D-091`: Allocation-contract regressions introduced by kernel routing were corrected (`*_into` paths in vector/sparse/triangular/tensor no longer allocate hidden temporaries).
+92. `D-092`: `V1-G1` closed: required tensor v1 surface is now explicitly locked in `docs/V1_STABILITY.md` and validated with added owned/view/into parity tests across real and complex `ArrayD` contraction/reduction/matmul families.
+93. `D-093`: `V1-G2` closed: required GPU v1 kernel surface is now explicitly locked in `docs/V1_STABILITY.md`, with tested parity for supported `f32` CUDA-dispatched paths and tested explicit unsupported behavior for out-of-scope CUDA tensor kernels/dtypes.
+94. `D-094`: `V1-G3` closed: tensor view-first parity/invariant coverage expanded for required v1 families (`sum_last_axis*`, `contract_axes*`, `batched_matmul_last_two*`, real+complex).
+95. `D-095`: `V1-G4` closed: GPU tensor coverage expanded with CPU-vs-GPU parity testing (`f32`) and explicit unsupported behavior assertions (`f64`/other out-of-scope tensor CUDA kernels).
+96. `D-096`: `V1-G5` closed: CI/local quality gates now enforce provider/backend/kernel permutations including `accelerator-rayon`, `accelerator-wgpu`, and provider+accelerator combinations.
+97. `D-097`: `V1-G6` closed: no-surprises audit signoff documented and synchronized across `docs/V1_STABILITY.md`, `docs/PERFORMANCE_CONTRACTS.md`, `docs/CAPABILITY_MATRIX.md`, and `docs/STATUS.md`.
 
 ## Next
 
-1. `K-001`: Finalize API policy for view-first signatures versus owned-only entrypoints in remaining convenience surfaces.
-2. `K-002`: Finalize workspace contract for reusable workspace/state objects (domain-local vs shared patterns).
-3. `K-003`: Re-rank sparse format/solver entrypoint priorities for post-P1 expansion (`CSR/CSC/COO` + direct/preconditioned hybrids).
-4. `K-004`: Decide provider expansion policy beyond `openblas-system` and reflect it in feature/docs/CI strategy.
-5. `K-005`: Start benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
-6. `K-006`: Normalize architecture language and code organization around explicit `Provider / Backend / Kernel` axes.
-7. `K-008`: Codify orchestration rules from `docs/KERNEL_CATALOG.md` into test matrix coverage for mixed provider/backend flows.
+1. `K-005`: Start benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
+2. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
+3. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
+4. `B-P2-001`: Complex parity for higher-level ML/statistical domains that remain real-first (`stats`, `regression`, `pca`, `optimization`).
 
 ## Needed
 
-1. `K-001`: Final API shape decision for view-first signatures (`ArrayView*`) versus owned-only signatures.
-2. `K-002`: Decision on standardized workspace type pattern (per-domain workspace vs shared core workspace).
-3. `K-003`: Priority order for sparse matrix formats and sparse solver entrypoints.
-4. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
-5. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
-6. `K-008`: Lock testing policy for mixed provider/backend execution paths (internal/provider x backend feature combinations).
+1. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
+2. `K-004`: Provider expansion decision record beyond `openblas-system`.
+3. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+4. `B-P2-001`: Complex parity expansion plan for higher-level ML/statistical domains.
 
 ## Backlog (From Capability Matrix)
 
-3. `B-P2-001`: Complex parity for higher-level ML/statistical domains that remain real-first (`stats`, `regression`, `pca`, `optimization`).
+1. `B-P2-001`: Complex parity for higher-level ML/statistical domains that remain real-first (`stats`, `regression`, `pca`, `optimization`).
 
 ## Resume Protocol (Compaction-Friendly)
 
@@ -148,6 +163,7 @@ Use this file to resume work quickly after context compaction without re-auditin
    - `docs/CAPABILITY_MATRIX.md`
    - `docs/KERNEL_CATALOG.md`
    - `docs/PERFORMANCE_CONTRACTS.md`
+   - `docs/V1_STABILITY.md`
    - `docs/EXECUTION_TRACKER.md`
    - `docs/STATUS.md`
 2. Start from the highest-priority open `N-*` item unless maintainers redirect.

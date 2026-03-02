@@ -66,3 +66,12 @@ Suggested order:
 1. Final docs pass for end users and contributors.
 2. Publish readiness checklist and release criteria.
 3. Freeze v0 API candidate and run full validation.
+
+Current status:
+1. V1 stability contract is now explicit (`docs/V1_STABILITY.md`).
+2. Required tensor and bounded GPU v1 surfaces are implemented and tested.
+3. Local/CI checks enforce required provider/backend/kernel feature permutations.
+
+Next phase:
+1. Benchmark-driven optimization and regression-outlier remediation.
+2. Post-v1 expansion on advanced tensor algebra and broader GPU/distributed coverage.

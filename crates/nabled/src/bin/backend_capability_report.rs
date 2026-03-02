@@ -227,8 +227,8 @@ fn tier_b_domains() -> Vec<DomainCapability> {
             baseline_kernels: true,
             provider_path:    ProviderPath::Native,
             notes:            "crates/nabled-linalg/src/accelerator.rs (serial CPU + distributed \
-                               row-sharded and tiled kernels; CUDA remains explicit unsupported \
-                               placeholder)",
+                               row-sharded and tiled kernels; bounded CUDA `f32` kernel support \
+                               via `wgpu` with explicit unsupported behavior outside v1 scope)",
         },
     ]
 }

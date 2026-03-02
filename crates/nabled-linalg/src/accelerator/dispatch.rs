@@ -12,7 +12,9 @@ use super::cpu::{
     tensor_sum_last_axis_serial, triangular_solve_mat_serial, triangular_solve_vec_serial,
 };
 use super::distributed::{DistributedConfig, matmat_distributed};
-use super::gpu::matmat_gpu_f32;
+use super::gpu::{
+    batched_matmat_gpu_f32, matmat_gpu_f32, matvec_gpu_f32, tensor_batched_matmul_last_two_gpu_f32,
+};
 use super::kernels::{
     BatchedMatMatKernel, BatchedRowMatVecKernel, DotKernel, MatMatKernel, MatVecKernel,
     PairwiseCosineKernel, PairwiseL2Kernel, SparseMatMatDenseKernel, SparseMatMatSparseKernel,
@@ -91,11 +93,8 @@ impl MatVecKernel<f32> for DistributedBackend {
 }
 
 impl MatVecKernel<f32> for CudaBackend {
-    fn matvec(
-        _matrix: &Array2<f32>,
-        _vector: &Array1<f32>,
-    ) -> Result<Array1<f32>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+    fn matvec(matrix: &Array2<f32>, vector: &Array1<f32>) -> Result<Array1<f32>, AcceleratorError> {
+        matvec_gpu_f32(matrix, vector)
     }
 }
 
@@ -146,10 +145,10 @@ impl BatchedMatMatKernel<f32> for DistributedBackend {
 
 impl BatchedMatMatKernel<f32> for CudaBackend {
     fn batched_matmat(
-        _left_batches: &Array3<f32>,
-        _right_batches: &Array3<f32>,
+        left_batches: &Array3<f32>,
+        right_batches: &Array3<f32>,
     ) -> Result<Array3<f32>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+        batched_matmat_gpu_f32(left_batches, right_batches)
     }
 }
 
@@ -483,14 +482,29 @@ where
     }
 }
 
-impl<T> TensorBatchedMatMulKernel<T> for CudaBackend
-where
-    T: Copy + Default + AddAssign + Mul<Output = T>,
-{
+impl TensorBatchedMatMulKernel<f32> for CudaBackend {
     fn batched_matmul_last_two(
-        _left: &ArrayD<T>,
-        _right: &ArrayD<T>,
-    ) -> Result<ArrayD<T>, AcceleratorError> {
+        left: &ArrayD<f32>,
+        right: &ArrayD<f32>,
+    ) -> Result<ArrayD<f32>, AcceleratorError> {
+        tensor_batched_matmul_last_two_gpu_f32(left, right)
+    }
+}
+
+impl TensorBatchedMatMulKernel<f64> for CudaBackend {
+    fn batched_matmul_last_two(
+        _left: &ArrayD<f64>,
+        _right: &ArrayD<f64>,
+    ) -> Result<ArrayD<f64>, AcceleratorError> {
+        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+    }
+}
+
+impl TensorBatchedMatMulKernel<num_complex::Complex64> for CudaBackend {
+    fn batched_matmul_last_two(
+        _left: &ArrayD<num_complex::Complex64>,
+        _right: &ArrayD<num_complex::Complex64>,
+    ) -> Result<ArrayD<num_complex::Complex64>, AcceleratorError> {
         Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
     }
 }

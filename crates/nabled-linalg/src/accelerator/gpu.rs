@@ -1,4 +1,4 @@
-use ndarray::Array2;
+use ndarray::{Array1, Array2, Array3, ArrayD, IxDyn, s};
 #[cfg(feature = "accelerator-wgpu")]
 use wgpu::util::DeviceExt;
 
@@ -306,4 +306,106 @@ pub fn matmat_gpu_f32(
         let _ = right;
         Err(AcceleratorError::FeatureNotEnabled)
     }
+}
+
+/// Compute matrix-vector product on GPU for `f32` inputs using `wgpu`.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, or kernel failures.
+pub fn matvec_gpu_f32(
+    matrix: &Array2<f32>,
+    vector: &Array1<f32>,
+) -> Result<Array1<f32>, AcceleratorError> {
+    if matrix.ncols() != vector.len() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let right = Array2::from_shape_vec((vector.len(), 1), vector.to_vec())
+        .map_err(|_| AcceleratorError::KernelExecutionFailed)?;
+    let product = matmat_gpu_f32(matrix, &right)?;
+    Ok(product.column(0).to_owned())
+}
+
+/// Compute batched matrix-matrix products on GPU for `f32` inputs using `wgpu`.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, or kernel failures.
+pub fn batched_matmat_gpu_f32(
+    left_batches: &Array3<f32>,
+    right_batches: &Array3<f32>,
+) -> Result<Array3<f32>, AcceleratorError> {
+    if left_batches.dim().0 != right_batches.dim().0
+        || left_batches.dim().2 != right_batches.dim().1
+    {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let (batch, rows, _) = left_batches.dim();
+    let cols = right_batches.dim().2;
+    let mut output = Array3::<f32>::zeros((batch, rows, cols));
+
+    for b in 0..batch {
+        let left = left_batches.slice(s![b, .., ..]).to_owned();
+        let right = right_batches.slice(s![b, .., ..]).to_owned();
+        let product = matmat_gpu_f32(&left, &right)?;
+        output.slice_mut(s![b, .., ..]).assign(&product);
+    }
+
+    Ok(output)
+}
+
+/// Compute N-D batched matrix multiplication over the last two axes on GPU for `f32` using
+/// per-batch `wgpu` matmul kernels.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, or kernel failures.
+pub fn tensor_batched_matmul_last_two_gpu_f32(
+    left: &ArrayD<f32>,
+    right: &ArrayD<f32>,
+) -> Result<ArrayD<f32>, AcceleratorError> {
+    if left.ndim() < 2 || right.ndim() < 2 {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let batch_ndim = left.ndim() - 2;
+    if left.ndim() != right.ndim()
+        || left.shape()[..batch_ndim] != right.shape()[..batch_ndim]
+        || left.shape()[left.ndim() - 1] != right.shape()[right.ndim() - 2]
+    {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let rows = left.shape()[left.ndim() - 2];
+    let inner = left.shape()[left.ndim() - 1];
+    let cols = right.shape()[right.ndim() - 1];
+    let batches = left.shape()[..batch_ndim].iter().copied().product::<usize>().max(1);
+
+    let left_standard = left.as_standard_layout().to_owned();
+    let right_standard = right.as_standard_layout().to_owned();
+    let left_3d = left_standard
+        .view()
+        .into_shape_with_order((batches, rows, inner))
+        .map_err(|_| AcceleratorError::DimensionMismatch)?;
+    let right_3d = right_standard
+        .view()
+        .into_shape_with_order((batches, inner, cols))
+        .map_err(|_| AcceleratorError::DimensionMismatch)?;
+
+    let mut output_shape = left.shape()[..batch_ndim].to_vec();
+    output_shape.push(rows);
+    output_shape.push(cols);
+    let mut output = ArrayD::<f32>::zeros(IxDyn(&output_shape));
+    let mut output_3d = output
+        .view_mut()
+        .into_shape_with_order((batches, rows, cols))
+        .map_err(|_| AcceleratorError::DimensionMismatch)?;
+
+    for batch in 0..batches {
+        let left_batch = left_3d.slice(s![batch, .., ..]).to_owned();
+        let right_batch = right_3d.slice(s![batch, .., ..]).to_owned();
+        let product = matmat_gpu_f32(&left_batch, &right_batch)?;
+        output_3d.slice_mut(s![batch, .., ..]).assign(&product);
+    }
+
+    Ok(output)
 }

@@ -16,10 +16,11 @@ This folder contains the current, authoritative direction for `nabled`.
 2. `docs/CAPABILITY_MATRIX.md`: capability inventory, gap analysis, and scope verdict.
 3. `docs/KERNEL_CATALOG.md`: complete kernel contract inventory, wiring status, and done-state definition.
 4. `docs/PERFORMANCE_CONTRACTS.md`: allocation/copy contract and copy-elision audit status.
-5. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
-6. `docs/architecture.md`: target package/module architecture.
-7. `docs/ROADMAP.md`: implementation sequencing and milestones.
-8. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+5. `docs/V1_STABILITY.md`: explicit v1-stability contract (required tensor/GPU surface, feature matrix, no-surprises signoff).
+6. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
+7. `docs/architecture.md`: target package/module architecture.
+8. `docs/ROADMAP.md`: implementation sequencing and milestones.
+9. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
 
 ## Context Resume Protocol
 
@@ -30,10 +31,11 @@ When starting from a compacted/partial context, read documents in this order:
 3. `docs/CAPABILITY_MATRIX.md`
 4. `docs/KERNEL_CATALOG.md`
 5. `docs/PERFORMANCE_CONTRACTS.md`
-6. `docs/EXECUTION_TRACKER.md`
-7. `docs/architecture.md`
-8. `docs/ROADMAP.md`
-9. `docs/STATUS.md`
+6. `docs/V1_STABILITY.md`
+7. `docs/EXECUTION_TRACKER.md`
+8. `docs/architecture.md`
+9. `docs/ROADMAP.md`
+10. `docs/STATUS.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 
@@ -52,7 +54,7 @@ After reading the docs above, a contributor should be able to answer:
 3. Is current functionality sufficient for target scope? (Check `docs/CAPABILITY_MATRIX.md` verdict)
 4. What is done vs next vs needed? (Check `docs/EXECUTION_TRACKER.md`)
 5. Where does most implementation currently live? (`crates/nabled-linalg` and `crates/nabled-ml`)
-6. What is the next migration milestone? (Contract hardening and production-readiness work)
+6. What is the next milestone? (Benchmark-driven optimization and post-v1 expansion priorities; see `docs/EXECUTION_TRACKER.md`)
 7. What quality gates are mandatory before finalizing changes? (`just checks`, clippy, tests, coverage floor in both internal/provider modes)
 8. What is the backend feature contract? (`blas` baseline + provider feature policy; see `docs/DECISIONS.md`)
 9. What are the execution axes? (`Provider` vs `Backend` vs `Kernel`; see `docs/DECISIONS.md`)

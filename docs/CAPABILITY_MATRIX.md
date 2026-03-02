@@ -41,8 +41,8 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Includes real and complex CG/GMRES APIs. |
 | Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows + direct sparse LU solve/reuse paths | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths, and direct sparse LU solve/reuse workflows; stable allocating sparse matvec/matmat entrypoints now use compile-time backend kernel dispatch. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
 | Optimization | line search, gradient descent, Adam, momentum, RMSProp, projected GD, stochastic GD, BFGS | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
-| Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) + rank-3 HOSVD + einsum-style binary contractions | `nabled-linalg::tensor` | Partial | Yes | Rank-3 APIs are present with owned/view/into variants in real and complex forms; higher-rank baseline now includes last-axis reductions/normalization/batched dot plus axis-permute/contract/batched-matmul primitives for real and complex tensors, plus `hosvd3` and binary einsum ergonomics. Stable allocating last-axis/contract/matmul entrypoints are compile-time backend-kernel dispatched. |
-| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + concrete distributed row-sharded/tiled matmat + feature-gated accelerated matmat + feature-gated GPU matmat (`wgpu`) + CUDA placeholder | `nabled-linalg::accelerator` | Partial | Yes | Distributed backend executes concrete row-sharded/tiled kernels with static/dynamic scheduling in safe Rust; v1 kernel catalog families (dense/sparse/vector/tensor/triangular) are now wired through compile-time backend dispatch on stable allocating entrypoints. Accelerated CPU path (`accelerator-rayon`) and feature-gated GPU `f32` matmat path (`accelerator-wgpu`) exist; internals are modularized by backend/kernel to support cleaner future expansion. Multi-process orchestration and broader GPU kernel coverage remain open. |
+| Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) + rank-3 HOSVD + einsum-style binary contractions | `nabled-linalg::tensor` | Implemented | Yes | Required v1 tensor surface is explicit and complete across allocating/view/into forms for required operation families (real/complex where applicable); see `docs/V1_STABILITY.md` for scope lock and contracts. |
+| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + concrete distributed row-sharded/tiled matmat + feature-gated accelerated matmat + feature-gated GPU kernels (`wgpu`) + explicit unsupported CUDA paths outside bounded v1 GPU scope | `nabled-linalg::accelerator` | Implemented | Yes | Required v1 kernel families are wired through compile-time backend dispatch, with bounded GPU `f32` support and explicit typed unsupported behavior outside that scope; see `docs/V1_STABILITY.md` for the locked support matrix. |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
@@ -88,27 +88,28 @@ Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATA
 | Non-symmetric dense eigen coverage | Implemented | Non-symmetric real/complex APIs exist with internal/provider execution, plus balancing and matched left/right eigenvector surfaces. |
 | More optimization primitives | Implemented | Optimization breadth now includes constrained (`projected_gradient_descent_box`), stochastic (`stochastic_gradient_descent`), and quasi-Newton (`bfgs`) paths in addition to first-order baselines. |
 
-### P2: Out of immediate scope (documented future direction)
+### P2: Post-v1 Expansion (documented future direction)
 
 | Capability Group | Current Status | Gap |
 |---|---|---|
-| Tensor/cube-focused higher-rank APIs | Partial | Rank-3 cube primitives plus higher-rank baseline (`last-axis` reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul), `hosvd3`, and binary einsum ergonomics are present; broader tensor algebra depth (higher-order decompositions/networks) is still missing. |
-| GPU/distributed kernels | Partial | Distributed CPU-sharded/tiled baseline now includes static/dynamic scheduling and a feature-gated GPU `f32` matmat kernel path; multi-process orchestration and deeper GPU kernel breadth remain open. |
+| Tensor/cube-focused higher-rank APIs | Implemented | Required v1 tensor surface is complete; future expansion targets broader tensor algebra depth (for example higher-order decompositions/networks). |
+| GPU/distributed kernels | Implemented | Required v1 distributed + bounded GPU surface is complete; future expansion targets deeper GPU dtype/op coverage and multi-process orchestration. |
 | Arrow-aware API surface in `nabled` | Intentionally omitted | Per project decision, Arrow interop belongs to downstream crates. |
 
 ## Sufficiency Verdict
 
-`nabled` is sufficient as a strong ndarray-native dense-core base, but not yet sufficient for the full target scope described for embedding-centric and broad production workflows.
+`nabled` satisfies the current v1 stability scope as an ndarray-native production-ready linalg/ML foundation.
 
-Concretely, the largest missing pieces are now:
-1. Sparse depth beyond the current iterative/preconditioned + direct-LU baseline (broader factorization-grade sparse workflows and sparse algebra ergonomics).
-2. Concrete accelerator/tensor depth beyond the current seams (broader GPU/distributed kernel coverage and higher-rank tensor algebra breadth).
+Primary remaining work is post-v1 hardening and expansion:
+1. Benchmark-driven optimization and outlier remediation.
+2. Advanced tensor algebra depth beyond the v1 contract.
+3. Advanced GPU/distributed breadth beyond the bounded v1 GPU contract.
 
 ## Execution Order Driven by This Matrix
 
-1. Expand sparse depth from baseline primitives into factorization-oriented workflows.
-2. Expand tensor APIs beyond current rank-3 + last-axis `ArrayD` baseline toward broader higher-rank semantics.
-3. Convert accelerator contracts from CPU/feature-gated baseline into concrete GPU/distributed kernels.
+1. Run benchmark-driven optimization passes over hot kernels and regression outliers.
+2. Expand tensor algebra depth beyond the locked v1 surface.
+3. Expand GPU/distributed breadth beyond the locked v1 surface.
 
 ## Definition of Done for This Document
 

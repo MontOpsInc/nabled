@@ -620,10 +620,37 @@ pub fn flatten_cubes(cube: &Array3<f64>) -> Result<Array2<f64>, TensorError> {
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
 pub fn sum_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
+    sum_last_axis_view(&tensor.view())
+}
+
+/// Reduce a tensor view along its last axis by summation.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn sum_last_axis_view(tensor: &ArrayViewD<'_, f64>) -> Result<ArrayD<f64>, TensorError> {
+    validate_tensor_nd_non_empty(tensor)?;
+    let owned = tensor.to_owned();
+    tensor_sum_last_axis_with_backend::<CpuBackend, f64>(&owned)
+        .map_err(map_accelerator_error_to_tensor)
+}
+
+/// Reduce a tensor view along its last axis by summation into `output`.
+///
+/// # Errors
+/// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
+pub fn sum_last_axis_view_into(
+    tensor: &ArrayViewD<'_, f64>,
+    output: &mut ArrayD<f64>,
+) -> Result<(), TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
-    tensor_sum_last_axis_with_backend::<CpuBackend, f64>(tensor)
-        .map_err(map_accelerator_error_to_tensor)
+    let axis = Axis(tensor_view.ndim() - 1);
+    let reduced = tensor_view.sum_axis(axis).into_dyn();
+    if output.shape() != reduced.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    output.assign(&reduced);
+    Ok(())
 }
 
 /// Compute L2 norm along the last axis of a tensor.
@@ -727,6 +754,19 @@ pub fn contract_axes(
     left_axes: &[usize],
     right_axes: &[usize],
 ) -> Result<ArrayD<f64>, TensorError> {
+    contract_axes_view(&left.view(), &right.view(), left_axes, right_axes)
+}
+
+/// Contract two tensor views along explicit axis sets.
+///
+/// # Errors
+/// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
+pub fn contract_axes_view(
+    left: &ArrayViewD<'_, f64>,
+    right: &ArrayViewD<'_, f64>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+) -> Result<ArrayD<f64>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -741,9 +781,11 @@ pub fn contract_axes(
     }
 
     if left_axes.len() == 1 {
+        let left_owned = left.to_owned();
+        let right_owned = right.to_owned();
         return tensor_contract_axes_with_backend::<CpuBackend, f64>(
-            left,
-            right,
+            &left_owned,
+            &right_owned,
             left_axes[0],
             right_axes[0],
         )
@@ -775,6 +817,20 @@ pub fn contract_axes_into(
     right_axes: &[usize],
     output: &mut ArrayD<f64>,
 ) -> Result<(), TensorError> {
+    contract_axes_view_into(&left.view(), &right.view(), left_axes, right_axes, output)
+}
+
+/// Contract two tensor views along explicit axis sets into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
+pub fn contract_axes_view_into(
+    left: &ArrayViewD<'_, f64>,
+    right: &ArrayViewD<'_, f64>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+    output: &mut ArrayD<f64>,
+) -> Result<(), TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -797,6 +853,17 @@ pub fn batched_matmul_last_two(
     left: &ArrayD<f64>,
     right: &ArrayD<f64>,
 ) -> Result<ArrayD<f64>, TensorError> {
+    batched_matmul_last_two_view(&left.view(), &right.view())
+}
+
+/// Perform N-D batched matrix multiplication over the last two axes from views.
+///
+/// # Errors
+/// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
+pub fn batched_matmul_last_two_view(
+    left: &ArrayViewD<'_, f64>,
+    right: &ArrayViewD<'_, f64>,
+) -> Result<ArrayD<f64>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -813,7 +880,9 @@ pub fn batched_matmul_last_two(
         return Err(TensorError::DimensionMismatch);
     }
 
-    tensor_batched_matmul_last_two_with_backend::<CpuBackend, f64>(left, right)
+    let left_owned = left.to_owned();
+    let right_owned = right.to_owned();
+    tensor_batched_matmul_last_two_with_backend::<CpuBackend, f64>(&left_owned, &right_owned)
         .map_err(map_accelerator_error_to_tensor)
 }
 
@@ -833,6 +902,18 @@ pub fn batched_matmul_last_two_into(
     right: &ArrayD<f64>,
     output: &mut ArrayD<f64>,
 ) -> Result<(), TensorError> {
+    batched_matmul_last_two_view_into(&left.view(), &right.view(), output)
+}
+
+/// Perform N-D batched matrix multiplication over the last two axes from views into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
+pub fn batched_matmul_last_two_view_into(
+    left: &ArrayViewD<'_, f64>,
+    right: &ArrayViewD<'_, f64>,
+    output: &mut ArrayD<f64>,
+) -> Result<(), TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -845,10 +926,40 @@ pub fn batched_matmul_last_two_into(
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
 pub fn sum_last_axis_complex(tensor: &ArrayD<Complex64>) -> Result<ArrayD<Complex64>, TensorError> {
+    sum_last_axis_complex_view(&tensor.view())
+}
+
+/// Reduce a complex tensor view along its last axis by summation.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn sum_last_axis_complex_view(
+    tensor: &ArrayViewD<'_, Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
-    tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(tensor)
+    let owned = tensor.to_owned();
+    tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(&owned)
         .map_err(map_accelerator_error_to_tensor)
+}
+
+/// Reduce a complex tensor view along its last axis by summation into `output`.
+///
+/// # Errors
+/// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
+pub fn sum_last_axis_complex_view_into(
+    tensor: &ArrayViewD<'_, Complex64>,
+    output: &mut ArrayD<Complex64>,
+) -> Result<(), TensorError> {
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty_complex(&tensor_view)?;
+    let axis = Axis(tensor_view.ndim() - 1);
+    let reduced = tensor_view.sum_axis(axis).into_dyn();
+    if output.shape() != reduced.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    output.assign(&reduced);
+    Ok(())
 }
 
 /// Compute L2 norm along the last axis of a complex tensor.
@@ -958,6 +1069,19 @@ pub fn contract_axes_complex(
     left_axes: &[usize],
     right_axes: &[usize],
 ) -> Result<ArrayD<Complex64>, TensorError> {
+    contract_axes_complex_view(&left.view(), &right.view(), left_axes, right_axes)
+}
+
+/// Contract two complex tensor views along explicit axis sets.
+///
+/// # Errors
+/// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
+pub fn contract_axes_complex_view(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+) -> Result<ArrayD<Complex64>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty_complex(&left_view)?;
@@ -972,9 +1096,11 @@ pub fn contract_axes_complex(
     }
 
     if left_axes.len() == 1 {
+        let left_owned = left.to_owned();
+        let right_owned = right.to_owned();
         return tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
-            left,
-            right,
+            &left_owned,
+            &right_owned,
             left_axes[0],
             right_axes[0],
         )
@@ -1006,6 +1132,20 @@ pub fn contract_axes_complex_into(
     right_axes: &[usize],
     output: &mut ArrayD<Complex64>,
 ) -> Result<(), TensorError> {
+    contract_axes_complex_view_into(&left.view(), &right.view(), left_axes, right_axes, output)
+}
+
+/// Contract two complex tensor views along explicit axis sets into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
+pub fn contract_axes_complex_view_into(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
+    left_axes: &[usize],
+    right_axes: &[usize],
+    output: &mut ArrayD<Complex64>,
+) -> Result<(), TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty_complex(&left_view)?;
@@ -1028,6 +1168,17 @@ pub fn batched_matmul_last_two_complex(
     left: &ArrayD<Complex64>,
     right: &ArrayD<Complex64>,
 ) -> Result<ArrayD<Complex64>, TensorError> {
+    batched_matmul_last_two_complex_view(&left.view(), &right.view())
+}
+
+/// Perform N-D batched complex matrix multiplication over the last two axes from views.
+///
+/// # Errors
+/// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
+pub fn batched_matmul_last_two_complex_view(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty_complex(&left_view)?;
@@ -1044,7 +1195,9 @@ pub fn batched_matmul_last_two_complex(
         return Err(TensorError::DimensionMismatch);
     }
 
-    tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(left, right)
+    let left_owned = left.to_owned();
+    let right_owned = right.to_owned();
+    tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(&left_owned, &right_owned)
         .map_err(map_accelerator_error_to_tensor)
 }
 
@@ -1062,6 +1215,19 @@ pub fn batched_matmul_last_two_complex(
 pub fn batched_matmul_last_two_complex_into(
     left: &ArrayD<Complex64>,
     right: &ArrayD<Complex64>,
+    output: &mut ArrayD<Complex64>,
+) -> Result<(), TensorError> {
+    batched_matmul_last_two_complex_view_into(&left.view(), &right.view(), output)
+}
+
+/// Perform N-D batched complex matrix multiplication over the last two axes from views into
+/// `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
+pub fn batched_matmul_last_two_complex_view_into(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
     output: &mut ArrayD<Complex64>,
 ) -> Result<(), TensorError> {
     let left_view = left.view();
@@ -1688,6 +1854,26 @@ mod tests {
     }
 
     #[test]
+    fn sum_last_axis_view_and_into_match_allocating_path() {
+        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
+            1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
+        ])
+        .unwrap();
+
+        let allocating = sum_last_axis(&tensor).unwrap();
+        let viewed = sum_last_axis_view(&tensor.view()).unwrap();
+        let mut output = ArrayD::<f64>::zeros(IxDyn(&[2, 2]));
+        sum_last_axis_view_into(&tensor.view(), &mut output).unwrap();
+
+        assert_eq!(allocating.shape(), viewed.shape());
+        assert_eq!(allocating.shape(), output.shape());
+        for ((lhs, rhs), into_value) in allocating.iter().zip(viewed.iter()).zip(output.iter()) {
+            assert!((lhs - rhs).abs() < 1e-12);
+            assert!((lhs - into_value).abs() < 1e-12);
+        }
+    }
+
+    #[test]
     fn batched_dot_last_axis_matches_manual() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
             1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
@@ -1728,6 +1914,29 @@ mod tests {
         let normalized_norms = l2_norm_last_axis_complex(&normalized).unwrap();
         for value in &normalized_norms {
             assert!((value - 1.0).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn sum_last_axis_complex_view_and_into_match_allocating_path() {
+        let tensor = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, -1.0),
+        ])
+        .unwrap();
+
+        let allocating = sum_last_axis_complex(&tensor).unwrap();
+        let viewed = sum_last_axis_complex_view(&tensor.view()).unwrap();
+        let mut output = ArrayD::<Complex64>::zeros(IxDyn(&[1, 2]));
+        sum_last_axis_complex_view_into(&tensor.view(), &mut output).unwrap();
+
+        assert_eq!(allocating.shape(), viewed.shape());
+        assert_eq!(allocating.shape(), output.shape());
+        for ((lhs, rhs), into_value) in allocating.iter().zip(viewed.iter()).zip(output.iter()) {
+            assert!((*lhs - *rhs).norm() < 1e-12);
+            assert!((*lhs - *into_value).norm() < 1e-12);
         }
     }
 
@@ -1811,6 +2020,27 @@ mod tests {
     }
 
     #[test]
+    fn contract_axes_view_variants_match_allocating_path() {
+        let left =
+            ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), (0..12).map(f64::from).collect()).unwrap();
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 4]),
+            (0..24).map(|value| f64::from(value) * 0.5).collect(),
+        )
+        .unwrap();
+
+        let allocating = contract_axes(&left, &right, &[2], &[1]).unwrap();
+        let viewed = contract_axes_view(&left.view(), &right.view(), &[2], &[1]).unwrap();
+        let mut into = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 2, 4]));
+        contract_axes_view_into(&left.view(), &right.view(), &[2], &[1], &mut into).unwrap();
+
+        for ((lhs, rhs), into_value) in allocating.iter().zip(viewed.iter()).zip(into.iter()) {
+            assert!((lhs - rhs).abs() < 1e-12);
+            assert!((lhs - into_value).abs() < 1e-12);
+        }
+    }
+
+    #[test]
     fn batched_matmul_last_two_matches_cube_matmat() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
             1.0, 2.0, 0.0, 0.0, 1.0, 1.0, //
@@ -1856,6 +2086,27 @@ mod tests {
     }
 
     #[test]
+    fn batched_matmul_last_two_view_variants_match_allocating_path() {
+        let left =
+            ArrayD::from_shape_vec(IxDyn(&[2, 2, 2, 3]), (0..24).map(f64::from).collect()).unwrap();
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 3, 2]),
+            (0..24).map(|value| f64::from(value) * 0.25).collect(),
+        )
+        .unwrap();
+
+        let allocating = batched_matmul_last_two(&left, &right).unwrap();
+        let viewed = batched_matmul_last_two_view(&left.view(), &right.view()).unwrap();
+        let mut into = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 2, 2]));
+        batched_matmul_last_two_view_into(&left.view(), &right.view(), &mut into).unwrap();
+
+        for ((lhs, rhs), into_value) in allocating.iter().zip(viewed.iter()).zip(into.iter()) {
+            assert!((lhs - rhs).abs() < 1e-12);
+            assert!((lhs - into_value).abs() < 1e-12);
+        }
+    }
+
+    #[test]
     fn complex_contract_and_batched_matmul_paths_work() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
             Complex64::new(1.0, 1.0),
@@ -1884,6 +2135,56 @@ mod tests {
         batched_matmul_last_two_complex_into(&left_batch, &right_batch, &mut into).unwrap();
         for (lhs, rhs) in matmul.iter().zip(into.iter()) {
             assert!((*lhs - *rhs).norm() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn complex_contract_and_batched_matmul_view_variants_match() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, -1.0),
+            Complex64::new(1.0, 2.0),
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(-1.0, 1.0),
+        ])
+        .unwrap();
+
+        let allocating_contract = contract_axes_complex(&left, &right, &[2], &[1]).unwrap();
+        let viewed_contract =
+            contract_axes_complex_view(&left.view(), &right.view(), &[2], &[1]).unwrap();
+        let mut contract_into = ArrayD::<Complex64>::zeros(IxDyn(&[1, 2, 1, 2]));
+        contract_axes_complex_view_into(
+            &left.view(),
+            &right.view(),
+            &[2],
+            &[1],
+            &mut contract_into,
+        )
+        .unwrap();
+        for ((lhs, rhs), into_value) in
+            allocating_contract.iter().zip(viewed_contract.iter()).zip(contract_into.iter())
+        {
+            assert!((*lhs - *rhs).norm() < 1e-12);
+            assert!((*lhs - *into_value).norm() < 1e-12);
+        }
+
+        let allocating_matmul = batched_matmul_last_two_complex(&left, &right).unwrap();
+        let viewed_matmul =
+            batched_matmul_last_two_complex_view(&left.view(), &right.view()).unwrap();
+        let mut matmul_into = ArrayD::<Complex64>::zeros(IxDyn(&[1, 2, 2]));
+        batched_matmul_last_two_complex_view_into(&left.view(), &right.view(), &mut matmul_into)
+            .unwrap();
+        for ((lhs, rhs), into_value) in
+            allocating_matmul.iter().zip(viewed_matmul.iter()).zip(matmul_into.iter())
+        {
+            assert!((*lhs - *rhs).norm() < 1e-12);
+            assert!((*lhs - *into_value).norm() < 1e-12);
         }
     }
 

@@ -15,8 +15,6 @@ mod tests {
         AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend, execute,
     };
     use crate::accelerator::cpu::{for_each_row_chunk, matmat_accelerated, matmat_serial};
-    #[cfg(feature = "accelerator-wgpu")]
-    use crate::accelerator::dispatch::matmat_with_backend_f32;
     use crate::accelerator::dispatch::{
         batched_matmat_with_backend, batched_row_matvec_with_backend, dot_with_backend,
         matmat_with_backend, matvec_with_backend, pairwise_cosine_with_backend,
@@ -25,6 +23,10 @@ mod tests {
         tensor_batched_matmul_last_two_with_backend, tensor_contract_axes_with_backend,
         tensor_sum_last_axis_with_backend, triangular_solve_mat_with_backend,
         triangular_solve_vec_with_backend,
+    };
+    #[cfg(feature = "accelerator-wgpu")]
+    use crate::accelerator::dispatch::{
+        batched_matmat_with_backend_f32, matmat_with_backend_f32, matvec_with_backend_f32,
     };
     use crate::accelerator::distributed::{
         DistributedConfig, DistributedSchedule, matmat_distributed, matmat_distributed_tiled,
@@ -411,6 +413,99 @@ mod tests {
             }
             Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
         }
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
+    fn gpu_matvec_matches_cpu_or_reports_unavailable_device() {
+        let matrix =
+            Array2::from_shape_vec((2, 3), vec![1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
+        let vector = Array1::from_vec(vec![1.0_f32, 2.0, 3.0]);
+        let cpu = matvec_with_backend_f32::<CpuBackend>(&matrix, &vector).unwrap();
+        match matvec_with_backend_f32::<CudaBackend>(&matrix, &vector) {
+            Ok(gpu) => {
+                for i in 0..cpu.len() {
+                    assert!((cpu[i] - gpu[i]).abs() < 1e-4);
+                }
+            }
+            Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
+        }
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
+    fn gpu_batched_matmat_matches_cpu_or_reports_unavailable_device() {
+        let left = Array3::from_shape_vec((2, 2, 2), vec![
+            1.0_f32, 2.0, 3.0, 4.0, //
+            5.0, 6.0, 7.0, 8.0,
+        ])
+        .unwrap();
+        let right = Array3::from_shape_vec((2, 2, 2), vec![
+            1.0_f32, 0.0, 0.0, 1.0, //
+            2.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let cpu = batched_matmat_with_backend_f32::<CpuBackend>(&left, &right).unwrap();
+        match batched_matmat_with_backend_f32::<CudaBackend>(&left, &right) {
+            Ok(gpu) => {
+                for b in 0..cpu.dim().0 {
+                    for r in 0..cpu.dim().1 {
+                        for c in 0..cpu.dim().2 {
+                            assert!((cpu[[b, r, c]] - gpu[[b, r, c]]).abs() < 1e-4);
+                        }
+                    }
+                }
+            }
+            Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
+        }
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
+    fn gpu_tensor_batched_matmul_matches_cpu_or_reports_unavailable_device() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
+            1.0_f32, 2.0, 3.0, 4.0, //
+            5.0, 6.0, 7.0, 8.0,
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
+            1.0_f32, 0.0, 0.0, 1.0, //
+            2.0, 1.0, 1.0, 2.0,
+        ])
+        .unwrap();
+        let cpu =
+            tensor_batched_matmul_last_two_with_backend::<CpuBackend, f32>(&left, &right).unwrap();
+        match tensor_batched_matmul_last_two_with_backend::<CudaBackend, f32>(&left, &right) {
+            Ok(gpu) => {
+                for (lhs, rhs) in cpu.iter().zip(gpu.iter()) {
+                    assert!((lhs - rhs).abs() < 1e-4);
+                }
+            }
+            Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
+        }
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
+    fn gpu_tensor_batched_matmul_f64_is_explicitly_unsupported() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![1.0_f64, 2.0, 3.0, 4.0]).unwrap();
+        let right =
+            ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![1.0_f64, 0.0, 0.0, 1.0]).unwrap();
+
+        let result = tensor_batched_matmul_last_two_with_backend::<CudaBackend, f64>(&left, &right);
+        assert!(matches!(result, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
+    fn gpu_tensor_contract_and_reduction_are_explicitly_unsupported() {
+        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![1.0_f32, 2.0, 3.0, 4.0]).unwrap();
+        let contract =
+            tensor_contract_axes_with_backend::<CudaBackend, f32>(&tensor, &tensor, 1, 0);
+        let reduced = tensor_sum_last_axis_with_backend::<CudaBackend, f32>(&tensor);
+
+        assert!(matches!(contract, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+        assert!(matches!(reduced, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
     }
 
     #[cfg(feature = "accelerator-rayon")]

@@ -1,5 +1,5 @@
 LOG := env('RUST_LOG', '')
-features := 'blas openblas-system accelerator-rayon'
+features := 'blas openblas-system accelerator-rayon accelerator-wgpu'
 provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
 provider_features := 'openblas-system'
 provider_bench_features := 'openblas-system'
@@ -256,6 +256,8 @@ checks:
     just -f {{ justfile() }} check-provider-clippy
     just -f {{ justfile() }} test
     just -f {{ justfile() }} test-provider
+    just -f {{ justfile() }} check-accelerator
+    just -f {{ justfile() }} test-accelerator
     just -f {{ justfile() }} coverage-check
     just -f {{ justfile() }} check-provider
     just -f {{ justfile() }} backend-capability-report
@@ -268,6 +270,19 @@ check-provider-clippy:
 check-provider:
     just -f {{ justfile() }} check-provider-clippy
     {{ provider_env_prefix }} cargo +stable check --workspace --features {{ provider_features }} --all-targets
+
+# Verify accelerator feature permutations compile under stable.
+check-accelerator:
+    cargo +stable check --workspace --no-default-features --features accelerator-rayon --all-targets
+    cargo +stable check --workspace --no-default-features --features accelerator-wgpu --all-targets
+    {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "openblas-system accelerator-rayon" --all-targets
+    {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "openblas-system accelerator-wgpu" --all-targets
+
+# Verify accelerator contract tests in feature-gated paths.
+test-accelerator:
+    cargo +stable test -p nabled-linalg --no-default-features --features accelerator-rayon --lib accelerated_matmat_matches_serial -- --nocapture --show-output
+    cargo +stable test -p nabled-linalg --no-default-features --features accelerator-wgpu --lib gpu_ -- --nocapture --show-output
+    {{ provider_env_prefix }} cargo +stable test -p nabled-linalg --no-default-features --features "openblas-system accelerator-wgpu" --lib gpu_ -- --nocapture --show-output
 
 # Initialize development environment for maintainers
 init-dev:

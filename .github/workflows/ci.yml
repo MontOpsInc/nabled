@@ -81,6 +81,13 @@ jobs:
     - name: Verify provider kernel path compiles
       run: cargo +stable check --workspace --profile ci --features openblas-system --all-targets
 
+    - name: Verify accelerator feature matrix compiles
+      run: |
+        cargo +stable check --workspace --profile ci --no-default-features --features accelerator-rayon --all-targets
+        cargo +stable check --workspace --profile ci --no-default-features --features accelerator-wgpu --all-targets
+        cargo +stable check --workspace --profile ci --no-default-features --features "openblas-system accelerator-rayon" --all-targets
+        cargo +stable check --workspace --profile ci --no-default-features --features "openblas-system accelerator-wgpu" --all-targets
+
     - name: Generate backend capability reports
       run: |
         cargo +stable run -p nabled --bin backend_capability_report -- --output-dir coverage/backend-capabilities/baseline
@@ -139,6 +146,12 @@ jobs:
     - name: Run provider unit tests
       run: |
         cargo test --workspace --lib --profile ci --features openblas-system -- --nocapture --show-output
+
+    - name: Run accelerator contract tests
+      run: |
+        cargo test -p nabled-linalg --profile ci --no-default-features --features accelerator-rayon --lib accelerated_matmat_matches_serial -- --nocapture --show-output
+        cargo test -p nabled-linalg --profile ci --no-default-features --features accelerator-wgpu --lib gpu_ -- --nocapture --show-output
+        cargo test -p nabled-linalg --profile ci --no-default-features --features "openblas-system accelerator-wgpu" --lib gpu_ -- --nocapture --show-output
 
   test-integration:
     name: Integration Tests

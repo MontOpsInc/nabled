@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-03-01
+Last updated: 2026-03-02
 
 ## Purpose
 
@@ -23,12 +23,21 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 3. `nabled-linalg::internal::qr_gram_schmidt` now reuses a scratch vector instead of allocating per-column temporaries.
 4. `nabled-linalg::qr::decompose_complex_internal` now reuses a scratch complex vector instead of allocating per-column temporaries.
 5. `nabled-linalg::svd::decompose_internal` and `decompose_complex_internal` now avoid temporary owned right-singular column materializations where view math suffices.
+6. Kernel-routing regression fixes restored no-hidden-allocation behavior for `*_into` paths in `vector`, `sparse`, `triangular`, and `tensor` domains.
 
 ### Unavoidable internal materializations
 
 1. In-place decomposition kernels (for example LU/Schur/Polar and some Eigen paths) require one owned working matrix when input is provided as an immutable view.
 2. Provider-backed calls through `ndarray-linalg` can require owned arrays due provider trait/method signatures (not wrapper-level conversion policy).
 3. Shape-changing outputs (for example reduced/truncated decomposition outputs) allocate result arrays by API contract.
+
+## V1 No-Surprises Audit Status
+
+Audit status: passed for v1 required surface.
+
+1. Wrapper-level hidden allocations in `*_into` APIs have been removed from audited hot paths.
+2. Remaining unavoidable allocations are algorithm/provider constrained and documented.
+3. Feature-gated execution behavior (provider/backend/kernel) is now covered by explicit CI/local matrix checks.
 
 ## Enforcement
 

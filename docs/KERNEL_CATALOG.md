@@ -62,3 +62,13 @@ Kernel-model completion for v1 requires all catalog entries above to be `Wired`.
 3. Domain APIs may use both axes in one flow, but kernels must not trigger provider selection directly.
 4. Public APIs stay backend/provider agnostic; no provider/backend naming leaks into stable API names.
 5. All execution uses ndarray-native data at API boundaries.
+
+## V1 GPU Scope Note
+
+Kernel wiring status and GPU support breadth are distinct.
+
+For v1:
+
+1. Kernel families are fully wired (`Wired` above).
+2. CUDA backend support is intentionally bounded and explicit (supported vs unsupported paths are contract-tested).
+3. The normative support matrix is defined in `docs/V1_STABILITY.md`.
