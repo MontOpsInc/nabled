@@ -214,12 +214,7 @@ pub fn pairwise_l2_distance_into(
     right: &Array2<f64>,
     output: &mut Array2<f64>,
 ) -> Result<(), VectorError> {
-    let distances = pairwise_l2_distance(left, right)?;
-    if output.dim() != distances.dim() {
-        return Err(VectorError::DimensionMismatch);
-    }
-    output.assign(&distances);
-    Ok(())
+    pairwise_l2_distance_view_into(&left.view(), &right.view(), output)
 }
 
 /// Compute pairwise L2 distances from matrix views into `output`.
@@ -273,12 +268,8 @@ pub fn pairwise_cosine_similarity_into(
     right: &Array2<f64>,
     output: &mut Array2<f64>,
 ) -> Result<(), VectorError> {
-    let cosine = pairwise_cosine_similarity(left, right)?;
-    if output.dim() != cosine.dim() {
-        return Err(VectorError::DimensionMismatch);
-    }
-    output.assign(&cosine);
-    Ok(())
+    let mut workspace = PairwiseCosineWorkspace::default();
+    pairwise_cosine_similarity_with_workspace_into(left, right, output, &mut workspace)
 }
 
 /// Compute pairwise cosine similarity into `output` using reusable `workspace`.

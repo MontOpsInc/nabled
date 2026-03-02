@@ -775,12 +775,11 @@ pub fn contract_axes_into(
     right_axes: &[usize],
     output: &mut ArrayD<f64>,
 ) -> Result<(), TensorError> {
-    let contracted = contract_axes(left, right, left_axes, right_axes)?;
-    if output.shape() != contracted.shape() {
-        return Err(TensorError::DimensionMismatch);
-    }
-    output.assign(&contracted);
-    Ok(())
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, output)
 }
 
 /// Perform N-D batched matrix multiplication over the last two axes.
@@ -834,12 +833,11 @@ pub fn batched_matmul_last_two_into(
     right: &ArrayD<f64>,
     output: &mut ArrayD<f64>,
 ) -> Result<(), TensorError> {
-    let batched = batched_matmul_last_two(left, right)?;
-    if output.shape() != batched.shape() {
-        return Err(TensorError::DimensionMismatch);
-    }
-    output.assign(&batched);
-    Ok(())
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
 }
 
 /// Reduce a complex tensor along its last axis by summation.
@@ -1008,12 +1006,11 @@ pub fn contract_axes_complex_into(
     right_axes: &[usize],
     output: &mut ArrayD<Complex64>,
 ) -> Result<(), TensorError> {
-    let contracted = contract_axes_complex(left, right, left_axes, right_axes)?;
-    if output.shape() != contracted.shape() {
-        return Err(TensorError::DimensionMismatch);
-    }
-    output.assign(&contracted);
-    Ok(())
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, output)
 }
 
 /// Perform N-D batched complex matrix multiplication over the last two axes.
@@ -1067,12 +1064,11 @@ pub fn batched_matmul_last_two_complex_into(
     right: &ArrayD<Complex64>,
     output: &mut ArrayD<Complex64>,
 ) -> Result<(), TensorError> {
-    let batched = batched_matmul_last_two_complex(left, right)?;
-    if output.shape() != batched.shape() {
-        return Err(TensorError::DimensionMismatch);
-    }
-    output.assign(&batched);
-    Ok(())
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+    batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
 }
 
 fn parse_einsum_two_operands(expression: &str) -> Result<EinsumOperands, TensorError> {

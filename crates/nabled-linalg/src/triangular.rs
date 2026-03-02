@@ -274,15 +274,7 @@ pub fn solve_lower_into<T>(
 where
     T: Float,
 {
-    validate_real_triangular_system(matrix, rhs.len())?;
-    if output.len() != rhs.len() {
-        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
-    }
-    validate_non_singular_diagonal(matrix)?;
-    let solution = triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, true, false)
-        .map_err(map_accelerator_error)?;
-    output.assign(&solution);
-    Ok(())
+    solve_lower_into_internal(&matrix.view(), &rhs.view(), output)
 }
 
 /// Solve `Ux = b` with back substitution.
@@ -327,15 +319,7 @@ pub fn solve_upper_into<T>(
 where
     T: Float,
 {
-    validate_real_triangular_system(matrix, rhs.len())?;
-    if output.len() != rhs.len() {
-        return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
-    }
-    validate_non_singular_diagonal(matrix)?;
-    let solution = triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, false, false)
-        .map_err(map_accelerator_error)?;
-    output.assign(&solution);
-    Ok(())
+    solve_upper_into_internal(&matrix.view(), &rhs.view(), output)
 }
 
 /// Solve `LX = B` with forward substitution.
@@ -367,11 +351,24 @@ pub fn solve_lower_matrix_into<T>(
 where
     T: Float,
 {
-    let solution = solve_lower_matrix(matrix, rhs)?;
-    if output.dim() != solution.dim() {
+    validate_real_triangular_matrix_system(matrix, rhs)?;
+    if output.dim() != rhs.dim() {
         return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
     }
-    output.assign(&solution);
+    let n = matrix.nrows();
+    for col in 0..rhs.ncols() {
+        for i in 0..n {
+            let mut sum = rhs[[i, col]];
+            for j in 0..i {
+                sum = sum - matrix[[i, j]] * output[[j, col]];
+            }
+            let pivot = matrix[[i, i]];
+            if pivot == T::zero() {
+                return Err(TriangularError::Singular);
+            }
+            output[[i, col]] = sum / pivot;
+        }
+    }
     Ok(())
 }
 
@@ -404,11 +401,25 @@ pub fn solve_upper_matrix_into<T>(
 where
     T: Float,
 {
-    let solution = solve_upper_matrix(matrix, rhs)?;
-    if output.dim() != solution.dim() {
+    validate_real_triangular_matrix_system(matrix, rhs)?;
+    if output.dim() != rhs.dim() {
         return Err(TriangularError::Shape(ShapeError::DimensionMismatch));
     }
-    output.assign(&solution);
+    let n = matrix.nrows();
+    for col in 0..rhs.ncols() {
+        for i_rev in 0..n {
+            let i = n - 1 - i_rev;
+            let mut sum = rhs[[i, col]];
+            for j in (i + 1)..n {
+                sum = sum - matrix[[i, j]] * output[[j, col]];
+            }
+            let pivot = matrix[[i, i]];
+            if pivot == T::zero() {
+                return Err(TriangularError::Singular);
+            }
+            output[[i, col]] = sum / pivot;
+        }
+    }
     Ok(())
 }
 

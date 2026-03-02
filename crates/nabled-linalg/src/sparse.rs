@@ -1677,11 +1677,20 @@ pub fn matmat_dense_into(
     dense: &Array2<f64>,
     output: &mut Array2<f64>,
 ) -> Result<(), SparseError> {
-    let product = matmat_dense(matrix, dense)?;
-    if output.dim() != product.dim() {
+    if dense.nrows() != matrix.ncols || output.dim() != (matrix.nrows, dense.ncols()) {
         return Err(SparseError::DimensionMismatch);
     }
-    output.assign(&product);
+
+    output.fill(0.0);
+    for row in 0..matrix.nrows {
+        for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+            let col = matrix.indices[entry];
+            let value = matrix.data[entry];
+            for dense_col in 0..dense.ncols() {
+                output[[row, dense_col]] += value * dense[[col, dense_col]];
+            }
+        }
+    }
     Ok(())
 }
 
