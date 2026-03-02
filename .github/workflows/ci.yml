@@ -211,13 +211,13 @@ jobs:
         cargo llvm-cov --workspace --exclude nabled --lib --tests --no-default-features --no-report
         cargo llvm-cov --workspace --exclude nabled --lib --tests --no-default-features --features openblas-system --no-report
         cargo llvm-cov report --summary-only --fail-under-lines 90
-        cargo llvm-cov report --lcov --output-path coverage/lcov.info
+        cargo llvm-cov report --lcov --output-path lcov.info
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: coverage/lcov.info
+        files: lcov.info
         fail_ci_if_error: true
         disable_telem: true
 
