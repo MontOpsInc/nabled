@@ -62,6 +62,9 @@ impl IntoNabledError for AcceleratorError {
             AcceleratorError::InvalidWorkerCount => {
                 NabledError::InvalidInput("worker count must be greater than zero".to_string())
             }
+            AcceleratorError::InvalidTileSize => {
+                NabledError::InvalidInput("tile dimensions must be greater than zero".to_string())
+            }
             AcceleratorError::DimensionMismatch => {
                 NabledError::Shape(ShapeError::DimensionMismatch)
             }
@@ -377,6 +380,10 @@ mod tests {
         ));
         assert!(matches!(
             AcceleratorError::InvalidWorkerCount.into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            AcceleratorError::InvalidTileSize.into_nabled_error(),
             NabledError::InvalidInput(_)
         ));
         assert!(matches!(

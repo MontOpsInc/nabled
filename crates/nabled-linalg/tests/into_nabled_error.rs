@@ -251,6 +251,10 @@ fn maps_vector_errors() {
         NabledError::InvalidInput("worker count must be greater than zero".to_string())
     );
     assert_eq!(
+        AcceleratorError::InvalidTileSize.into_nabled_error(),
+        NabledError::InvalidInput("tile dimensions must be greater than zero".to_string())
+    );
+    assert_eq!(
         AcceleratorError::DimensionMismatch.into_nabled_error(),
         NabledError::Shape(ShapeError::DimensionMismatch)
     );

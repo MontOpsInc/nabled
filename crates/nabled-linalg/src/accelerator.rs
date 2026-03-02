@@ -26,6 +26,8 @@ pub enum AcceleratorError {
     InvalidChunkSize,
     /// Invalid distributed worker count.
     InvalidWorkerCount,
+    /// Invalid tile geometry for tiled distributed kernels.
+    InvalidTileSize,
     /// Matrix dimensions are incompatible.
     DimensionMismatch,
     /// Optional accelerator feature was not enabled at compile time.
@@ -43,6 +45,9 @@ impl fmt::Display for AcceleratorError {
             AcceleratorError::InvalidChunkSize => write!(f, "chunk size must be greater than zero"),
             AcceleratorError::InvalidWorkerCount => {
                 write!(f, "worker count must be greater than zero")
+            }
+            AcceleratorError::InvalidTileSize => {
+                write!(f, "tile dimensions must be greater than zero")
             }
             AcceleratorError::DimensionMismatch => {
                 write!(f, "matrix dimensions are incompatible")
@@ -249,6 +254,100 @@ pub fn matmat_distributed(
     Ok(output)
 }
 
+/// Compute matrix-matrix product with tiled distributed CPU execution.
+///
+/// Work is split into `(tile_rows, tile_cols)` output tiles and scheduled
+/// over a fixed number of workers.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible, worker/tile config is invalid,
+/// or if a worker panics.
+pub fn matmat_distributed_tiled(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+    workers: usize,
+    tile_rows: usize,
+    tile_cols: usize,
+) -> Result<Array2<f64>, AcceleratorError> {
+    if left.ncols() != right.nrows() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+    if workers == 0 {
+        return Err(AcceleratorError::InvalidWorkerCount);
+    }
+    if tile_rows == 0 || tile_cols == 0 {
+        return Err(AcceleratorError::InvalidTileSize);
+    }
+
+    let rows = left.nrows();
+    let cols = right.ncols();
+    let inner = left.ncols();
+    let mut tiles = Vec::new();
+    let mut row_start = 0_usize;
+    while row_start < rows {
+        let row_end = (row_start + tile_rows).min(rows);
+        let mut col_start = 0_usize;
+        while col_start < cols {
+            let col_end = (col_start + tile_cols).min(cols);
+            tiles.push((row_start, row_end, col_start, col_end));
+            col_start = col_end;
+        }
+        row_start = row_end;
+    }
+
+    if tiles.is_empty() {
+        return Ok(Array2::<f64>::zeros((rows, cols)));
+    }
+
+    let worker_count = workers.min(tiles.len());
+    let mut partials = Vec::new();
+    thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(worker_count);
+        for worker_id in 0..worker_count {
+            let left_ref = left;
+            let right_ref = right;
+            let tiles_ref = &tiles;
+            handles.push(scope.spawn(move || {
+                let mut local = Vec::new();
+                let mut tile_id = worker_id;
+                while tile_id < tiles_ref.len() {
+                    let (r0, r1, c0, c1) = tiles_ref[tile_id];
+                    let mut block = Array2::<f64>::zeros((r1 - r0, c1 - c0));
+                    for local_row in 0..(r1 - r0) {
+                        let row = r0 + local_row;
+                        for k in 0..inner {
+                            let lhs = left_ref[[row, k]];
+                            for local_col in 0..(c1 - c0) {
+                                let col = c0 + local_col;
+                                block[[local_row, local_col]] += lhs * right_ref[[k, col]];
+                            }
+                        }
+                    }
+                    local.push((r0, c0, block));
+                    tile_id += worker_count;
+                }
+                local
+            }));
+        }
+
+        for handle in handles {
+            match handle.join() {
+                Ok(worker_tiles) => partials.extend(worker_tiles),
+                Err(_) => return Err(AcceleratorError::WorkerPanicked),
+            }
+        }
+        Ok::<(), AcceleratorError>(())
+    })?;
+
+    let mut output = Array2::<f64>::zeros((rows, cols));
+    for (row_start, col_start, block) in partials {
+        let row_end = row_start + block.nrows();
+        let col_end = col_start + block.ncols();
+        output.slice_mut(s![row_start..row_end, col_start..col_end]).assign(&block);
+    }
+    Ok(output)
+}
+
 /// Compute matrix-matrix product using compile-time backend dispatch.
 ///
 /// - `CpuBackend`: serial kernel
@@ -410,6 +509,37 @@ mod tests {
         let invalid_chunks =
             matmat_distributed(&left, &right, DistributedConfig { workers: 1, chunk_rows: 0 });
         assert!(matches!(invalid_chunks, Err(AcceleratorError::InvalidChunkSize)));
+    }
+
+    #[test]
+    fn distributed_tiled_matmat_matches_serial() {
+        let left =
+            Array2::from_shape_vec((7, 5), (0..35).map(|v| f64::from(v) * 0.25).collect()).unwrap();
+        let right =
+            Array2::from_shape_vec((5, 6), (0..30).map(|v| f64::from(v) * -0.5).collect()).unwrap();
+
+        let serial = matmat_serial(&left, &right).unwrap();
+        let tiled = matmat_distributed_tiled(&left, &right, 3, 2, 3).unwrap();
+        for row in 0..serial.nrows() {
+            for col in 0..serial.ncols() {
+                assert!((serial[[row, col]] - tiled[[row, col]]).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn distributed_tiled_matmat_rejects_invalid_config() {
+        let left = Array2::<f64>::eye(2);
+        let right = Array2::<f64>::eye(2);
+
+        let invalid_workers = matmat_distributed_tiled(&left, &right, 0, 1, 1);
+        assert!(matches!(invalid_workers, Err(AcceleratorError::InvalidWorkerCount)));
+
+        let invalid_rows = matmat_distributed_tiled(&left, &right, 1, 0, 1);
+        assert!(matches!(invalid_rows, Err(AcceleratorError::InvalidTileSize)));
+
+        let invalid_cols = matmat_distributed_tiled(&left, &right, 1, 1, 0);
+        assert!(matches!(invalid_cols, Err(AcceleratorError::InvalidTileSize)));
     }
 
     #[test]

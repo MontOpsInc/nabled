@@ -55,6 +55,8 @@ Workspace migration for library domains is complete.
 47. Sparse factorization depth now includes ILDL(0) and ILDL0-preconditioned GMRES/BiCGSTAB (direct + factorization-reuse APIs), with unit tests and sparse benchmark coverage.
 48. Tensor higher-rank algebra baseline now includes axis permutation, explicit-axis contraction, and N-D batched last-two matmul across real/complex APIs, with unit tests and tensor benchmark coverage.
 49. Accelerator baseline now includes concrete distributed row-sharded matmat, backend-dispatched distributed execution, and dedicated accelerator benchmark coverage in smoke/report pipelines.
+50. Accelerator distributed depth now includes tiled scheduling (`matmat_distributed_tiled`) with explicit tile validation and coverage in tests/benchmarks.
+51. Sparse factorization depth now includes ILU(k) (`ILUKConfig`, factorization/apply APIs) with ILUK-preconditioned GMRES/BiCGSTAB (direct, factorization-reuse, and multi-RHS workflows), plus sparse benchmark coverage.
 
 ## Current Code Ownership
 

@@ -203,6 +203,23 @@ fn tier_b_domains() -> Vec<DomainCapability> {
                                paths are available in internal and provider-enabled builds; \
                                Taylor paths remain baseline by design)",
         },
+        DomainCapability {
+            tier:             "tier_b",
+            domain:           "sparse",
+            baseline_kernels: true,
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/sparse.rs (CSR/CSC/COO, iterative \
+                               solvers, and ILU0/IC0/ILUT/ILUK/ILDL0 preconditioned workflows)",
+        },
+        DomainCapability {
+            tier:             "tier_b",
+            domain:           "accelerator",
+            baseline_kernels: true,
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/accelerator.rs (serial CPU + distributed \
+                               row-sharded and tiled kernels; CUDA remains explicit unsupported \
+                               placeholder)",
+        },
     ]
 }
 

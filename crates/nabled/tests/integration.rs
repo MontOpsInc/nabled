@@ -418,10 +418,13 @@ fn assert_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
         chunk_rows: 1,
     })
     .unwrap();
+    let distributed_tiled =
+        accelerator::matmat_distributed_tiled(dense, dense_rhs, 2, 1, 1).unwrap();
     assert_eq!(serial.dim(), distributed.dim());
     for row in 0..serial.nrows() {
         for col in 0..serial.ncols() {
             assert_relative_eq!(serial[[row, col]], distributed[[row, col]], epsilon = 1e-12);
+            assert_relative_eq!(serial[[row, col]], distributed_tiled[[row, col]], epsilon = 1e-12);
         }
     }
 

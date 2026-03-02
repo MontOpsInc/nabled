@@ -54,6 +54,22 @@ fn benchmark_accelerator(c: &mut Criterion) {
                 },
             );
 
+            _ = group.bench_with_input(
+                BenchmarkId::new("matmat_distributed_tiled", &id),
+                &size,
+                |bench, _| {
+                    bench.iter(|| {
+                        accelerator::matmat_distributed_tiled(
+                            black_box(&left),
+                            black_box(&right),
+                            4,
+                            32,
+                            32,
+                        )
+                    });
+                },
+            );
+
             #[cfg(feature = "accelerator-rayon")]
             {
                 _ = group.bench_with_input(

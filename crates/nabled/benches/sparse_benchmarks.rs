@@ -9,6 +9,7 @@ use rand::RngExt;
 struct SparseFactorizations<'a> {
     zero_fill: &'a sparse::ILU0Factorization,
     threshold: &'a sparse::ILUTFactorization,
+    level:     &'a sparse::ILUKFactorization,
     symmetric: &'a sparse::ILDL0Factorization,
 }
 
@@ -64,10 +65,12 @@ fn benchmark_sparse_solvers(
     let rhs_matrix = Array2::<f64>::ones((size, 4));
     let zero_fill_factorization = sparse::ilu0_factor(matrix).expect("ilu0 factorization");
     let threshold_factorization = sparse::ilut_factor(matrix, 0.0, 16).expect("ilut factorization");
+    let level_factorization = sparse::iluk_factor(matrix, 1).expect("iluk factorization");
     let symmetric_factorization = sparse::ildl0_factor(matrix).expect("ildl0 factorization");
     let factorizations = SparseFactorizations {
         zero_fill: &zero_fill_factorization,
         threshold: &threshold_factorization,
+        level:     &level_factorization,
         symmetric: &symmetric_factorization,
     };
 
@@ -133,6 +136,18 @@ fn benchmark_sparse_bicgstab(
     rhs_matrix: &Array2<f64>,
     factorizations: &SparseFactorizations<'_>,
 ) {
+    benchmark_sparse_bicgstab_single_rhs(group, id, size, matrix, rhs, factorizations);
+    benchmark_sparse_bicgstab_multi_rhs(group, id, size, matrix, rhs_matrix, factorizations);
+}
+
+fn benchmark_sparse_bicgstab_single_rhs(
+    group: &mut criterion::BenchmarkGroup<'_, WallTime>,
+    id: &str,
+    size: usize,
+    matrix: &CsrMatrix,
+    rhs: &Array1<f64>,
+    factorizations: &SparseFactorizations<'_>,
+) {
     bench_sparse_case(group, id, size, "pcg_ic0_solve", || {
         sparse::pcg_ic0_solve(black_box(matrix), black_box(rhs), black_box(1e-8), black_box(10_000))
     });
@@ -180,6 +195,24 @@ fn benchmark_sparse_bicgstab(
             black_box(factorizations.threshold),
         )
     });
+    bench_sparse_case(group, id, size, "bicgstab_iluk_solve", || {
+        sparse::bicgstab_iluk_solve(
+            black_box(matrix),
+            black_box(rhs),
+            black_box(1e-8),
+            black_box(10_000),
+            black_box(1),
+        )
+    });
+    bench_sparse_case(group, id, size, "bicgstab_iluk_solve_reuse", || {
+        sparse::bicgstab_iluk_solve_with_factorization(
+            black_box(matrix),
+            black_box(rhs),
+            black_box(1e-8),
+            black_box(10_000),
+            black_box(factorizations.level),
+        )
+    });
     bench_sparse_case(group, id, size, "bicgstab_ildl0_solve", || {
         sparse::bicgstab_ildl0_solve(
             black_box(matrix),
@@ -197,6 +230,16 @@ fn benchmark_sparse_bicgstab(
             black_box(factorizations.symmetric),
         )
     });
+}
+
+fn benchmark_sparse_bicgstab_multi_rhs(
+    group: &mut criterion::BenchmarkGroup<'_, WallTime>,
+    id: &str,
+    size: usize,
+    matrix: &CsrMatrix,
+    rhs_matrix: &Array2<f64>,
+    factorizations: &SparseFactorizations<'_>,
+) {
     bench_sparse_case(group, id, size, "bicgstab_ilu0_solve_multi_reuse", || {
         sparse::bicgstab_ilu0_solve_multiple_with_factorization(
             black_box(matrix),
@@ -204,6 +247,15 @@ fn benchmark_sparse_bicgstab(
             black_box(1e-8),
             black_box(10_000),
             black_box(factorizations.zero_fill),
+        )
+    });
+    bench_sparse_case(group, id, size, "bicgstab_iluk_solve_multi_reuse", || {
+        sparse::bicgstab_iluk_solve_multiple_with_factorization(
+            black_box(matrix),
+            black_box(rhs_matrix),
+            black_box(1e-8),
+            black_box(10_000),
+            black_box(factorizations.level),
         )
     });
     bench_sparse_case(group, id, size, "bicgstab_ildl0_solve_multi_reuse", || {
@@ -257,6 +309,24 @@ fn benchmark_sparse_gmres(
             black_box(factorizations.threshold),
         )
     });
+    bench_sparse_case(group, id, size, "gmres_iluk_solve", || {
+        sparse::gmres_iluk_solve(
+            black_box(matrix),
+            black_box(rhs),
+            black_box(1e-8),
+            black_box(128),
+            black_box(1),
+        )
+    });
+    bench_sparse_case(group, id, size, "gmres_iluk_solve_reuse", || {
+        sparse::gmres_iluk_solve_with_factorization(
+            black_box(matrix),
+            black_box(rhs),
+            black_box(1e-8),
+            black_box(128),
+            black_box(factorizations.level),
+        )
+    });
     bench_sparse_case(group, id, size, "gmres_ildl0_solve", || {
         sparse::gmres_ildl0_solve(
             black_box(matrix),
@@ -281,6 +351,15 @@ fn benchmark_sparse_gmres(
             black_box(1e-8),
             black_box(128),
             black_box(factorizations.zero_fill),
+        )
+    });
+    bench_sparse_case(group, id, size, "gmres_iluk_solve_multi_reuse", || {
+        sparse::gmres_iluk_solve_multiple_with_factorization(
+            black_box(matrix),
+            black_box(rhs_matrix),
+            black_box(1e-8),
+            black_box(128),
+            black_box(factorizations.level),
         )
     });
     bench_sparse_case(group, id, size, "gmres_ildl0_solve_multi_reuse", || {

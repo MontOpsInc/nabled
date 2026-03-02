@@ -38,10 +38,10 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Matrix functions | exp/log/power/sign | `nabled-linalg::matrix_functions` | Implemented | Yes | Includes complex `exp/log/power/sign` coverage in both internal and provider-enabled builds. Bench exists (`matrix_functions_benchmarks`) with complex cases. |
 | Orthogonalization | Gram-Schmidt variants | `nabled-linalg::orthogonalization` | Implemented | Yes | Includes complex Gram-Schmidt parity and dedicated benchmark coverage (`orthogonalization_benchmarks`). |
 | Iterative solvers | CG, GMRES | `nabled-ml::iterative` | Implemented | No | Includes real and complex CG/GMRES APIs. |
-| Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/IC(0)/ILUT/ILDL(0) preconditioning workflows | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, and ILU0/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
+| Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, and ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
 | Optimization | line search, gradient descent, Adam, momentum, RMSProp | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
 | Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) | `nabled-linalg::tensor` | Partial | Yes | Rank-3 APIs are present with owned/view/into variants in real and complex forms; higher-rank baseline now includes last-axis reductions/normalization/batched dot plus axis-permute/contract/batched-matmul primitives for real and complex tensors. |
-| Accelerator contracts | compile-time backend trait + CPU execution/chunking + concrete distributed row-sharded matmat + feature-gated accelerated matmat + CUDA placeholder | `nabled-linalg::accelerator` | Partial | Yes | Distributed backend now executes concrete row-sharded matmat in safe Rust; accelerated CPU path (`accelerator-rayon`) exists; CUDA/distributed multi-process/GPU kernels remain open. |
+| Accelerator contracts | compile-time backend trait + CPU execution/chunking + concrete distributed row-sharded/tiled matmat + feature-gated accelerated matmat + CUDA placeholder | `nabled-linalg::accelerator` | Partial | Yes | Distributed backend now executes concrete row-sharded and tiled matmat kernels in safe Rust; accelerated CPU path (`accelerator-rayon`) exists; CUDA/distributed multi-process/GPU kernels remain open. |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
@@ -66,7 +66,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Capability Group | Current Status | Gap |
 |---|---|---|
 | Batched operations over many vectors/matrices | Implemented | Vector, dense matrix, sparse matrix, and cube-level batched primitives are now exposed with explicit allocation-control paths. |
-| Sparse linear algebra primitives | Implemented | Sparse primitives now span CSR/CSC/COO formats, sparse-dense/sparse-sparse products, iterative solve breadth including `BiCGSTAB`/`GMRES`, and ILU(0)/IC(0)/ILUT/ILDL(0)-backed preconditioned solve and reuse paths. |
+| Sparse linear algebra primitives | Implemented | Sparse primitives now span CSR/CSC/COO formats, sparse-dense/sparse-sparse products, iterative solve breadth including `BiCGSTAB`/`GMRES`, and ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0)-backed preconditioned solve and reuse paths. |
 | Complex-number parity across major algorithms | Implemented | Complex parity now covers core linalg kernels (vector/matrix/tensor), dense decompositions/solvers (QR/SVD/LU/Cholesky/Schur/Sylvester/Triangular/Polar), matrix-functions (`exp/log/power/sign`), and iterative solvers (CG/GMRES) across internal/provider builds, with integration tests and benchmark visibility in selected dense suites. |
 | Non-symmetric dense eigen coverage | Implemented | Non-symmetric real/complex eigen APIs exist with internal and provider-enabled execution paths. |
 | More optimization primitives | Implemented | First-order suite now includes line search, gradient descent, Adam, momentum, and `RMSProp`; advanced second-order and constrained methods remain future enhancements. |
@@ -84,7 +84,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 `nabled` is sufficient as a strong ndarray-native dense-core base, but not yet sufficient for the full target scope described for embedding-centric and broad production workflows.
 
 Concretely, the largest missing pieces are now:
-1. Sparse depth beyond the current iterative/preconditioned baseline (factorization-grade sparse workflows).
+1. Sparse depth beyond the current iterative/preconditioned baseline (direct/factorization-grade sparse workflows and broader sparse algebra ergonomics).
 2. Concrete accelerator/tensor depth beyond the new baseline seams (actual GPU/distributed kernels and broader higher-rank tensor algebra).
 
 ## Execution Order Driven by This Matrix

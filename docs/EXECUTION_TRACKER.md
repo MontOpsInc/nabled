@@ -100,10 +100,12 @@ Use this file to resume work quickly after context compaction without re-auditin
 70. `D-070`: Sparse depth advanced with ILDL(0) (`ildl0_factor`, `apply_ildl0_preconditioner`) and ILDL0-preconditioned GMRES/BiCGSTAB (including factorization-reuse APIs), with tests and sparse benchmark coverage.
 71. `D-071`: Tensor higher-rank algebra baseline expanded with axis permutation (`permute_axes*`), explicit-axis contraction (`contract_axes*`), and N-D batched last-two matmul (`batched_matmul_last_two*`) across real/complex APIs, plus tests and tensor benchmark coverage.
 72. `D-072`: Accelerator baseline advanced with concrete distributed row-sharded matmat (`matmat_distributed`, `matmat_with_backend::<DistributedBackend>`), expanded error mapping, integration/unit coverage, and new `accelerator_benchmarks` wired into smoke/report pipelines.
+73. `D-073`: Accelerator distributed depth expanded with tiled scheduling (`matmat_distributed_tiled`) and validation/error contracts (`InvalidTileSize`), with unit/integration coverage and benchmark visibility (`matmat_distributed_tiled` case).
+74. `D-074`: Sparse factorization depth expanded with ILU(k) (`iluk_factor`, `apply_iluk_preconditioner`, `ILUKConfig`) and ILUK-preconditioned GMRES/BiCGSTAB (including factorization-reuse/multi-RHS APIs), plus tests and sparse benchmark coverage.
 
 ## Next
 
-1. `N-060` (P2): Continue sparse depth expansion beyond ILU(0)+IC(0)+ILUT+ILDL(0) baseline into broader factorization-grade workflows.
+1. `N-060` (P2): Continue sparse depth expansion beyond ILU(0)+ILU(k)+IC(0)+ILUT+ILDL(0) baseline into broader factorization-grade workflows.
 2. `N-062` (P2): Continue tensor depth beyond the new contraction baseline toward broader higher-rank algebra (decompositions/networks/einsum-grade ergonomics).
 3. `N-063` (P2): Continue accelerator depth from distributed CPU baseline into concrete GPU kernels and richer distributed execution semantics.
 
