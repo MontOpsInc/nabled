@@ -13,7 +13,7 @@ linear algebra and ML-oriented matrix/vector operations.
 
 ```toml
 [dependencies]
-nabled = "0.0.1"
+nabled = "0.0.2"
 ```
 
 ## Current Direction
@@ -64,7 +64,7 @@ fn main() -> Result<(), nabled::linalg::svd::SVDError> {
 
 ```toml
 [dependencies]
-nabled = { version = "0.0.1", features = ["openblas-system"] }
+nabled = { version = "0.0.2", features = ["openblas-system"] }
 ```
 
 Feature behavior:
