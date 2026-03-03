@@ -1,6 +1,6 @@
 # V1 Stability Contract
 
-Last updated: 2026-03-02
+Last updated: 2026-03-03
 
 ## Purpose
 
@@ -16,7 +16,8 @@ A v1-stable declaration requires all items below, in order:
 2. GPU kernel contract is explicit and fully implemented for the required surface.
 3. Mixed provider/backend/kernel behavior is deterministic and documented.
 4. CI/local checks enforce required feature/build permutations.
-5. No-surprises audit (allocation, fallback, errors, docs) passes.
+5. Complex parity is complete for higher-level ML/statistical domains (`stats`, `regression`, `pca`, `optimization`) with explicit real/complex API contracts.
+6. No-surprises audit (allocation, fallback, errors, docs) passes.
 
 ## Required Tensor Surface (V1)
 
@@ -93,4 +94,4 @@ All must be true:
 4. GPU out-of-scope areas execute explicit CPU fallback kernels and preserve capability.
 5. Capability docs (`CAPABILITY_MATRIX`, `KERNEL_CATALOG`, `EXECUTION_TRACKER`) agree with code behavior.
 
-Current status: satisfied for v1 required surface.
+Current status: v1 blocker-complete for declared capability scope; proceed with `K-*` normalization and benchmark/performance hardening passes.

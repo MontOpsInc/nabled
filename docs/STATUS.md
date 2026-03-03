@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-02
+Last updated: 2026-03-03
 
 ## Summary
 
@@ -75,6 +75,7 @@ Workspace migration for library domains is complete.
 67. V1 stability contract is now explicit in `docs/V1_STABILITY.md`, including required tensor/GPU surface, mixed execution behavior, feature matrix, and no-surprises audit criteria.
 68. Accelerator v1 GPU contract depth now includes tested tensor batched-last-two GPU parity (`f32`) and explicit tested strict-or-fallback behavior for out-of-scope CUDA tensor kernels/dtypes.
 69. Local/CI quality gates now enforce accelerator feature permutations (`accelerator-rayon`, `accelerator-wgpu`, and provider combinations), not only default/provider paths.
+70. Higher-level ML/stat complex parity (`B-P1-006`) is now complete across `stats`, `regression`, `pca`, and `optimization`, closing the last declared v1 capability blocker.
 
 ## Current Code Ownership
 
@@ -111,7 +112,7 @@ Workspace migration for library domains is complete.
 
 Harden workspace contracts and release readiness:
 
-1. Resolve `K-*` architecture decisions now that P1 backlog is closed.
+1. Resolve `K-*` architecture decisions (starting with `K-006`, then `K-004`/`K-008` alignment).
 2. Run benchmark/regression optimization passes (outlier triage, allocation audit, SIMD/threading opportunities).
 3. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
 

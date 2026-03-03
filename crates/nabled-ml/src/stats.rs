@@ -3,6 +3,7 @@
 use std::fmt;
 
 use ndarray::{Array1, Array2, ArrayView2, Axis};
+use num_complex::Complex64;
 
 /// Error type for matrix statistics.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,6 +31,8 @@ impl fmt::Display for StatsError {
 impl std::error::Error for StatsError {}
 
 fn usize_to_f64(value: usize) -> f64 { u32::try_from(value).map_or(f64::from(u32::MAX), f64::from) }
+
+fn complex_is_finite(value: Complex64) -> bool { value.re.is_finite() && value.im.is_finite() }
 
 fn column_means_impl(matrix: &ArrayView2<'_, f64>) -> Array1<f64> {
     matrix.mean_axis(Axis(0)).unwrap_or_else(|| Array1::zeros(matrix.ncols()))
@@ -131,9 +134,145 @@ pub fn correlation_matrix_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f6
     correlation_matrix_impl(matrix)
 }
 
+fn column_means_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Array1<Complex64> {
+    if matrix.nrows() == 0 {
+        return Array1::zeros(matrix.ncols());
+    }
+
+    let mut means = Array1::<Complex64>::zeros(matrix.ncols());
+    for col in 0..matrix.ncols() {
+        let mut sum = Complex64::new(0.0, 0.0);
+        for row in 0..matrix.nrows() {
+            sum += matrix[[row, col]];
+        }
+        means[col] = sum / usize_to_f64(matrix.nrows());
+    }
+    means
+}
+
+/// Compute complex column means.
+#[must_use]
+pub fn column_means_complex(matrix: &Array2<Complex64>) -> Array1<Complex64> {
+    column_means_complex_impl(&matrix.view())
+}
+
+/// Compute complex column means from a matrix view.
+#[must_use]
+pub fn column_means_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Array1<Complex64> {
+    column_means_complex_impl(matrix)
+}
+
+fn center_columns_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Array2<Complex64> {
+    let means = column_means_complex_impl(matrix);
+    let mut centered = Array2::<Complex64>::zeros((matrix.nrows(), matrix.ncols()));
+    for row in 0..matrix.nrows() {
+        for col in 0..matrix.ncols() {
+            centered[[row, col]] = matrix[[row, col]] - means[col];
+        }
+    }
+    centered
+}
+
+/// Center complex columns by subtracting their means.
+#[must_use]
+pub fn center_columns_complex(matrix: &Array2<Complex64>) -> Array2<Complex64> {
+    center_columns_complex_impl(&matrix.view())
+}
+
+/// Center complex columns by subtracting their means from a matrix view.
+#[must_use]
+pub fn center_columns_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Array2<Complex64> {
+    center_columns_complex_impl(matrix)
+}
+
+fn covariance_matrix_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, StatsError> {
+    if matrix.is_empty() {
+        return Err(StatsError::EmptyMatrix);
+    }
+    if matrix.nrows() < 2 {
+        return Err(StatsError::InsufficientSamples);
+    }
+
+    let centered = center_columns_complex_impl(matrix);
+    let conjugate_transpose = centered.t().mapv(|value| value.conj());
+    let covariance = conjugate_transpose.dot(&centered) / usize_to_f64(matrix.nrows() - 1);
+
+    if covariance.iter().any(|value| !complex_is_finite(*value)) {
+        return Err(StatsError::NumericalInstability);
+    }
+
+    Ok(covariance)
+}
+
+/// Compute sample covariance matrix for complex observations.
+///
+/// # Errors
+/// Returns an error for empty input or fewer than two samples.
+pub fn covariance_matrix_complex(
+    matrix: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, StatsError> {
+    covariance_matrix_complex_impl(&matrix.view())
+}
+
+/// Compute sample covariance matrix for complex observations from a matrix view.
+///
+/// # Errors
+/// Returns an error for empty input or fewer than two samples.
+pub fn covariance_matrix_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, StatsError> {
+    covariance_matrix_complex_impl(matrix)
+}
+
+fn correlation_matrix_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, StatsError> {
+    let covariance = covariance_matrix_complex_impl(matrix)?;
+    let n = covariance.nrows();
+    let mut correlation = Array2::<Complex64>::zeros((n, n));
+
+    for i in 0..n {
+        let sigma_i = covariance[[i, i]].re.max(0.0).sqrt();
+        for j in 0..n {
+            let sigma_j = covariance[[j, j]].re.max(0.0).sqrt();
+            let denom = (sigma_i * sigma_j).max(f64::EPSILON);
+            correlation[[i, j]] = covariance[[i, j]] / denom;
+        }
+    }
+
+    if correlation.iter().any(|value| !complex_is_finite(*value)) {
+        return Err(StatsError::NumericalInstability);
+    }
+
+    Ok(correlation)
+}
+
+/// Compute correlation matrix for complex observations.
+///
+/// # Errors
+/// Returns an error if covariance computation fails.
+pub fn correlation_matrix_complex(
+    matrix: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, StatsError> {
+    correlation_matrix_complex_impl(&matrix.view())
+}
+
+/// Compute correlation matrix for complex observations from a matrix view.
+///
+/// # Errors
+/// Returns an error if covariance computation fails.
+pub fn correlation_matrix_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, StatsError> {
+    correlation_matrix_complex_impl(matrix)
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -214,6 +353,63 @@ mod tests {
             for j in 0..2 {
                 assert!((covariance_owned[[i, j]] - covariance_view[[i, j]]).abs() < 1e-12);
                 assert!((correlation_owned[[i, j]] - correlation_view[[i, j]]).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn complex_covariance_and_correlation_are_well_formed() {
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(3.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(3.0, 0.2),
+            Complex64::new(1.0, -0.3),
+            Complex64::new(4.0, 0.7),
+            Complex64::new(0.0, 0.0),
+        ])
+        .unwrap();
+
+        let covariance = covariance_matrix_complex(&matrix).unwrap();
+        let correlation = correlation_matrix_complex(&matrix).unwrap();
+        assert_eq!(covariance.dim(), (2, 2));
+        assert_eq!(correlation.dim(), (2, 2));
+    }
+
+    #[test]
+    fn complex_view_variants_match_owned() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 2.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(3.0, -2.0),
+            Complex64::new(4.0, 1.0),
+        ])
+        .unwrap();
+
+        let means_owned = column_means_complex(&matrix);
+        let means_view = column_means_complex_view(&matrix.view());
+        let centered_owned = center_columns_complex(&matrix);
+        let centered_view = center_columns_complex_view(&matrix.view());
+        let covariance_owned = covariance_matrix_complex(&matrix).unwrap();
+        let covariance_view = covariance_matrix_complex_view(&matrix.view()).unwrap();
+        let correlation_owned = correlation_matrix_complex(&matrix).unwrap();
+        let correlation_view = correlation_matrix_complex_view(&matrix.view()).unwrap();
+
+        for i in 0..means_owned.len() {
+            assert!((means_owned[i] - means_view[i]).norm() < 1e-12);
+        }
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((centered_owned[[i, j]] - centered_view[[i, j]]).norm() < 1e-12);
+            }
+        }
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((covariance_owned[[i, j]] - covariance_view[[i, j]]).norm() < 1e-12);
+                assert!((correlation_owned[[i, j]] - correlation_view[[i, j]]).norm() < 1e-12);
             }
         }
     }

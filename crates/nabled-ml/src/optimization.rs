@@ -3,6 +3,7 @@
 use std::fmt;
 
 use ndarray::{Array1, Array2};
+use num_complex::Complex64;
 
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
 
@@ -198,11 +199,25 @@ fn l2_norm(vector: &Array1<f64>) -> f64 {
     vector.iter().map(|value| value * value).sum::<f64>().sqrt()
 }
 
+fn l2_norm_complex(vector: &Array1<Complex64>) -> f64 {
+    vector.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
+}
+
 fn validate_vector(vector: &Array1<f64>) -> Result<(), OptimizationError> {
     if vector.is_empty() {
         return Err(OptimizationError::EmptyInput);
     }
     if vector.iter().any(|value| !value.is_finite()) {
+        return Err(OptimizationError::NonFiniteInput);
+    }
+    Ok(())
+}
+
+fn validate_vector_complex(vector: &Array1<Complex64>) -> Result<(), OptimizationError> {
+    if vector.is_empty() {
+        return Err(OptimizationError::EmptyInput);
+    }
+    if vector.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
         return Err(OptimizationError::NonFiniteInput);
     }
     Ok(())
@@ -301,6 +316,30 @@ fn validate_bounds(
     Ok(())
 }
 
+fn validate_bounds_complex(
+    initial: &Array1<Complex64>,
+    lower_bounds: &Array1<Complex64>,
+    upper_bounds: &Array1<Complex64>,
+) -> Result<(), OptimizationError> {
+    if initial.len() != lower_bounds.len() || initial.len() != upper_bounds.len() {
+        return Err(OptimizationError::DimensionMismatch);
+    }
+    for i in 0..initial.len() {
+        let lower = lower_bounds[i];
+        let upper = upper_bounds[i];
+        if !lower.re.is_finite()
+            || !lower.im.is_finite()
+            || !upper.re.is_finite()
+            || !upper.im.is_finite()
+            || lower.re > upper.re
+            || lower.im > upper.im
+        {
+            return Err(OptimizationError::InvalidConfig);
+        }
+    }
+    Ok(())
+}
+
 fn project_to_bounds(
     point: &mut Array1<f64>,
     lower_bounds: &Array1<f64>,
@@ -308,6 +347,18 @@ fn project_to_bounds(
 ) {
     for i in 0..point.len() {
         point[i] = point[i].clamp(lower_bounds[i], upper_bounds[i]);
+    }
+}
+
+fn project_to_bounds_complex(
+    point: &mut Array1<Complex64>,
+    lower_bounds: &Array1<Complex64>,
+    upper_bounds: &Array1<Complex64>,
+) {
+    for i in 0..point.len() {
+        let real = point[i].re.clamp(lower_bounds[i].re, upper_bounds[i].re);
+        let imag = point[i].im.clamp(lower_bounds[i].im, upper_bounds[i].im);
+        point[i] = Complex64::new(real, imag);
     }
 }
 
@@ -319,6 +370,24 @@ fn outer_product(left: &Array1<f64>, right: &Array1<f64>) -> Array2<f64> {
         }
     }
     output
+}
+
+fn outer_product_complex(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array2<Complex64> {
+    let mut output = Array2::<Complex64>::zeros((left.len(), right.len()));
+    for row in 0..left.len() {
+        for col in 0..right.len() {
+            output[[row, col]] = left[row] * right[col].conj();
+        }
+    }
+    output
+}
+
+fn hermitian_transpose(matrix: &Array2<Complex64>) -> Array2<Complex64> {
+    matrix.t().mapv(|value| value.conj())
+}
+
+fn hermitian_dot(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Complex64 {
+    left.iter().zip(right.iter()).map(|(lhs, rhs)| lhs.conj() * rhs).sum()
 }
 
 /// Perform Armijo backtracking line search.
@@ -356,7 +425,7 @@ where
 
     let mut alpha = config.initial_step;
     for _ in 0..config.max_iterations {
-        let candidate = point + &(alpha * direction);
+        let candidate = point + &direction.mapv(|value| value * alpha);
         let candidate_value = objective(&candidate);
         if !candidate_value.is_finite() {
             return Err(OptimizationError::NonFiniteInput);
@@ -398,7 +467,7 @@ where
         if l2_norm(&grad) <= tolerance {
             return Ok(x);
         }
-        x = &x - &(config.learning_rate * &grad);
+        x = &x - &grad.mapv(|value| value * config.learning_rate);
     }
 
     Err(OptimizationError::MaxIterationsExceeded)
@@ -567,7 +636,7 @@ where
             return Err(OptimizationError::NonFiniteInput);
         }
         let previous = x.clone();
-        x = &x - &(config.learning_rate * &grad);
+        x = &x - &grad.mapv(|value| value * config.learning_rate);
         project_to_bounds(&mut x, lower_bounds, upper_bounds);
         let step_norm = l2_norm(&(&x - &previous));
         if step_norm <= tolerance || l2_norm(&grad) <= tolerance {
@@ -605,7 +674,7 @@ where
         if l2_norm(&grad) <= tolerance {
             return Ok(x);
         }
-        x = &x - &(config.learning_rate * &grad);
+        x = &x - &grad.mapv(|value| value * config.learning_rate);
     }
     Err(OptimizationError::MaxIterationsExceeded)
 }
@@ -644,7 +713,7 @@ where
 
         let direction = -h_inv.dot(&grad);
         let step = config.step_size;
-        let x_next = &x + &(step * &direction);
+        let x_next = &x + &direction.mapv(|value| value * step);
         let grad_next = gradient(&x_next);
         if grad_next.len() != x.len() || grad_next.iter().any(|value| !value.is_finite()) {
             return Err(OptimizationError::NonFiniteInput);
@@ -671,9 +740,381 @@ where
     Err(OptimizationError::MaxIterationsExceeded)
 }
 
+/// Perform Armijo backtracking line search for complex vectors.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite objective evaluations.
+pub fn backtracking_line_search_complex<F, G>(
+    point: &Array1<Complex64>,
+    direction: &Array1<Complex64>,
+    objective: F,
+    gradient: G,
+    config: &LineSearchConfig,
+) -> Result<f64, OptimizationError>
+where
+    F: Fn(&Array1<Complex64>) -> f64,
+    G: Fn(&Array1<Complex64>) -> Array1<Complex64>,
+{
+    validate_vector_complex(point)?;
+    validate_vector_complex(direction)?;
+    if point.len() != direction.len() {
+        return Err(OptimizationError::DimensionMismatch);
+    }
+    validate_line_search_config(config)?;
+
+    let grad = gradient(point);
+    if grad.len() != point.len()
+        || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+    {
+        return Err(OptimizationError::NonFiniteInput);
+    }
+
+    let fx = objective(point);
+    if !fx.is_finite() {
+        return Err(OptimizationError::NonFiniteInput);
+    }
+    let directional_derivative = hermitian_dot(&grad, direction).re;
+
+    let mut alpha = config.initial_step;
+    for _ in 0..config.max_iterations {
+        let candidate = point + &direction.mapv(|value| value * alpha);
+        let candidate_value = objective(&candidate);
+        if !candidate_value.is_finite() {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if candidate_value <= fx + config.sufficient_decrease * alpha * directional_derivative {
+            return Ok(alpha);
+        }
+        alpha *= config.contraction;
+    }
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with fixed-step complex gradient descent.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn gradient_descent_complex<F, G>(
+    initial: &Array1<Complex64>,
+    objective: F,
+    gradient: G,
+    config: &SGDConfig,
+) -> Result<Array1<Complex64>, OptimizationError>
+where
+    F: Fn(&Array1<Complex64>) -> f64,
+    G: Fn(&Array1<Complex64>) -> Array1<Complex64>,
+{
+    validate_vector_complex(initial)?;
+    validate_sgd_config(config)?;
+
+    let mut x = initial.clone();
+    let _ = objective(&x);
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len()
+            || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm_complex(&grad) <= tolerance {
+            return Ok(x);
+        }
+        x = &x - &grad.mapv(|value| value * config.learning_rate);
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with complex Adam updates.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn adam_complex<F, G>(
+    initial: &Array1<Complex64>,
+    objective: F,
+    gradient: G,
+    config: &AdamConfig,
+) -> Result<Array1<Complex64>, OptimizationError>
+where
+    F: Fn(&Array1<Complex64>) -> f64,
+    G: Fn(&Array1<Complex64>) -> Array1<Complex64>,
+{
+    validate_vector_complex(initial)?;
+    validate_adam_config(config)?;
+
+    let mut x = initial.clone();
+    let mut m = Array1::<Complex64>::zeros(x.len());
+    let mut v = Array1::<f64>::zeros(x.len());
+    let mut beta1_power = 1.0_f64;
+    let mut beta2_power = 1.0_f64;
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    let _ = objective(&x);
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len()
+            || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm_complex(&grad) <= tolerance {
+            return Ok(x);
+        }
+
+        beta1_power *= config.beta1;
+        beta2_power *= config.beta2;
+
+        for i in 0..x.len() {
+            m[i] = config.beta1 * m[i] + (1.0 - config.beta1) * grad[i];
+            v[i] = config.beta2 * v[i] + (1.0 - config.beta2) * grad[i].norm_sqr();
+
+            let m_hat = m[i] / (1.0 - beta1_power);
+            let v_hat = v[i] / (1.0 - beta2_power);
+            x[i] -= config.learning_rate * m_hat / (v_hat.sqrt() + config.epsilon);
+        }
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with complex momentum gradient descent.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn momentum_descent_complex<F, G>(
+    initial: &Array1<Complex64>,
+    objective: F,
+    gradient: G,
+    config: &MomentumConfig,
+) -> Result<Array1<Complex64>, OptimizationError>
+where
+    F: Fn(&Array1<Complex64>) -> f64,
+    G: Fn(&Array1<Complex64>) -> Array1<Complex64>,
+{
+    validate_vector_complex(initial)?;
+    validate_momentum_config(config)?;
+
+    let mut x = initial.clone();
+    let mut velocity = Array1::<Complex64>::zeros(x.len());
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    let _ = objective(&x);
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len()
+            || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm_complex(&grad) <= tolerance {
+            return Ok(x);
+        }
+
+        for i in 0..x.len() {
+            velocity[i] = config.momentum * velocity[i] + grad[i];
+            x[i] -= config.learning_rate * velocity[i];
+        }
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with complex `RMSProp`.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn rmsprop_complex<F, G>(
+    initial: &Array1<Complex64>,
+    objective: F,
+    gradient: G,
+    config: &RMSPropConfig,
+) -> Result<Array1<Complex64>, OptimizationError>
+where
+    F: Fn(&Array1<Complex64>) -> f64,
+    G: Fn(&Array1<Complex64>) -> Array1<Complex64>,
+{
+    validate_vector_complex(initial)?;
+    validate_rmsprop_config(config)?;
+
+    let mut x = initial.clone();
+    let mut avg_sq = Array1::<f64>::zeros(x.len());
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    let _ = objective(&x);
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len()
+            || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm_complex(&grad) <= tolerance {
+            return Ok(x);
+        }
+
+        for i in 0..x.len() {
+            avg_sq[i] = config.rho * avg_sq[i] + (1.0 - config.rho) * grad[i].norm_sqr();
+            x[i] -= config.learning_rate * grad[i] / (avg_sq[i].sqrt() + config.epsilon);
+        }
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with complex projected gradient descent under box constraints.
+///
+/// Bounds clamp real and imaginary components independently.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration, invalid bounds, or non-finite gradients.
+pub fn projected_gradient_descent_box_complex<F, G>(
+    initial: &Array1<Complex64>,
+    objective: F,
+    gradient: G,
+    lower_bounds: &Array1<Complex64>,
+    upper_bounds: &Array1<Complex64>,
+    config: &ProjectedGradientConfig,
+) -> Result<Array1<Complex64>, OptimizationError>
+where
+    F: Fn(&Array1<Complex64>) -> f64,
+    G: Fn(&Array1<Complex64>) -> Array1<Complex64>,
+{
+    validate_vector_complex(initial)?;
+    validate_vector_complex(lower_bounds)?;
+    validate_vector_complex(upper_bounds)?;
+    validate_projected_gradient_config(config)?;
+    validate_bounds_complex(initial, lower_bounds, upper_bounds)?;
+
+    let mut x = initial.clone();
+    project_to_bounds_complex(&mut x, lower_bounds, upper_bounds);
+    let _ = objective(&x);
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len()
+            || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        let previous = x.clone();
+        x = &x - &grad.mapv(|value| value * config.learning_rate);
+        project_to_bounds_complex(&mut x, lower_bounds, upper_bounds);
+        let step_norm = l2_norm_complex(&(&x - &previous));
+        if step_norm <= tolerance || l2_norm_complex(&grad) <= tolerance {
+            return Ok(x);
+        }
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with complex stochastic gradient descent.
+///
+/// `stochastic_gradient` receives `(current_point, iteration)` and returns a gradient sample.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn stochastic_gradient_descent_complex<G>(
+    initial: &Array1<Complex64>,
+    stochastic_gradient: G,
+    config: &SGDConfig,
+) -> Result<Array1<Complex64>, OptimizationError>
+where
+    G: Fn(&Array1<Complex64>, usize) -> Array1<Complex64>,
+{
+    validate_vector_complex(initial)?;
+    validate_sgd_config(config)?;
+
+    let mut x = initial.clone();
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    for iteration in 0..config.max_iterations {
+        let grad = stochastic_gradient(&x, iteration);
+        if grad.len() != x.len()
+            || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm_complex(&grad) <= tolerance {
+            return Ok(x);
+        }
+        x = &x - &grad.mapv(|value| value * config.learning_rate);
+    }
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
+/// Minimize objective with complex `BFGS` quasi-Newton updates.
+///
+/// # Errors
+/// Returns an error for invalid inputs/configuration or non-finite gradients.
+pub fn bfgs_complex<F, G>(
+    initial: &Array1<Complex64>,
+    objective: F,
+    gradient: G,
+    config: &BFGSConfig,
+) -> Result<Array1<Complex64>, OptimizationError>
+where
+    F: Fn(&Array1<Complex64>) -> f64,
+    G: Fn(&Array1<Complex64>) -> Array1<Complex64>,
+{
+    validate_vector_complex(initial)?;
+    validate_bfgs_config(config)?;
+
+    let dimension = initial.len();
+    let mut x = initial.clone();
+    let mut h_inv = Array2::<Complex64>::eye(dimension);
+    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+
+    let _ = objective(&x);
+    for _ in 0..config.max_iterations {
+        let grad = gradient(&x);
+        if grad.len() != x.len()
+            || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+        if l2_norm_complex(&grad) <= tolerance {
+            return Ok(x);
+        }
+
+        let direction = -h_inv.dot(&grad);
+        let step = config.step_size;
+        let x_next = &x + &direction.mapv(|value| value * step);
+        let grad_next = gradient(&x_next);
+        if grad_next.len() != x.len()
+            || grad_next.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        {
+            return Err(OptimizationError::NonFiniteInput);
+        }
+
+        let s = &x_next - &x;
+        let y = &grad_next - &grad;
+        let curvature = hermitian_dot(&s, &y).re;
+        if curvature > config.curvature_tolerance {
+            let rho = 1.0 / curvature;
+            let identity = Array2::<Complex64>::eye(dimension);
+            let sy = outer_product_complex(&s, &y);
+            let ys_outer = outer_product_complex(&y, &s);
+            let ss = outer_product_complex(&s, &s);
+
+            let left = &identity - &sy.mapv(|value| value * rho);
+            let right = &identity - &ys_outer.mapv(|value| value * rho);
+            h_inv =
+                left.dot(&h_inv).dot(&hermitian_transpose(&right)) + ss.mapv(|value| value * rho);
+        }
+
+        x = x_next;
+    }
+
+    Err(OptimizationError::MaxIterationsExceeded)
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::arr1;
+    use num_complex::Complex64;
 
     use super::*;
 
@@ -683,6 +1124,15 @@ mod tests {
     }
 
     fn gradient(x: &Array1<f64>) -> Array1<f64> { arr1(&[2.0 * (x[0] - 3.0)]) }
+
+    fn objective_complex(x: &Array1<Complex64>) -> f64 {
+        let delta = x[0] - Complex64::new(3.0, 2.0);
+        delta.norm_sqr()
+    }
+
+    fn gradient_complex(x: &Array1<Complex64>) -> Array1<Complex64> {
+        arr1(&[Complex64::new(2.0, 0.0) * (x[0] - Complex64::new(3.0, 2.0))])
+    }
 
     #[test]
     fn backtracking_line_search_finds_descent_step() {
@@ -836,5 +1286,78 @@ mod tests {
         let bfgs_invalid =
             bfgs(&x0, objective, gradient, &BFGSConfig { step_size: 0.0, ..BFGSConfig::default() });
         assert!(matches!(bfgs_invalid, Err(OptimizationError::InvalidConfig)));
+    }
+
+    #[test]
+    fn complex_line_search_and_optimizers_converge() {
+        let x = arr1(&[Complex64::new(0.0, 0.0)]);
+        let direction = arr1(&[Complex64::new(1.0, 1.0)]);
+        let alpha = backtracking_line_search_complex(
+            &x,
+            &direction,
+            objective_complex,
+            gradient_complex,
+            &LineSearchConfig::default(),
+        )
+        .unwrap();
+        assert!(alpha > 0.0);
+
+        let gd = gradient_descent_complex(
+            &x,
+            objective_complex,
+            gradient_complex,
+            &SGDConfig::default(),
+        )
+        .unwrap();
+        assert!((gd[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+
+        let adam_solution =
+            adam_complex(&x, objective_complex, gradient_complex, &AdamConfig::default()).unwrap();
+        assert!((adam_solution[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+
+        let momentum_solution = momentum_descent_complex(
+            &x,
+            objective_complex,
+            gradient_complex,
+            &MomentumConfig::default(),
+        )
+        .unwrap();
+        assert!((momentum_solution[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+
+        let rmsprop_solution =
+            rmsprop_complex(&x, objective_complex, gradient_complex, &RMSPropConfig::default())
+                .unwrap();
+        assert!((rmsprop_solution[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+
+        let bfgs_solution =
+            bfgs_complex(&x, objective_complex, gradient_complex, &BFGSConfig::default()).unwrap();
+        assert!((bfgs_solution[0] - Complex64::new(3.0, 2.0)).norm() < 1e-6);
+    }
+
+    #[test]
+    fn complex_projected_and_stochastic_paths_work() {
+        let x = arr1(&[Complex64::new(-5.0, -5.0)]);
+        let lower = arr1(&[Complex64::new(0.0, 0.0)]);
+        let upper = arr1(&[Complex64::new(2.5, 2.5)]);
+        let projected = projected_gradient_descent_box_complex(
+            &x,
+            objective_complex,
+            gradient_complex,
+            &lower,
+            &upper,
+            &ProjectedGradientConfig::default(),
+        )
+        .unwrap();
+        assert!((projected[0] - Complex64::new(2.5, 2.0)).norm() < 1e-3);
+
+        let stochastic = stochastic_gradient_descent_complex(
+            &arr1(&[Complex64::new(-3.0, -1.0)]),
+            |point, _iteration| {
+                arr1(&[Complex64::new(2.0, 0.0) * (point[0] - Complex64::new(3.0, 2.0))])
+            },
+            &SGDConfig { learning_rate: 5e-2, max_iterations: 2_000, tolerance: 1e-6 },
+        )
+        .unwrap();
+        assert!((stochastic[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
     }
 }

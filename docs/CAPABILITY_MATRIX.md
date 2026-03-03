@@ -1,6 +1,6 @@
 # Capability Matrix
 
-Last updated: 2026-03-02
+Last updated: 2026-03-03
 
 ## Purpose
 
@@ -85,6 +85,7 @@ Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATA
 | Batched operations over many vectors/matrices | Implemented | Vector, dense matrix, sparse matrix, and cube-level batched primitives are exposed with explicit allocation-control paths; decomposition-level batch APIs now exist in `nabled-linalg::batched`. |
 | Sparse linear algebra primitives | Implemented | Sparse primitives now span CSR/CSC/COO formats, sparse-dense/sparse-sparse products, iterative solve breadth including `BiCGSTAB`/`GMRES`, and ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0)-backed preconditioned solve and reuse paths. |
 | Complex-number parity across major algorithms | Implemented | Complex parity now covers core linalg kernels (vector/matrix/tensor), dense decompositions/solvers (QR/SVD/LU/Cholesky/Schur/Sylvester/Triangular/Polar), matrix-functions (`exp/log/power/sign`), and iterative solvers (CG/GMRES) across internal/provider builds, with integration tests and benchmark visibility in selected dense suites. |
+| Complex parity in higher-level ML/stat domains (`B-P1-006`) | Implemented | `nabled-ml` high-level domains (`stats`, `regression`, `pca`, `optimization`) now expose complex owned/view APIs with parity/error tests in quality gates. |
 | Non-symmetric dense eigen coverage | Implemented | Non-symmetric real/complex APIs exist with internal/provider execution, plus balancing and matched left/right eigenvector surfaces. |
 | More optimization primitives | Implemented | Optimization breadth now includes constrained (`projected_gradient_descent_box`), stochastic (`stochastic_gradient_descent`), and quasi-Newton (`bfgs`) paths in addition to first-order baselines. |
 
@@ -98,18 +99,20 @@ Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATA
 
 ## Sufficiency Verdict
 
-`nabled` satisfies the current v1 stability scope as an ndarray-native production-ready linalg/ML foundation.
+`nabled` now satisfies the declared v1 capability scope in this matrix.
 
-Primary remaining work is post-v1 hardening and expansion:
+Primary remaining work:
 1. Benchmark-driven optimization and outlier remediation.
-2. Advanced tensor algebra depth beyond the v1 contract.
-3. Advanced GPU and multi-node breadth beyond the bounded v1 GPU contract.
+2. `K-*` cleanup/normalization passes (provider/backend/kernel ownership boundaries and remaining orchestration cleanup).
+3. Advanced tensor algebra depth beyond the v1 contract.
+4. Advanced GPU and multi-node breadth beyond the bounded v1 GPU contract.
 
 ## Execution Order Driven by This Matrix
 
 1. Run benchmark-driven optimization passes over hot kernels and regression outliers.
-2. Expand tensor algebra depth beyond the locked v1 surface.
-3. Expand GPU and multi-node breadth beyond the locked v1 surface.
+2. Execute `K-*` cleanup passes for ownership-boundary and dispatch normalization.
+3. Expand tensor algebra depth beyond the locked v1 surface.
+4. Expand GPU and multi-node breadth beyond the locked v1 surface.
 
 ## Definition of Done for This Document
 

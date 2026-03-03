@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-02
+Last updated: 2026-03-03
 
 ## Purpose
 
@@ -25,7 +25,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 4. macOS OpenBLAS environment wiring is centralized in `.justfile` for provider-enabled recipes.
 5. Quality gates continue to pass in both internal and provider-enabled modes after capability expansion.
 6. Benchmark smoke/report coverage now includes matrix/tensor suites in addition to prior dense/sparse suites.
-7. Ordered v1 stability gate (`V1-G1..V1-G6`) is complete and signed off.
+7. Ordered v1 stability gate blockers are closed; focus is now K-series normalization and benchmark/performance hardening passes.
 
 ## V1 Stability Gate (Ordered, Required)
 
@@ -35,7 +35,8 @@ Use this file to resume work quickly after context compaction without re-auditin
 2. Required GPU kernel surface is concrete (no placeholder behavior for in-scope kernels) and documented by dtype/operation support.
 3. Mixed execution paths are deterministic and unsurprising (provider/backend/kernel combinations have explicit behavior and docs).
 4. Required feature/build matrix is fully exercised in CI and local checks (including provider-enabled and GPU-enabled paths where applicable).
-5. Final no-surprises audit passes (allocation contracts, error semantics, fallback rules, and docs all aligned with behavior).
+5. Complex parity is complete for higher-level ML/statistical domains (`stats`, `regression`, `pca`, `optimization`) with explicit real/complex API contracts.
+6. Final no-surprises audit passes (allocation contracts, error semantics, fallback rules, and docs all aligned with behavior).
 
 ## Done
 
@@ -137,24 +138,27 @@ Use this file to resume work quickly after context compaction without re-auditin
 95. `D-095`: `V1-G4` closed: GPU tensor coverage expanded with CPU-vs-GPU parity testing (`f32`) and strict-or-fallback behavior assertions (`f64`/other out-of-scope tensor CUDA kernels).
 96. `D-096`: `V1-G5` closed: CI/local quality gates now enforce provider/backend/kernel permutations including `accelerator-rayon`, `accelerator-wgpu`, and provider+accelerator combinations.
 97. `D-097`: `V1-G6` closed: no-surprises audit signoff documented and synchronized across `docs/V1_STABILITY.md`, `docs/PERFORMANCE_CONTRACTS.md`, `docs/CAPABILITY_MATRIX.md`, and `docs/STATUS.md`.
+99. `D-099`: v1 readiness contract was tightened: higher-level ML/stat complex parity was promoted from post-v1 backlog into required v1 scope (`B-P1-006`), reopening the v1 gate until implemented.
+100. `D-100`: `B-P1-006` is complete: higher-level ML/stat complex parity is now implemented in `nabled-ml` (`stats`, `regression`, `pca`, `optimization`) with owned/view APIs and coverage tests.
 
 ## Next
 
-1. `K-005`: Start benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
-2. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
-3. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
-4. `B-P2-001`: Complex parity for higher-level ML/statistical domains that remain real-first (`stats`, `regression`, `pca`, `optimization`).
+1. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
+2. `K-005`: Start benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
+3. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
+4. `K-008`: Continue kernel orchestration cleanup where API-level dispatch still has ad hoc pathways.
 
 ## Needed
 
-1. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
-2. `K-004`: Provider expansion decision record beyond `openblas-system`.
-3. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
-4. `B-P2-001`: Complex parity expansion plan for higher-level ML/statistical domains.
+1. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+2. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
+3. `K-004`: Provider expansion decision record beyond `openblas-system`.
+4. `K-008`: Kernel orchestration cleanup plan + implementation log for remaining ad hoc API dispatch paths.
 
 ## Backlog (From Capability Matrix)
 
-1. `B-P2-001`: Complex parity for higher-level ML/statistical domains that remain real-first (`stats`, `regression`, `pca`, `optimization`).
+1. Advanced tensor algebra depth beyond the v1 baseline.
+2. Broader GPU dtype/op coverage and future multi-node backend breadth.
 
 ## Resume Protocol (Compaction-Friendly)
 

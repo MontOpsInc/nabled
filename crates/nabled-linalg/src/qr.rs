@@ -5,9 +5,10 @@ use std::fmt;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2, s};
 use num_complex::Complex64;
 
+use crate::internal::DenseKernelPolicy;
 #[cfg(not(feature = "openblas-system"))]
 use crate::internal::qr_gram_schmidt;
-use crate::internal::{DenseKernelPolicy, identity};
+use crate::svd::{self, PseudoInverseConfig};
 
 /// Error types for QR decomposition.
 #[derive(Debug, Clone, PartialEq)]
@@ -75,12 +76,22 @@ pub struct QRResult<T = f64> {
     pub rank: usize,
 }
 
-fn complex_identity(n: usize) -> Array2<Complex64> {
-    let mut identity = Array2::<Complex64>::zeros((n, n));
-    for i in 0..n {
-        identity[[i, i]] = Complex64::new(1.0, 0.0);
+fn permutation_matrix_from_order(order: &[usize]) -> Array2<f64> {
+    let n = order.len();
+    let mut permutation = Array2::<f64>::zeros((n, n));
+    for (col, &original_col) in order.iter().enumerate() {
+        permutation[[original_col, col]] = 1.0;
     }
-    identity
+    permutation
+}
+
+fn complex_permutation_matrix_from_order(order: &[usize]) -> Array2<Complex64> {
+    let n = order.len();
+    let mut permutation = Array2::<Complex64>::zeros((n, n));
+    for (col, &original_col) in order.iter().enumerate() {
+        permutation[[original_col, col]] = Complex64::new(1.0, 0.0);
+    }
+    permutation
 }
 
 fn validate_qr_input(matrix: &ArrayView2<'_, f64>) -> Result<(), QRError> {
@@ -103,17 +114,169 @@ fn validate_qr_complex_input(matrix: &ArrayView2<'_, Complex64>) -> Result<(), Q
     Ok(())
 }
 
-#[cfg(not(feature = "openblas-system"))]
-fn decompose_internal(
+fn decompose_pivoted_internal(
     matrix: &ArrayView2<'_, f64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<f64>, QRError> {
     validate_qr_input(matrix)?;
 
+    let (rows, cols) = matrix.dim();
+    let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
+    let mut residual = matrix.to_owned();
+    let mut q = Array2::<f64>::zeros((rows, cols));
+    let mut r = Array2::<f64>::zeros((cols, cols));
+    let mut order = (0..cols).collect::<Vec<_>>();
+    let mut residual_norm_sq = (0..cols)
+        .map(|col| residual.column(col).iter().map(|value| value * value).sum::<f64>())
+        .collect::<Vec<_>>();
+    let mut rank = 0_usize;
+
+    for k in 0..cols {
+        let mut pivot = k;
+        let mut pivot_norm = residual_norm_sq[k];
+        for (j, &norm_sq) in residual_norm_sq.iter().enumerate().skip(k + 1) {
+            if norm_sq > pivot_norm {
+                pivot = j;
+                pivot_norm = norm_sq;
+            }
+        }
+
+        if pivot != k {
+            let col_k = residual.column(k).to_owned();
+            let col_pivot = residual.column(pivot).to_owned();
+            residual.column_mut(k).assign(&col_pivot);
+            residual.column_mut(pivot).assign(&col_k);
+            residual_norm_sq.swap(k, pivot);
+            order.swap(k, pivot);
+
+            for i in 0..k {
+                let temp = r[[i, k]];
+                r[[i, k]] = r[[i, pivot]];
+                r[[i, pivot]] = temp;
+            }
+        }
+
+        let v = residual.column(k).to_owned();
+
+        let norm_sq = v.iter().map(|value| value * value).sum::<f64>();
+        let norm = norm_sq.sqrt();
+        r[[k, k]] = norm;
+        if norm > tolerance {
+            rank += 1;
+            for row in 0..rows {
+                q[[row, k]] = v[row] / norm;
+            }
+            for j in (k + 1)..cols {
+                let mut projection = 0.0_f64;
+                for row in 0..rows {
+                    projection += q[[row, k]] * residual[[row, j]];
+                }
+                r[[k, j]] = projection;
+                for row in 0..rows {
+                    residual[[row, j]] -= q[[row, k]] * projection;
+                }
+                residual_norm_sq[j] =
+                    residual.column(j).iter().map(|value| value * value).sum::<f64>();
+            }
+        } else {
+            for j in (k + 1)..cols {
+                r[[k, j]] = 0.0;
+            }
+        }
+        residual_norm_sq[k] = 0.0;
+    }
+
+    Ok(QRResult { q, r, p: Some(permutation_matrix_from_order(&order)), rank })
+}
+
+fn decompose_complex_pivoted_internal(
+    matrix: &ArrayView2<'_, Complex64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<Complex64>, QRError> {
+    validate_qr_complex_input(matrix)?;
+
+    let (rows, cols) = matrix.dim();
+    let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
+    let mut residual = matrix.to_owned();
+    let mut q = Array2::<Complex64>::zeros((rows, cols));
+    let mut r = Array2::<Complex64>::zeros((cols, cols));
+    let mut order = (0..cols).collect::<Vec<_>>();
+    let mut residual_norm_sq = (0..cols)
+        .map(|col| residual.column(col).iter().map(Complex64::norm_sqr).sum::<f64>())
+        .collect::<Vec<_>>();
+    let mut rank = 0_usize;
+
+    for k in 0..cols {
+        let mut pivot = k;
+        let mut pivot_norm = residual_norm_sq[k];
+        for (j, &norm_sq) in residual_norm_sq.iter().enumerate().skip(k + 1) {
+            if norm_sq > pivot_norm {
+                pivot = j;
+                pivot_norm = norm_sq;
+            }
+        }
+
+        if pivot != k {
+            let col_k = residual.column(k).to_owned();
+            let col_pivot = residual.column(pivot).to_owned();
+            residual.column_mut(k).assign(&col_pivot);
+            residual.column_mut(pivot).assign(&col_k);
+            residual_norm_sq.swap(k, pivot);
+            order.swap(k, pivot);
+
+            for i in 0..k {
+                let temp = r[[i, k]];
+                r[[i, k]] = r[[i, pivot]];
+                r[[i, pivot]] = temp;
+            }
+        }
+
+        let v = residual.column(k).to_owned();
+
+        let norm_sq = v.iter().map(Complex64::norm_sqr).sum::<f64>();
+        let norm = norm_sq.sqrt();
+        r[[k, k]] = Complex64::new(norm, 0.0);
+        if norm > tolerance {
+            rank += 1;
+            for row in 0..rows {
+                q[[row, k]] = v[row] / norm;
+            }
+            for j in (k + 1)..cols {
+                let mut projection = Complex64::new(0.0, 0.0);
+                for row in 0..rows {
+                    projection += q[[row, k]].conj() * residual[[row, j]];
+                }
+                r[[k, j]] = projection;
+                for row in 0..rows {
+                    residual[[row, j]] -= q[[row, k]] * projection;
+                }
+                residual_norm_sq[j] =
+                    residual.column(j).iter().map(Complex64::norm_sqr).sum::<f64>();
+            }
+        } else {
+            for j in (k + 1)..cols {
+                r[[k, j]] = Complex64::new(0.0, 0.0);
+            }
+        }
+        residual_norm_sq[k] = 0.0;
+    }
+
+    Ok(QRResult { q, r, p: Some(complex_permutation_matrix_from_order(&order)), rank })
+}
+
+#[cfg(not(feature = "openblas-system"))]
+fn decompose_internal(
+    matrix: &ArrayView2<'_, f64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<f64>, QRError> {
+    if config.use_pivoting {
+        return decompose_pivoted_internal(matrix, config);
+    }
+    validate_qr_input(matrix)?;
+
     let (q, r, rank) =
         qr_gram_schmidt(matrix, DenseKernelPolicy::rank_tolerance(config.rank_tolerance));
-    let p = config.use_pivoting.then(|| identity(matrix.ncols()));
-    Ok(QRResult { q, r, p, rank })
+    Ok(QRResult { q, r, p: None, rank })
 }
 
 #[cfg(feature = "openblas-system")]
@@ -123,9 +286,12 @@ fn decompose_provider(
 ) -> Result<QRResult<f64>, QRError> {
     use ndarray_linalg::QR as _;
 
+    if config.use_pivoting {
+        return decompose_pivoted_internal(matrix, config);
+    }
+
     validate_qr_input(matrix)?;
     let (q, r) = matrix.qr().map_err(|_| QRError::ConvergenceFailed)?;
-    let p = config.use_pivoting.then(|| identity(matrix.ncols()));
 
     let diagonal = r.nrows().min(r.ncols());
     let rank = (0..diagonal)
@@ -134,7 +300,7 @@ fn decompose_provider(
         })
         .count();
 
-    Ok(QRResult { q, r, p, rank })
+    Ok(QRResult { q, r, p: None, rank })
 }
 
 #[cfg(feature = "openblas-system")]
@@ -157,6 +323,9 @@ fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<Complex64>, QRError> {
+    if config.use_pivoting {
+        return decompose_complex_pivoted_internal(matrix, config);
+    }
     validate_qr_complex_input(matrix)?;
 
     let rows = matrix.nrows();
@@ -192,8 +361,7 @@ fn decompose_complex_internal(
         }
     }
 
-    let p = config.use_pivoting.then(|| complex_identity(matrix.ncols()));
-    Ok(QRResult { q, r, p, rank })
+    Ok(QRResult { q, r, p: None, rank })
 }
 
 #[cfg(feature = "openblas-system")]
@@ -203,6 +371,10 @@ fn decompose_complex_provider(
 ) -> Result<QRResult<Complex64>, QRError> {
     use ndarray_linalg::QR as _;
 
+    if config.use_pivoting {
+        return decompose_complex_pivoted_internal(matrix, config);
+    }
+
     validate_qr_complex_input(matrix)?;
     let (q, r) = matrix.qr().map_err(|_| QRError::ConvergenceFailed)?;
     let diagonal = r.nrows().min(r.ncols());
@@ -211,8 +383,7 @@ fn decompose_complex_provider(
             r[[index, index]].norm() > DenseKernelPolicy::rank_tolerance(config.rank_tolerance)
         })
         .count();
-    let p = config.use_pivoting.then(|| complex_identity(matrix.ncols()));
-    Ok(QRResult { q, r, p, rank })
+    Ok(QRResult { q, r, p: None, rank })
 }
 
 /// Compute full QR decomposition.
@@ -304,9 +475,6 @@ pub fn decompose_reduced(
 
 /// Compute QR decomposition with column pivoting.
 ///
-/// This implementation currently reuses the non-pivoted decomposition while
-/// returning an identity permutation matrix.
-///
 /// # Errors
 /// Returns an error if decomposition fails.
 pub fn decompose_with_pivoting(
@@ -319,6 +487,8 @@ pub fn decompose_with_pivoting(
 }
 
 /// Solve least squares `argmin ||Ax - b||_2`.
+///
+/// For underdetermined systems (`m < n`), this returns the minimum-norm solution.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or rank-deficient systems.
@@ -339,56 +509,77 @@ fn solve_least_squares_impl(
     if rhs.len() != matrix.nrows() {
         return Err(QRError::InvalidDimensions("RHS length must equal matrix rows".to_string()));
     }
+
     if matrix.nrows() < matrix.ncols() {
-        return Err(QRError::InvalidDimensions(
-            "Underdetermined systems are not supported in this solver".to_string(),
-        ));
+        let matrix_owned = matrix.to_owned();
+        let svd = svd::decompose(&matrix_owned).map_err(|_| QRError::ConvergenceFailed)?;
+        let required_rank = matrix.nrows();
+        let computed_rank =
+            svd::rank(&svd, Some(DenseKernelPolicy::rank_tolerance(config.rank_tolerance)));
+        if computed_rank < required_rank {
+            return Err(QRError::SingularMatrix);
+        }
+
+        let mut pseudo_inverse = Array2::<f64>::zeros((matrix.ncols(), matrix.nrows()));
+        svd::pseudo_inverse_into(
+            &matrix_owned,
+            &PseudoInverseConfig {
+                tolerance: Some(DenseKernelPolicy::rank_tolerance(config.rank_tolerance)),
+            },
+            &mut pseudo_inverse,
+        )
+        .map_err(|_| QRError::ConvergenceFailed)?;
+
+        return Ok(pseudo_inverse.dot(rhs));
     }
 
     #[cfg(feature = "openblas-system")]
     {
-        let _ = config;
-        solve_least_squares_provider(matrix, rhs)
+        if !config.use_pivoting {
+            return solve_least_squares_provider(matrix, rhs);
+        }
     }
-    #[cfg(not(feature = "openblas-system"))]
-    {
-        let full = decompose_impl(matrix, config)?;
-        let keep = matrix.nrows().min(matrix.ncols());
-        let qr = QRResult {
-            q:    full.q.slice(s![.., ..keep]).to_owned(),
-            r:    full.r.slice(s![..keep, ..]).to_owned(),
-            p:    full.p,
-            rank: full.rank.min(keep),
-        };
-        let n = matrix.ncols();
-        if qr.rank < n {
+
+    let full = decompose_impl(matrix, config)?;
+    let keep = matrix.nrows().min(matrix.ncols());
+    let qr = QRResult {
+        q:    full.q.slice(s![.., ..keep]).to_owned(),
+        r:    full.r.slice(s![..keep, ..]).to_owned(),
+        p:    full.p,
+        rank: full.rank.min(keep),
+    };
+    let n = matrix.ncols();
+    if qr.rank < n {
+        return Err(QRError::SingularMatrix);
+    }
+
+    let mut y = Array1::<f64>::zeros(n);
+    for i in 0..n {
+        let mut dot = 0.0_f64;
+        for row in 0..matrix.nrows() {
+            dot += qr.q[[row, i]] * rhs[row];
+        }
+        y[i] = dot;
+    }
+
+    let mut permuted_solution = Array1::<f64>::zeros(n);
+    for i_rev in 0..n {
+        let i = n - 1 - i_rev;
+        let mut sum = y[i];
+        for j in (i + 1)..n {
+            sum -= qr.r[[i, j]] * permuted_solution[j];
+        }
+        let diagonal = qr.r[[i, i]];
+        if diagonal.abs() <= DenseKernelPolicy::rank_tolerance(config.rank_tolerance) {
             return Err(QRError::SingularMatrix);
         }
+        permuted_solution[i] = sum / diagonal;
+    }
 
-        let mut y = Array1::<f64>::zeros(n);
-        for i in 0..n {
-            let mut dot = 0.0_f64;
-            for row in 0..matrix.nrows() {
-                dot += qr.q[[row, i]] * rhs[row];
-            }
-            y[i] = dot;
-        }
-
-        let mut x = Array1::<f64>::zeros(n);
-        for i_rev in 0..n {
-            let i = n - 1 - i_rev;
-            let mut sum = y[i];
-            for j in (i + 1)..n {
-                sum -= qr.r[[i, j]] * x[j];
-            }
-            let diagonal = qr.r[[i, i]];
-            if diagonal.abs() <= DenseKernelPolicy::rank_tolerance(config.rank_tolerance) {
-                return Err(QRError::SingularMatrix);
-            }
-            x[i] = sum / diagonal;
-        }
-
-        Ok(x)
+    if let Some(permutation) = qr.p {
+        Ok(permutation.dot(&permuted_solution))
+    } else {
+        Ok(permuted_solution)
     }
 }
 
@@ -520,6 +711,32 @@ mod tests {
     }
 
     #[test]
+    fn complex_pivoted_qr_reconstructs_permuted_input() {
+        let matrix = Array2::from_shape_vec((3, 3), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(10.0, -1.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(11.0, 2.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(12.0, 0.5),
+            Complex64::new(0.0, 0.0),
+        ])
+        .unwrap();
+        let config = QRConfig { use_pivoting: true, ..QRConfig::default() };
+        let qr = decompose_complex(&matrix, &config).unwrap();
+        let permutation = qr.p.as_ref().unwrap();
+        let reconstructed = reconstruct_matrix_complex(&qr);
+        let permuted_input = matrix.dot(permutation);
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((reconstructed[[i, j]] - permuted_input[[i, j]]).norm() < 1e-8);
+            }
+        }
+    }
+
+    #[test]
     fn decompose_view_matches_owned() {
         let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
         let from_owned = decompose(&matrix, &QRConfig::default()).unwrap();
@@ -538,6 +755,25 @@ mod tests {
 
         let pivoted = decompose_with_pivoting(&matrix, &QRConfig::default()).unwrap();
         assert!(pivoted.p.is_some());
+    }
+
+    #[test]
+    fn pivoted_qr_reconstructs_permuted_input() {
+        let matrix = Array2::from_shape_vec((3, 3), vec![
+            1.0, 10.0, 0.0, //
+            0.0, 11.0, 1.0, //
+            0.0, 12.0, 0.0, //
+        ])
+        .unwrap();
+        let qr = decompose_with_pivoting(&matrix, &QRConfig::default()).unwrap();
+        let permutation = qr.p.as_ref().unwrap();
+        let reconstructed = reconstruct_matrix(&qr);
+        let permuted_input = matrix.dot(permutation);
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((reconstructed[[i, j]] - permuted_input[[i, j]]).abs() < 1e-8);
+            }
+        }
     }
 
     #[test]
@@ -569,11 +805,38 @@ mod tests {
     }
 
     #[test]
-    fn least_squares_rejects_underdetermined_input() {
+    fn least_squares_solves_underdetermined_minimum_norm_system() {
         let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
         let rhs = Array1::from_vec(vec![1.0, 2.0]);
+        let solution = solve_least_squares(&matrix, &rhs, &QRConfig::default()).unwrap();
+        assert!((solution[0] - 1.0).abs() < 1e-10);
+        assert!((solution[1] - 2.0).abs() < 1e-10);
+        assert!(solution[2].abs() < 1e-10);
+    }
+
+    #[test]
+    fn least_squares_rejects_rank_deficient_underdetermined_input() {
+        let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 2.0, 0.0, 0.0]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0, 2.0]);
         let result = solve_least_squares(&matrix, &rhs, &QRConfig::default());
-        assert!(matches!(result, Err(QRError::InvalidDimensions(_))));
+        assert!(matches!(result, Err(QRError::SingularMatrix)));
+    }
+
+    #[test]
+    fn least_squares_with_pivoting_matches_unpivoted_solution() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0, 3.0, 1.0, 4.0, 1.0, 5.0, 1.0, 6.0]).unwrap();
+        let rhs = Array1::from_vec(vec![4.0, 5.0, 6.0, 7.0]);
+
+        let unpivoted = solve_least_squares(&matrix, &rhs, &QRConfig::default()).unwrap();
+        let pivoted = solve_least_squares(&matrix, &rhs, &QRConfig {
+            use_pivoting: true,
+            ..QRConfig::default()
+        })
+        .unwrap();
+        for i in 0..unpivoted.len() {
+            assert!((unpivoted[i] - pivoted[i]).abs() < 1e-8);
+        }
     }
 
     #[test]

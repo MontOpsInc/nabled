@@ -39,7 +39,9 @@ pub use nabled_ml::optimization::{
     AdamConfig, BFGSConfig, LineSearchConfig, MomentumConfig, OptimizationError,
     ProjectedGradientConfig, RMSPropConfig, SGDConfig,
 };
-pub use nabled_ml::pca::{NdarrayPCAResult, PCAError};
-pub use nabled_ml::regression::{NdarrayRegressionResult, RegressionError};
+pub use nabled_ml::pca::{NdarrayComplexPCAResult, NdarrayPCAResult, PCAError};
+pub use nabled_ml::regression::{
+    NdarrayComplexRegressionResult, NdarrayRegressionResult, RegressionError,
+};
 pub use nabled_ml::stats::StatsError;
 pub use nabled_ml::{iterative, jacobian, optimization, pca, regression, stats};

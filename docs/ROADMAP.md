@@ -71,7 +71,9 @@ Current status:
 1. V1 stability contract is now explicit (`docs/V1_STABILITY.md`).
 2. Required tensor and bounded GPU v1 surfaces are implemented and tested.
 3. Local/CI checks enforce required provider/backend/kernel feature permutations.
+4. Higher-level ML/stat complex parity blocker (`B-P1-006`) is complete; the next focus is K-series cleanup and benchmark/performance hardening.
 
 Next phase:
-1. Benchmark-driven optimization and regression-outlier remediation.
-2. Post-v1 expansion on advanced tensor algebra and broader GPU and multi-node coverage.
+1. Execute K-series cleanup/normalization passes.
+2. Benchmark-driven optimization and regression-outlier remediation.
+3. Post-v1 expansion on advanced tensor algebra and broader GPU and multi-node coverage.
