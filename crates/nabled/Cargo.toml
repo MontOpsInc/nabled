@@ -2,6 +2,7 @@
 name = "nabled"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -10,7 +11,7 @@ documentation.workspace = true
 publish.workspace = true
 description = "A linear algebra library written in Rust with an ndarray-first architecture."
 readme = "../../README.md"
-keywords = ["linear-algebra", "svd", "ndarray", "rust", "mathematics", "decomposition", "pca", "regression"]
+keywords = ["linear-algebra", "ndarray", "decomposition", "machine-learning", "numerics"]
 categories = ["mathematics", "science", "algorithms"]
 
 [features]

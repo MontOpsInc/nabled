@@ -9,12 +9,19 @@
 Nabled is an ndarray-native Rust numerical library focused on production-grade
 linear algebra and ML-oriented matrix/vector operations.
 
+## Install
+
+```toml
+[dependencies]
+nabled = "0.0.1"
+```
+
 ## Current Direction
 
 1. Ndarray-native API and implementation model.
 2. Strict focus on correctness, performance, and composability.
 3. No Arrow-specific types in `nabled` APIs.
-4. Workspace migration in progress to support long-term scale.
+4. Workspace architecture (`nabled-core`, `nabled-linalg`, `nabled-ml`, facade `nabled`).
 
 See [`docs/README.md`](docs/README.md) for current architecture and roadmap.
 
@@ -54,6 +61,17 @@ fn main() -> Result<(), nabled::linalg::svd::SVDError> {
 2. `openblas-system`: enables provider-backed OpenBLAS/LAPACK paths.
 3. `accelerator-rayon`: enables selected parallel CPU kernels.
 4. `accelerator-wgpu`: enables selected WGPU-backed kernels.
+
+```toml
+[dependencies]
+nabled = { version = "0.0.1", features = ["openblas-system"] }
+```
+
+Feature behavior:
+
+1. `openblas-system` implies `blas`.
+2. Provider selection is compile-time and internal to decomposition paths.
+3. Backend acceleration is compile-time and kernel-family-specific.
 
 ## Quality Gates
 

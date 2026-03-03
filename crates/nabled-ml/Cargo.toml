@@ -2,13 +2,17 @@
 name = "nabled-ml"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/nabled-ml"
 publish.workspace = true
 description = "ML-oriented algorithms built on ndarray-native nabled primitives"
+readme = "README.md"
+keywords = ["machine-learning", "ndarray", "optimization", "regression", "pca"]
+categories = ["mathematics", "science", "algorithms"]
 
 [features]
 default = []

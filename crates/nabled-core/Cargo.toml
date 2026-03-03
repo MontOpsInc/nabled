@@ -2,13 +2,17 @@
 name = "nabled-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/nabled-core"
 publish.workspace = true
 description = "Core ndarray-native types and shared utilities for nabled"
+readme = "README.md"
+keywords = ["ndarray", "numerics", "validation", "errors", "core"]
+categories = ["mathematics", "science"]
 
 [dependencies]
 ndarray.workspace = true

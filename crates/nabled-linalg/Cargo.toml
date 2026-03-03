@@ -2,13 +2,17 @@
 name = "nabled-linalg"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/nabled-linalg"
 publish.workspace = true
 description = "Ndarray-native linear algebra algorithms for nabled"
+readme = "README.md"
+keywords = ["linear-algebra", "ndarray", "svd", "decomposition", "matrix"]
+categories = ["mathematics", "science", "algorithms"]
 
 [features]
 default = []
