@@ -644,3 +644,183 @@ where
 {
     B::sum_last_axis(input)
 }
+
+/// Compute matrix-matrix product on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn matmat_cpu(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+) -> Result<Array2<f64>, AcceleratorError> {
+    matmat_with_backend::<CpuBackend>(left, right)
+}
+
+/// Compute matrix-vector product on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn matvec_cpu(
+    matrix: &Array2<f64>,
+    vector: &Array1<f64>,
+) -> Result<Array1<f64>, AcceleratorError> {
+    matvec_with_backend::<CpuBackend>(matrix, vector)
+}
+
+/// Compute batched matrix-matrix products on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn batched_matmat_cpu(
+    left_batches: &Array3<f64>,
+    right_batches: &Array3<f64>,
+) -> Result<Array3<f64>, AcceleratorError> {
+    batched_matmat_with_backend::<CpuBackend>(left_batches, right_batches)
+}
+
+/// Compute row-batch by matrix products on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn batched_row_matvec_cpu(
+    batch_vectors: &Array2<f64>,
+    matrix: &Array2<f64>,
+) -> Result<Array2<f64>, AcceleratorError> {
+    batched_row_matvec_with_backend::<CpuBackend>(batch_vectors, matrix)
+}
+
+/// Compute sparse matrix-vector product on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn sparse_matvec_cpu(
+    matrix: &CsrMatrix,
+    vector: &Array1<f64>,
+) -> Result<Array1<f64>, AcceleratorError> {
+    sparse_matvec_with_backend::<CpuBackend>(matrix, vector)
+}
+
+/// Compute sparse-dense matrix product on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn sparse_matmat_dense_cpu(
+    matrix: &CsrMatrix,
+    dense: &Array2<f64>,
+) -> Result<Array2<f64>, AcceleratorError> {
+    sparse_matmat_dense_with_backend::<CpuBackend>(matrix, dense)
+}
+
+/// Compute sparse-sparse matrix product on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn sparse_matmat_sparse_cpu(
+    left: &CsrMatrix,
+    right: &CsrMatrix,
+) -> Result<CsrMatrix, AcceleratorError> {
+    sparse_matmat_sparse_with_backend::<CpuBackend>(left, right)
+}
+
+/// Solve a triangular system against a vector on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular matrices, or kernel failures.
+pub fn triangular_solve_vec_cpu<T>(
+    matrix: &Array2<T>,
+    rhs: &Array1<T>,
+    lower: bool,
+    unit_diagonal: bool,
+) -> Result<Array1<T>, AcceleratorError>
+where
+    CpuBackend: TriangularSolveVecKernel<T>,
+{
+    triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, lower, unit_diagonal)
+}
+
+/// Solve a triangular system against a matrix on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular matrices, or kernel failures.
+pub fn triangular_solve_mat_cpu<T>(
+    matrix: &Array2<T>,
+    rhs: &Array2<T>,
+    lower: bool,
+    unit_diagonal: bool,
+) -> Result<Array2<T>, AcceleratorError>
+where
+    CpuBackend: TriangularSolveMatKernel<T>,
+{
+    triangular_solve_mat_with_backend::<CpuBackend, T>(matrix, rhs, lower, unit_diagonal)
+}
+
+/// Compute dot product on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn dot_cpu(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
+    dot_with_backend::<CpuBackend>(left, right)
+}
+
+/// Compute pairwise L2 distances on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn pairwise_l2_cpu(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+) -> Result<Array2<f64>, AcceleratorError> {
+    pairwise_l2_with_backend::<CpuBackend>(left, right)
+}
+
+/// Compute pairwise cosine similarity on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn pairwise_cosine_cpu(
+    left: &Array2<f64>,
+    right: &Array2<f64>,
+) -> Result<Array2<f64>, AcceleratorError> {
+    pairwise_cosine_with_backend::<CpuBackend>(left, right)
+}
+
+/// Contract tensor axes on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn tensor_contract_axes_cpu<T>(
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
+    left_axis: usize,
+    right_axis: usize,
+) -> Result<ArrayD<T>, AcceleratorError>
+where
+    CpuBackend: TensorContractKernel<T>,
+{
+    tensor_contract_axes_with_backend::<CpuBackend, T>(left, right, left_axis, right_axis)
+}
+
+/// Compute N-D batched matrix multiplication over the last two axes on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn tensor_batched_matmul_last_two_cpu<T>(
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
+) -> Result<ArrayD<T>, AcceleratorError>
+where
+    CpuBackend: TensorBatchedMatMulKernel<T>,
+{
+    tensor_batched_matmul_last_two_with_backend::<CpuBackend, T>(left, right)
+}
+
+/// Reduce a tensor over the last axis on the default CPU backend.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or kernel execution failures.
+pub fn tensor_sum_last_axis_cpu<T>(input: &ArrayD<T>) -> Result<ArrayD<T>, AcceleratorError>
+where
+    CpuBackend: TensorLastAxisReductionKernel<T>,
+{
+    tensor_sum_last_axis_with_backend::<CpuBackend, T>(input)
+}

@@ -9,10 +9,9 @@ use ndarray::{
 };
 use num_complex::Complex64;
 
-use crate::accelerator::backends::{AcceleratorError, CpuBackend};
+use crate::accelerator::backends::AcceleratorError;
 use crate::accelerator::dispatch::{
-    batched_matmat_with_backend, batched_row_matvec_with_backend, matmat_with_backend,
-    matvec_with_backend,
+    batched_matmat_cpu, batched_row_matvec_cpu, matmat_cpu, matvec_cpu,
 };
 
 /// Error type for dense matrix operations.
@@ -90,7 +89,7 @@ pub fn matvec(matrix: &Array2<f64>, vector: &Array1<f64>) -> Result<Array1<f64>,
     if vector.len() != matrix.ncols() {
         return Err(MatrixError::DimensionMismatch);
     }
-    matvec_with_backend::<CpuBackend>(matrix, vector).map_err(map_accelerator_error_to_matrix)
+    matvec_cpu(matrix, vector).map_err(map_accelerator_error_to_matrix)
 }
 
 /// Compute dense matrix-vector product `y = A x` from views.
@@ -231,7 +230,7 @@ pub fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, Ma
     if left.ncols() != right.nrows() {
         return Err(MatrixError::DimensionMismatch);
     }
-    matmat_with_backend::<CpuBackend>(left, right).map_err(map_accelerator_error_to_matrix)
+    matmat_cpu(left, right).map_err(map_accelerator_error_to_matrix)
 }
 
 /// Compute dense matrix-matrix product `C = A B` from views.
@@ -366,8 +365,7 @@ pub fn batched_row_matvec(
         return Err(MatrixError::DimensionMismatch);
     }
 
-    batched_row_matvec_with_backend::<CpuBackend>(batch_vectors, matrix)
-        .map_err(map_accelerator_error_to_matrix)
+    batched_row_matvec_cpu(batch_vectors, matrix).map_err(map_accelerator_error_to_matrix)
 }
 
 /// Apply one matrix to a batch of row-vectors from views.
@@ -452,8 +450,7 @@ pub fn batched_matmat(
     {
         return Err(MatrixError::DimensionMismatch);
     }
-    batched_matmat_with_backend::<CpuBackend>(left_batches, right_batches)
-        .map_err(map_accelerator_error_to_matrix)
+    batched_matmat_cpu(left_batches, right_batches).map_err(map_accelerator_error_to_matrix)
 }
 
 /// Compute batched dense matrix-matrix products from views.

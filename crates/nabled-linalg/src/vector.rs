@@ -4,10 +4,8 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 use thiserror::Error;
 
-use crate::accelerator::backends::{AcceleratorError, CpuBackend};
-use crate::accelerator::dispatch::{
-    dot_with_backend, pairwise_cosine_with_backend, pairwise_l2_with_backend,
-};
+use crate::accelerator::backends::AcceleratorError;
+use crate::accelerator::dispatch::{dot_cpu, pairwise_cosine_cpu, pairwise_l2_cpu};
 
 /// Errors for vector primitives.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +73,7 @@ fn validate_pairwise_inputs(left: &Array2<f64>, right: &Array2<f64>) -> Result<(
 /// Returns an error when vector lengths mismatch or either input is empty.
 pub fn dot(a: &Array1<f64>, b: &Array1<f64>) -> Result<f64, VectorError> {
     validate_vector_pair(a, b)?;
-    dot_with_backend::<CpuBackend>(a, b).map_err(map_accelerator_error_to_vector)
+    dot_cpu(a, b).map_err(map_accelerator_error_to_vector)
 }
 
 /// Compute dot product of two vector views.
@@ -202,7 +200,7 @@ pub fn pairwise_l2_distance(
     right: &Array2<f64>,
 ) -> Result<Array2<f64>, VectorError> {
     validate_pairwise_inputs(left, right)?;
-    pairwise_l2_with_backend::<CpuBackend>(left, right).map_err(map_accelerator_error_to_vector)
+    pairwise_l2_cpu(left, right).map_err(map_accelerator_error_to_vector)
 }
 
 /// Compute pairwise L2 distances into `output`.
@@ -256,7 +254,7 @@ pub fn pairwise_cosine_similarity(
     right: &Array2<f64>,
 ) -> Result<Array2<f64>, VectorError> {
     validate_pairwise_inputs(left, right)?;
-    pairwise_cosine_with_backend::<CpuBackend>(left, right).map_err(map_accelerator_error_to_vector)
+    pairwise_cosine_cpu(left, right).map_err(map_accelerator_error_to_vector)
 }
 
 /// Compute pairwise cosine similarity into `output`.

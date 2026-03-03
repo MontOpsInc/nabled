@@ -1,8 +1,35 @@
-//! Ndarray-native ML-oriented numerical domains for `nabled`.
+//! Ndarray-native ML-oriented numerical domains for the `nabled` workspace.
 //!
-//! This crate builds on `nabled-linalg` primitives to provide iterative solvers,
-//! optimization routines, Jacobian/gradient/Hessian utilities, PCA, regression,
-//! and statistics utilities.
+//! `nabled-ml` composes `nabled-linalg` kernels into higher-level ML/statistical
+//! routines over ndarray vectors and matrices.
+//!
+//! # Included Domains
+//!
+//! 1. [`iterative`]: iterative linear-system solvers.
+//! 2. [`optimization`]: first/second-order optimization routines.
+//! 3. [`jacobian`]: numerical Jacobian/gradient/Hessian estimators.
+//! 4. [`pca`]: principal component analysis and transforms.
+//! 5. [`regression`]: linear regression routines.
+//! 6. [`stats`]: covariance/correlation/centering utilities.
+//!
+//! # Feature Flags
+//!
+//! 1. `blas`: enables BLAS acceleration via `nabled-linalg/blas`.
+//! 2. `openblas-system`: enables provider-backed LAPACK paths for applicable decomposition work in
+//!    `nabled-linalg`.
+//!
+//! # Example
+//!
+//! ```rust
+//! use ndarray::{arr1, arr2};
+//! use nabled_ml::regression;
+//!
+//! let x = arr2(&[[1.0_f64, 1.0], [1.0, 2.0], [1.0, 3.0]]);
+//! let y = arr1(&[1.0_f64, 2.0, 3.0]);
+//! let model = regression::linear_regression(&x, &y)?;
+//! assert_eq!(model.coefficients.len(), 2);
+//! # Ok::<(), nabled_ml::regression::RegressionError>(())
+//! ```
 
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 

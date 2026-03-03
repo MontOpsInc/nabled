@@ -1,11 +1,36 @@
-//! Ndarray-native linear algebra domains for `nabled`.
+//! Ndarray-native linear algebra domains for the `nabled` workspace.
 //!
-//! This crate contains decomposition, dense/sparse kernels, vector/tensor
-//! primitives, and matrix-function routines.
+//! `nabled-linalg` provides decomposition routines, dense/sparse kernels,
+//! vector/tensor primitives, and matrix-function algorithms over ndarray data.
 //!
-//! Provider-backed paths (for example OpenBLAS/LAPACK via `openblas-system`) are
-//! compile-time optional and only affect supported decomposition families.
-//! Backend/kernel paths are represented explicitly in [`accelerator`].
+//! # Feature Flags
+//!
+//! 1. `blas`: enables BLAS acceleration through `ndarray/blas`.
+//! 2. `openblas-system`: enables provider-backed LAPACK paths through `ndarray-linalg` +
+//!    `OpenBLAS`.
+//! 3. `accelerator-rayon`: enables selected parallel CPU kernels.
+//! 4. `accelerator-wgpu`: enables bounded GPU (`f32`) kernel paths.
+//!
+//! # Execution Model
+//!
+//! 1. `Provider`: decomposition implementation source (internal or `OpenBLAS`-backed).
+//! 2. `Backend`: operation-kernel execution target (`CpuBackend`, `CudaBackend`).
+//! 3. `Kernel`: operation-family contract (for example matmat, sparse matvec, tensor contraction).
+//!
+//! Provider selection and backend selection are orthogonal, compile-time concerns.
+//! Public APIs remain ndarray-native and backend/provider agnostic.
+//!
+//! # Example
+//!
+//! ```rust
+//! use ndarray::arr2;
+//! use nabled_linalg::svd;
+//!
+//! let a = arr2(&[[1.0_f64, 2.0], [3.0, 4.0]]);
+//! let decomposition = svd::decompose(&a)?;
+//! assert_eq!(decomposition.singular_values.len(), 2);
+//! # Ok::<(), nabled_linalg::svd::SVDError>(())
+//! ```
 
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 

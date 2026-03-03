@@ -5,9 +5,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ndarray::{Array1, Array2};
 use thiserror::Error;
 
-use crate::accelerator::backends::{AcceleratorError, CpuBackend};
+use crate::accelerator::backends::AcceleratorError;
 use crate::accelerator::dispatch::{
-    sparse_matmat_dense_with_backend, sparse_matmat_sparse_with_backend, sparse_matvec_with_backend,
+    sparse_matmat_dense_cpu, sparse_matmat_sparse_cpu, sparse_matvec_cpu,
 };
 
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
@@ -413,8 +413,7 @@ impl CooMatrix {
 /// # Errors
 /// Returns an error if vector length mismatches matrix columns.
 pub fn matvec(matrix: &CsrMatrix, vector: &Array1<f64>) -> Result<Array1<f64>, SparseError> {
-    sparse_matvec_with_backend::<CpuBackend>(matrix, vector)
-        .map_err(map_accelerator_error_to_sparse)
+    sparse_matvec_cpu(matrix, vector).map_err(map_accelerator_error_to_sparse)
 }
 
 /// Compute sparse matrix-vector product `y = A x` into `output`.
@@ -1664,8 +1663,7 @@ pub fn apply_ildl0_preconditioner(
 /// # Errors
 /// Returns an error if dimensions are incompatible.
 pub fn matmat_dense(matrix: &CsrMatrix, dense: &Array2<f64>) -> Result<Array2<f64>, SparseError> {
-    sparse_matmat_dense_with_backend::<CpuBackend>(matrix, dense)
-        .map_err(map_accelerator_error_to_sparse)
+    sparse_matmat_dense_cpu(matrix, dense).map_err(map_accelerator_error_to_sparse)
 }
 
 /// Compute sparse-dense matrix multiplication `Y = A B` into `output`.
@@ -1699,8 +1697,7 @@ pub fn matmat_dense_into(
 /// # Errors
 /// Returns an error if dimensions are incompatible or sparse structure is invalid.
 pub fn matmat_sparse(left: &CsrMatrix, right: &CsrMatrix) -> Result<CsrMatrix, SparseError> {
-    sparse_matmat_sparse_with_backend::<CpuBackend>(left, right)
-        .map_err(map_accelerator_error_to_sparse)
+    sparse_matmat_sparse_cpu(left, right).map_err(map_accelerator_error_to_sparse)
 }
 
 /// Compute batched sparse matrix-vector products.

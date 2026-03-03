@@ -2,7 +2,6 @@
 
 use std::fmt;
 
-#[cfg(not(feature = "openblas-system"))]
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
@@ -333,6 +332,7 @@ fn decompose_dispatch(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Chole
 
 #[cfg(not(feature = "openblas-system"))]
 #[allow(clippy::many_single_char_names)]
+#[allow(clippy::too_many_lines)]
 fn solve_from_factor(
     lower_factor: &Array2<f64>,
     rhs: &ArrayView1<'_, f64>,

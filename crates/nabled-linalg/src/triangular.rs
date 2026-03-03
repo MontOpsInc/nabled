@@ -6,10 +6,8 @@ use num_complex::Complex64;
 use num_traits::Float;
 use thiserror::Error;
 
-use crate::accelerator::backends::{AcceleratorError, CpuBackend};
-use crate::accelerator::dispatch::{
-    triangular_solve_mat_with_backend, triangular_solve_vec_with_backend,
-};
+use crate::accelerator::backends::AcceleratorError;
+use crate::accelerator::dispatch::{triangular_solve_mat_cpu, triangular_solve_vec_cpu};
 
 /// Error returned by triangular solve kernels.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -242,8 +240,7 @@ where
 {
     validate_real_triangular_system(matrix, rhs.len())?;
     validate_non_singular_diagonal(matrix)?;
-    triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, true, false)
-        .map_err(map_accelerator_error)
+    triangular_solve_vec_cpu(matrix, rhs, true, false).map_err(map_accelerator_error)
 }
 
 /// Solve `Lx = b` with forward substitution from matrix/vector views.
@@ -287,8 +284,7 @@ where
 {
     validate_real_triangular_system(matrix, rhs.len())?;
     validate_non_singular_diagonal(matrix)?;
-    triangular_solve_vec_with_backend::<CpuBackend, T>(matrix, rhs, false, false)
-        .map_err(map_accelerator_error)
+    triangular_solve_vec_cpu(matrix, rhs, false, false).map_err(map_accelerator_error)
 }
 
 /// Solve `Ux = b` with back substitution from matrix/vector views.
@@ -335,8 +331,7 @@ where
 {
     validate_real_triangular_matrix_system(matrix, rhs)?;
     validate_non_singular_diagonal(matrix)?;
-    triangular_solve_mat_with_backend::<CpuBackend, T>(matrix, rhs, true, false)
-        .map_err(map_accelerator_error)
+    triangular_solve_mat_cpu(matrix, rhs, true, false).map_err(map_accelerator_error)
 }
 
 /// Solve `LX = B` with forward substitution into `output`.
@@ -385,8 +380,7 @@ where
 {
     validate_real_triangular_matrix_system(matrix, rhs)?;
     validate_non_singular_diagonal(matrix)?;
-    triangular_solve_mat_with_backend::<CpuBackend, T>(matrix, rhs, false, false)
-        .map_err(map_accelerator_error)
+    triangular_solve_mat_cpu(matrix, rhs, false, false).map_err(map_accelerator_error)
 }
 
 /// Solve `UX = B` with back substitution into `output`.

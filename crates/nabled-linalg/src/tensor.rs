@@ -9,10 +9,9 @@ use ndarray::{
 };
 use num_complex::Complex64;
 
-use crate::accelerator::backends::{AcceleratorError, CpuBackend};
+use crate::accelerator::backends::AcceleratorError;
 use crate::accelerator::dispatch::{
-    tensor_batched_matmul_last_two_with_backend, tensor_contract_axes_with_backend,
-    tensor_sum_last_axis_with_backend,
+    tensor_batched_matmul_last_two_cpu, tensor_contract_axes_cpu, tensor_sum_last_axis_cpu,
 };
 use crate::svd;
 
@@ -630,8 +629,7 @@ pub fn sum_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
 pub fn sum_last_axis_view(tensor: &ArrayViewD<'_, f64>) -> Result<ArrayD<f64>, TensorError> {
     validate_tensor_nd_non_empty(tensor)?;
     let owned = tensor.to_owned();
-    tensor_sum_last_axis_with_backend::<CpuBackend, f64>(&owned)
-        .map_err(map_accelerator_error_to_tensor)
+    tensor_sum_last_axis_cpu(&owned).map_err(map_accelerator_error_to_tensor)
 }
 
 /// Reduce a tensor view along its last axis by summation into `output`.
@@ -783,13 +781,8 @@ pub fn contract_axes_view(
     if left_axes.len() == 1 {
         let left_owned = left.to_owned();
         let right_owned = right.to_owned();
-        return tensor_contract_axes_with_backend::<CpuBackend, f64>(
-            &left_owned,
-            &right_owned,
-            left_axes[0],
-            right_axes[0],
-        )
-        .map_err(map_accelerator_error_to_tensor);
+        return tensor_contract_axes_cpu(&left_owned, &right_owned, left_axes[0], right_axes[0])
+            .map_err(map_accelerator_error_to_tensor);
     }
 
     let left_free_axes = uncontracted_axes(left_view.ndim(), left_axes);
@@ -882,7 +875,7 @@ pub fn batched_matmul_last_two_view(
 
     let left_owned = left.to_owned();
     let right_owned = right.to_owned();
-    tensor_batched_matmul_last_two_with_backend::<CpuBackend, f64>(&left_owned, &right_owned)
+    tensor_batched_matmul_last_two_cpu(&left_owned, &right_owned)
         .map_err(map_accelerator_error_to_tensor)
 }
 
@@ -939,8 +932,7 @@ pub fn sum_last_axis_complex_view(
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
     let owned = tensor.to_owned();
-    tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(&owned)
-        .map_err(map_accelerator_error_to_tensor)
+    tensor_sum_last_axis_cpu(&owned).map_err(map_accelerator_error_to_tensor)
 }
 
 /// Reduce a complex tensor view along its last axis by summation into `output`.
@@ -1098,13 +1090,8 @@ pub fn contract_axes_complex_view(
     if left_axes.len() == 1 {
         let left_owned = left.to_owned();
         let right_owned = right.to_owned();
-        return tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
-            &left_owned,
-            &right_owned,
-            left_axes[0],
-            right_axes[0],
-        )
-        .map_err(map_accelerator_error_to_tensor);
+        return tensor_contract_axes_cpu(&left_owned, &right_owned, left_axes[0], right_axes[0])
+            .map_err(map_accelerator_error_to_tensor);
     }
 
     let left_free_axes = uncontracted_axes(left_view.ndim(), left_axes);
@@ -1197,7 +1184,7 @@ pub fn batched_matmul_last_two_complex_view(
 
     let left_owned = left.to_owned();
     let right_owned = right.to_owned();
-    tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(&left_owned, &right_owned)
+    tensor_batched_matmul_last_two_cpu(&left_owned, &right_owned)
         .map_err(map_accelerator_error_to_tensor)
 }
 
