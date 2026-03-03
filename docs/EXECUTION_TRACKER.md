@@ -147,20 +147,34 @@ Use this file to resume work quickly after context compaction without re-auditin
 105. `D-105`: First benchmark-driven optimization loop closed the top dense hotspot: `vector::dot` now uses ndarray-optimized dot kernel via accelerator CPU dispatch and moved from multi-x regression to near-parity.
 106. `D-106`: Decomposition comparator coverage was expanded across active suites (`svd`, `qr`, `lu`, `cholesky`, `eigen`, `triangular`) with `faer_direct` groups, and benchmark-report classification was updated so parity tracking is now measurable for these domains.
 107. `D-107`: Cholesky inverse hotspot optimization landed: internal inverse now reuses one factorization and solve-from-factor flow, reducing decomposition-chunk Cholesky geomean ratio vs `faer_direct` from `4.012` to `2.409`.
+108. `D-108`: Publish-readiness checklist is now documented (`docs/PUBLISH_CHECKLIST.md`) with validated packaging blocker capture (`cargo package -p nabled` currently fails until internal crate dependencies have explicit version requirements).
 
 ## Next
 
-1. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
-2. `K-005`: Start benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
-3. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
-4. `K-008`: Continue kernel orchestration cleanup where API-level dispatch still has ad hoc pathways.
+1. `R-001`: Execute `docs/PUBLISH_CHECKLIST.md` to clear publish blockers (internal dependency version requirements for packaging + publish policy flip when release is authorized).
+2. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
+3. `K-005`: Continue benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
+4. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
+5. `K-008`: Continue kernel orchestration cleanup where API-level dispatch still has ad hoc pathways.
+
+### K-008 Scope Clarification
+
+`K-008` is a cleanup/normalization task, not a capability-gap task.
+
+It means:
+
+1. Replace remaining API-local ad hoc backend branching with shared kernel-dispatch helpers where equivalent kernel coverage already exists.
+2. Keep decomposition provider selection compile-time in domain modules (no runtime provider dispatch).
+3. Keep public APIs free of execution-axis leakage while making internal orchestration consistent and auditable.
+4. Preserve behavior and tests; this is refactor-oriented unless an explicit bug is found.
 
 ## Needed
 
-1. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
-2. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
-3. `K-004`: Provider expansion decision record beyond `openblas-system`.
-4. `K-008`: Kernel orchestration cleanup plan + implementation log for remaining ad hoc API dispatch paths.
+1. `R-001`: Publish execution log with dry-run evidence for all crates (`nabled-core`, `nabled-linalg`, `nabled-ml`, `nabled`) and final publish order confirmation.
+2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+3. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
+4. `K-004`: Provider expansion decision record beyond `openblas-system`.
+5. `K-008`: Kernel orchestration cleanup plan + implementation log for remaining ad hoc API dispatch paths.
 
 ## Backlog (From Capability Matrix)
 

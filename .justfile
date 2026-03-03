@@ -298,10 +298,10 @@ init-dev:
     @echo "Next steps:"
     @echo "1. Get your crates.io API token from https://crates.io/settings/tokens"
     @echo "2. Add it as CARGO_REGISTRY_TOKEN in GitHub repo settings → Secrets"
-    @echo "3. Use 'cargo release patch/minor/major' to create releases"
+    @echo "3. Use 'just prepare-release <X.Y.Z>' to prepare release PRs"
     @echo ""
     @echo "Useful commands:"
-    @echo "  just release-dry patch  # Preview what would happen"
+    @echo "  just release-dry 0.1.0  # Preview what would happen"
     @echo "  just check-outdated     # Check for outdated dependencies"
     @echo "  just audit              # Security audit"
 
@@ -324,17 +324,23 @@ prepare-release version:
         exit 1
     fi
 
-    # Parse version components
-    IFS='.' read -r MAJOR MINOR PATCH <<< "{{ version }}"
-
-    # Get current version for release notes
-    CURRENT_VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    # Require clean tree for deterministic release prep.
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "Error: Working tree is not clean. Commit or stash changes first."
+        exit 1
+    fi
 
     # Create release branch
     git checkout -b "release-v{{ version }}"
 
     # Update version in root Cargo.toml (in [workspace.package] section)
     awk '/^\[workspace\.package\]/ {in_workspace_package=1} in_workspace_package && /^version = / {gsub(/"[^"]*"/, "\"{{ version }}\""); in_workspace_package=0} {print}' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
+
+    # Update internal workspace dependency versions for publish/package correctness.
+    sed -i '' "s/^nabled = { path = \"crates\\/nabled\", version = \"=[^\"]*\" }/nabled = { path = \"crates\\/nabled\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-core = { path = \"crates\\/nabled-core\", version = \"=[^\"]*\" }/nabled-core = { path = \"crates\\/nabled-core\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-linalg = { path = \"crates\\/nabled-linalg\", version = \"=[^\"]*\" }/nabled-linalg = { path = \"crates\\/nabled-linalg\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-ml = { path = \"crates\\/nabled-ml\", version = \"=[^\"]*\" }/nabled-ml = { path = \"crates\\/nabled-ml\", version = \"={{ version }}\" }/" Cargo.toml
 
     # Update nabled version references in README files (if they exist)
     # Look for patterns like: nabled = "0.1.1" or nabled = { version = "0.1.1"
@@ -349,6 +355,11 @@ prepare-release version:
 
     # Update Cargo.lock
     cargo update --workspace
+
+    # Verify leaf crate packages locally.
+    # Dependent crates resolve internal dependencies via crates.io at package time,
+    # so full package verification is performed in release workflow publish order.
+    cargo package --allow-dirty -p nabled-core
 
     # Generate full changelog
     echo "Generating changelog..."
@@ -391,16 +402,16 @@ tag-release version:
     git checkout main
     git pull origin main
 
-    # Verify the version in Cargo.toml matches
-    CARGO_VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    # Verify the version in Cargo.toml matches requested version
+    CARGO_VERSION=$(awk '/^\[workspace\.package\]/ {in_workspace_package=1; next} in_workspace_package && /^version = / {gsub(/"/,"",$3); print $3; exit}' Cargo.toml)
     if [ "$CARGO_VERSION" != "{{ version }}" ]; then
         echo "Error: Cargo.toml version ($CARGO_VERSION) does not match requested version ({{ version }})"
         echo "Did the release PR merge successfully?"
         exit 1
     fi
 
-    # Verify publish will work
-    cargo publish --dry-run -p nabled --no-verify
+    # Verify leaf publish path works.
+    cargo publish --dry-run -p nabled-core --no-verify
 
     # Create and push tag
     git tag -a "v{{ version }}" -m "Release v{{ version }}"
@@ -416,13 +427,17 @@ release-dry version:
     @echo "This would:"
     @echo "1. Create branch: release-v{{ version }}"
     @echo "2. Update version to {{ version }} in:"
-    @echo "   - Cargo.toml (workspace.package section only)"
+    @echo "   - Cargo.toml [workspace.package] version"
+    @echo "   - Cargo.toml [workspace.dependencies] internal crate versions"
     @echo "   - README files (if they contain nabled version references)"
-    @echo "3. Update Cargo.lock (usually done automatically with Cargo.toml change)"
-    @echo "4. Generate CHANGELOG.md"
-    @echo "5. Generate RELEASE_NOTES.md"
-    @echo "6. Create commit and push branch"
+    @echo "3. Run local package check for nabled-core (leaf crate)"
+    @echo "   - dependent crates are verified by ordered publish in release workflow"
+    @echo "4. Update Cargo.lock"
+    @echo "5. Generate CHANGELOG.md"
+    @echo "6. Generate RELEASE_NOTES.md"
+    @echo "7. Create commit and push branch"
     @echo ""
     @echo "After PR merge, 'just tag-release {{ version }}' would:"
     @echo "1. Tag the merged commit as v{{ version }}"
-    @echo "2. Push the tag (triggering release workflow)"
+    @echo "2. Verify leaf dry-run (nabled-core)"
+    @echo "3. Push the tag (triggering ordered release workflow)"

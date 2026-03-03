@@ -11,6 +11,31 @@ on:
         default: false
         required: false
         type: boolean
+      skip_core:
+        description: 'Skip publishing nabled-core'
+        default: false
+        required: false
+        type: boolean
+      skip_linalg:
+        description: 'Skip publishing nabled-linalg'
+        default: false
+        required: false
+        type: boolean
+      skip_ml:
+        description: 'Skip publishing nabled-ml'
+        default: false
+        required: false
+        type: boolean
+      skip_facade:
+        description: 'Skip publishing nabled facade crate'
+        default: false
+        required: false
+        type: boolean
+      verify_publish:
+        description: 'Verify publish order with --dry-run before publish'
+        default: false
+        required: false
+        type: boolean
       version:
         description: 'Version to release (e.g., 0.1.5)'
         required: false
@@ -44,8 +69,8 @@ jobs:
               VERSION="${{ inputs.version }}"
               echo "Using provided version: $VERSION"
             else
-              # Extract version from Cargo.toml
-              VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+              # Extract version from [workspace.package] in Cargo.toml
+              VERSION=$(awk '/^\[workspace\.package\]/ {in_workspace_package=1; next} in_workspace_package && /^version = / {gsub(/"/,"",$3); print $3; exit}' Cargo.toml)
               echo "Using version from Cargo.toml: $VERSION"
             fi
           else
@@ -56,23 +81,51 @@ jobs:
 
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-          # Check that Cargo.toml has the correct version
-          CARGO_VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          # Check that [workspace.package] version matches expected version.
+          CARGO_VERSION=$(awk '/^\[workspace\.package\]/ {in_workspace_package=1; next} in_workspace_package && /^version = / {gsub(/"/,"",$3); print $3; exit}' Cargo.toml)
+          if [ -z "$CARGO_VERSION" ]; then
+            echo "Error: could not read [workspace.package] version from Cargo.toml"
+            exit 1
+          fi
           if [ "$CARGO_VERSION" != "$VERSION" ]; then
-            echo "Error: Cargo.toml version ($CARGO_VERSION) does not match expected version ($VERSION)"
+            echo "Error: workspace version ($CARGO_VERSION) does not match expected version ($VERSION)"
             echo "Please ensure versions are consistent"
             exit 1
           fi
 
       - name: Verify publish
-        if: ${{ inputs.skip_publish == false }}
+        if: ${{ inputs.skip_publish != true && inputs.verify_publish == true }}
         run: |
-          cargo publish --dry-run -p nabled --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          cargo publish --dry-run -p nabled-core --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Publish to crates.io
-        if: ${{ inputs.skip_publish == false }}
+      - name: Publish nabled-core to crates.io
+        if: ${{ inputs.skip_publish != true && inputs.skip_core != true }}
+        run: |
+          cargo publish -p nabled-core --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          sleep 30
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish nabled-linalg to crates.io
+        if: ${{ inputs.skip_publish != true && inputs.skip_linalg != true }}
+        run: |
+          cargo publish -p nabled-linalg --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          sleep 30
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish nabled-ml to crates.io
+        if: ${{ inputs.skip_publish != true && inputs.skip_ml != true }}
+        run: |
+          cargo publish -p nabled-ml --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          sleep 30
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish nabled facade to crates.io
+        if: ${{ inputs.skip_publish != true && inputs.skip_facade != true }}
         run: |
           cargo publish -p nabled --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         env:

@@ -21,7 +21,8 @@ This folder contains the current, authoritative direction for `nabled`.
 7. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
 8. `docs/architecture.md`: target package/module architecture.
 9. `docs/ROADMAP.md`: implementation sequencing and milestones.
-10. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+10. `docs/PUBLISH_CHECKLIST.md`: crates.io publish gate and release-day checklist.
+11. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
 
 ## Context Resume Protocol
 
@@ -37,7 +38,8 @@ When starting from a compacted/partial context, read documents in this order:
 8. `docs/EXECUTION_TRACKER.md`
 9. `docs/architecture.md`
 10. `docs/ROADMAP.md`
-11. `docs/STATUS.md`
+11. `docs/PUBLISH_CHECKLIST.md`
+12. `docs/STATUS.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 

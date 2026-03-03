@@ -318,3 +318,56 @@ Interpretation:
    - rank top regressions by absolute ns and percent vs comparator,
    - apply targeted optimization pass,
    - rerun chunk and record delta.
+
+## Optimization Handoff Notes (Cholesky, 2026-03-03)
+
+Use these notes when resuming point-by-point parity work.
+
+### What was learned
+
+1. `release-lto` profile materially changes ranking and should be treated as canonical for parity work.
+2. `coverage/benchmarks/summary.csv` can contain duplicate `full_id` rows across repeated runs; parity extraction should dedup by `full_id` before ratio calculations.
+3. Criterion `new/estimates.json` under `target/criterion/*` is the cleanest source for a single-run comparison.
+4. The largest gains in Cholesky came from:
+   - contiguous-slice kernels (`as_slice_memory_order[_mut]`),
+   - avoiding full input copy where not needed,
+   - reducing bounds checks in O(n^3) loops via documented `unsafe`,
+   - loop unrolling in inner dot-product-like regions.
+5. Remaining Cholesky gaps are concentrated at larger sizes (`32`, `64`) and especially `inverse/64`.
+
+### Practical extraction patterns
+
+Dedup summary CSV by `full_id`:
+
+```bash
+awk -F, 'NR==1{print;next}{rows[$15]=$0;ord[++n]=$15} END{for(i=1;i<=n;i++){id=ord[i]; if(!seen[id]++) print rows[id]}}' \
+  coverage/benchmarks/summary.csv > /tmp/summary_dedup.csv
+```
+
+Single-run ratio extraction (criterion):
+
+```bash
+python3 - <<'PY'
+import json, math
+from pathlib import Path
+root=Path('target/criterion')
+ops=['decompose','solve','inverse']
+sizes=[16,32,64]
+rat=[]
+for op in ops:
+    for size in sizes:
+        n=root/f'cholesky_nabled_ndarray/{op}/{size}/new/estimates.json'
+        f=root/f'cholesky_competitor_faer_direct/{op}/{size}/new/estimates.json'
+        nm=json.loads(n.read_text())['median']['point_estimate']
+        fm=json.loads(f.read_text())['median']['point_estimate']
+        r=nm/fm
+        rat.append(r)
+        print(f'{op:10s} {size:>3}: ratio={r:6.3f}')
+print(f'geomean ratio={math.exp(sum(math.log(x) for x in rat)/len(rat)):.3f}')
+PY
+```
+
+### Resume target
+
+1. Keep pushing Cholesky until geomean `nabled/faer_direct` is near `1.0`.
+2. After Cholesky parity, continue in planned order: `qr` -> `lu` -> `eigen::symmetric`.

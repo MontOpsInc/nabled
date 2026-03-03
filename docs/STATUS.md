@@ -83,6 +83,7 @@ Workspace migration for library domains is complete.
 75. First optimization pass on benchmark hotspots is landed: `vector::dot` now routes through ndarray optimized dot and has moved to near-parity against baseline.
 76. Decomposition benchmarking now has active external comparator coverage (`faer_direct`) for `svd`, `qr`, `lu`, `cholesky`, `eigen`, and `triangular`, with report classifier support wired for these new benchmark groups.
 77. A targeted Cholesky inverse optimization pass is now landed, reusing one factorization per inverse call and significantly reducing the Cholesky decomposition benchmark gap.
+78. Publish readiness is now explicitly tracked in `docs/PUBLISH_CHECKLIST.md`; current packaging verification identifies a blocker for crates.io packaging (`nabled` internal dependencies need explicit version requirements before `cargo package/publish` can succeed).
 
 ## Current Code Ownership
 

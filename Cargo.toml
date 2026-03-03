@@ -24,10 +24,10 @@ documentation = "https://docs.rs/nabled"
 publish = false
 
 [workspace.dependencies]
-nabled = { path = "crates/nabled" }
-nabled-core = { path = "crates/nabled-core" }
-nabled-linalg = { path = "crates/nabled-linalg" }
-nabled-ml = { path = "crates/nabled-ml" }
+nabled = { path = "crates/nabled", version = "=0.0.1" }
+nabled-core = { path = "crates/nabled-core", version = "=0.0.1" }
+nabled-linalg = { path = "crates/nabled-linalg", version = "=0.0.1" }
+nabled-ml = { path = "crates/nabled-ml", version = "=0.0.1" }
 
 approx = "0.5"
 criterion = "0.8"
