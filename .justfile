@@ -369,8 +369,12 @@ prepare-release version:
     echo "Generating release notes..."
     git cliff --unreleased --tag v{{ version }} --strip header -o RELEASE_NOTES.md
 
-    # Stage all changes
-    git add Cargo.toml Cargo.lock CHANGELOG.md RELEASE_NOTES.md
+    # Stage all changes.
+    # Cargo.lock is ignored in this repository, so stage it only if it is tracked.
+    git add Cargo.toml CHANGELOG.md RELEASE_NOTES.md
+    if git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
+        git add Cargo.lock
+    fi
     # Also add README files if they were modified
     git add README.md 2>/dev/null || true
 
