@@ -14,13 +14,14 @@ This folder contains the current, authoritative direction for `nabled`.
 
 1. `docs/DECISIONS.md`: locked decisions and constraints.
 2. `docs/CAPABILITY_MATRIX.md`: capability inventory, gap analysis, and scope verdict.
-3. `docs/KERNEL_CATALOG.md`: complete kernel contract inventory, wiring status, and done-state definition.
-4. `docs/PERFORMANCE_CONTRACTS.md`: allocation/copy contract and copy-elision audit status.
-5. `docs/V1_STABILITY.md`: explicit v1-stability contract (required tensor/GPU surface, feature matrix, no-surprises signoff).
-6. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
-7. `docs/architecture.md`: target package/module architecture.
-8. `docs/ROADMAP.md`: implementation sequencing and milestones.
-9. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+3. `docs/BENCHMARK_TRACKER.md`: chunked benchmark audit, current results, and optimization loop tracking.
+4. `docs/KERNEL_CATALOG.md`: complete kernel contract inventory, wiring status, and done-state definition.
+5. `docs/PERFORMANCE_CONTRACTS.md`: allocation/copy contract and copy-elision audit status.
+6. `docs/V1_STABILITY.md`: explicit v1-stability contract (required tensor/GPU surface, feature matrix, no-surprises signoff).
+7. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
+8. `docs/architecture.md`: target package/module architecture.
+9. `docs/ROADMAP.md`: implementation sequencing and milestones.
+10. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
 
 ## Context Resume Protocol
 
@@ -29,13 +30,14 @@ When starting from a compacted/partial context, read documents in this order:
 1. `docs/README.md`
 2. `docs/DECISIONS.md`
 3. `docs/CAPABILITY_MATRIX.md`
-4. `docs/KERNEL_CATALOG.md`
-5. `docs/PERFORMANCE_CONTRACTS.md`
-6. `docs/V1_STABILITY.md`
-7. `docs/EXECUTION_TRACKER.md`
-8. `docs/architecture.md`
-9. `docs/ROADMAP.md`
-10. `docs/STATUS.md`
+4. `docs/BENCHMARK_TRACKER.md`
+5. `docs/KERNEL_CATALOG.md`
+6. `docs/PERFORMANCE_CONTRACTS.md`
+7. `docs/V1_STABILITY.md`
+8. `docs/EXECUTION_TRACKER.md`
+9. `docs/architecture.md`
+10. `docs/ROADMAP.md`
+11. `docs/STATUS.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 

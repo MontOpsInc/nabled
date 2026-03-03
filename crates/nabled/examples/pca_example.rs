@@ -1,4 +1,4 @@
-use nabled::pca;
+use nabled::ml::pca;
 use ndarray::Array2;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

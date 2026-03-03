@@ -1,4 +1,4 @@
-use nabled::lu;
+use nabled::linalg::lu;
 use ndarray::{Array1, Array2};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

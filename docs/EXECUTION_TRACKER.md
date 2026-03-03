@@ -140,6 +140,13 @@ Use this file to resume work quickly after context compaction without re-auditin
 97. `D-097`: `V1-G6` closed: no-surprises audit signoff documented and synchronized across `docs/V1_STABILITY.md`, `docs/PERFORMANCE_CONTRACTS.md`, `docs/CAPABILITY_MATRIX.md`, and `docs/STATUS.md`.
 99. `D-099`: v1 readiness contract was tightened: higher-level ML/stat complex parity was promoted from post-v1 backlog into required v1 scope (`B-P1-006`), reopening the v1 gate until implemented.
 100. `D-100`: `B-P1-006` is complete: higher-level ML/stat complex parity is now implemented in `nabled-ml` (`stats`, `regression`, `pca`, `optimization`) with owned/view APIs and coverage tests.
+101. `D-101`: QR semantic completion landed: true column-pivoted QR (real and complex) replaced identity-permutation placeholder behavior, and least-squares now supports underdetermined minimum-norm solutions with rank checks.
+102. `D-102`: Facade/docs.rs polish landed: `nabled` now presents explicit namespace boundaries (`core`, `linalg`, `ml`), call sites in facade examples/benches/tests are migrated to those paths, and crate-root docs now document features plus `Provider / Backend / Kernel` execution semantics.
+103. `D-103`: Chunked benchmark auditing is now formalized in `docs/BENCHMARK_TRACKER.md`; initial linalg decomposition chunk (`L-CPU-NATIVE-DECOMP`) has fresh local measurements, comparator coverage audit, and optimization-next actions.
+104. `D-104`: Additional chunk audits are now measured and recorded: `L-CPU-NATIVE-DENSE` and `L-CPU-NATIVE-SPARSE` (with deterministic dedup extraction), confirming matrix parity vs ndarray baseline and identifying `vector::dot` as the top dense regression hotspot.
+105. `D-105`: First benchmark-driven optimization loop closed the top dense hotspot: `vector::dot` now uses ndarray-optimized dot kernel via accelerator CPU dispatch and moved from multi-x regression to near-parity.
+106. `D-106`: Decomposition comparator coverage was expanded across active suites (`svd`, `qr`, `lu`, `cholesky`, `eigen`, `triangular`) with `faer_direct` groups, and benchmark-report classification was updated so parity tracking is now measurable for these domains.
+107. `D-107`: Cholesky inverse hotspot optimization landed: internal inverse now reuses one factorization and solve-from-factor flow, reducing decomposition-chunk Cholesky geomean ratio vs `faer_direct` from `4.012` to `2.409`.
 
 ## Next
 

@@ -1,4 +1,4 @@
-use nabled::svd;
+use nabled::linalg::svd;
 use ndarray::Array2;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

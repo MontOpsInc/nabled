@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
-use nabled::{pca, vector};
+use nabled::linalg::vector;
+use nabled::ml::pca;
 use ndarray::Array2;
 
 fn top_k_indices(scores: &[f64], k: usize) -> Vec<(usize, f64)> {

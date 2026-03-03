@@ -1,4 +1,11 @@
-//! Ndarray-native linear algebra domain crate.
+//! Ndarray-native linear algebra domains for `nabled`.
+//!
+//! This crate contains decomposition, dense/sparse kernels, vector/tensor
+//! primitives, and matrix-function routines.
+//!
+//! Provider-backed paths (for example OpenBLAS/LAPACK via `openblas-system`) are
+//! compile-time optional and only affect supported decomposition families.
+//! Backend/kernel paths are represented explicitly in [`accelerator`].
 
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 

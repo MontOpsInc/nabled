@@ -1,47 +1,67 @@
 //! # nabled
 //!
-//! Workspace facade crate for ndarray-first numerical modules.
+//! `nabled` is an ndarray-native numerical library focused on production-grade
+//! linear algebra and ML-oriented primitives.
+//!
+//! ## Crate Layout
+//!
+//! 1. [`core`] for shared error taxonomy, validation, and ndarray prelude exports.
+//! 2. [`linalg`] for linear algebra and decomposition domains.
+//! 3. [`ml`] for ML-oriented numerical routines.
+//!
+//! ## Feature Flags
+//!
+//! 1. `blas`: enables `ndarray/blas` in lower crates.
+//! 2. `openblas-system`: enables provider-backed LAPACK paths via `OpenBLAS`.
+//! 3. `accelerator-rayon`: enables parallel CPU kernels where implemented.
+//! 4. `accelerator-wgpu`: enables WGPU-backed kernel paths where implemented.
+//!
+//! ## Execution Semantics
+//!
+//! 1. `Provider`: decomposition implementation source (internal vs OpenBLAS-backed paths).
+//! 2. `Backend`: primitive-kernel execution target (CPU/WGPU).
+//! 3. `Kernel`: operation-family backend contract (`matmat`, `matvec`, sparse ops, tensor ops).
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use ndarray::arr2;
+//! use nabled::linalg::svd;
+//!
+//! let a = arr2(&[[1.0_f64, 2.0], [3.0, 4.0]]);
+//! let decomposition = svd::decompose(&a)?;
+//! assert_eq!(decomposition.singular_values.len(), 2);
+//! # Ok::<(), nabled::linalg::svd::SVDError>(())
+//! ```
+//!
+//! ## Optional Provider Build
+//!
+//! ```text
+//! cargo test -p nabled --features openblas-system
+//! ```
+//!
+//! ## Optional Accelerator Build
+//!
+//! ```text
+//! cargo test -p nabled --features accelerator-wgpu
+//! ```
 
-pub use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
-pub use nabled_core::prelude;
-pub use nabled_linalg::accelerator::backends::{
-    AcceleratorError, BackendKind, CpuBackend, CudaBackend,
-};
-pub use nabled_linalg::cholesky::{CholeskyError, NdarrayCholeskyResult};
-pub use nabled_linalg::eigen::{
-    EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult,
-    NdarrayNonsymmetricBiEigenResult, NdarrayNonsymmetricEigenResult, NonsymmetricEigenConfig,
-};
-pub use nabled_linalg::lu::{LUError, LogDetResult, NdarrayLUResult};
-pub use nabled_linalg::matrix::MatrixError;
-pub use nabled_linalg::matrix_functions::{MatrixFunctionError, MatrixFunctionWorkspace};
-pub use nabled_linalg::orthogonalization::OrthogonalizationError;
-pub use nabled_linalg::polar::{NdarrayComplexPolarResult, NdarrayPolarResult, PolarError};
-pub use nabled_linalg::qr::{QRConfig, QRError, QRResult};
-pub use nabled_linalg::schur::{NdarraySchurResult, SchurError, SchurWorkspace};
-pub use nabled_linalg::sparse::{
-    CooMatrix, CscMatrix, CsrMatrix, IC0Factorization, ILDL0Factorization, ILU0Factorization,
-    ILUKConfig, ILUKFactorization, ILUTConfig, ILUTFactorization, JacobiPreconditioner,
-    SparseError, SparseLUFactorization,
-};
-pub use nabled_linalg::svd::{NdarrayComplexSVD, NdarraySVD, PseudoInverseConfig, SVDError};
-pub use nabled_linalg::sylvester::{SylvesterError, SylvesterWorkspace};
-pub use nabled_linalg::tensor::{Hosvd3Result, TensorError};
-pub use nabled_linalg::triangular::TriangularError;
-pub use nabled_linalg::vector::{PairwiseCosineWorkspace, VectorError};
-pub use nabled_linalg::{
-    accelerator, batched, cholesky, eigen, lu, matrix, matrix_functions, orthogonalization, polar,
-    qr, schur, sparse, svd, sylvester, tensor, triangular, vector,
-};
-pub use nabled_ml::iterative::{IterativeConfig, IterativeError};
-pub use nabled_ml::jacobian::{JacobianConfig, JacobianError};
-pub use nabled_ml::optimization::{
-    AdamConfig, BFGSConfig, LineSearchConfig, MomentumConfig, OptimizationError,
-    ProjectedGradientConfig, RMSPropConfig, SGDConfig,
-};
-pub use nabled_ml::pca::{NdarrayComplexPCAResult, NdarrayPCAResult, PCAError};
-pub use nabled_ml::regression::{
-    NdarrayComplexRegressionResult, NdarrayRegressionResult, RegressionError,
-};
-pub use nabled_ml::stats::StatsError;
-pub use nabled_ml::{iterative, jacobian, optimization, pca, regression, stats};
+/// Shared core types, error taxonomy, and validation primitives.
+pub mod core {
+    pub use nabled_core::{errors, prelude, validation};
+}
+
+/// Ndarray-native linear algebra domains.
+pub mod linalg {
+    pub use nabled_linalg::*;
+}
+
+/// ML-oriented numerical domains built on ndarray-native primitives.
+pub mod ml {
+    pub use nabled_ml::*;
+}
+
+/// Common ndarray and complex-number prelude exports.
+pub mod prelude {
+    pub use crate::core::prelude::*;
+}

@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::sparse::{self as sparse, CsrMatrix};
+use nabled::linalg::sparse::{self as sparse, CsrMatrix};
 use ndarray::{Array1, Array2};
 use rand::RngExt;
 

@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::{AdamConfig, SGDConfig, optimization};
+use nabled::ml::optimization::{self as optimization, AdamConfig, SGDConfig};
 use ndarray::Array1;
 use rand::RngExt;
 

@@ -1,4 +1,4 @@
-use nabled::qr::{self as qr, QRConfig, QRError};
+use nabled::linalg::qr::{self as qr, QRConfig, QRError};
 use ndarray::{Array1, Array2};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

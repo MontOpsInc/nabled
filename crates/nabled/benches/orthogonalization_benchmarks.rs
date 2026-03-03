@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::orthogonalization;
+use nabled::linalg::orthogonalization;
 use ndarray::Array2;
 use rand::RngExt;
 

@@ -1,4 +1,8 @@
-//! Ndarray-native ML domain crate.
+//! Ndarray-native ML-oriented numerical domains for `nabled`.
+//!
+//! This crate builds on `nabled-linalg` primitives to provide iterative solvers,
+//! optimization routines, Jacobian/gradient/Hessian utilities, PCA, regression,
+//! and statistics utilities.
 
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 

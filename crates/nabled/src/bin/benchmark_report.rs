@@ -312,9 +312,12 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         | "optimization_nabled_ndarray"
         | "polar_nabled_ndarray"
         | "orthogonalization_nabled_ndarray" => ("ndarray", "none"),
-        "svd_competitor_faer_direct" | "qr_competitor_faer_direct" => {
-            ("faer_direct", "faer_direct")
-        }
+        "svd_competitor_faer_direct"
+        | "qr_competitor_faer_direct"
+        | "lu_competitor_faer_direct"
+        | "cholesky_competitor_faer_direct"
+        | "eigen_competitor_faer_direct"
+        | "triangular_competitor_faer_direct" => ("faer_direct", "faer_direct"),
         "svd_competitor_ndarray_linalg" | "qr_competitor_ndarray_linalg" => {
             ("ndarray_linalg", "ndarray_linalg")
         }

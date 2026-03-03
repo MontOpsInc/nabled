@@ -1,4 +1,4 @@
-use nabled::sparse::{self, CooMatrix};
+use nabled::linalg::sparse::{self, CooMatrix};
 use ndarray::Array1;
 
 fn residual_norm(

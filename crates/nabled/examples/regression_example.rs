@@ -1,4 +1,4 @@
-use nabled::regression;
+use nabled::ml::regression;
 use ndarray::{Array1, Array2};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

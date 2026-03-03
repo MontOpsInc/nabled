@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::sylvester;
+use nabled::linalg::sylvester;
 use ndarray::{Array1, Array2};
 use rand::RngExt;
 

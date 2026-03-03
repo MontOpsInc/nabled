@@ -1,13 +1,17 @@
 //! Integration tests for ndarray-first APIs.
 
 use approx::assert_relative_eq;
-use nabled::svd::{self as svd, SVDError};
-use nabled::vector::{self as vector, PairwiseCosineWorkspace};
-use nabled::{
-    CpuBackend, CsrMatrix, CudaBackend, IntoNabledError, IterativeConfig, NabledError, accelerator,
-    cholesky, eigen, iterative, lu, matrix, matrix_functions, orthogonalization, pca, polar,
-    regression, schur, sparse, stats, sylvester, tensor, triangular,
+use nabled::core::errors::{IntoNabledError, NabledError};
+use nabled::linalg::accelerator::backends::{CpuBackend, CudaBackend};
+use nabled::linalg::sparse::CsrMatrix;
+use nabled::linalg::svd::{self as svd, SVDError};
+use nabled::linalg::vector::{self as vector, PairwiseCosineWorkspace};
+use nabled::linalg::{
+    accelerator, cholesky, eigen, lu, matrix, matrix_functions, orthogonalization, polar, schur,
+    sparse, sylvester, tensor, triangular,
 };
+use nabled::ml::iterative::IterativeConfig;
+use nabled::ml::{iterative, pca, regression, stats};
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex64;
 
@@ -326,7 +330,10 @@ fn test_matrix_sparse_and_nonsymmetric_eigen_paths() {
 
     let bad_vector = Array1::from_vec(vec![1.0]);
     let matrix_error = matrix::matvec(&dense, &bad_vector).unwrap_err().into_nabled_error();
-    assert!(matches!(matrix_error, NabledError::Shape(nabled::ShapeError::DimensionMismatch)));
+    assert!(matches!(
+        matrix_error,
+        NabledError::Shape(nabled::core::errors::ShapeError::DimensionMismatch)
+    ));
 }
 
 fn assert_sparse_tensor_and_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
@@ -425,6 +432,9 @@ fn assert_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
     }
     #[cfg(not(feature = "accelerator-rayon"))]
     {
-        assert!(matches!(accelerated, Err(nabled::AcceleratorError::FeatureNotEnabled)));
+        assert!(matches!(
+            accelerated,
+            Err(accelerator::backends::AcceleratorError::FeatureNotEnabled)
+        ));
     }
 }

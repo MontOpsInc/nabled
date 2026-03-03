@@ -1,4 +1,7 @@
-//! Core ndarray-native types and shared utilities for nabled crates.
+//! Core shared types and utilities for `nabled`.
+//!
+//! `nabled-core` provides the common error taxonomy, validation helpers, and
+//! prelude exports used across `nabled-linalg` and `nabled-ml`.
 
 pub mod errors;
 pub mod prelude {

@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+#[cfg(not(feature = "openblas-system"))]
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
@@ -123,31 +124,93 @@ fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Chole
     validate_square_finite_view(matrix)?;
 
     let n = matrix.nrows();
-    let mut l = Array2::<f64>::zeros((n, n));
+    let mut lower = Array2::<f64>::zeros((n, n));
 
-    for i in 0..n {
-        for j in 0..=i {
-            let mut sum = matrix[[i, j]];
-            for k in 0..j {
-                sum -= l[[i, k]] * l[[j, k]];
-            }
+    if let (Some(input), Some(data)) =
+        (matrix.as_slice_memory_order(), lower.as_slice_memory_order_mut())
+    {
+        for i in 0..n {
+            let row_i = i * n;
+            for j in 0..=i {
+                let row_j = j * n;
+                let mut sum = {
+                    // SAFETY: `row_i + j < n * n` from loop bounds.
+                    unsafe { *input.get_unchecked(row_i + j) }
+                };
+                let mut dot = 0.0_f64;
+                let mut k = 0;
+                while k + 3 < j {
+                    dot += {
+                        // SAFETY: offsets are bounded by loop invariants.
+                        unsafe {
+                            *data.get_unchecked(row_i + k) * *data.get_unchecked(row_j + k)
+                                + *data.get_unchecked(row_i + k + 1)
+                                    * *data.get_unchecked(row_j + k + 1)
+                                + *data.get_unchecked(row_i + k + 2)
+                                    * *data.get_unchecked(row_j + k + 2)
+                                + *data.get_unchecked(row_i + k + 3)
+                                    * *data.get_unchecked(row_j + k + 3)
+                        }
+                    };
+                    k += 4;
+                }
+                while k < j {
+                    dot += {
+                        // SAFETY: row/column offsets are bounded by loop invariants.
+                        unsafe { *data.get_unchecked(row_i + k) * *data.get_unchecked(row_j + k) }
+                    };
+                    k += 1;
+                }
+                sum -= dot;
 
-            if i == j {
-                if sum <= DenseKernelPolicy::BASE_TOLERANCE {
-                    return Err(CholeskyError::NotPositiveDefinite);
+                if i == j {
+                    if sum <= DenseKernelPolicy::BASE_TOLERANCE {
+                        return Err(CholeskyError::NotPositiveDefinite);
+                    }
+                    // SAFETY: `row_i + j < n * n` from loop bounds.
+                    unsafe {
+                        *data.get_unchecked_mut(row_i + j) = sum.sqrt();
+                    }
+                } else {
+                    let diagonal = {
+                        // SAFETY: `row_j + j < n * n` from loop bounds.
+                        unsafe { *data.get_unchecked(row_j + j) }
+                    };
+                    if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
+                        return Err(CholeskyError::NotPositiveDefinite);
+                    }
+                    // SAFETY: `row_i + j < n * n` from loop bounds.
+                    unsafe {
+                        *data.get_unchecked_mut(row_i + j) = sum / diagonal;
+                    }
                 }
-                l[[i, j]] = sum.sqrt();
-            } else {
-                let diagonal = l[[j, j]];
-                if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
-                    return Err(CholeskyError::NotPositiveDefinite);
-                }
-                l[[i, j]] = sum / diagonal;
             }
         }
-    }
+        Ok(lower)
+    } else {
+        for i in 0..n {
+            for j in 0..=i {
+                let mut sum = matrix[[i, j]];
+                for k in 0..j {
+                    sum -= lower[[i, k]] * lower[[j, k]];
+                }
 
-    Ok(l)
+                if i == j {
+                    if sum <= DenseKernelPolicy::BASE_TOLERANCE {
+                        return Err(CholeskyError::NotPositiveDefinite);
+                    }
+                    lower[[i, j]] = sum.sqrt();
+                } else {
+                    let diagonal = lower[[j, j]];
+                    if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
+                        return Err(CholeskyError::NotPositiveDefinite);
+                    }
+                    lower[[i, j]] = sum / diagonal;
+                }
+            }
+        }
+        Ok(lower)
+    }
 }
 
 #[cfg(feature = "openblas-system")]
@@ -265,6 +328,216 @@ fn decompose_dispatch(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Chole
     #[cfg(not(feature = "openblas-system"))]
     {
         decompose_internal(matrix)
+    }
+}
+
+#[cfg(not(feature = "openblas-system"))]
+#[allow(clippy::many_single_char_names)]
+fn solve_from_factor(
+    lower_factor: &Array2<f64>,
+    rhs: &ArrayView1<'_, f64>,
+    output: &mut Array1<f64>,
+) -> Result<(), CholeskyError> {
+    let size = lower_factor.nrows();
+    if rhs.len() != size || output.len() != size {
+        return Err(CholeskyError::InvalidInput(
+            "RHS/output length must match matrix dimensions".to_string(),
+        ));
+    }
+
+    if let (Some(factor), Some(rhs_slice), Some(output_slice)) = (
+        lower_factor.as_slice_memory_order(),
+        rhs.as_slice_memory_order(),
+        output.as_slice_memory_order_mut(),
+    ) {
+        let mut y = vec![0.0_f64; size];
+        for i in 0..size {
+            let row_i = i * size;
+            let mut sum = {
+                // SAFETY: `i < rhs_slice.len() == size`.
+                unsafe { *rhs_slice.get_unchecked(i) }
+            };
+            let mut dot = 0.0_f64;
+            let mut j = 0;
+            while j + 3 < i {
+                dot += {
+                    // SAFETY: offsets are bounded by loop bounds.
+                    unsafe {
+                        *factor.get_unchecked(row_i + j) * *y.get_unchecked(j)
+                            + *factor.get_unchecked(row_i + j + 1) * *y.get_unchecked(j + 1)
+                            + *factor.get_unchecked(row_i + j + 2) * *y.get_unchecked(j + 2)
+                            + *factor.get_unchecked(row_i + j + 3) * *y.get_unchecked(j + 3)
+                    }
+                };
+                j += 4;
+            }
+            while j < i {
+                dot += {
+                    // SAFETY: offsets are bounded by loop bounds.
+                    unsafe { *factor.get_unchecked(row_i + j) * *y.get_unchecked(j) }
+                };
+                j += 1;
+            }
+            sum -= dot;
+            let diagonal = {
+                // SAFETY: `row_i + i < size * size`.
+                unsafe { *factor.get_unchecked(row_i + i) }
+            };
+            if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
+                return Err(CholeskyError::NotPositiveDefinite);
+            }
+            // SAFETY: `i < y.len()`.
+            unsafe {
+                *y.get_unchecked_mut(i) = sum / diagonal;
+            }
+        }
+
+        for i_rev in 0..size {
+            let i = size - 1 - i_rev;
+            let mut sum = {
+                // SAFETY: `i < y.len()`.
+                unsafe { *y.get_unchecked(i) }
+            };
+            let mut dot = 0.0_f64;
+            let mut j = i + 1;
+            while j + 3 < size {
+                dot += {
+                    // SAFETY: offsets are bounded by loop bounds.
+                    unsafe {
+                        *factor.get_unchecked(j * size + i) * *output_slice.get_unchecked(j)
+                            + *factor.get_unchecked((j + 1) * size + i)
+                                * *output_slice.get_unchecked(j + 1)
+                            + *factor.get_unchecked((j + 2) * size + i)
+                                * *output_slice.get_unchecked(j + 2)
+                            + *factor.get_unchecked((j + 3) * size + i)
+                                * *output_slice.get_unchecked(j + 3)
+                    }
+                };
+                j += 4;
+            }
+            while j < size {
+                dot += {
+                    // SAFETY: offsets are bounded by loop bounds.
+                    unsafe { *factor.get_unchecked(j * size + i) * *output_slice.get_unchecked(j) }
+                };
+                j += 1;
+            }
+            sum -= dot;
+            let diagonal = {
+                // SAFETY: `i * size + i < size * size`.
+                unsafe { *factor.get_unchecked(i * size + i) }
+            };
+            if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
+                return Err(CholeskyError::NotPositiveDefinite);
+            }
+            // SAFETY: `i < output_slice.len()`.
+            unsafe {
+                *output_slice.get_unchecked_mut(i) = sum / diagonal;
+            }
+        }
+        Ok(())
+    } else {
+        let mut y = Array1::<f64>::zeros(size);
+        for i in 0..size {
+            let mut sum = rhs[i];
+            for j in 0..i {
+                sum -= lower_factor[[i, j]] * y[j];
+            }
+            y[i] = sum / lower_factor[[i, i]];
+        }
+
+        for i_rev in 0..size {
+            let i = size - 1 - i_rev;
+            let mut sum = y[i];
+            for j in (i + 1)..size {
+                sum -= lower_factor[[j, i]] * output[j];
+            }
+            output[i] = sum / lower_factor[[i, i]];
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(not(feature = "openblas-system"))]
+#[allow(clippy::many_single_char_names)]
+fn inverse_from_factor(lower_factor: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+    let n = lower_factor.nrows();
+    if let Some(factor) = lower_factor.as_slice_memory_order() {
+        let mut inv_lower = vec![0.0_f64; n * n];
+        for col in 0..n {
+            let diag = {
+                // SAFETY: `col * n + col < n * n`.
+                unsafe { *factor.get_unchecked(col * n + col) }
+            };
+            if diag.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
+                return Err(CholeskyError::NotPositiveDefinite);
+            }
+            // SAFETY: `col * n + col < n * n`.
+            unsafe {
+                *inv_lower.get_unchecked_mut(col * n + col) = 1.0 / diag;
+            }
+
+            for row in (col + 1)..n {
+                let row_offset = row * n;
+                let mut sum = 0.0_f64;
+                for k in col..row {
+                    sum += {
+                        // SAFETY: offsets are bounded by loop bounds.
+                        unsafe {
+                            *factor.get_unchecked(row_offset + k)
+                                * *inv_lower.get_unchecked(k * n + col)
+                        }
+                    };
+                }
+
+                let row_diag = {
+                    // SAFETY: `row_offset + row < n * n`.
+                    unsafe { *factor.get_unchecked(row_offset + row) }
+                };
+                if row_diag.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
+                    return Err(CholeskyError::NotPositiveDefinite);
+                }
+                // SAFETY: `row_offset + col < n * n`.
+                unsafe {
+                    *inv_lower.get_unchecked_mut(row_offset + col) = -sum / row_diag;
+                }
+            }
+        }
+
+        let mut inverse = Array2::<f64>::zeros((n, n));
+        if let Some(inverse_data) = inverse.as_slice_memory_order_mut() {
+            for i in 0..n {
+                let row_i = i * n;
+                for j in 0..=i {
+                    let mut sum = 0.0_f64;
+                    for k in usize::max(i, j)..n {
+                        sum += {
+                            // SAFETY: offsets are bounded by loop bounds.
+                            unsafe {
+                                *inv_lower.get_unchecked(k * n + i)
+                                    * *inv_lower.get_unchecked(k * n + j)
+                            }
+                        };
+                    }
+                    // SAFETY: `row_i + j < n * n`.
+                    unsafe {
+                        *inverse_data.get_unchecked_mut(row_i + j) = sum;
+                    }
+                    if i != j {
+                        // SAFETY: `j * n + i < n * n`.
+                        unsafe {
+                            *inverse_data.get_unchecked_mut(j * n + i) = sum;
+                        }
+                    }
+                }
+            }
+            Ok(inverse)
+        } else {
+            Err(CholeskyError::InvalidInput("inverse storage must be contiguous".to_string()))
+        }
+    } else {
+        Err(CholeskyError::InvalidInput("factor storage must be contiguous".to_string()))
     }
 }
 
@@ -432,28 +705,8 @@ fn solve_into_impl(
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let l = decompose_dispatch(matrix)?;
-        let n = l.nrows();
-
-        let mut y = Array1::<f64>::zeros(n);
-        for i in 0..n {
-            let mut sum = rhs[i];
-            for j in 0..i {
-                sum -= l[[i, j]] * y[j];
-            }
-            y[i] = sum / l[[i, i]];
-        }
-
-        for i_rev in 0..n {
-            let i = n - 1 - i_rev;
-            let mut sum = y[i];
-            for j in (i + 1)..n {
-                sum -= l[[j, i]] * output[j];
-            }
-            output[i] = sum / l[[i, i]];
-        }
-
-        Ok(())
+        let lower_factor = decompose_dispatch(matrix)?;
+        solve_from_factor(&lower_factor, rhs, output)
     }
 }
 
@@ -472,21 +725,8 @@ fn inverse_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyErr
     }
     #[cfg(not(feature = "openblas-system"))]
     {
-        let l = decompose_dispatch(matrix)?;
-        let n = l.nrows();
-        let mut inverse = Array2::<f64>::zeros((n, n));
-
-        for col in 0..n {
-            let mut e = Array1::<f64>::zeros(n);
-            e[col] = 1.0;
-            let mut solution = Array1::<f64>::zeros(n);
-            solve_into_impl(matrix, &e.view(), &mut solution)?;
-            for row in 0..n {
-                inverse[[row, col]] = solution[row];
-            }
-        }
-
-        Ok(inverse)
+        let lower_factor = decompose_dispatch(matrix)?;
+        inverse_from_factor(&lower_factor)
     }
 }
 

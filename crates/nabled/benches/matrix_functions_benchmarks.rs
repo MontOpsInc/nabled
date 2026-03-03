@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::matrix_functions;
+use nabled::linalg::matrix_functions;
 use ndarray::Array2;
 use num_complex::Complex64;
 use rand::RngExt;

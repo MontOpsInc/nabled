@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::tensor;
+use nabled::linalg::tensor;
 use ndarray::{Array2, Array3, ArrayD, IxDyn};
 use rand::RngExt;
 

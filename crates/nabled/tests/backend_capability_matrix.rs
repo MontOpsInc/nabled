@@ -1,9 +1,9 @@
 //! Backend capability matrix tests for ndarray-first APIs.
 
 #[cfg(feature = "openblas-system")]
-use nabled::matrix_functions;
-use nabled::qr::{self as qr, QRConfig};
-use nabled::{cholesky, eigen, lu, schur, svd, triangular, vector};
+use nabled::linalg::matrix_functions;
+use nabled::linalg::qr::{self as qr, QRConfig};
+use nabled::linalg::{cholesky, eigen, lu, schur, svd, triangular, vector};
 use ndarray::{Array1, Array2};
 
 fn symmetric_matrix() -> Array2<f64> {

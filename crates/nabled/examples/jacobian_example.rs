@@ -1,4 +1,4 @@
-use nabled::{JacobianConfig, JacobianError, jacobian};
+use nabled::ml::jacobian::{self as jacobian, JacobianConfig, JacobianError};
 use ndarray::Array1;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

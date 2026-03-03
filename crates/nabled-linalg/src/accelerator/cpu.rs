@@ -365,12 +365,7 @@ pub fn dot_serial(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, Accele
     if left.len() != right.len() {
         return Err(AcceleratorError::DimensionMismatch);
     }
-
-    let mut sum = 0.0_f64;
-    for i in 0..left.len() {
-        sum += left[i] * right[i];
-    }
-    Ok(sum)
+    Ok(left.dot(right))
 }
 
 /// Compute pairwise L2 distance matrix with explicit serial CPU kernel.

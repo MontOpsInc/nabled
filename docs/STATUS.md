@@ -76,6 +76,13 @@ Workspace migration for library domains is complete.
 68. Accelerator v1 GPU contract depth now includes tested tensor batched-last-two GPU parity (`f32`) and explicit tested strict-or-fallback behavior for out-of-scope CUDA tensor kernels/dtypes.
 69. Local/CI quality gates now enforce accelerator feature permutations (`accelerator-rayon`, `accelerator-wgpu`, and provider combinations), not only default/provider paths.
 70. Higher-level ML/stat complex parity (`B-P1-006`) is now complete across `stats`, `regression`, `pca`, and `optimization`, closing the last declared v1 capability blocker.
+71. QR decomposition depth is now complete for v1 semantics: column-pivoted QR is implemented (real and complex), and least-squares now supports underdetermined systems via minimum-norm solutions.
+72. Facade API and docs polish now expose explicit namespace boundaries (`nabled::core`, `nabled::linalg`, `nabled::ml`) with docs.rs-facing feature and execution-model guidance.
+73. Benchmarking is now tracked by explicit execution chunks in `docs/BENCHMARK_TRACKER.md`; initial `L-CPU-NATIVE-DECOMP` local measurements and comparator-coverage audit are recorded.
+74. Additional local benchmark chunks are now recorded (`L-CPU-NATIVE-DENSE`, `L-CPU-NATIVE-SPARSE`) with deterministic extraction, matrix parity confirmation vs ndarray baseline, and a clearly identified dense hotspot (`vector::dot`).
+75. First optimization pass on benchmark hotspots is landed: `vector::dot` now routes through ndarray optimized dot and has moved to near-parity against baseline.
+76. Decomposition benchmarking now has active external comparator coverage (`faer_direct`) for `svd`, `qr`, `lu`, `cholesky`, `eigen`, and `triangular`, with report classifier support wired for these new benchmark groups.
+77. A targeted Cholesky inverse optimization pass is now landed, reusing one factorization per inverse call and significantly reducing the Cholesky decomposition benchmark gap.
 
 ## Current Code Ownership
 

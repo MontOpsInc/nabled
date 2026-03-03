@@ -6,11 +6,12 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/MontOpsInc/nabled/ci.yml?branch=main)](https://github.com/MontOpsInc/nabled/actions)
 [![Coverage](https://codecov.io/gh/MontOpsInc/nabled/branch/main/graph/badge.svg)](https://codecov.io/gh/MontOpsInc/nabled)
 
-Nabled is a Rust numerical library focused on high-performance linear algebra and ML-oriented matrix/vector operations over ndarray data structures.
+Nabled is an ndarray-native Rust numerical library focused on production-grade
+linear algebra and ML-oriented matrix/vector operations.
 
 ## Current Direction
 
-1. Ndarray-first API and implementation model.
+1. Ndarray-native API and implementation model.
 2. Strict focus on correctness, performance, and composability.
 3. No Arrow-specific types in `nabled` APIs.
 4. Workspace migration in progress to support long-term scale.
@@ -31,15 +32,28 @@ See [`docs/README.md`](docs/README.md) for current architecture and roadmap.
 
 ```rust
 use ndarray::arr2;
-use nabled::svd::ndarray_svd;
+use nabled::linalg::svd;
 
-fn main() -> Result<(), nabled::svd::SVDError> {
+fn main() -> Result<(), nabled::linalg::svd::SVDError> {
     let a = arr2(&[[1.0_f64, 2.0], [3.0, 4.0]]);
-    let svd = ndarray_svd::decompose(&a)?;
+    let svd = svd::decompose(&a)?;
     println!("singular values = {:?}", svd.singular_values);
     Ok(())
 }
 ```
+
+## Namespaced API
+
+1. `nabled::core`: shared errors, validation, and prelude exports.
+2. `nabled::linalg`: linear algebra and decomposition modules.
+3. `nabled::ml`: ML-oriented numerical routines.
+
+## Features
+
+1. `blas`: enables `ndarray/blas` across participating workspace crates.
+2. `openblas-system`: enables provider-backed OpenBLAS/LAPACK paths.
+3. `accelerator-rayon`: enables selected parallel CPU kernels.
+4. `accelerator-wgpu`: enables selected WGPU-backed kernels.
 
 ## Quality Gates
 

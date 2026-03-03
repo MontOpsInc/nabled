@@ -1,4 +1,4 @@
-use nabled::matrix_functions::{self as matrix_functions, MatrixFunctionError};
+use nabled::linalg::matrix_functions::{self as matrix_functions, MatrixFunctionError};
 use ndarray::Array2;
 
 fn run_examples() -> Result<(), MatrixFunctionError> {

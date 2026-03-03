@@ -1,7 +1,8 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::triangular;
+use faer::Mat;
+use nabled::linalg::triangular;
 use ndarray::{Array1, Array2};
 use rand::RngExt;
 
@@ -34,6 +35,14 @@ fn generate_upper_triangular(size: usize) -> Array2<f64> {
 
 fn generate_rhs(size: usize) -> Array1<f64> { Array1::from_vec(generate_random_data(size)) }
 
+fn ndarray_to_faer(matrix: &Array2<f64>) -> Mat<f64> {
+    Mat::from_fn(matrix.nrows(), matrix.ncols(), |i, j| matrix[[i, j]])
+}
+
+fn vector_to_faer_col(vector: &Array1<f64>) -> Mat<f64> {
+    Mat::from_fn(vector.len(), 1, |i, _| vector[i])
+}
+
 fn assert_ndarray_triangular_correct(lower: &Array2<f64>, upper: &Array2<f64>, rhs: &Array1<f64>) {
     let x_lower =
         triangular::solve_lower(lower, rhs).expect("nabled ndarray lower solve should work");
@@ -51,27 +60,57 @@ fn assert_ndarray_triangular_correct(lower: &Array2<f64>, upper: &Array2<f64>, r
 }
 
 fn benchmark_ndarray_triangular(c: &mut Criterion) {
-    let mut group = c.benchmark_group("triangular_nabled_ndarray");
     let sizes = [16, 64, 128];
 
-    for size in sizes {
-        let lower = generate_lower_triangular(size);
-        let upper = generate_upper_triangular(size);
-        let rhs = generate_rhs(size);
-        let id = format!("square-{size}x{size}");
+    {
+        let mut group = c.benchmark_group("triangular_nabled_ndarray");
+        for size in sizes {
+            let lower = generate_lower_triangular(size);
+            let upper = generate_upper_triangular(size);
+            let rhs = generate_rhs(size);
+            let id = format!("square-{size}x{size}");
 
-        assert_ndarray_triangular_correct(&lower, &upper, &rhs);
+            assert_ndarray_triangular_correct(&lower, &upper, &rhs);
 
-        _ = group.bench_with_input(BenchmarkId::new("solve_lower", &id), &size, |b, _| {
-            b.iter(|| triangular::solve_lower(black_box(&lower), black_box(&rhs)));
-        });
+            _ = group.bench_with_input(BenchmarkId::new("solve_lower", &id), &size, |b, _| {
+                b.iter(|| triangular::solve_lower(black_box(&lower), black_box(&rhs)));
+            });
 
-        _ = group.bench_with_input(BenchmarkId::new("solve_upper", &id), &size, |b, _| {
-            b.iter(|| triangular::solve_upper(black_box(&upper), black_box(&rhs)));
-        });
+            _ = group.bench_with_input(BenchmarkId::new("solve_upper", &id), &size, |b, _| {
+                b.iter(|| triangular::solve_upper(black_box(&upper), black_box(&rhs)));
+            });
+        }
+        group.finish();
     }
 
-    group.finish();
+    {
+        let mut competitor = c.benchmark_group("triangular_competitor_faer_direct");
+        for size in sizes {
+            let lower = generate_lower_triangular(size);
+            let upper = generate_upper_triangular(size);
+            let rhs = generate_rhs(size);
+            let lower_faer = ndarray_to_faer(&lower);
+            let upper_faer = ndarray_to_faer(&upper);
+            let id = format!("square-{size}x{size}");
+
+            _ = competitor.bench_with_input(BenchmarkId::new("solve_lower", &id), &size, |b, _| {
+                b.iter(|| {
+                    let mut rhs_faer = vector_to_faer_col(black_box(&rhs));
+                    lower_faer.as_ref().solve_lower_triangular_in_place(rhs_faer.as_mut());
+                    rhs_faer
+                });
+            });
+
+            _ = competitor.bench_with_input(BenchmarkId::new("solve_upper", &id), &size, |b, _| {
+                b.iter(|| {
+                    let mut rhs_faer = vector_to_faer_col(black_box(&rhs));
+                    upper_faer.as_ref().solve_upper_triangular_in_place(rhs_faer.as_mut());
+                    rhs_faer
+                });
+            });
+        }
+        competitor.finish();
+    }
 }
 
 criterion_group!(benches, benchmark_ndarray_triangular);
