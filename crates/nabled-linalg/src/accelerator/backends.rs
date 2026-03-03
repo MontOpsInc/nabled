@@ -7,8 +7,6 @@ pub enum BackendKind {
     Cpu,
     /// GPU backend.
     Cuda,
-    /// Distributed CPU-sharded backend.
-    Distributed,
 }
 
 /// Error type for backend orchestration.
@@ -18,16 +16,10 @@ pub enum AcceleratorError {
     UnsupportedBackend(BackendKind),
     /// Invalid chunking policy.
     InvalidChunkSize,
-    /// Invalid distributed worker count.
-    InvalidWorkerCount,
-    /// Invalid tile geometry for tiled distributed kernels.
-    InvalidTileSize,
     /// Matrix dimensions are incompatible.
     DimensionMismatch,
     /// Optional accelerator feature was not enabled at compile time.
     FeatureNotEnabled,
-    /// A distributed worker panicked while executing a kernel.
-    WorkerPanicked,
     /// No suitable GPU device was found.
     DeviceUnavailable,
     /// GPU kernel execution failed.
@@ -41,20 +33,11 @@ impl fmt::Display for AcceleratorError {
                 write!(f, "backend {kind:?} is not currently available")
             }
             AcceleratorError::InvalidChunkSize => write!(f, "chunk size must be greater than zero"),
-            AcceleratorError::InvalidWorkerCount => {
-                write!(f, "worker count must be greater than zero")
-            }
-            AcceleratorError::InvalidTileSize => {
-                write!(f, "tile dimensions must be greater than zero")
-            }
             AcceleratorError::DimensionMismatch => {
                 write!(f, "matrix dimensions are incompatible")
             }
             AcceleratorError::FeatureNotEnabled => {
                 write!(f, "requested accelerator feature is not enabled")
-            }
-            AcceleratorError::WorkerPanicked => {
-                write!(f, "distributed worker panicked")
             }
             AcceleratorError::DeviceUnavailable => write!(f, "no suitable GPU device is available"),
             AcceleratorError::KernelExecutionFailed => {
@@ -88,14 +71,6 @@ impl ComputeBackend for CudaBackend {
     const KIND: BackendKind = BackendKind::Cuda;
 }
 
-/// Distributed backend.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DistributedBackend;
-
-impl ComputeBackend for DistributedBackend {
-    const KIND: BackendKind = BackendKind::Distributed;
-}
-
 /// Execute a closure with compile-time backend selection.
 ///
 /// # Errors
@@ -106,7 +81,7 @@ where
     F: FnOnce() -> T,
 {
     match B::KIND {
-        BackendKind::Cpu | BackendKind::Distributed => Ok(operation()),
+        BackendKind::Cpu => Ok(operation()),
         BackendKind::Cuda => Err(AcceleratorError::UnsupportedBackend(B::KIND)),
     }
 }

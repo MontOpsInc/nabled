@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled::{DistributedConfig, DistributedSchedule, accelerator};
+use nabled::accelerator;
 use ndarray::Array2;
 use rand::RngExt;
 
@@ -38,40 +38,6 @@ fn benchmark_accelerator(c: &mut Criterion) {
                 |bench, _| {
                     bench.iter(|| {
                         accelerator::cpu::matmat_serial(black_box(&left), black_box(&right))
-                    });
-                },
-            );
-
-            _ = group.bench_with_input(
-                BenchmarkId::new("matmat_distributed", &id),
-                &size,
-                |bench, _| {
-                    bench.iter(|| {
-                        accelerator::distributed::matmat_distributed(
-                            black_box(&left),
-                            black_box(&right),
-                            DistributedConfig {
-                                workers:    4,
-                                chunk_rows: 32,
-                                schedule:   DistributedSchedule::Dynamic,
-                            },
-                        )
-                    });
-                },
-            );
-
-            _ = group.bench_with_input(
-                BenchmarkId::new("matmat_distributed_tiled", &id),
-                &size,
-                |bench, _| {
-                    bench.iter(|| {
-                        accelerator::distributed::matmat_distributed_tiled(
-                            black_box(&left),
-                            black_box(&right),
-                            4,
-                            32,
-                            32,
-                        )
                     });
                 },
             );

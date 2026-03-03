@@ -3,7 +3,6 @@
 pub mod backends;
 pub mod cpu;
 pub mod dispatch;
-pub mod distributed;
 pub mod gpu;
 pub mod kernels;
 
@@ -12,7 +11,7 @@ mod tests {
     use ndarray::{Array1, Array2, Array3, ArrayD, IxDyn};
 
     use crate::accelerator::backends::{
-        AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend, execute,
+        AcceleratorError, BackendKind, CpuBackend, CudaBackend, execute,
     };
     use crate::accelerator::cpu::{for_each_row_chunk, matmat_accelerated, matmat_serial};
     use crate::accelerator::dispatch::{
@@ -28,9 +27,6 @@ mod tests {
     use crate::accelerator::dispatch::{
         batched_matmat_with_backend_f32, matmat_with_backend_f32, matvec_with_backend_f32,
     };
-    use crate::accelerator::distributed::{
-        DistributedConfig, DistributedSchedule, matmat_distributed, matmat_distributed_tiled,
-    };
     #[cfg(not(feature = "accelerator-wgpu"))]
     use crate::accelerator::gpu::matmat_gpu_f32;
     use crate::sparse::CsrMatrix;
@@ -39,12 +35,6 @@ mod tests {
     fn cpu_backend_executes_operation() {
         let value = execute::<CpuBackend, _, _>(|| 2 + 3).unwrap();
         assert_eq!(value, 5);
-    }
-
-    #[test]
-    fn distributed_backend_executes_operation() {
-        let value = execute::<DistributedBackend, _, _>(|| 7 * 6).unwrap();
-        assert_eq!(value, 42);
     }
 
     #[test]
@@ -87,124 +77,17 @@ mod tests {
     }
 
     #[test]
-    fn distributed_matmat_matches_serial() {
-        let left = Array2::from_shape_vec((5, 4), vec![
-            1.0, 2.0, 0.0, 1.0, 0.0, 1.0, 3.0, 2.0, 2.0, 0.0, 1.0, -1.0, 3.0, 1.0, 0.0, 2.0, 2.0,
-            -1.0, 1.0, 0.0,
-        ])
-        .unwrap();
-        let right = Array2::from_shape_vec((4, 3), vec![
-            1.0, 0.0, 2.0, 2.0, 1.0, -1.0, 1.0, 3.0, 0.0, -1.0, 2.0, 1.0,
-        ])
-        .unwrap();
-
-        let serial = matmat_serial(&left, &right).unwrap();
-        let distributed = matmat_distributed(&left, &right, DistributedConfig {
-            workers:    3,
-            chunk_rows: 2,
-            schedule:   DistributedSchedule::Static,
-        })
-        .unwrap();
-        for row in 0..serial.nrows() {
-            for col in 0..serial.ncols() {
-                assert!((serial[[row, col]] - distributed[[row, col]]).abs() < 1e-12);
-            }
-        }
-    }
-
-    #[test]
-    fn distributed_matmat_rejects_invalid_config() {
-        let left = Array2::<f64>::eye(2);
-        let right = Array2::<f64>::eye(2);
-        let invalid_workers = matmat_distributed(&left, &right, DistributedConfig {
-            workers:    0,
-            chunk_rows: 1,
-            schedule:   DistributedSchedule::Static,
-        });
-        assert!(matches!(invalid_workers, Err(AcceleratorError::InvalidWorkerCount)));
-
-        let invalid_chunks = matmat_distributed(&left, &right, DistributedConfig {
-            workers:    1,
-            chunk_rows: 0,
-            schedule:   DistributedSchedule::Static,
-        });
-        assert!(matches!(invalid_chunks, Err(AcceleratorError::InvalidChunkSize)));
-    }
-
-    #[test]
-    fn distributed_dynamic_matches_static() {
-        let left =
-            Array2::from_shape_vec((8, 5), (0..40).map(|value| f64::from(value) * 0.125).collect())
-                .unwrap();
-        let right =
-            Array2::from_shape_vec((5, 7), (0..35).map(|value| f64::from(value) * -0.25).collect())
-                .unwrap();
-
-        let static_result = matmat_distributed(&left, &right, DistributedConfig {
-            workers:    3,
-            chunk_rows: 2,
-            schedule:   DistributedSchedule::Static,
-        })
-        .unwrap();
-        let dynamic_result = matmat_distributed(&left, &right, DistributedConfig {
-            workers:    3,
-            chunk_rows: 2,
-            schedule:   DistributedSchedule::Dynamic,
-        })
-        .unwrap();
-        for row in 0..static_result.nrows() {
-            for col in 0..static_result.ncols() {
-                assert!((static_result[[row, col]] - dynamic_result[[row, col]]).abs() < 1e-12);
-            }
-        }
-    }
-
-    #[test]
-    fn distributed_tiled_matmat_matches_serial() {
-        let left =
-            Array2::from_shape_vec((7, 5), (0..35).map(|v| f64::from(v) * 0.25).collect()).unwrap();
-        let right =
-            Array2::from_shape_vec((5, 6), (0..30).map(|v| f64::from(v) * -0.5).collect()).unwrap();
-
-        let serial = matmat_serial(&left, &right).unwrap();
-        let tiled = matmat_distributed_tiled(&left, &right, 3, 2, 3).unwrap();
-        for row in 0..serial.nrows() {
-            for col in 0..serial.ncols() {
-                assert!((serial[[row, col]] - tiled[[row, col]]).abs() < 1e-12);
-            }
-        }
-    }
-
-    #[test]
-    fn distributed_tiled_matmat_rejects_invalid_config() {
-        let left = Array2::<f64>::eye(2);
-        let right = Array2::<f64>::eye(2);
-
-        let invalid_workers = matmat_distributed_tiled(&left, &right, 0, 1, 1);
-        assert!(matches!(invalid_workers, Err(AcceleratorError::InvalidWorkerCount)));
-
-        let invalid_rows = matmat_distributed_tiled(&left, &right, 1, 0, 1);
-        assert!(matches!(invalid_rows, Err(AcceleratorError::InvalidTileSize)));
-
-        let invalid_cols = matmat_distributed_tiled(&left, &right, 1, 1, 0);
-        assert!(matches!(invalid_cols, Err(AcceleratorError::InvalidTileSize)));
-    }
-
-    #[test]
     fn backend_dispatch_selects_expected_kernel() {
         let left = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
         let right = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
 
         let serial = matmat_with_backend::<CpuBackend>(&left, &right).unwrap();
-        let distributed = matmat_with_backend::<DistributedBackend>(&left, &right).unwrap();
+        let cuda = matmat_with_backend::<CudaBackend>(&left, &right).unwrap();
         for row in 0..serial.nrows() {
             for col in 0..serial.ncols() {
-                assert!((serial[[row, col]] - distributed[[row, col]]).abs() < 1e-12);
+                assert!((serial[[row, col]] - cuda[[row, col]]).abs() < 1e-12);
             }
         }
-
-        let cuda = matmat_with_backend::<CudaBackend>(&left, &right);
-        assert!(matches!(cuda, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
     }
 
     #[test]
@@ -213,13 +96,11 @@ mod tests {
         let vector = Array1::from_vec(vec![1.0, 2.0, 3.0]);
 
         let cpu = matvec_with_backend::<CpuBackend>(&matrix, &vector).unwrap();
-        let distributed = matvec_with_backend::<DistributedBackend>(&matrix, &vector).unwrap();
-        assert_eq!(cpu, distributed);
         assert!((cpu[0] - 5.0).abs() < 1e-12);
         assert!((cpu[1] - 5.0).abs() < 1e-12);
 
-        let cuda = matvec_with_backend::<CudaBackend>(&matrix, &vector);
-        assert!(matches!(cuda, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+        let cuda = matvec_with_backend::<CudaBackend>(&matrix, &vector).unwrap();
+        assert_eq!(cuda, cpu);
     }
 
     #[test]
@@ -236,11 +117,8 @@ mod tests {
         .unwrap();
 
         let cpu = batched_matmat_with_backend::<CpuBackend>(&left, &right).unwrap();
-        let distributed = batched_matmat_with_backend::<DistributedBackend>(&left, &right).unwrap();
-        assert_eq!(cpu, distributed);
-
-        let cuda = batched_matmat_with_backend::<CudaBackend>(&left, &right);
-        assert!(matches!(cuda, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+        let cuda = batched_matmat_with_backend::<CudaBackend>(&left, &right).unwrap();
+        assert_eq!(cuda, cpu);
     }
 
     #[test]
@@ -250,14 +128,11 @@ mod tests {
         let vector = Array1::from_vec(vec![2.0, 3.0, 4.0]);
 
         let cpu = sparse_matvec_with_backend::<CpuBackend>(&matrix, &vector).unwrap();
-        let distributed =
-            sparse_matvec_with_backend::<DistributedBackend>(&matrix, &vector).unwrap();
-        assert_eq!(cpu, distributed);
         assert!((cpu[0] - 10.0).abs() < 1e-12);
         assert!((cpu[1] + 3.0).abs() < 1e-12);
 
-        let cuda = sparse_matvec_with_backend::<CudaBackend>(&matrix, &vector);
-        assert!(matches!(cuda, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+        let cuda = sparse_matvec_with_backend::<CudaBackend>(&matrix, &vector).unwrap();
+        assert_eq!(cuda, cpu);
     }
 
     #[test]
@@ -266,12 +141,8 @@ mod tests {
         let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 0.0, 1.0, 1.0]).unwrap();
 
         let cpu = batched_row_matvec_with_backend::<CpuBackend>(&vectors, &matrix).unwrap();
-        let distributed =
-            batched_row_matvec_with_backend::<DistributedBackend>(&vectors, &matrix).unwrap();
-        assert_eq!(cpu, distributed);
-
-        let cuda = batched_row_matvec_with_backend::<CudaBackend>(&vectors, &matrix);
-        assert!(matches!(cuda, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+        let cuda = batched_row_matvec_with_backend::<CudaBackend>(&vectors, &matrix).unwrap();
+        assert_eq!(cuda, cpu);
     }
 
     #[test]
@@ -283,17 +154,15 @@ mod tests {
 
         let dense_cpu =
             sparse_matmat_dense_with_backend::<CpuBackend>(&sparse_left, &dense_right).unwrap();
-        let dense_distributed =
-            sparse_matmat_dense_with_backend::<DistributedBackend>(&sparse_left, &dense_right)
-                .unwrap();
-        assert_eq!(dense_cpu, dense_distributed);
-
         let sparse_cpu =
             sparse_matmat_sparse_with_backend::<CpuBackend>(&sparse_left, &sparse_right).unwrap();
-        let sparse_distributed =
-            sparse_matmat_sparse_with_backend::<DistributedBackend>(&sparse_left, &sparse_right)
-                .unwrap();
-        assert_eq!(sparse_cpu, sparse_distributed);
+
+        let dense_cuda =
+            sparse_matmat_dense_with_backend::<CudaBackend>(&sparse_left, &dense_right).unwrap();
+        let sparse_cuda =
+            sparse_matmat_sparse_with_backend::<CudaBackend>(&sparse_left, &sparse_right).unwrap();
+        assert_eq!(dense_cuda, dense_cpu);
+        assert_eq!(sparse_cuda, sparse_cpu);
     }
 
     #[test]
@@ -309,6 +178,13 @@ mod tests {
         let cosine = pairwise_cosine_with_backend::<CpuBackend>(&left_rows, &right_rows).unwrap();
         assert!((l2[[0, 0]] - 0.0).abs() < 1e-12);
         assert!((cosine[[0, 0]] - 1.0).abs() < 1e-12);
+
+        let dot_cuda = dot_with_backend::<CudaBackend>(&left, &right);
+        let l2_cuda = pairwise_l2_with_backend::<CudaBackend>(&left_rows, &right_rows);
+        let cosine_cuda = pairwise_cosine_with_backend::<CudaBackend>(&left_rows, &right_rows);
+        assert!((dot_cuda.unwrap() - dot).abs() < 1e-12);
+        assert_eq!(l2_cuda.unwrap(), l2);
+        assert_eq!(cosine_cuda.unwrap(), cosine);
     }
 
     #[test]
@@ -334,6 +210,13 @@ mod tests {
                 assert!((mat_reconstructed[[row, col]] - rhs_mat[[row, col]]).abs() < 1e-12);
             }
         }
+
+        let vec_cuda =
+            triangular_solve_vec_with_backend::<CudaBackend, f64>(&matrix, &rhs_vec, true, false);
+        let mat_cuda =
+            triangular_solve_mat_with_backend::<CudaBackend, f64>(&matrix, &rhs_mat, true, false);
+        assert_eq!(vec_cuda.unwrap(), vec_solution);
+        assert_eq!(mat_cuda.unwrap(), mat_solution);
     }
 
     #[test]
@@ -366,6 +249,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(batched.shape(), &[2, 2, 2]);
+
+        let summed_cuda = tensor_sum_last_axis_with_backend::<CudaBackend, f64>(&tensor);
+        let contracted_cuda =
+            tensor_contract_axes_with_backend::<CudaBackend, f64>(&left, &right, 1, 0);
+        let batched_cuda = tensor_batched_matmul_last_two_with_backend::<CudaBackend, f64>(
+            &batched_left,
+            &batched_right,
+        );
+        assert_eq!(summed_cuda.unwrap(), summed);
+        assert_eq!(contracted_cuda.unwrap(), contracted);
+        assert_eq!(batched_cuda.unwrap(), batched);
     }
 
     #[test]
@@ -399,42 +293,34 @@ mod tests {
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
-    fn gpu_matmat_matches_cpu_or_reports_unavailable_device() {
+    fn gpu_matmat_matches_cpu() {
         let left = Array2::from_shape_vec((2, 3), vec![1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
         let right = Array2::from_shape_vec((3, 2), vec![1.0_f32, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
         let cpu = matmat_with_backend_f32::<CpuBackend>(&left, &right).unwrap();
-        match matmat_with_backend_f32::<CudaBackend>(&left, &right) {
-            Ok(gpu) => {
-                for row in 0..cpu.nrows() {
-                    for col in 0..cpu.ncols() {
-                        assert!((cpu[[row, col]] - gpu[[row, col]]).abs() < 1e-4);
-                    }
-                }
+        let gpu = matmat_with_backend_f32::<CudaBackend>(&left, &right).unwrap();
+        for row in 0..cpu.nrows() {
+            for col in 0..cpu.ncols() {
+                assert!((cpu[[row, col]] - gpu[[row, col]]).abs() < 1e-4);
             }
-            Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
         }
     }
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
-    fn gpu_matvec_matches_cpu_or_reports_unavailable_device() {
+    fn gpu_matvec_matches_cpu() {
         let matrix =
             Array2::from_shape_vec((2, 3), vec![1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
         let vector = Array1::from_vec(vec![1.0_f32, 2.0, 3.0]);
         let cpu = matvec_with_backend_f32::<CpuBackend>(&matrix, &vector).unwrap();
-        match matvec_with_backend_f32::<CudaBackend>(&matrix, &vector) {
-            Ok(gpu) => {
-                for i in 0..cpu.len() {
-                    assert!((cpu[i] - gpu[i]).abs() < 1e-4);
-                }
-            }
-            Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
+        let gpu = matvec_with_backend_f32::<CudaBackend>(&matrix, &vector).unwrap();
+        for i in 0..cpu.len() {
+            assert!((cpu[i] - gpu[i]).abs() < 1e-4);
         }
     }
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
-    fn gpu_batched_matmat_matches_cpu_or_reports_unavailable_device() {
+    fn gpu_batched_matmat_matches_cpu() {
         let left = Array3::from_shape_vec((2, 2, 2), vec![
             1.0_f32, 2.0, 3.0, 4.0, //
             5.0, 6.0, 7.0, 8.0,
@@ -446,23 +332,19 @@ mod tests {
         ])
         .unwrap();
         let cpu = batched_matmat_with_backend_f32::<CpuBackend>(&left, &right).unwrap();
-        match batched_matmat_with_backend_f32::<CudaBackend>(&left, &right) {
-            Ok(gpu) => {
-                for b in 0..cpu.dim().0 {
-                    for r in 0..cpu.dim().1 {
-                        for c in 0..cpu.dim().2 {
-                            assert!((cpu[[b, r, c]] - gpu[[b, r, c]]).abs() < 1e-4);
-                        }
-                    }
+        let gpu = batched_matmat_with_backend_f32::<CudaBackend>(&left, &right).unwrap();
+        for b in 0..cpu.dim().0 {
+            for r in 0..cpu.dim().1 {
+                for c in 0..cpu.dim().2 {
+                    assert!((cpu[[b, r, c]] - gpu[[b, r, c]]).abs() < 1e-4);
                 }
             }
-            Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
         }
     }
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
-    fn gpu_tensor_batched_matmul_matches_cpu_or_reports_unavailable_device() {
+    fn gpu_tensor_batched_matmul_matches_cpu() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
             1.0_f32, 2.0, 3.0, 4.0, //
             5.0, 6.0, 7.0, 8.0,
@@ -475,37 +357,38 @@ mod tests {
         .unwrap();
         let cpu =
             tensor_batched_matmul_last_two_with_backend::<CpuBackend, f32>(&left, &right).unwrap();
-        match tensor_batched_matmul_last_two_with_backend::<CudaBackend, f32>(&left, &right) {
-            Ok(gpu) => {
-                for (lhs, rhs) in cpu.iter().zip(gpu.iter()) {
-                    assert!((lhs - rhs).abs() < 1e-4);
-                }
-            }
-            Err(error) => assert!(matches!(error, AcceleratorError::DeviceUnavailable)),
+        let gpu =
+            tensor_batched_matmul_last_two_with_backend::<CudaBackend, f32>(&left, &right).unwrap();
+        for (lhs, rhs) in cpu.iter().zip(gpu.iter()) {
+            assert!((*lhs - *rhs).abs() < 1e-4);
         }
     }
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
-    fn gpu_tensor_batched_matmul_f64_is_explicitly_unsupported() {
+    fn gpu_tensor_batched_matmul_f64_falls_back_to_cpu() {
         let left = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![1.0_f64, 2.0, 3.0, 4.0]).unwrap();
         let right =
             ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![1.0_f64, 0.0, 0.0, 1.0]).unwrap();
 
         let result = tensor_batched_matmul_last_two_with_backend::<CudaBackend, f64>(&left, &right);
-        assert!(matches!(result, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+        let cpu =
+            tensor_batched_matmul_last_two_with_backend::<CpuBackend, f64>(&left, &right).unwrap();
+        assert_eq!(result.unwrap(), cpu);
     }
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
-    fn gpu_tensor_contract_and_reduction_are_explicitly_unsupported() {
+    fn gpu_tensor_contract_and_reduction_fall_back_to_cpu() {
         let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![1.0_f32, 2.0, 3.0, 4.0]).unwrap();
         let contract =
             tensor_contract_axes_with_backend::<CudaBackend, f32>(&tensor, &tensor, 1, 0);
         let reduced = tensor_sum_last_axis_with_backend::<CudaBackend, f32>(&tensor);
-
-        assert!(matches!(contract, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
-        assert!(matches!(reduced, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+        let cpu_contract =
+            tensor_contract_axes_with_backend::<CpuBackend, f32>(&tensor, &tensor, 1, 0).unwrap();
+        let cpu_reduced = tensor_sum_last_axis_with_backend::<CpuBackend, f32>(&tensor).unwrap();
+        assert_eq!(contract.unwrap(), cpu_contract);
+        assert_eq!(reduced.unwrap(), cpu_reduced);
     }
 
     #[cfg(feature = "accelerator-rayon")]

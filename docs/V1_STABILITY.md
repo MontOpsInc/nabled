@@ -49,13 +49,14 @@ GPU scope is intentionally explicit and bounded for v1.
 
 Runtime note: on systems without a usable GPU device, these return `AcceleratorError::DeviceUnavailable`.
 
-### Explicitly unsupported (by design in v1)
+### CUDA `f64`/complex and tensor-op fallback behavior
 
-1. CUDA backend for `f64` tensor batched matmul.
-2. CUDA backend for complex tensor batched matmul.
-3. CUDA backend tensor contraction and tensor last-axis reduction kernels.
+For CUDA-dispatched kernels outside the bounded `f32` GPU-native surface:
 
-Unsupported scope is a deliberate, tested contract and returns `AcceleratorError::UnsupportedBackend(BackendKind::Cuda)`.
+1. The backend keeps capability stable and executes explicit CPU fallback paths.
+2. Only true input/shape/runtime execution errors are returned.
+
+This unified behavior is deliberate and tested.
 
 ## Mixed Execution Determinism Contract
 
@@ -63,7 +64,7 @@ Unsupported scope is a deliberate, tested contract and returns `AcceleratorError
 2. `Backend` and `Kernel` are compile-time selected and apply to operation-family kernel paths.
 3. Provider choice does not require runtime provider branching.
 4. Public APIs remain provider/backend agnostic and ndarray-native.
-5. Unsupported backend/provider combinations fail explicitly with typed errors, not silent fallback.
+5. CUDA out-of-scope kernels use explicit CPU fallback paths to preserve public API capability.
 
 ## Required Feature/Build Matrix
 
@@ -89,7 +90,7 @@ All must be true:
 1. `*_into` APIs do not hide extra allocation work as a wrapper behavior.
 2. View-first APIs document any unavoidable owned materialization when required by algorithm/provider constraints.
 3. Provider-disabled/provider-enabled paths return expected domain errors for identical bad input classes.
-4. GPU unsupported areas return explicit `UnsupportedBackend` errors.
+4. GPU out-of-scope areas execute explicit CPU fallback kernels and preserve capability.
 5. Capability docs (`CAPABILITY_MATRIX`, `KERNEL_CATALOG`, `EXECUTION_TRACKER`) agree with code behavior.
 
 Current status: satisfied for v1 required surface.

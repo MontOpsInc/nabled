@@ -42,7 +42,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows + direct sparse LU solve/reuse paths | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths, and direct sparse LU solve/reuse workflows; stable allocating sparse matvec/matmat entrypoints now use compile-time backend kernel dispatch. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
 | Optimization | line search, gradient descent, Adam, momentum, RMSProp, projected GD, stochastic GD, BFGS | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
 | Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) + rank-3 HOSVD + einsum-style binary contractions | `nabled-linalg::tensor` | Implemented | Yes | Required v1 tensor surface is explicit and complete across allocating/view/into forms for required operation families (real/complex where applicable); see `docs/V1_STABILITY.md` for scope lock and contracts. |
-| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + concrete distributed row-sharded/tiled matmat + feature-gated accelerated matmat + feature-gated GPU kernels (`wgpu`) + explicit unsupported CUDA paths outside bounded v1 GPU scope | `nabled-linalg::accelerator` | Implemented | Yes | Required v1 kernel families are wired through compile-time backend dispatch, with bounded GPU `f32` support and explicit typed unsupported behavior outside that scope; see `docs/V1_STABILITY.md` for the locked support matrix. |
+| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + feature-gated accelerated matmat + feature-gated GPU kernels (`wgpu`) + explicit CPU fallback behavior for out-of-scope v1 GPU kernels | `nabled-linalg::accelerator` | Implemented | Yes | Required v1 kernel families are wired through compile-time backend dispatch over `CpuBackend`/`CudaBackend`, with bounded GPU `f32` support and explicit fallback contracts outside v1 GPU scope; see `docs/V1_STABILITY.md` for the locked support matrix. |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
@@ -53,7 +53,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 `nabled-linalg` currently operates on three distinct execution concepts:
 
 1. `Provider`: decomposition implementation source (`internal` or `openblas-system`).
-2. `Backend`: primitive-kernel execution target (`CpuBackend`, `DistributedBackend`, `CudaBackend`).
+2. `Backend`: primitive-kernel execution target (`CpuBackend`, `CudaBackend`).
 3. `Kernel`: operation-family contract implemented per backend (dense/sparse/vector/tensor/triangular families; see `docs/KERNEL_CATALOG.md`).
 
 These axes are intentionally orthogonal:
@@ -93,7 +93,7 @@ Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATA
 | Capability Group | Current Status | Gap |
 |---|---|---|
 | Tensor/cube-focused higher-rank APIs | Implemented | Required v1 tensor surface is complete; future expansion targets broader tensor algebra depth (for example higher-order decompositions/networks). |
-| GPU/distributed kernels | Implemented | Required v1 distributed + bounded GPU surface is complete; future expansion targets deeper GPU dtype/op coverage and multi-process orchestration. |
+| GPU and future multi-node kernels | Implemented | Required v1 bounded GPU surface is complete; future expansion targets deeper GPU dtype/op coverage and explicit multi-node orchestration. |
 | Arrow-aware API surface in `nabled` | Intentionally omitted | Per project decision, Arrow interop belongs to downstream crates. |
 
 ## Sufficiency Verdict
@@ -103,13 +103,13 @@ Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATA
 Primary remaining work is post-v1 hardening and expansion:
 1. Benchmark-driven optimization and outlier remediation.
 2. Advanced tensor algebra depth beyond the v1 contract.
-3. Advanced GPU/distributed breadth beyond the bounded v1 GPU contract.
+3. Advanced GPU and multi-node breadth beyond the bounded v1 GPU contract.
 
 ## Execution Order Driven by This Matrix
 
 1. Run benchmark-driven optimization passes over hot kernels and regression outliers.
 2. Expand tensor algebra depth beyond the locked v1 surface.
-3. Expand GPU/distributed breadth beyond the locked v1 surface.
+3. Expand GPU and multi-node breadth beyond the locked v1 surface.
 
 ## Definition of Done for This Document
 

@@ -48,20 +48,11 @@ impl IntoNabledError for AcceleratorError {
             AcceleratorError::InvalidChunkSize => {
                 NabledError::InvalidInput("chunk size must be greater than zero".to_string())
             }
-            AcceleratorError::InvalidWorkerCount => {
-                NabledError::InvalidInput("worker count must be greater than zero".to_string())
-            }
-            AcceleratorError::InvalidTileSize => {
-                NabledError::InvalidInput("tile dimensions must be greater than zero".to_string())
-            }
             AcceleratorError::DimensionMismatch => {
                 NabledError::Shape(ShapeError::DimensionMismatch)
             }
             AcceleratorError::FeatureNotEnabled => {
                 NabledError::Other("requested accelerator feature is not enabled".to_string())
-            }
-            AcceleratorError::WorkerPanicked => {
-                NabledError::Other("distributed worker panicked".to_string())
             }
             AcceleratorError::DeviceUnavailable => {
                 NabledError::Other("no suitable GPU device is available".to_string())
@@ -375,23 +366,11 @@ mod tests {
             NabledError::InvalidInput(_)
         ));
         assert!(matches!(
-            AcceleratorError::InvalidWorkerCount.into_nabled_error(),
-            NabledError::InvalidInput(_)
-        ));
-        assert!(matches!(
-            AcceleratorError::InvalidTileSize.into_nabled_error(),
-            NabledError::InvalidInput(_)
-        ));
-        assert!(matches!(
             AcceleratorError::DimensionMismatch.into_nabled_error(),
             NabledError::Shape(ShapeError::DimensionMismatch)
         ));
         assert!(matches!(
             AcceleratorError::FeatureNotEnabled.into_nabled_error(),
-            NabledError::Other(_)
-        ));
-        assert!(matches!(
-            AcceleratorError::WorkerPanicked.into_nabled_error(),
             NabledError::Other(_)
         ));
     }

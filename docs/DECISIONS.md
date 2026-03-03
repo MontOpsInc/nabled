@@ -17,10 +17,10 @@
 13. View/convenience APIs must not hide heap allocations without explicit rustdoc disclosure.
 14. Dense-kernel tolerance and iteration defaults are centralized in one shared policy (`nabled-linalg::internal::DenseKernelPolicy`).
 15. Delivery strategy is domain-first vertical slices: each domain is finalized with API, tests, benchmarks, and docs before expanding horizontally.
-16. P2 kickoff is incremental: establish rank-3 tensor/cube APIs and compile-time accelerator contracts first, then add concrete GPU/distributed kernels.
+16. P2 kickoff is incremental: establish rank-3 tensor/cube APIs and compile-time accelerator contracts first, then add concrete GPU and future multi-node kernels.
 17. Execution terminology is explicit and stable:
    - `Provider`: decomposition implementation source (for example, internal vs OpenBLAS-backed).
-   - `Backend`: primitive-kernel execution target (for example, CPU, distributed CPU, GPU).
+   - `Backend`: primitive-kernel execution target (for example, CPU, GPU).
    - `Kernel`: operation-family contract implemented by backends (for example, matrix-matrix multiply).
 18. Provider and backend are orthogonal axes and may both be used within one public algorithm flow.
 19. Kernel implementations do not directly invoke provider selection; orchestration of provider-backed decomposition and backend-backed kernels lives in domain APIs.

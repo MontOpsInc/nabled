@@ -70,5 +70,5 @@ Kernel wiring status and GPU support breadth are distinct.
 For v1:
 
 1. Kernel families are fully wired (`Wired` above).
-2. CUDA backend support is intentionally bounded and explicit (supported vs unsupported paths are contract-tested).
+2. CUDA backend support is intentionally bounded and explicit (supported paths + strict/fallback out-of-scope contracts are tested).
 3. The normative support matrix is defined in `docs/V1_STABILITY.md`.

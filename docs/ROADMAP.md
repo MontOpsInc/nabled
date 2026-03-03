@@ -74,4 +74,4 @@ Current status:
 
 Next phase:
 1. Benchmark-driven optimization and regression-outlier remediation.
-2. Post-v1 expansion on advanced tensor algebra and broader GPU/distributed coverage.
+2. Post-v1 expansion on advanced tensor algebra and broader GPU and multi-node coverage.

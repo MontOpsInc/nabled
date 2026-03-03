@@ -3,7 +3,7 @@ use std::ops::{AddAssign, Mul};
 use ndarray::{Array1, Array2, Array3, ArrayD};
 use num_traits::Float;
 
-use super::backends::{AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend};
+use super::backends::{AcceleratorError, BackendKind, CpuBackend, CudaBackend};
 use super::cpu::{
     batched_matmat_serial, batched_matmat_serial_f32, batched_row_matvec_serial, dot_serial,
     matmat_serial, matmat_serial_f32, matvec_serial, matvec_serial_f32, pairwise_cosine_serial,
@@ -11,7 +11,6 @@ use super::cpu::{
     sparse_matvec_serial, tensor_batched_matmul_last_two_serial, tensor_contract_axes_serial,
     tensor_sum_last_axis_serial, triangular_solve_mat_serial, triangular_solve_vec_serial,
 };
-use super::distributed::{DistributedConfig, matmat_distributed};
 use super::gpu::{
     batched_matmat_gpu_f32, matmat_gpu_f32, matvec_gpu_f32, tensor_batched_matmul_last_two_gpu_f32,
 };
@@ -23,21 +22,35 @@ use super::kernels::{
 };
 use crate::sparse::CsrMatrix;
 
+#[inline]
+fn fallback_or_cpu_cuda<T, F>(
+    attempt: Result<T, AcceleratorError>,
+    fallback: F,
+) -> Result<T, AcceleratorError>
+where
+    F: FnOnce() -> Result<T, AcceleratorError>,
+{
+    match attempt {
+        Ok(value) => Ok(value),
+        Err(
+            AcceleratorError::FeatureNotEnabled
+            | AcceleratorError::DeviceUnavailable
+            | AcceleratorError::KernelExecutionFailed
+            | AcceleratorError::UnsupportedBackend(BackendKind::Cuda),
+        ) => fallback(),
+        Err(error) => Err(error),
+    }
+}
+
 impl MatMatKernel<f64> for CpuBackend {
     fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, AcceleratorError> {
         matmat_serial(left, right)
     }
 }
 
-impl MatMatKernel<f64> for DistributedBackend {
-    fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, AcceleratorError> {
-        matmat_distributed(left, right, DistributedConfig::default())
-    }
-}
-
 impl MatMatKernel<f64> for CudaBackend {
-    fn matmat(_left: &Array2<f64>, _right: &Array2<f64>) -> Result<Array2<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+    fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, AcceleratorError> {
+        matmat_serial(left, right)
     }
 }
 
@@ -47,15 +60,9 @@ impl MatMatKernel<f32> for CpuBackend {
     }
 }
 
-impl MatMatKernel<f32> for DistributedBackend {
-    fn matmat(left: &Array2<f32>, right: &Array2<f32>) -> Result<Array2<f32>, AcceleratorError> {
-        matmat_serial_f32(left, right)
-    }
-}
-
 impl MatMatKernel<f32> for CudaBackend {
     fn matmat(left: &Array2<f32>, right: &Array2<f32>) -> Result<Array2<f32>, AcceleratorError> {
-        matmat_gpu_f32(left, right)
+        fallback_or_cpu_cuda(matmat_gpu_f32(left, right), || matmat_serial_f32(left, right))
     }
 }
 
@@ -65,18 +72,9 @@ impl MatVecKernel<f64> for CpuBackend {
     }
 }
 
-impl MatVecKernel<f64> for DistributedBackend {
+impl MatVecKernel<f64> for CudaBackend {
     fn matvec(matrix: &Array2<f64>, vector: &Array1<f64>) -> Result<Array1<f64>, AcceleratorError> {
         matvec_serial(matrix, vector)
-    }
-}
-
-impl MatVecKernel<f64> for CudaBackend {
-    fn matvec(
-        _matrix: &Array2<f64>,
-        _vector: &Array1<f64>,
-    ) -> Result<Array1<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
     }
 }
 
@@ -86,15 +84,9 @@ impl MatVecKernel<f32> for CpuBackend {
     }
 }
 
-impl MatVecKernel<f32> for DistributedBackend {
-    fn matvec(matrix: &Array2<f32>, vector: &Array1<f32>) -> Result<Array1<f32>, AcceleratorError> {
-        matvec_serial_f32(matrix, vector)
-    }
-}
-
 impl MatVecKernel<f32> for CudaBackend {
     fn matvec(matrix: &Array2<f32>, vector: &Array1<f32>) -> Result<Array1<f32>, AcceleratorError> {
-        matvec_gpu_f32(matrix, vector)
+        fallback_or_cpu_cuda(matvec_gpu_f32(matrix, vector), || matvec_serial_f32(matrix, vector))
     }
 }
 
@@ -107,7 +99,7 @@ impl BatchedMatMatKernel<f64> for CpuBackend {
     }
 }
 
-impl BatchedMatMatKernel<f64> for DistributedBackend {
+impl BatchedMatMatKernel<f64> for CudaBackend {
     fn batched_matmat(
         left_batches: &Array3<f64>,
         right_batches: &Array3<f64>,
@@ -116,25 +108,7 @@ impl BatchedMatMatKernel<f64> for DistributedBackend {
     }
 }
 
-impl BatchedMatMatKernel<f64> for CudaBackend {
-    fn batched_matmat(
-        _left_batches: &Array3<f64>,
-        _right_batches: &Array3<f64>,
-    ) -> Result<Array3<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
-    }
-}
-
 impl BatchedMatMatKernel<f32> for CpuBackend {
-    fn batched_matmat(
-        left_batches: &Array3<f32>,
-        right_batches: &Array3<f32>,
-    ) -> Result<Array3<f32>, AcceleratorError> {
-        batched_matmat_serial_f32(left_batches, right_batches)
-    }
-}
-
-impl BatchedMatMatKernel<f32> for DistributedBackend {
     fn batched_matmat(
         left_batches: &Array3<f32>,
         right_batches: &Array3<f32>,
@@ -148,7 +122,9 @@ impl BatchedMatMatKernel<f32> for CudaBackend {
         left_batches: &Array3<f32>,
         right_batches: &Array3<f32>,
     ) -> Result<Array3<f32>, AcceleratorError> {
-        batched_matmat_gpu_f32(left_batches, right_batches)
+        fallback_or_cpu_cuda(batched_matmat_gpu_f32(left_batches, right_batches), || {
+            batched_matmat_serial_f32(left_batches, right_batches)
+        })
     }
 }
 
@@ -161,21 +137,12 @@ impl SparseMatVecKernel for CpuBackend {
     }
 }
 
-impl SparseMatVecKernel for DistributedBackend {
+impl SparseMatVecKernel for CudaBackend {
     fn sparse_matvec(
         matrix: &CsrMatrix,
         vector: &Array1<f64>,
     ) -> Result<Array1<f64>, AcceleratorError> {
         sparse_matvec_serial(matrix, vector)
-    }
-}
-
-impl SparseMatVecKernel for CudaBackend {
-    fn sparse_matvec(
-        _matrix: &CsrMatrix,
-        _vector: &Array1<f64>,
-    ) -> Result<Array1<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
     }
 }
 
@@ -188,21 +155,12 @@ impl BatchedRowMatVecKernel<f64> for CpuBackend {
     }
 }
 
-impl BatchedRowMatVecKernel<f64> for DistributedBackend {
+impl BatchedRowMatVecKernel<f64> for CudaBackend {
     fn batched_row_matvec(
         batch_vectors: &Array2<f64>,
         matrix: &Array2<f64>,
     ) -> Result<Array2<f64>, AcceleratorError> {
         batched_row_matvec_serial(batch_vectors, matrix)
-    }
-}
-
-impl BatchedRowMatVecKernel<f64> for CudaBackend {
-    fn batched_row_matvec(
-        _batch_vectors: &Array2<f64>,
-        _matrix: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
     }
 }
 
@@ -215,21 +173,12 @@ impl SparseMatMatDenseKernel for CpuBackend {
     }
 }
 
-impl SparseMatMatDenseKernel for DistributedBackend {
+impl SparseMatMatDenseKernel for CudaBackend {
     fn sparse_matmat_dense(
         matrix: &CsrMatrix,
         dense: &Array2<f64>,
     ) -> Result<Array2<f64>, AcceleratorError> {
         sparse_matmat_dense_serial(matrix, dense)
-    }
-}
-
-impl SparseMatMatDenseKernel for CudaBackend {
-    fn sparse_matmat_dense(
-        _matrix: &CsrMatrix,
-        _dense: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
     }
 }
 
@@ -242,7 +191,7 @@ impl SparseMatMatSparseKernel for CpuBackend {
     }
 }
 
-impl SparseMatMatSparseKernel for DistributedBackend {
+impl SparseMatMatSparseKernel for CudaBackend {
     fn sparse_matmat_sparse(
         left: &CsrMatrix,
         right: &CsrMatrix,
@@ -251,30 +200,7 @@ impl SparseMatMatSparseKernel for DistributedBackend {
     }
 }
 
-impl SparseMatMatSparseKernel for CudaBackend {
-    fn sparse_matmat_sparse(
-        _left: &CsrMatrix,
-        _right: &CsrMatrix,
-    ) -> Result<CsrMatrix, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
-    }
-}
-
 impl<T> TriangularSolveVecKernel<T> for CpuBackend
-where
-    T: Float,
-{
-    fn triangular_solve_vec(
-        matrix: &Array2<T>,
-        rhs: &Array1<T>,
-        lower: bool,
-        unit_diagonal: bool,
-    ) -> Result<Array1<T>, AcceleratorError> {
-        triangular_solve_vec_serial(matrix, rhs, lower, unit_diagonal)
-    }
-}
-
-impl<T> TriangularSolveVecKernel<T> for DistributedBackend
 where
     T: Float,
 {
@@ -293,30 +219,16 @@ where
     T: Float,
 {
     fn triangular_solve_vec(
-        _matrix: &Array2<T>,
-        _rhs: &Array1<T>,
-        _lower: bool,
-        _unit_diagonal: bool,
+        matrix: &Array2<T>,
+        rhs: &Array1<T>,
+        lower: bool,
+        unit_diagonal: bool,
     ) -> Result<Array1<T>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+        triangular_solve_vec_serial(matrix, rhs, lower, unit_diagonal)
     }
 }
 
 impl<T> TriangularSolveMatKernel<T> for CpuBackend
-where
-    T: Float,
-{
-    fn triangular_solve_mat(
-        matrix: &Array2<T>,
-        rhs: &Array2<T>,
-        lower: bool,
-        unit_diagonal: bool,
-    ) -> Result<Array2<T>, AcceleratorError> {
-        triangular_solve_mat_serial(matrix, rhs, lower, unit_diagonal)
-    }
-}
-
-impl<T> TriangularSolveMatKernel<T> for DistributedBackend
 where
     T: Float,
 {
@@ -335,12 +247,12 @@ where
     T: Float,
 {
     fn triangular_solve_mat(
-        _matrix: &Array2<T>,
-        _rhs: &Array2<T>,
-        _lower: bool,
-        _unit_diagonal: bool,
+        matrix: &Array2<T>,
+        rhs: &Array2<T>,
+        lower: bool,
+        unit_diagonal: bool,
     ) -> Result<Array2<T>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+        triangular_solve_mat_serial(matrix, rhs, lower, unit_diagonal)
     }
 }
 
@@ -350,15 +262,9 @@ impl DotKernel<f64> for CpuBackend {
     }
 }
 
-impl DotKernel<f64> for DistributedBackend {
+impl DotKernel<f64> for CudaBackend {
     fn dot(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
         dot_serial(left, right)
-    }
-}
-
-impl DotKernel<f64> for CudaBackend {
-    fn dot(_left: &Array1<f64>, _right: &Array1<f64>) -> Result<f64, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
     }
 }
 
@@ -371,21 +277,12 @@ impl PairwiseL2Kernel for CpuBackend {
     }
 }
 
-impl PairwiseL2Kernel for DistributedBackend {
+impl PairwiseL2Kernel for CudaBackend {
     fn pairwise_l2(
         left: &Array2<f64>,
         right: &Array2<f64>,
     ) -> Result<Array2<f64>, AcceleratorError> {
         pairwise_l2_serial(left, right)
-    }
-}
-
-impl PairwiseL2Kernel for CudaBackend {
-    fn pairwise_l2(
-        _left: &Array2<f64>,
-        _right: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
     }
 }
 
@@ -398,7 +295,7 @@ impl PairwiseCosineKernel for CpuBackend {
     }
 }
 
-impl PairwiseCosineKernel for DistributedBackend {
+impl PairwiseCosineKernel for CudaBackend {
     fn pairwise_cosine(
         left: &Array2<f64>,
         right: &Array2<f64>,
@@ -407,30 +304,7 @@ impl PairwiseCosineKernel for DistributedBackend {
     }
 }
 
-impl PairwiseCosineKernel for CudaBackend {
-    fn pairwise_cosine(
-        _left: &Array2<f64>,
-        _right: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
-    }
-}
-
 impl<T> TensorContractKernel<T> for CpuBackend
-where
-    T: Copy + Default + AddAssign + Mul<Output = T>,
-{
-    fn contract_axes(
-        left: &ArrayD<T>,
-        right: &ArrayD<T>,
-        left_axis: usize,
-        right_axis: usize,
-    ) -> Result<ArrayD<T>, AcceleratorError> {
-        tensor_contract_axes_serial(left, right, left_axis, right_axis)
-    }
-}
-
-impl<T> TensorContractKernel<T> for DistributedBackend
 where
     T: Copy + Default + AddAssign + Mul<Output = T>,
 {
@@ -449,28 +323,16 @@ where
     T: Copy + Default + AddAssign + Mul<Output = T>,
 {
     fn contract_axes(
-        _left: &ArrayD<T>,
-        _right: &ArrayD<T>,
-        _left_axis: usize,
-        _right_axis: usize,
+        left: &ArrayD<T>,
+        right: &ArrayD<T>,
+        left_axis: usize,
+        right_axis: usize,
     ) -> Result<ArrayD<T>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+        tensor_contract_axes_serial(left, right, left_axis, right_axis)
     }
 }
 
 impl<T> TensorBatchedMatMulKernel<T> for CpuBackend
-where
-    T: Copy + Default + AddAssign + Mul<Output = T>,
-{
-    fn batched_matmul_last_two(
-        left: &ArrayD<T>,
-        right: &ArrayD<T>,
-    ) -> Result<ArrayD<T>, AcceleratorError> {
-        tensor_batched_matmul_last_two_serial(left, right)
-    }
-}
-
-impl<T> TensorBatchedMatMulKernel<T> for DistributedBackend
 where
     T: Copy + Default + AddAssign + Mul<Output = T>,
 {
@@ -487,25 +349,27 @@ impl TensorBatchedMatMulKernel<f32> for CudaBackend {
         left: &ArrayD<f32>,
         right: &ArrayD<f32>,
     ) -> Result<ArrayD<f32>, AcceleratorError> {
-        tensor_batched_matmul_last_two_gpu_f32(left, right)
+        fallback_or_cpu_cuda(tensor_batched_matmul_last_two_gpu_f32(left, right), || {
+            tensor_batched_matmul_last_two_serial(left, right)
+        })
     }
 }
 
 impl TensorBatchedMatMulKernel<f64> for CudaBackend {
     fn batched_matmul_last_two(
-        _left: &ArrayD<f64>,
-        _right: &ArrayD<f64>,
+        left: &ArrayD<f64>,
+        right: &ArrayD<f64>,
     ) -> Result<ArrayD<f64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+        tensor_batched_matmul_last_two_serial(left, right)
     }
 }
 
 impl TensorBatchedMatMulKernel<num_complex::Complex64> for CudaBackend {
     fn batched_matmul_last_two(
-        _left: &ArrayD<num_complex::Complex64>,
-        _right: &ArrayD<num_complex::Complex64>,
+        left: &ArrayD<num_complex::Complex64>,
+        right: &ArrayD<num_complex::Complex64>,
     ) -> Result<ArrayD<num_complex::Complex64>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
+        tensor_batched_matmul_last_two_serial(left, right)
     }
 }
 
@@ -518,21 +382,12 @@ where
     }
 }
 
-impl<T> TensorLastAxisReductionKernel<T> for DistributedBackend
+impl<T> TensorLastAxisReductionKernel<T> for CudaBackend
 where
     T: Copy + Default + AddAssign,
 {
     fn sum_last_axis(input: &ArrayD<T>) -> Result<ArrayD<T>, AcceleratorError> {
         tensor_sum_last_axis_serial(input)
-    }
-}
-
-impl<T> TensorLastAxisReductionKernel<T> for CudaBackend
-where
-    T: Copy + Default + AddAssign,
-{
-    fn sum_last_axis(_input: &ArrayD<T>) -> Result<ArrayD<T>, AcceleratorError> {
-        Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))
     }
 }
 

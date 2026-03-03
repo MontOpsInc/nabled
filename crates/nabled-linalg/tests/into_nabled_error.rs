@@ -258,14 +258,6 @@ fn maps_vector_errors() {
         NabledError::InvalidInput("chunk size must be greater than zero".to_string())
     );
     assert_eq!(
-        AcceleratorError::InvalidWorkerCount.into_nabled_error(),
-        NabledError::InvalidInput("worker count must be greater than zero".to_string())
-    );
-    assert_eq!(
-        AcceleratorError::InvalidTileSize.into_nabled_error(),
-        NabledError::InvalidInput("tile dimensions must be greater than zero".to_string())
-    );
-    assert_eq!(
         AcceleratorError::DimensionMismatch.into_nabled_error(),
         NabledError::Shape(ShapeError::DimensionMismatch)
     );
@@ -274,7 +266,11 @@ fn maps_vector_errors() {
         NabledError::Other("requested accelerator feature is not enabled".to_string())
     );
     assert_eq!(
-        AcceleratorError::WorkerPanicked.into_nabled_error(),
-        NabledError::Other("distributed worker panicked".to_string())
+        AcceleratorError::DeviceUnavailable.into_nabled_error(),
+        NabledError::Other("no suitable GPU device is available".to_string())
+    );
+    assert_eq!(
+        AcceleratorError::KernelExecutionFailed.into_nabled_error(),
+        NabledError::Other("GPU kernel execution failed".to_string())
     );
 }

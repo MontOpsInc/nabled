@@ -15,8 +15,8 @@ const SPARSE_TOLERANCE: f64 = 1.0e-12;
 
 /// Apply a CPU closure over row chunks.
 ///
-/// This provides a deterministic chunking contract for distributed
-/// execution paths without introducing runtime backend switching.
+/// This provides a deterministic chunking contract for CPU kernel
+/// partitioning without introducing runtime backend switching.
 ///
 /// # Errors
 /// Returns an error for invalid chunking policy.

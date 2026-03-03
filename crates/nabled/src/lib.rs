@@ -5,9 +5,8 @@
 pub use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 pub use nabled_core::prelude;
 pub use nabled_linalg::accelerator::backends::{
-    AcceleratorError, BackendKind, CpuBackend, CudaBackend, DistributedBackend,
+    AcceleratorError, BackendKind, CpuBackend, CudaBackend,
 };
-pub use nabled_linalg::accelerator::distributed::{DistributedConfig, DistributedSchedule};
 pub use nabled_linalg::cholesky::{CholeskyError, NdarrayCholeskyResult};
 pub use nabled_linalg::eigen::{
     EigenError, NdarrayEigenResult, NdarrayGeneralizedEigenResult,
