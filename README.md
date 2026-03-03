@@ -16,16 +16,9 @@ linear algebra and ML-oriented matrix/vector operations.
 nabled = "0.0.2"
 ```
 
-## Current Direction
-
-1. Ndarray-native API and implementation model.
-2. Strict focus on correctness, performance, and composability.
-3. No Arrow-specific types in `nabled` APIs.
-4. Workspace architecture (`nabled-core`, `nabled-linalg`, `nabled-ml`, facade `nabled`).
-
-See [`docs/README.md`](docs/README.md) for current architecture and roadmap.
-
 ## Implemented Domains
+
+This list is ever-changing, consult the Rust Docs for the source of truth. 
 
 1. SVD, QR, LU, Cholesky, Eigen, Schur, Polar
 2. Matrix functions (exp/log/power/sign)
