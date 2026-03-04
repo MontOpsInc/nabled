@@ -1,4 +1,4 @@
-# Nabled
+# 🕸️ Nabled
 
 [![Crates.io](https://img.shields.io/crates/v/nabled.svg)](https://crates.io/crates/nabled)
 [![Documentation](https://docs.rs/nabled/badge.svg)](https://docs.rs/nabled)
