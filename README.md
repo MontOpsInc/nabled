@@ -1,4 +1,4 @@
-# Nabled
+# 🕸️ Nabled
 
 [![Crates.io](https://img.shields.io/crates/v/nabled.svg)](https://crates.io/crates/nabled)
 [![Documentation](https://docs.rs/nabled/badge.svg)](https://docs.rs/nabled)
@@ -13,7 +13,7 @@ linear algebra and ML-oriented matrix/vector operations.
 
 ```toml
 [dependencies]
-nabled = "0.0.2"
+nabled = "0.0.3"
 ```
 
 ## Implemented Domains
@@ -62,7 +62,7 @@ Review more examples in [nabled](crates/nabled/examples).
 
 ```toml
 [dependencies]
-nabled = { version = "0.0.2", features = ["openblas-system"] }
+nabled = { version = "0.0.3", features = ["openblas-system"] }
 ```
 
 Feature behavior:
