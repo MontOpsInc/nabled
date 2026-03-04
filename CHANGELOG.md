@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Documentation
+
+- Updates root README ([#15](https://github.com/MontOpsInc/nabled/issues/15)) ([298fd11](https://github.com/MontOpsInc/nabled/commit/298fd11c5b35f0d58f2615e8794ed887eb4ef98c))
+
+### Features
+
+- Introduces remaining lapack providers ([8e40881](https://github.com/MontOpsInc/nabled/commit/8e40881142d08f9ebb781a77c3d45a7f507f2fe7))
+
+### Refactor
+
+- Renames cuda to gpu to be more accurate, cleans up some docs ([0b277f9](https://github.com/MontOpsInc/nabled/commit/0b277f9ea97fd928831f2d6f423fcbd40595a273))
+
+### Testing
+
+- Introduces cpu/gpu test basic ([7539eaa](https://github.com/MontOpsInc/nabled/commit/7539eaa669252de9f4c681df8607a86179b13115))
+
+## [0.0.2] - 2026-03-03
+
+### Miscellaneous Tasks
+
+- Prepare release v0.0.2 ([#14](https://github.com/MontOpsInc/nabled/issues/14)) ([e80300c](https://github.com/MontOpsInc/nabled/commit/e80300ce565dd9a0744b518275a06e5e41dbd04e))
+
 ## [0.0.1] - 2026-03-03
 
 ### Bug Fixes
