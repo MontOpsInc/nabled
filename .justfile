@@ -397,8 +397,8 @@ prepare-release version:
     # Commit
     git commit -m "chore: prepare release v{{ version }}"
 
-    # Push branch
-    git push origin "release-v{{ version }}"
+    # Push branch and set upstream so later `git push` works without extra flags.
+    git push --set-upstream origin "release-v{{ version }}"
 
     echo ""
     echo "✅ Release preparation complete!"
