@@ -43,16 +43,16 @@ GPU scope is intentionally explicit and bounded for v1.
 
 ### Supported (feature `accelerator-wgpu`)
 
-1. `matmat_with_backend_f32::<CudaBackend>`
-2. `matvec_with_backend_f32::<CudaBackend>`
-3. `batched_matmat_with_backend_f32::<CudaBackend>`
-4. `tensor_batched_matmul_last_two_with_backend::<CudaBackend, f32>`
+1. `matmat_with_backend_f32::<GpuBackend>`
+2. `matvec_with_backend_f32::<GpuBackend>`
+3. `batched_matmat_with_backend_f32::<GpuBackend>`
+4. `tensor_batched_matmul_last_two_with_backend::<GpuBackend, f32>`
 
 Runtime note: on systems without a usable GPU device, these return `AcceleratorError::DeviceUnavailable`.
 
-### CUDA `f64`/complex and tensor-op fallback behavior
+### GPU backend `f64`/complex and tensor-op fallback behavior
 
-For CUDA-dispatched kernels outside the bounded `f32` GPU-native surface:
+For GPU-backend-dispatched kernels outside the bounded `f32` GPU-native surface:
 
 1. The backend keeps capability stable and executes explicit CPU fallback paths.
 2. Only true input/shape/runtime execution errors are returned.
@@ -65,7 +65,7 @@ This unified behavior is deliberate and tested.
 2. `Backend` and `Kernel` are compile-time selected and apply to operation-family kernel paths.
 3. Provider choice does not require runtime provider branching.
 4. Public APIs remain provider/backend agnostic and ndarray-native.
-5. CUDA out-of-scope kernels use explicit CPU fallback paths to preserve public API capability.
+5. GPU-backend out-of-scope kernels use explicit CPU fallback paths to preserve public API capability.
 
 ## Required Feature/Build Matrix
 

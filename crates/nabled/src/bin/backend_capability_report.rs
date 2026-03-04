@@ -227,8 +227,8 @@ fn tier_b_domains() -> Vec<DomainCapability> {
             baseline_kernels: true,
             provider_path:    ProviderPath::Native,
             notes:            "crates/nabled-linalg/src/accelerator.rs (CPU kernels + bounded \
-                               CUDA `f32` kernel support via `wgpu` with explicit CPU fallback \
-                               outside v1 GPU scope)",
+                               GPU-backend `f32` kernel support via `wgpu` with explicit CPU \
+                               fallback outside v1 GPU scope)",
         },
     ]
 }

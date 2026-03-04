@@ -250,8 +250,8 @@ fn maps_vector_errors() {
     );
 
     assert_eq!(
-        AcceleratorError::UnsupportedBackend(BackendKind::Cuda).into_nabled_error(),
-        NabledError::Other("backend Cuda is not currently available".to_string())
+        AcceleratorError::UnsupportedBackend(BackendKind::Gpu).into_nabled_error(),
+        NabledError::Other("backend Gpu is not currently available".to_string())
     );
     assert_eq!(
         AcceleratorError::InvalidChunkSize.into_nabled_error(),

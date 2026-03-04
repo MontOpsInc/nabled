@@ -14,7 +14,7 @@
 //! # Execution Model
 //!
 //! 1. `Provider`: decomposition implementation source (internal or `OpenBLAS`-backed).
-//! 2. `Backend`: operation-kernel execution target (`CpuBackend`, `CudaBackend`).
+//! 2. `Backend`: operation-kernel execution target (`CpuBackend`, `GpuBackend`).
 //! 3. `Kernel`: operation-family contract (for example matmat, sparse matvec, tensor contraction).
 //!
 //! Provider selection and backend selection are orthogonal, compile-time concerns.
@@ -390,7 +390,7 @@ mod tests {
             NabledError::Shape(ShapeError::DimensionMismatch)
         ));
         assert!(matches!(
-            AcceleratorError::UnsupportedBackend(BackendKind::Cuda).into_nabled_error(),
+            AcceleratorError::UnsupportedBackend(BackendKind::Gpu).into_nabled_error(),
             NabledError::Other(_)
         ));
         assert!(matches!(

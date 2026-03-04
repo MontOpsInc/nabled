@@ -11,7 +11,7 @@ mod tests {
     use ndarray::{Array1, Array2, Array3, ArrayD, IxDyn};
 
     use crate::accelerator::backends::{
-        AcceleratorError, BackendKind, CpuBackend, CudaBackend, execute,
+        AcceleratorError, BackendKind, CpuBackend, GpuBackend, execute,
     };
     use crate::accelerator::cpu::{for_each_row_chunk, matmat_accelerated, matmat_serial};
     use crate::accelerator::dispatch::{
@@ -38,9 +38,9 @@ mod tests {
     }
 
     #[test]
-    fn cuda_backend_returns_error() {
-        let cuda = execute::<CudaBackend, _, _>(|| 1);
-        assert!(matches!(cuda, Err(AcceleratorError::UnsupportedBackend(BackendKind::Cuda))));
+    fn gpu_backend_returns_error() {
+        let gpu = execute::<GpuBackend, _, _>(|| 1);
+        assert!(matches!(gpu, Err(AcceleratorError::UnsupportedBackend(BackendKind::Gpu))));
     }
 
     #[test]
@@ -82,10 +82,10 @@ mod tests {
         let right = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
 
         let serial = matmat_with_backend::<CpuBackend>(&left, &right).unwrap();
-        let cuda = matmat_with_backend::<CudaBackend>(&left, &right).unwrap();
+        let gpu = matmat_with_backend::<GpuBackend>(&left, &right).unwrap();
         for row in 0..serial.nrows() {
             for col in 0..serial.ncols() {
-                assert!((serial[[row, col]] - cuda[[row, col]]).abs() < 1e-12);
+                assert!((serial[[row, col]] - gpu[[row, col]]).abs() < 1e-12);
             }
         }
     }
@@ -99,8 +99,8 @@ mod tests {
         assert!((cpu[0] - 5.0).abs() < 1e-12);
         assert!((cpu[1] - 5.0).abs() < 1e-12);
 
-        let cuda = matvec_with_backend::<CudaBackend>(&matrix, &vector).unwrap();
-        assert_eq!(cuda, cpu);
+        let gpu = matvec_with_backend::<GpuBackend>(&matrix, &vector).unwrap();
+        assert_eq!(gpu, cpu);
     }
 
     #[test]
@@ -117,8 +117,8 @@ mod tests {
         .unwrap();
 
         let cpu = batched_matmat_with_backend::<CpuBackend>(&left, &right).unwrap();
-        let cuda = batched_matmat_with_backend::<CudaBackend>(&left, &right).unwrap();
-        assert_eq!(cuda, cpu);
+        let gpu = batched_matmat_with_backend::<GpuBackend>(&left, &right).unwrap();
+        assert_eq!(gpu, cpu);
     }
 
     #[test]
@@ -131,8 +131,8 @@ mod tests {
         assert!((cpu[0] - 10.0).abs() < 1e-12);
         assert!((cpu[1] + 3.0).abs() < 1e-12);
 
-        let cuda = sparse_matvec_with_backend::<CudaBackend>(&matrix, &vector).unwrap();
-        assert_eq!(cuda, cpu);
+        let gpu = sparse_matvec_with_backend::<GpuBackend>(&matrix, &vector).unwrap();
+        assert_eq!(gpu, cpu);
     }
 
     #[test]
@@ -141,8 +141,8 @@ mod tests {
         let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 0.0, 1.0, 1.0]).unwrap();
 
         let cpu = batched_row_matvec_with_backend::<CpuBackend>(&vectors, &matrix).unwrap();
-        let cuda = batched_row_matvec_with_backend::<CudaBackend>(&vectors, &matrix).unwrap();
-        assert_eq!(cuda, cpu);
+        let gpu = batched_row_matvec_with_backend::<GpuBackend>(&vectors, &matrix).unwrap();
+        assert_eq!(gpu, cpu);
     }
 
     #[test]
@@ -152,17 +152,17 @@ mod tests {
         let dense_right = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 2.0, 1.0]).unwrap();
         let sparse_right = CsrMatrix::new(2, 2, vec![0, 1, 2], vec![0, 1], vec![2.0, 1.0]).unwrap();
 
-        let dense_cpu =
+        let dense_serial =
             sparse_matmat_dense_with_backend::<CpuBackend>(&sparse_left, &dense_right).unwrap();
-        let sparse_cpu =
+        let sparse_serial =
             sparse_matmat_sparse_with_backend::<CpuBackend>(&sparse_left, &sparse_right).unwrap();
 
-        let dense_cuda =
-            sparse_matmat_dense_with_backend::<CudaBackend>(&sparse_left, &dense_right).unwrap();
-        let sparse_cuda =
-            sparse_matmat_sparse_with_backend::<CudaBackend>(&sparse_left, &sparse_right).unwrap();
-        assert_eq!(dense_cuda, dense_cpu);
-        assert_eq!(sparse_cuda, sparse_cpu);
+        let dense_accel =
+            sparse_matmat_dense_with_backend::<GpuBackend>(&sparse_left, &dense_right).unwrap();
+        let sparse_accel =
+            sparse_matmat_sparse_with_backend::<GpuBackend>(&sparse_left, &sparse_right).unwrap();
+        assert_eq!(dense_accel, dense_serial);
+        assert_eq!(sparse_accel, sparse_serial);
     }
 
     #[test]
@@ -179,12 +179,12 @@ mod tests {
         assert!((l2[[0, 0]] - 0.0).abs() < 1e-12);
         assert!((cosine[[0, 0]] - 1.0).abs() < 1e-12);
 
-        let dot_cuda = dot_with_backend::<CudaBackend>(&left, &right);
-        let l2_cuda = pairwise_l2_with_backend::<CudaBackend>(&left_rows, &right_rows);
-        let cosine_cuda = pairwise_cosine_with_backend::<CudaBackend>(&left_rows, &right_rows);
-        assert!((dot_cuda.unwrap() - dot).abs() < 1e-12);
-        assert_eq!(l2_cuda.unwrap(), l2);
-        assert_eq!(cosine_cuda.unwrap(), cosine);
+        let dot_gpu = dot_with_backend::<GpuBackend>(&left, &right);
+        let l2_gpu = pairwise_l2_with_backend::<GpuBackend>(&left_rows, &right_rows);
+        let cosine_gpu = pairwise_cosine_with_backend::<GpuBackend>(&left_rows, &right_rows);
+        assert!((dot_gpu.unwrap() - dot).abs() < 1e-12);
+        assert_eq!(l2_gpu.unwrap(), l2);
+        assert_eq!(cosine_gpu.unwrap(), cosine);
     }
 
     #[test]
@@ -211,12 +211,12 @@ mod tests {
             }
         }
 
-        let vec_cuda =
-            triangular_solve_vec_with_backend::<CudaBackend, f64>(&matrix, &rhs_vec, true, false);
-        let mat_cuda =
-            triangular_solve_mat_with_backend::<CudaBackend, f64>(&matrix, &rhs_mat, true, false);
-        assert_eq!(vec_cuda.unwrap(), vec_solution);
-        assert_eq!(mat_cuda.unwrap(), mat_solution);
+        let vec_gpu =
+            triangular_solve_vec_with_backend::<GpuBackend, f64>(&matrix, &rhs_vec, true, false);
+        let mat_gpu =
+            triangular_solve_mat_with_backend::<GpuBackend, f64>(&matrix, &rhs_mat, true, false);
+        assert_eq!(vec_gpu.unwrap(), vec_solution);
+        assert_eq!(mat_gpu.unwrap(), mat_solution);
     }
 
     #[test]
@@ -250,16 +250,16 @@ mod tests {
         .unwrap();
         assert_eq!(batched.shape(), &[2, 2, 2]);
 
-        let summed_cuda = tensor_sum_last_axis_with_backend::<CudaBackend, f64>(&tensor);
-        let contracted_cuda =
-            tensor_contract_axes_with_backend::<CudaBackend, f64>(&left, &right, 1, 0);
-        let batched_cuda = tensor_batched_matmul_last_two_with_backend::<CudaBackend, f64>(
+        let summed_gpu = tensor_sum_last_axis_with_backend::<GpuBackend, f64>(&tensor);
+        let contracted_gpu =
+            tensor_contract_axes_with_backend::<GpuBackend, f64>(&left, &right, 1, 0);
+        let batched_gpu = tensor_batched_matmul_last_two_with_backend::<GpuBackend, f64>(
             &batched_left,
             &batched_right,
         );
-        assert_eq!(summed_cuda.unwrap(), summed);
-        assert_eq!(contracted_cuda.unwrap(), contracted);
-        assert_eq!(batched_cuda.unwrap(), batched);
+        assert_eq!(summed_gpu.unwrap(), summed);
+        assert_eq!(contracted_gpu.unwrap(), contracted);
+        assert_eq!(batched_gpu.unwrap(), batched);
     }
 
     #[test]
@@ -297,7 +297,7 @@ mod tests {
         let left = Array2::from_shape_vec((2, 3), vec![1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
         let right = Array2::from_shape_vec((3, 2), vec![1.0_f32, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
         let cpu = matmat_with_backend_f32::<CpuBackend>(&left, &right).unwrap();
-        let gpu = matmat_with_backend_f32::<CudaBackend>(&left, &right).unwrap();
+        let gpu = matmat_with_backend_f32::<GpuBackend>(&left, &right).unwrap();
         for row in 0..cpu.nrows() {
             for col in 0..cpu.ncols() {
                 assert!((cpu[[row, col]] - gpu[[row, col]]).abs() < 1e-4);
@@ -312,7 +312,7 @@ mod tests {
             Array2::from_shape_vec((2, 3), vec![1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
         let vector = Array1::from_vec(vec![1.0_f32, 2.0, 3.0]);
         let cpu = matvec_with_backend_f32::<CpuBackend>(&matrix, &vector).unwrap();
-        let gpu = matvec_with_backend_f32::<CudaBackend>(&matrix, &vector).unwrap();
+        let gpu = matvec_with_backend_f32::<GpuBackend>(&matrix, &vector).unwrap();
         for i in 0..cpu.len() {
             assert!((cpu[i] - gpu[i]).abs() < 1e-4);
         }
@@ -332,7 +332,7 @@ mod tests {
         ])
         .unwrap();
         let cpu = batched_matmat_with_backend_f32::<CpuBackend>(&left, &right).unwrap();
-        let gpu = batched_matmat_with_backend_f32::<CudaBackend>(&left, &right).unwrap();
+        let gpu = batched_matmat_with_backend_f32::<GpuBackend>(&left, &right).unwrap();
         for b in 0..cpu.dim().0 {
             for r in 0..cpu.dim().1 {
                 for c in 0..cpu.dim().2 {
@@ -358,7 +358,7 @@ mod tests {
         let cpu =
             tensor_batched_matmul_last_two_with_backend::<CpuBackend, f32>(&left, &right).unwrap();
         let gpu =
-            tensor_batched_matmul_last_two_with_backend::<CudaBackend, f32>(&left, &right).unwrap();
+            tensor_batched_matmul_last_two_with_backend::<GpuBackend, f32>(&left, &right).unwrap();
         for (lhs, rhs) in cpu.iter().zip(gpu.iter()) {
             assert!((*lhs - *rhs).abs() < 1e-4);
         }
@@ -371,7 +371,7 @@ mod tests {
         let right =
             ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![1.0_f64, 0.0, 0.0, 1.0]).unwrap();
 
-        let result = tensor_batched_matmul_last_two_with_backend::<CudaBackend, f64>(&left, &right);
+        let result = tensor_batched_matmul_last_two_with_backend::<GpuBackend, f64>(&left, &right);
         let cpu =
             tensor_batched_matmul_last_two_with_backend::<CpuBackend, f64>(&left, &right).unwrap();
         assert_eq!(result.unwrap(), cpu);
@@ -381,9 +381,8 @@ mod tests {
     #[test]
     fn gpu_tensor_contract_and_reduction_fall_back_to_cpu() {
         let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![1.0_f32, 2.0, 3.0, 4.0]).unwrap();
-        let contract =
-            tensor_contract_axes_with_backend::<CudaBackend, f32>(&tensor, &tensor, 1, 0);
-        let reduced = tensor_sum_last_axis_with_backend::<CudaBackend, f32>(&tensor);
+        let contract = tensor_contract_axes_with_backend::<GpuBackend, f32>(&tensor, &tensor, 1, 0);
+        let reduced = tensor_sum_last_axis_with_backend::<GpuBackend, f32>(&tensor);
         let cpu_contract =
             tensor_contract_axes_with_backend::<CpuBackend, f32>(&tensor, &tensor, 1, 0).unwrap();
         let cpu_reduced = tensor_sum_last_axis_with_backend::<CpuBackend, f32>(&tensor).unwrap();

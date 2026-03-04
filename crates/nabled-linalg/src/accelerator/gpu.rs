@@ -286,7 +286,8 @@ fn matmat_gpu_f32_wgpu(
 /// Compute matrix-matrix product on GPU for `f32` inputs using `wgpu`.
 ///
 /// # Errors
-/// Returns an error for incompatible dimensions, unavailable device, or kernel failures.
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
 pub fn matmat_gpu_f32(
     left: &Array2<f32>,
     right: &Array2<f32>,
@@ -311,7 +312,8 @@ pub fn matmat_gpu_f32(
 /// Compute matrix-vector product on GPU for `f32` inputs using `wgpu`.
 ///
 /// # Errors
-/// Returns an error for incompatible dimensions, unavailable device, or kernel failures.
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
 pub fn matvec_gpu_f32(
     matrix: &Array2<f32>,
     vector: &Array1<f32>,
@@ -329,7 +331,8 @@ pub fn matvec_gpu_f32(
 /// Compute batched matrix-matrix products on GPU for `f32` inputs using `wgpu`.
 ///
 /// # Errors
-/// Returns an error for incompatible dimensions, unavailable device, or kernel failures.
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
 pub fn batched_matmat_gpu_f32(
     left_batches: &Array3<f32>,
     right_batches: &Array3<f32>,
@@ -358,7 +361,8 @@ pub fn batched_matmat_gpu_f32(
 /// per-batch `wgpu` matmul kernels.
 ///
 /// # Errors
-/// Returns an error for incompatible dimensions, unavailable device, or kernel failures.
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
 pub fn tensor_batched_matmul_last_two_gpu_f32(
     left: &ArrayD<f32>,
     right: &ArrayD<f32>,

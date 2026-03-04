@@ -2,7 +2,7 @@
 
 use approx::assert_relative_eq;
 use nabled::core::errors::{IntoNabledError, NabledError};
-use nabled::linalg::accelerator::backends::{CpuBackend, CudaBackend};
+use nabled::linalg::accelerator::backends::{CpuBackend, GpuBackend};
 use nabled::linalg::sparse::CsrMatrix;
 use nabled::linalg::svd::{self as svd, SVDError};
 use nabled::linalg::vector::{self as vector, PairwiseCosineWorkspace};
@@ -413,15 +413,15 @@ fn assert_sparse_tensor_and_accelerator_paths(dense: &Array2<f64>, dense_rhs: &A
 fn assert_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
     let cpu_result = accelerator::backends::execute::<CpuBackend, _, _>(|| 21 + 21).unwrap();
     assert_eq!(cpu_result, 42);
-    let cuda_result = accelerator::backends::execute::<CudaBackend, _, _>(|| 1);
-    assert!(cuda_result.is_err());
+    let gpu_result = accelerator::backends::execute::<GpuBackend, _, _>(|| 1);
+    assert!(gpu_result.is_err());
 
     let serial = accelerator::cpu::matmat_serial(dense, dense_rhs).unwrap();
-    let backend_cuda =
-        accelerator::dispatch::matmat_with_backend::<CudaBackend>(dense, dense_rhs).unwrap();
+    let backend_gpu =
+        accelerator::dispatch::matmat_with_backend::<GpuBackend>(dense, dense_rhs).unwrap();
     for row in 0..serial.nrows() {
         for col in 0..serial.ncols() {
-            assert_relative_eq!(serial[[row, col]], backend_cuda[[row, col]], epsilon = 1e-12);
+            assert_relative_eq!(serial[[row, col]], backend_gpu[[row, col]], epsilon = 1e-12);
         }
     }
 

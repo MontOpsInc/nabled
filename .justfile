@@ -342,14 +342,16 @@ prepare-release version:
     sed -i '' "s/^nabled-linalg = { path = \"crates\\/nabled-linalg\", version = \"=[^\"]*\" }/nabled-linalg = { path = \"crates\\/nabled-linalg\", version = \"={{ version }}\" }/" Cargo.toml
     sed -i '' "s/^nabled-ml = { path = \"crates\\/nabled-ml\", version = \"=[^\"]*\" }/nabled-ml = { path = \"crates\\/nabled-ml\", version = \"={{ version }}\" }/" Cargo.toml
 
-    # Update nabled version references in README files (if they exist)
-    # Look for patterns like: nabled = "0.1.1" or nabled = { version = "0.1.1"
-    for readme in README.md; do
+    # Update nabled crate version references in README files (if they exist).
+    # Look for patterns like: nabled = "0.1.1" or nabled = { version = "0.1.1" }.
+    for readme in README.md crates/nabled-core/README.md crates/nabled-linalg/README.md crates/nabled-ml/README.md; do
         if [ -f "$readme" ]; then
-            # Update simple dependency format
-            sed -i '' "s/nabled = \"[0-9]*\.[0-9]*\.[0-9]*\"/nabled = \"{{ version }}\"/" "$readme" || true
-            # Update version field in dependency table format
-            sed -i '' "s/nabled = { version = \"[0-9]*\.[0-9]*\.[0-9]*\"/nabled = { version = \"{{ version }}\"/" "$readme" || true
+            for dep in nabled nabled-core nabled-linalg nabled-ml; do
+                # Update simple dependency format
+                sed -i '' "s/$dep = \"[0-9]*\.[0-9]*\.[0-9]*\"/$dep = \"{{ version }}\"/" "$readme" || true
+                # Update version field in dependency table format
+                sed -i '' "s/$dep = { version = \"[0-9]*\.[0-9]*\.[0-9]*\"/$dep = { version = \"{{ version }}\"/" "$readme" || true
+            done
         fi
     done
 
@@ -376,7 +378,7 @@ prepare-release version:
         git add Cargo.lock
     fi
     # Also add README files if they were modified
-    git add README.md 2>/dev/null || true
+    git add README.md crates/nabled-core/README.md crates/nabled-linalg/README.md crates/nabled-ml/README.md 2>/dev/null || true
 
     # Commit
     git commit -m "chore: prepare release v{{ version }}"

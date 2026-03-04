@@ -6,7 +6,7 @@ pub enum BackendKind {
     /// CPU backend.
     Cpu,
     /// GPU backend.
-    Cuda,
+    Gpu,
 }
 
 /// Error type for backend orchestration.
@@ -63,12 +63,14 @@ impl ComputeBackend for CpuBackend {
     const KIND: BackendKind = BackendKind::Cpu;
 }
 
-/// CUDA backend placeholder.
+/// GPU backend.
+///
+/// Unsupported kernels currently fall back to CPU serial execution in dispatch layers.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CudaBackend;
+pub struct GpuBackend;
 
-impl ComputeBackend for CudaBackend {
-    const KIND: BackendKind = BackendKind::Cuda;
+impl ComputeBackend for GpuBackend {
+    const KIND: BackendKind = BackendKind::Gpu;
 }
 
 /// Execute a closure with compile-time backend selection.
@@ -82,6 +84,6 @@ where
 {
     match B::KIND {
         BackendKind::Cpu => Ok(operation()),
-        BackendKind::Cuda => Err(AcceleratorError::UnsupportedBackend(B::KIND)),
+        BackendKind::Gpu => Err(AcceleratorError::UnsupportedBackend(B::KIND)),
     }
 }

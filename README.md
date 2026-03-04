@@ -42,6 +42,8 @@ fn main() -> Result<(), nabled::linalg::svd::SVDError> {
 }
 ```
 
+Review more examples in [nabled](crates/nabled/examples).
+
 ## Namespaced API
 
 1. `nabled::core`: shared errors, validation, and prelude exports.

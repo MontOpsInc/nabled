@@ -3,7 +3,7 @@ use std::ops::{AddAssign, Mul};
 use ndarray::{Array1, Array2, Array3, ArrayD};
 use num_traits::Float;
 
-use super::backends::{AcceleratorError, BackendKind, CpuBackend, CudaBackend};
+use super::backends::{AcceleratorError, BackendKind, CpuBackend, GpuBackend};
 use super::cpu::{
     batched_matmat_serial, batched_matmat_serial_f32, batched_row_matvec_serial, dot_serial,
     matmat_serial, matmat_serial_f32, matvec_serial, matvec_serial_f32, pairwise_cosine_serial,
@@ -23,7 +23,7 @@ use super::kernels::{
 use crate::sparse::CsrMatrix;
 
 #[inline]
-fn fallback_or_cpu_cuda<T, F>(
+fn fallback_or_cpu_gpu<T, F>(
     attempt: Result<T, AcceleratorError>,
     fallback: F,
 ) -> Result<T, AcceleratorError>
@@ -36,7 +36,7 @@ where
             AcceleratorError::FeatureNotEnabled
             | AcceleratorError::DeviceUnavailable
             | AcceleratorError::KernelExecutionFailed
-            | AcceleratorError::UnsupportedBackend(BackendKind::Cuda),
+            | AcceleratorError::UnsupportedBackend(BackendKind::Gpu),
         ) => fallback(),
         Err(error) => Err(error),
     }
@@ -48,7 +48,8 @@ impl MatMatKernel<f64> for CpuBackend {
     }
 }
 
-impl MatMatKernel<f64> for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl MatMatKernel<f64> for GpuBackend {
     fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, AcceleratorError> {
         matmat_serial(left, right)
     }
@@ -60,9 +61,10 @@ impl MatMatKernel<f32> for CpuBackend {
     }
 }
 
-impl MatMatKernel<f32> for CudaBackend {
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl MatMatKernel<f32> for GpuBackend {
     fn matmat(left: &Array2<f32>, right: &Array2<f32>) -> Result<Array2<f32>, AcceleratorError> {
-        fallback_or_cpu_cuda(matmat_gpu_f32(left, right), || matmat_serial_f32(left, right))
+        fallback_or_cpu_gpu(matmat_gpu_f32(left, right), || matmat_serial_f32(left, right))
     }
 }
 
@@ -72,7 +74,8 @@ impl MatVecKernel<f64> for CpuBackend {
     }
 }
 
-impl MatVecKernel<f64> for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl MatVecKernel<f64> for GpuBackend {
     fn matvec(matrix: &Array2<f64>, vector: &Array1<f64>) -> Result<Array1<f64>, AcceleratorError> {
         matvec_serial(matrix, vector)
     }
@@ -84,9 +87,10 @@ impl MatVecKernel<f32> for CpuBackend {
     }
 }
 
-impl MatVecKernel<f32> for CudaBackend {
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl MatVecKernel<f32> for GpuBackend {
     fn matvec(matrix: &Array2<f32>, vector: &Array1<f32>) -> Result<Array1<f32>, AcceleratorError> {
-        fallback_or_cpu_cuda(matvec_gpu_f32(matrix, vector), || matvec_serial_f32(matrix, vector))
+        fallback_or_cpu_gpu(matvec_gpu_f32(matrix, vector), || matvec_serial_f32(matrix, vector))
     }
 }
 
@@ -99,7 +103,8 @@ impl BatchedMatMatKernel<f64> for CpuBackend {
     }
 }
 
-impl BatchedMatMatKernel<f64> for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl BatchedMatMatKernel<f64> for GpuBackend {
     fn batched_matmat(
         left_batches: &Array3<f64>,
         right_batches: &Array3<f64>,
@@ -117,12 +122,13 @@ impl BatchedMatMatKernel<f32> for CpuBackend {
     }
 }
 
-impl BatchedMatMatKernel<f32> for CudaBackend {
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl BatchedMatMatKernel<f32> for GpuBackend {
     fn batched_matmat(
         left_batches: &Array3<f32>,
         right_batches: &Array3<f32>,
     ) -> Result<Array3<f32>, AcceleratorError> {
-        fallback_or_cpu_cuda(batched_matmat_gpu_f32(left_batches, right_batches), || {
+        fallback_or_cpu_gpu(batched_matmat_gpu_f32(left_batches, right_batches), || {
             batched_matmat_serial_f32(left_batches, right_batches)
         })
     }
@@ -137,7 +143,8 @@ impl SparseMatVecKernel for CpuBackend {
     }
 }
 
-impl SparseMatVecKernel for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl SparseMatVecKernel for GpuBackend {
     fn sparse_matvec(
         matrix: &CsrMatrix,
         vector: &Array1<f64>,
@@ -155,7 +162,8 @@ impl BatchedRowMatVecKernel<f64> for CpuBackend {
     }
 }
 
-impl BatchedRowMatVecKernel<f64> for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl BatchedRowMatVecKernel<f64> for GpuBackend {
     fn batched_row_matvec(
         batch_vectors: &Array2<f64>,
         matrix: &Array2<f64>,
@@ -173,7 +181,8 @@ impl SparseMatMatDenseKernel for CpuBackend {
     }
 }
 
-impl SparseMatMatDenseKernel for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl SparseMatMatDenseKernel for GpuBackend {
     fn sparse_matmat_dense(
         matrix: &CsrMatrix,
         dense: &Array2<f64>,
@@ -191,7 +200,8 @@ impl SparseMatMatSparseKernel for CpuBackend {
     }
 }
 
-impl SparseMatMatSparseKernel for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl SparseMatMatSparseKernel for GpuBackend {
     fn sparse_matmat_sparse(
         left: &CsrMatrix,
         right: &CsrMatrix,
@@ -214,7 +224,8 @@ where
     }
 }
 
-impl<T> TriangularSolveVecKernel<T> for CudaBackend
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl<T> TriangularSolveVecKernel<T> for GpuBackend
 where
     T: Float,
 {
@@ -242,7 +253,8 @@ where
     }
 }
 
-impl<T> TriangularSolveMatKernel<T> for CudaBackend
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl<T> TriangularSolveMatKernel<T> for GpuBackend
 where
     T: Float,
 {
@@ -262,7 +274,8 @@ impl DotKernel<f64> for CpuBackend {
     }
 }
 
-impl DotKernel<f64> for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl DotKernel<f64> for GpuBackend {
     fn dot(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
         dot_serial(left, right)
     }
@@ -277,7 +290,8 @@ impl PairwiseL2Kernel for CpuBackend {
     }
 }
 
-impl PairwiseL2Kernel for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl PairwiseL2Kernel for GpuBackend {
     fn pairwise_l2(
         left: &Array2<f64>,
         right: &Array2<f64>,
@@ -295,7 +309,8 @@ impl PairwiseCosineKernel for CpuBackend {
     }
 }
 
-impl PairwiseCosineKernel for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl PairwiseCosineKernel for GpuBackend {
     fn pairwise_cosine(
         left: &Array2<f64>,
         right: &Array2<f64>,
@@ -318,7 +333,8 @@ where
     }
 }
 
-impl<T> TensorContractKernel<T> for CudaBackend
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl<T> TensorContractKernel<T> for GpuBackend
 where
     T: Copy + Default + AddAssign + Mul<Output = T>,
 {
@@ -344,18 +360,20 @@ where
     }
 }
 
-impl TensorBatchedMatMulKernel<f32> for CudaBackend {
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl TensorBatchedMatMulKernel<f32> for GpuBackend {
     fn batched_matmul_last_two(
         left: &ArrayD<f32>,
         right: &ArrayD<f32>,
     ) -> Result<ArrayD<f32>, AcceleratorError> {
-        fallback_or_cpu_cuda(tensor_batched_matmul_last_two_gpu_f32(left, right), || {
+        fallback_or_cpu_gpu(tensor_batched_matmul_last_two_gpu_f32(left, right), || {
             tensor_batched_matmul_last_two_serial(left, right)
         })
     }
 }
 
-impl TensorBatchedMatMulKernel<f64> for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl TensorBatchedMatMulKernel<f64> for GpuBackend {
     fn batched_matmul_last_two(
         left: &ArrayD<f64>,
         right: &ArrayD<f64>,
@@ -364,7 +382,8 @@ impl TensorBatchedMatMulKernel<f64> for CudaBackend {
     }
 }
 
-impl TensorBatchedMatMulKernel<num_complex::Complex64> for CudaBackend {
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl TensorBatchedMatMulKernel<num_complex::Complex64> for GpuBackend {
     fn batched_matmul_last_two(
         left: &ArrayD<num_complex::Complex64>,
         right: &ArrayD<num_complex::Complex64>,
@@ -382,7 +401,8 @@ where
     }
 }
 
-impl<T> TensorLastAxisReductionKernel<T> for CudaBackend
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl<T> TensorLastAxisReductionKernel<T> for GpuBackend
 where
     T: Copy + Default + AddAssign,
 {

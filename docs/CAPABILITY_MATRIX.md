@@ -42,7 +42,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows + direct sparse LU solve/reuse paths | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths, and direct sparse LU solve/reuse workflows; stable allocating sparse matvec/matmat entrypoints now use compile-time backend kernel dispatch. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
 | Optimization | line search, gradient descent, Adam, momentum, RMSProp, projected GD, stochastic GD, BFGS | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
 | Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) + rank-3 HOSVD + einsum-style binary contractions | `nabled-linalg::tensor` | Implemented | Yes | Required v1 tensor surface is explicit and complete across allocating/view/into forms for required operation families (real/complex where applicable); see `docs/V1_STABILITY.md` for scope lock and contracts. |
-| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + feature-gated accelerated matmat + feature-gated GPU kernels (`wgpu`) + explicit CPU fallback behavior for out-of-scope v1 GPU kernels | `nabled-linalg::accelerator` | Implemented | Yes | Required v1 kernel families are wired through compile-time backend dispatch over `CpuBackend`/`CudaBackend`, with bounded GPU `f32` support and explicit fallback contracts outside v1 GPU scope; see `docs/V1_STABILITY.md` for the locked support matrix. |
+| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + feature-gated accelerated matmat + feature-gated GPU kernels (`wgpu`) + explicit CPU fallback behavior for out-of-scope v1 GPU kernels | `nabled-linalg::accelerator` | Implemented | Yes | Required v1 kernel families are wired through compile-time backend dispatch over `CpuBackend`/`GpuBackend`, with bounded GPU `f32` support and explicit fallback contracts outside v1 GPU scope; see `docs/V1_STABILITY.md` for the locked support matrix. |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
@@ -53,7 +53,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 `nabled-linalg` currently operates on three distinct execution concepts:
 
 1. `Provider`: decomposition implementation source (`internal` or `openblas-system`).
-2. `Backend`: primitive-kernel execution target (`CpuBackend`, `CudaBackend`).
+2. `Backend`: primitive-kernel execution target (`CpuBackend`, `GpuBackend`).
 3. `Kernel`: operation-family contract implemented per backend (dense/sparse/vector/tensor/triangular families; see `docs/KERNEL_CATALOG.md`).
 
 These axes are intentionally orthogonal:
