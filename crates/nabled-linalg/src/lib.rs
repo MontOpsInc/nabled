@@ -6,14 +6,17 @@
 //! # Feature Flags
 //!
 //! 1. `blas`: enables BLAS acceleration through `ndarray/blas`.
-//! 2. `openblas-system`: enables provider-backed LAPACK paths through `ndarray-linalg` +
-//!    `OpenBLAS`.
-//! 3. `accelerator-rayon`: enables selected parallel CPU kernels.
-//! 4. `accelerator-wgpu`: enables bounded GPU (`f32`) kernel paths.
+//! 2. `openblas-system`: enables provider-backed `LAPACK` paths via system `OpenBLAS`.
+//! 3. `openblas-static`: enables provider-backed `LAPACK` paths via statically linked `OpenBLAS`.
+//! 4. `netlib-system`: enables provider-backed `LAPACK` paths via system `Netlib` `LAPACK`.
+//! 5. `netlib-static`: enables provider-backed `LAPACK` paths via statically linked `Netlib`
+//!    `LAPACK`.
+//! 6. `accelerator-rayon`: enables selected parallel CPU kernels.
+//! 7. `accelerator-wgpu`: enables bounded GPU (`f32`) kernel paths.
 //!
 //! # Execution Model
 //!
-//! 1. `Provider`: decomposition implementation source (internal or `OpenBLAS`-backed).
+//! 1. `Provider`: decomposition implementation source (internal or selected LAPACK provider).
 //! 2. `Backend`: operation-kernel execution target (`CpuBackend`, `GpuBackend`).
 //! 3. `Kernel`: operation-family contract (for example matmat, sparse matvec, tensor contraction).
 //!

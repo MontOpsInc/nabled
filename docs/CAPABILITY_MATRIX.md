@@ -52,7 +52,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 
 `nabled-linalg` currently operates on three distinct execution concepts:
 
-1. `Provider`: decomposition implementation source (`internal` or `openblas-system`).
+1. `Provider`: decomposition implementation source (`internal` or selected LAPACK provider feature).
 2. `Backend`: primitive-kernel execution target (`CpuBackend`, `GpuBackend`).
 3. `Kernel`: operation-family contract implemented per backend (dense/sparse/vector/tensor/triangular families; see `docs/KERNEL_CATALOG.md`).
 

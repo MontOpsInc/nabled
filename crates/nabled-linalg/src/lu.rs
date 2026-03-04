@@ -6,7 +6,7 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, lu_decompose};
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::{inverse_from_lu, lu_solve};
 
 /// Result of LU decomposition.
@@ -92,10 +92,10 @@ fn validate_complex_square_finite_view(matrix: &ArrayView2<'_, Complex64>) -> Re
     Ok(())
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 type ComplexLUFactors = (Array2<Complex64>, Array2<Complex64>, Vec<usize>, i8);
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -156,7 +156,7 @@ fn decompose_complex_internal(
     Ok((l, u, pivots, sign))
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 fn solve_complex_from_factors(
     l: &Array2<Complex64>,
@@ -199,7 +199,7 @@ fn solve_complex_from_factors(
     Ok(x)
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn inverse_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, LUError> {
@@ -225,7 +225,7 @@ fn decompose_internal(
     Ok((NdarrayLUResult { l, u }, pivots, sign))
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn solve_provider(
     matrix: &ArrayView2<'_, f64>,
     rhs: &ArrayView1<'_, f64>,
@@ -236,7 +236,7 @@ fn solve_provider(
     matrix.solve(rhs).map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn inverse_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError> {
     use ndarray_linalg::Inverse as _;
 
@@ -244,7 +244,7 @@ fn inverse_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError
     matrix.inv().map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn determinant_provider(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
     use ndarray_linalg::Determinant as _;
 
@@ -252,7 +252,7 @@ fn determinant_provider(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
     matrix.det().map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn solve_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
@@ -266,7 +266,7 @@ fn solve_complex_provider(
     matrix.solve(rhs).map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn inverse_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, LUError> {
@@ -276,7 +276,7 @@ fn inverse_complex_provider(
     matrix.inv().map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn determinant_complex_provider(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
     use ndarray_linalg::Determinant as _;
 
@@ -325,11 +325,11 @@ fn solve_impl(
         return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
     }
 
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         solve_provider(matrix, rhs)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
         lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs).map_err(map_lu_error)
@@ -351,11 +351,11 @@ fn solve_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, LUError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         solve_complex_provider(matrix, rhs)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
         solve_complex_from_factors(&l, &u, &pivots, rhs)
@@ -393,11 +393,11 @@ pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> {
 }
 
 fn inverse_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         inverse_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
         inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error)
@@ -413,11 +413,11 @@ pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, 
 }
 
 fn inverse_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Result<Array2<Complex64>, LUError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         inverse_complex_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         inverse_complex_internal(matrix)
     }
@@ -450,11 +450,11 @@ pub fn determinant(matrix: &Array2<f64>) -> Result<f64, LUError> {
 }
 
 fn determinant_impl(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         determinant_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
         let mut determinant = f64::from(sign);
@@ -477,11 +477,11 @@ pub fn determinant_complex(matrix: &Array2<Complex64>) -> Result<Complex64, LUEr
 }
 
 fn determinant_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         determinant_complex_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let (_, u, _, sign) = decompose_complex_internal(matrix)?;
         let mut determinant = Complex64::new(f64::from(sign), 0.0);

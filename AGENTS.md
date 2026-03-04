@@ -57,9 +57,9 @@ Do not infer status from memory. Use:
 Run and pass before finalizing:
 
 1. `just checks` (preferred)
-2. `cargo +stable clippy --workspace --all-features --all-targets -- -D warnings`
+2. `cargo +stable clippy --workspace --no-default-features --features "openblas-system accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings`
 3. `cargo test --workspace --lib`
-4. `cargo test -p nabled --test integration`
+4. `cargo test -p nabled --tests`
 
 Coverage expectation:
 

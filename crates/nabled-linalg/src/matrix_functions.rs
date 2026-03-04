@@ -6,7 +6,7 @@ use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, identity, is_symmetric, usize_to_f64};
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::schur;
 use crate::{eigen, svd};
 
@@ -203,7 +203,7 @@ fn is_hermitian(matrix: &ArrayView2<'_, Complex64>, tolerance: f64) -> bool {
     true
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn hermitian_eigen_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<(Array1<f64>, Array2<Complex64>), MatrixFunctionError> {
@@ -212,7 +212,7 @@ fn hermitian_eigen_provider(
     matrix.to_owned().eigh(UPLO::Lower).map_err(|_| MatrixFunctionError::ConvergenceFailed)
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn hermitian_eigen_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<(Array1<f64>, Array2<Complex64>), MatrixFunctionError> {
@@ -236,11 +236,11 @@ fn hermitian_eigen_internal(
 fn hermitian_eigen_dispatch(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<(Array1<f64>, Array2<Complex64>), MatrixFunctionError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         hermitian_eigen_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         hermitian_eigen_internal(matrix)
     }

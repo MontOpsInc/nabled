@@ -1,8 +1,8 @@
 LOG := env('RUST_LOG', '')
-features := 'blas openblas-system accelerator-rayon accelerator-wgpu'
+features := 'blas openblas-system openblas-static netlib-system netlib-static accelerator-rayon accelerator-wgpu'
 provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
-provider_features := 'openblas-system'
-provider_bench_features := 'openblas-system'
+provider_features := env('NABLED_PROVIDER_FEATURES', 'openblas-system')
+provider_bench_features := env('NABLED_PROVIDER_BENCH_FEATURES', 'openblas-system')
 coverage_line_threshold := "90"
 
 # List of Examples
@@ -15,11 +15,11 @@ default:
 # --- TESTS ---
 test:
     just -f {{ justfile() }} test-unit
-    just -f {{ justfile() }} test-integration integration
+    just -f {{ justfile() }} test-integration-all
 
 test-provider:
     {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test --workspace --lib --features {{ provider_features }} -- --nocapture --show-output
-    {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test -p nabled --features {{ provider_features }} --test integration -- --nocapture --show-output
+    {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test -p nabled --features {{ provider_features }} --tests -- --nocapture --show-output
 
 test-unit:
     RUST_LOG={{ LOG }} cargo test --workspace --lib -- --nocapture --show-output
@@ -33,28 +33,31 @@ test-one test_name:
 test-integration test_name:
     RUST_LOG={{ LOG }} cargo test -p nabled --test "{{ test_name }}" -- --nocapture --show-output
 
+test-integration-all:
+    RUST_LOG={{ LOG }} cargo test -p nabled --tests -- --nocapture --show-output
+
 coverage:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
-    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features openblas-system --no-report --exclude 'nabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
     cargo llvm-cov report -vv --html --output-dir coverage --open
 
 coverage-json:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
-    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features openblas-system --no-report --exclude 'nabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
     cargo llvm-cov report --json --output-path coverage/cov.json
 
 coverage-lcov:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
-    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features openblas-system --no-report --exclude 'nabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
     cargo llvm-cov report --lcov --output-path coverage/lcov.info
 
 coverage-check:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
-    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features openblas-system --no-report --exclude 'nabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
     cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }}
 
 # --- DOCS ---
@@ -213,10 +216,10 @@ check-features *ARGS=features:
     cargo clippy -p nabled --all-targets -- -D warnings
     @echo "Building default features..."
     cargo check -p nabled --all-targets
-    @echo "Checking all features..."
-    cargo clippy -p nabled --all-features --all-targets -- -D warnings
-    @echo "Building all features..."
-    cargo check -p nabled --all-features --all-targets
+    @echo "Checking provider + accelerator feature set..."
+    {{ provider_env_prefix }} cargo clippy -p nabled --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
+    @echo "Building provider + accelerator feature set..."
+    {{ provider_env_prefix }} cargo check -p nabled --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets
     @echo "Checking each feature..."
     @for feature in {{ ARGS }}; do \
         echo "Checking & Building feature: $feature"; \
@@ -242,7 +245,7 @@ fmt-fix:
     cargo +nightly fmt -- --config-path ./rustfmt.toml
 
 fix:
-    cargo clippy --fix --all-features --all-targets --allow-dirty
+    {{ provider_env_prefix }} cargo clippy --fix --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets --allow-dirty
 
 # --- MAINTENANCE ---
 
@@ -250,10 +253,11 @@ fix:
 checks:
     cargo +nightly fmt --all -- --check --config-path ./rustfmt.toml
     cargo +nightly clippy --workspace --no-default-features --all-targets -- -D warnings
-    cargo +nightly clippy --workspace --all-features --all-targets -- -D warnings
+    {{ provider_env_prefix }} cargo +nightly clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --all-targets -- -D warnings
-    cargo +stable clippy --workspace --all-features --all-targets -- -D warnings
+    {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     just -f {{ justfile() }} check-provider-clippy
+    just -f {{ justfile() }} check-provider-netlib
     just -f {{ justfile() }} test
     just -f {{ justfile() }} test-provider
     just -f {{ justfile() }} check-accelerator
@@ -271,18 +275,28 @@ check-provider:
     just -f {{ justfile() }} check-provider-clippy
     {{ provider_env_prefix }} cargo +stable check --workspace --features {{ provider_features }} --all-targets
 
+# Verify alternate provider-gated lint/compile paths (no OpenBLAS env required).
+check-provider-netlib:
+    cargo +stable clippy --workspace --no-default-features --features netlib-system --all-targets -- -D warnings
+    cargo +stable check --workspace --no-default-features --features netlib-system --all-targets
+
+# Optional static-provider compile checks (toolchain-dependent: gcc/gfortran/make).
+check-provider-static:
+    cargo +stable check --workspace --no-default-features --features openblas-static --all-targets
+    cargo +stable check --workspace --no-default-features --features netlib-static --all-targets
+
 # Verify accelerator feature permutations compile under stable.
 check-accelerator:
     cargo +stable check --workspace --no-default-features --features accelerator-rayon --all-targets
     cargo +stable check --workspace --no-default-features --features accelerator-wgpu --all-targets
-    {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "openblas-system accelerator-rayon" --all-targets
-    {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "openblas-system accelerator-wgpu" --all-targets
+    {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon" --all-targets
+    {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "{{ provider_features }} accelerator-wgpu" --all-targets
 
 # Verify accelerator contract tests in feature-gated paths.
 test-accelerator:
     cargo +stable test -p nabled-linalg --no-default-features --features accelerator-rayon --lib accelerated_matmat_matches_serial -- --nocapture --show-output
     cargo +stable test -p nabled-linalg --no-default-features --features accelerator-wgpu --lib gpu_ -- --nocapture --show-output
-    {{ provider_env_prefix }} cargo +stable test -p nabled-linalg --no-default-features --features "openblas-system accelerator-wgpu" --lib gpu_ -- --nocapture --show-output
+    {{ provider_env_prefix }} cargo +stable test -p nabled-linalg --no-default-features --features "{{ provider_features }} accelerator-wgpu" --lib gpu_ -- --nocapture --show-output
 
 # Initialize development environment for maintainers
 init-dev:

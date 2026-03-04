@@ -1,6 +1,6 @@
 # V1 Stability Contract
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 
 ## Purpose
 
@@ -61,7 +61,7 @@ This unified behavior is deliberate and tested.
 
 ## Mixed Execution Determinism Contract
 
-1. `Provider` (internal vs `openblas-system`) is compile-time selected and applies to decomposition-style code paths.
+1. `Provider` (internal vs selected LAPACK provider feature) is compile-time selected and applies to decomposition-style code paths.
 2. `Backend` and `Kernel` are compile-time selected and apply to operation-family kernel paths.
 3. Provider choice does not require runtime provider branching.
 4. Public APIs remain provider/backend agnostic and ndarray-native.
@@ -73,11 +73,15 @@ The following combinations are required checks for v1 stability:
 
 1. `--no-default-features`
 2. `--features openblas-system`
-3. `--features accelerator-rayon`
-4. `--features accelerator-wgpu`
-5. `--features "openblas-system accelerator-rayon"`
-6. `--features "openblas-system accelerator-wgpu"`
-7. `--all-features`
+3. `--features netlib-system`
+4. `--features accelerator-rayon`
+5. `--features accelerator-wgpu`
+6. `--features "openblas-system accelerator-rayon"`
+7. `--features "openblas-system accelerator-wgpu"`
+
+Static provider notes:
+1. `openblas-static` and `netlib-static` are supported feature paths.
+2. They require native build toolchains (for example `gcc`, `gfortran`, `make`) and are validated in targeted environments.
 
 Enforcement:
 

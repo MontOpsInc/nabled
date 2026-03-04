@@ -9,19 +9,26 @@ primitives, and matrix-function algorithms.
 
 ```toml
 [dependencies]
-nabled-linalg = "0.0.1"
+nabled-linalg = "0.0.2"
 ```
 
 ## Optional Features
 
 1. `blas`: enables `ndarray/blas`.
-2. `openblas-system`: enables provider-backed LAPACK paths via OpenBLAS.
-3. `accelerator-rayon`: enables selected parallel CPU kernels.
-4. `accelerator-wgpu`: enables bounded WGPU-backed kernel paths.
+2. `openblas-system`: enables provider-backed LAPACK paths via system OpenBLAS.
+3. `openblas-static`: enables provider-backed LAPACK paths via statically linked OpenBLAS.
+4. `netlib-system`: enables provider-backed LAPACK paths via system Netlib LAPACK.
+5. `netlib-static`: enables provider-backed LAPACK paths via statically linked Netlib LAPACK.
+6. `accelerator-rayon`: enables selected parallel CPU kernels.
+7. `accelerator-wgpu`: enables bounded WGPU-backed kernel paths.
+
+Note: provider requirements depend on backend choice. Static features (`openblas-static`,
+`netlib-static`) require native build toolchains such as `gcc`, `gfortran`, and `make`, and
+`netlib-system` requires a system `LAPACK`/Fortran runtime available to the linker.
 
 ```toml
 [dependencies]
-nabled-linalg = { version = "0.0.1", features = ["openblas-system"] }
+nabled-linalg = { version = "0.0.2", features = ["openblas-system"] }
 ```
 
 ## Docs

@@ -57,7 +57,7 @@ Kernel-model completion for v1 requires all catalog entries above to be `Wired`.
 
 ## Provider/Backend Orchestration Rules (K-008 Baseline)
 
-1. Provider selection remains compile-time (`internal` vs `openblas-system`) and applies to decomposition-style paths.
+1. Provider selection remains compile-time (`internal` vs selected LAPACK provider feature) and applies to decomposition-style paths.
 2. Backend/kernel selection remains compile-time and applies to operation-family kernels.
 3. Domain APIs may use both axes in one flow, but kernels must not trigger provider selection directly.
 4. Public APIs stay backend/provider agnostic; no provider/backend naming leaks into stable API names.

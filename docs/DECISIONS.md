@@ -53,7 +53,7 @@ These are deferred until the ndarray-first core is complete and stable.
 
 1. `blas` is a baseline feature for enabling BLAS-accelerated ndarray paths where available.
 2. LAPACK acceleration is provider-driven, not a separate runtime backend layer.
-3. Initial provider scope is intentionally narrow: `openblas-system` first.
+3. Provider scope includes four LAPACK provider features: `openblas-system`, `openblas-static`, `netlib-system`, and `netlib-static`.
 4. Provider features imply `blas` so users do not have to compose low-level flags manually.
 5. LAPACK-accelerated code should be gated by feature selection, not by hardcoded `target_os` branching.
 6. Current platform intent is macOS and Linux first; Windows support is deferred.

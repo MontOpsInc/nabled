@@ -35,6 +35,7 @@ struct CapabilityReport {
     rustc_version:             String,
     target_os:                 &'static str,
     target_arch:               &'static str,
+    provider_feature:          &'static str,
     provider_feature_enabled:  bool,
     provider_build_active:     bool,
     native_provider_domains:   usize,
@@ -103,11 +104,46 @@ fn build_report() -> CapabilityReport {
         rustc_version: command_output("rustc", &["-V"]),
         target_os: env::consts::OS,
         target_arch: env::consts::ARCH,
-        provider_feature_enabled: cfg!(feature = "openblas-system"),
-        provider_build_active: cfg!(feature = "openblas-system"),
+        provider_feature: selected_provider_feature(),
+        provider_feature_enabled: provider_feature_enabled(),
+        provider_build_active: provider_feature_enabled(),
         native_provider_domains,
         fallback_provider_domains,
         domains,
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn provider_feature_enabled() -> bool {
+    cfg!(feature = "openblas-system")
+        || cfg!(feature = "openblas-static")
+        || cfg!(feature = "netlib-system")
+        || cfg!(feature = "netlib-static")
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn selected_provider_feature() -> &'static str {
+    let openblas_system = cfg!(feature = "openblas-system");
+    let openblas_static = cfg!(feature = "openblas-static");
+    let netlib_system = cfg!(feature = "netlib-system");
+    let netlib_static = cfg!(feature = "netlib-static");
+    let selected_count = [openblas_system, openblas_static, netlib_system, netlib_static]
+        .into_iter()
+        .filter(|selected| *selected)
+        .count();
+
+    if selected_count > 1 {
+        "mixed"
+    } else if openblas_system {
+        "openblas-system"
+    } else if openblas_static {
+        "openblas-static"
+    } else if netlib_system {
+        "netlib-system"
+    } else if netlib_static {
+        "netlib-static"
+    } else {
+        "internal"
     }
 }
 

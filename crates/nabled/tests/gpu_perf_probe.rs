@@ -4,6 +4,8 @@
 //! `WGPU_BACKEND=metal cargo +stable test -p nabled --test gpu_perf_probe --no-default-features
 //! --features accelerator-wgpu -- --ignored --nocapture`
 
+#![cfg(feature = "accelerator-wgpu")]
+
 use std::time::{Duration, Instant};
 
 use nabled::linalg::accelerator::backends::{AcceleratorError, CpuBackend, GpuBackend};
@@ -67,7 +69,6 @@ fn run_gpu_timed(
     (last, start.elapsed())
 }
 
-#[cfg(feature = "accelerator-wgpu")]
 #[test]
 #[ignore = "manual performance probe; intentionally heavy and requires local GPU"]
 fn gpu_vs_cpu_matmat_probe() {

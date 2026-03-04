@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 
 ## Summary
 
@@ -9,7 +9,7 @@ Workspace migration for library domains is complete.
 1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`.
 2. `crates/nabled` is the facade package re-exporting workspace crates.
 3. `crates/nabled/src/` contains facade/library entrypoint and binary tooling only.
-4. Backend/feature model now uses `blas` + provider features (`openblas-system` first).
+4. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 5. Public `*_lapack` compatibility wrappers have been removed.
 6. Dense-kernel APIs are normalized around `decompose`/domain-specific operation naming.
 7. Vector primitives are available in `nabled-linalg::vector` with pairwise and batched APIs.
@@ -83,9 +83,11 @@ Workspace migration for library domains is complete.
 75. First optimization pass on benchmark hotspots is landed: `vector::dot` now routes through ndarray optimized dot and has moved to near-parity against baseline.
 76. Decomposition benchmarking now has active external comparator coverage (`faer_direct`) for `svd`, `qr`, `lu`, `cholesky`, `eigen`, and `triangular`, with report classifier support wired for these new benchmark groups.
 77. A targeted Cholesky inverse optimization pass is now landed, reusing one factorization per inverse call and significantly reducing the Cholesky decomposition benchmark gap.
-78. Publish readiness is now explicitly tracked in `docs/PUBLISH_CHECKLIST.md`; current packaging verification identifies a blocker for crates.io packaging (`nabled` internal dependencies need explicit version requirements before `cargo package/publish` can succeed).
+78. Publish readiness is explicitly tracked in `docs/PUBLISH_CHECKLIST.md`, including current release gates, provider-feature validation expectations, and ordered publish workflow semantics.
 79. `K-008` orchestration cleanup is now complete for current kernelized APIs: default CPU dispatch is centralized in shared `accelerator::dispatch::*_cpu` helpers and API-level ad hoc backend dispatch duplication has been removed across matrix/vector/sparse/triangular/tensor domains.
 80. Individual workspace crate docs.rs pages are now upgraded (`nabled-core`, `nabled-linalg`, `nabled-ml`) with scope/module overviews, feature semantics, and runnable quick-start examples.
+81. Provider-feature docs/tests/workflows are now aligned to the expanded provider set (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`) with integration gates running full `nabled` integration tests (`--tests`) instead of a single test file.
+82. Feature-gate helper coverage is now explicit for all declared providers in local release checks, with an optional static-provider validation command (`just check-provider-static`) for toolchain-equipped environments.
 
 ## Current Code Ownership
 

@@ -5,7 +5,7 @@ use std::fmt;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::DenseKernelPolicy;
 
 /// Result of Cholesky decomposition.
@@ -81,7 +81,7 @@ fn validate_complex_square_finite_view(
     Ok(())
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -118,7 +118,7 @@ fn decompose_complex_internal(
     Ok(l)
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
     validate_square_finite_view(matrix)?;
 
@@ -212,7 +212,7 @@ fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Chole
     }
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
     use ndarray_linalg::{Cholesky as _, UPLO};
 
@@ -221,7 +221,7 @@ fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Chole
     matrix.cholesky(UPLO::Lower).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn solve_provider(
     matrix: &ArrayView2<'_, f64>,
     rhs: &ArrayView1<'_, f64>,
@@ -232,7 +232,7 @@ fn solve_provider(
     matrix.solvec(rhs).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn inverse_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
     use ndarray_linalg::InverseC as _;
 
@@ -240,7 +240,7 @@ fn inverse_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Cholesk
     matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
@@ -250,7 +250,7 @@ fn decompose_complex_provider(
     matrix.cholesky(UPLO::Lower).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn solve_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
@@ -266,7 +266,7 @@ fn solve_complex_provider(
     matrix.solvec(rhs).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn inverse_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
@@ -276,7 +276,7 @@ fn inverse_complex_provider(
     matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 fn solve_complex_from_factor(
     lower_factor: &Array2<Complex64>,
@@ -320,17 +320,17 @@ fn solve_complex_from_factor(
 }
 
 fn decompose_dispatch(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         decompose_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         decompose_internal(matrix)
     }
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 #[allow(clippy::too_many_lines)]
 fn solve_from_factor(
@@ -459,7 +459,7 @@ fn solve_from_factor(
     }
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 fn inverse_from_factor(lower_factor: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
     let n = lower_factor.nrows();
@@ -563,12 +563,12 @@ pub fn decompose_complex(
 fn decompose_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexCholeskyResult, CholeskyError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         let l = decompose_complex_provider(matrix)?;
         Ok(NdarrayComplexCholeskyResult { l })
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let l = decompose_complex_internal(matrix)?;
         Ok(NdarrayComplexCholeskyResult { l })
@@ -609,11 +609,11 @@ fn solve_impl(
     matrix: &ArrayView2<'_, f64>,
     rhs: &ArrayView1<'_, f64>,
 ) -> Result<Array1<f64>, CholeskyError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         solve_provider(matrix, rhs)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let mut output = Array1::<f64>::zeros(rhs.len());
         solve_into_impl(matrix, rhs, &mut output)?;
@@ -636,11 +636,11 @@ fn solve_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, CholeskyError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         solve_complex_provider(matrix, rhs)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let lower_factor = decompose_complex_internal(matrix)?;
         solve_complex_from_factor(&lower_factor, rhs)
@@ -697,13 +697,13 @@ fn solve_into_impl(
         return Err(CholeskyError::InvalidInput("output length must match rhs length".to_string()));
     }
 
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         let solution = solve_provider(matrix, rhs)?;
         output.assign(&solution);
         Ok(())
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let lower_factor = decompose_dispatch(matrix)?;
         solve_from_factor(&lower_factor, rhs, output)
@@ -719,11 +719,11 @@ pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
 }
 
 fn inverse_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         inverse_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let lower_factor = decompose_dispatch(matrix)?;
         inverse_from_factor(&lower_factor)
@@ -741,11 +741,11 @@ pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, 
 fn inverse_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         inverse_complex_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         let lower_factor = decompose_complex_internal(matrix)?;
         let size = lower_factor.nrows();

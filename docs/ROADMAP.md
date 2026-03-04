@@ -33,7 +33,7 @@ Exit criteria:
 
 1. Introduce and stabilize feature contract:
    - `blas` baseline
-   - provider feature(s), starting with `openblas-system`.
+   - provider feature set (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 2. Remove hardcoded OS gates from LAPACK paths; prefer feature-gated selection.
 3. Unify public API entrypoints so backend choice is internal (no public `*_lapack` duplication).
 4. Apply one consistent module pattern for internal/provider implementation splits.

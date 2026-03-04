@@ -53,9 +53,12 @@ Review more examples in [nabled](crates/nabled/examples).
 ## Features
 
 1. `blas`: enables `ndarray/blas` across participating workspace crates.
-2. `openblas-system`: enables provider-backed OpenBLAS/LAPACK paths.
-3. `accelerator-rayon`: enables selected parallel CPU kernels.
-4. `accelerator-wgpu`: enables selected WGPU-backed kernels.
+2. `openblas-system`: enables provider-backed LAPACK paths via system OpenBLAS.
+3. `openblas-static`: enables provider-backed LAPACK paths via statically linked OpenBLAS.
+4. `netlib-system`: enables provider-backed LAPACK paths via system Netlib LAPACK.
+5. `netlib-static`: enables provider-backed LAPACK paths via statically linked Netlib LAPACK.
+6. `accelerator-rayon`: enables selected parallel CPU kernels.
+7. `accelerator-wgpu`: enables selected WGPU-backed kernels.
 
 ```toml
 [dependencies]
@@ -65,8 +68,11 @@ nabled = { version = "0.0.2", features = ["openblas-system"] }
 Feature behavior:
 
 1. `openblas-system` implies `blas`.
-2. Provider selection is compile-time and internal to decomposition paths.
+2. Provider feature selection (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`) is compile-time and internal to decomposition paths.
 3. Backend acceleration is compile-time and kernel-family-specific.
+4. Provider/toolchain requirements depend on backend choice; `openblas-static` and
+   `netlib-static` require native build toolchains (`gcc`/`gfortran`/`make`), and `netlib-system`
+   requires a system `LAPACK`/Fortran runtime available to the linker.
 
 ## Quality Gates
 

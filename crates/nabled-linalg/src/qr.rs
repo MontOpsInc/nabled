@@ -6,7 +6,7 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2, s};
 use num_complex::Complex64;
 
 use crate::internal::DenseKernelPolicy;
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::qr_gram_schmidt;
 use crate::svd::{self, PseudoInverseConfig};
 
@@ -264,7 +264,7 @@ fn decompose_complex_pivoted_internal(
     Ok(QRResult { q, r, p: Some(complex_permutation_matrix_from_order(&order)), rank })
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn decompose_internal(
     matrix: &ArrayView2<'_, f64>,
     config: &QRConfig<f64>,
@@ -279,7 +279,7 @@ fn decompose_internal(
     Ok(QRResult { q, r, p: None, rank })
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn decompose_provider(
     matrix: &ArrayView2<'_, f64>,
     config: &QRConfig<f64>,
@@ -303,7 +303,7 @@ fn decompose_provider(
     Ok(QRResult { q, r, p: None, rank })
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn solve_least_squares_provider(
     matrix: &ArrayView2<'_, f64>,
     rhs: &ArrayView1<'_, f64>,
@@ -318,7 +318,7 @@ fn solve_least_squares_provider(
     Ok(result.solution)
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
@@ -364,7 +364,7 @@ fn decompose_complex_internal(
     Ok(QRResult { q, r, p: None, rank })
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
@@ -398,11 +398,11 @@ fn decompose_impl(
     matrix: &ArrayView2<'_, f64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<f64>, QRError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         decompose_provider(matrix, config)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         decompose_internal(matrix, config)
     }
@@ -434,11 +434,11 @@ fn decompose_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<Complex64>, QRError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         decompose_complex_provider(matrix, config)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         decompose_complex_internal(matrix, config)
     }
@@ -533,7 +533,7 @@ fn solve_least_squares_impl(
         return Ok(pseudo_inverse.dot(rhs));
     }
 
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         if !config.use_pivoting {
             return solve_least_squares_provider(matrix, rhs);

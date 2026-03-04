@@ -5,9 +5,9 @@ use std::fmt;
 use ndarray::{Array2, ArrayView2};
 use num_complex::Complex64;
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::DenseKernelPolicy;
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::lu;
 use crate::svd;
 
@@ -89,17 +89,17 @@ fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), Pol
     Ok(())
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn conjugate_transpose(matrix: &Array2<Complex64>) -> Array2<Complex64> {
     matrix.t().mapv(|value| value.conj())
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn frobenius_norm_complex(matrix: &Array2<Complex64>) -> f64 {
     matrix.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn max_abs_diff_complex(left: &Array2<Complex64>, right: &Array2<Complex64>) -> f64 {
     left.iter()
         .zip(right.iter())
@@ -107,7 +107,7 @@ fn max_abs_diff_complex(left: &Array2<Complex64>, right: &Array2<Complex64>) -> 
         .fold(0.0_f64, f64::max)
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn compute_polar_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexPolarResult, PolarError> {
@@ -197,7 +197,7 @@ fn compute_polar_complex_impl(
 ) -> Result<NdarrayComplexPolarResult, PolarError> {
     validate_complex_square_non_empty(matrix)?;
     validate_complex_finite(matrix)?;
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         let svd =
             svd::decompose_complex_view(matrix).map_err(|_| PolarError::DecompositionFailed)?;
@@ -215,7 +215,7 @@ fn compute_polar_complex_impl(
 
         Ok(NdarrayComplexPolarResult { u: unitary_factor, p: psd_factor })
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         compute_polar_complex_internal(matrix)
     }

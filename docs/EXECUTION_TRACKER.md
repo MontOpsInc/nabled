@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 
 ## Purpose
 
@@ -46,7 +46,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 4. `D-004`: Strict lint/test/doc checks passing after migration.
 5. `D-005`: Capability matrix documented with sufficiency verdict and ordered execution path.
 6. `D-006`: Homebrew OpenBLAS env setup is now recipe-driven for macOS provider-enabled commands.
-7. `D-007`: Feature contract migrated to `blas` + `openblas-system` across workspace crates.
+7. `D-007`: Feature contract migrated to `blas` + provider feature set across workspace crates.
 8. `D-008`: Provider code paths are now feature-gated without hardcoded OS cfg branches.
 9. `D-009`: Public `*_lapack` API duplication removed; backend choice stays internal.
 10. `D-010`: `just checks` and CI now validate internal mode and provider-enabled mode.
@@ -150,13 +150,15 @@ Use this file to resume work quickly after context compaction without re-auditin
 108. `D-108`: Publish-readiness checklist is now documented (`docs/PUBLISH_CHECKLIST.md`) with validated packaging blocker capture (`cargo package -p nabled` currently fails until internal crate dependencies have explicit version requirements).
 109. `D-109`: `K-008` orchestration cleanup pass is complete for current kernelized APIs: default CPU backend dispatch is now centralized in shared helpers (`accelerator::dispatch::*_cpu`) and API-local ad hoc `CpuBackend` dispatch calls were removed from dense matrix, vector, sparse, triangular, and tensor domains without changing behavior.
 110. `D-110`: Crate-level docs.rs polish landed for `nabled-core`, `nabled-linalg`, and `nabled-ml` crate roots, including scope/module guidance, feature semantics, and runnable quick-start examples.
+111. `D-111`: Provider feature expansion landed for `openblas-system`, `openblas-static`, `netlib-system`, and `netlib-static`, with shared `lapack-provider` cfg gating in decomposition paths and quality-gate updates to avoid invalid `--all-features` provider mixing.
+112. `D-112`: Release-readiness docs/test/workflow alignment completed: restored `docs/PUBLISH_CHECKLIST.md`, normalized provider-gated integration tests to all provider features, and switched integration quality gates to run full `nabled` integration suite (`--tests`).
+113. `D-113`: Release-gate polish completed: local feature audit helpers now include all declared provider flags (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`) and `just check-provider-static` was added as an explicit optional static-provider validation gate.
 
 ## Next
 
 1. `R-001`: Execute `docs/PUBLISH_CHECKLIST.md` to clear publish blockers (internal dependency version requirements for packaging + publish policy flip when release is authorized).
 2. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
 3. `K-005`: Continue benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
-4. `K-004`: Decide exact provider expansion policy beyond `openblas-system`.
 
 ### K-008 Scope Clarification
 
@@ -174,7 +176,6 @@ It means:
 1. `R-001`: Publish execution log with dry-run evidence for all crates (`nabled-core`, `nabled-linalg`, `nabled-ml`, `nabled`) and final publish order confirmation.
 2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
 3. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
-4. `K-004`: Provider expansion decision record beyond `openblas-system`.
 
 ## Backlog (From Capability Matrix)
 

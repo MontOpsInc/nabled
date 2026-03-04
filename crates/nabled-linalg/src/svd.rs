@@ -1,6 +1,6 @@
 //! Singular value decomposition over ndarray matrices.
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -8,7 +8,7 @@ use ndarray::{Array1, Array2, ArrayView2, s};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, jacobi_eigen_symmetric, sort_eigenpairs_desc};
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::schur;
 
 /// SVD result for ndarray matrices.
@@ -66,7 +66,7 @@ pub struct PseudoInverseConfig {
     pub tolerance: Option<f64>,
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
@@ -111,7 +111,7 @@ fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDErr
     Ok(NdarraySVD { u, singular_values, vt })
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
     use ndarray_linalg::SVD as _;
 
@@ -127,7 +127,7 @@ fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDErr
     Ok(NdarraySVD { u, singular_values, vt })
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVDError> {
     if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
         return Err(SVDError::InvalidInput("matrix must be finite".to_string()));
@@ -135,7 +135,7 @@ fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVD
     Ok(())
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -234,11 +234,11 @@ pub fn decompose(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
 }
 
 fn decompose_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         decompose_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         decompose_internal(matrix)
     }
@@ -267,7 +267,7 @@ fn decompose_complex_impl(
         return Err(SVDError::EmptyMatrix);
     }
 
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         use ndarray_linalg::SVD as _;
         let (u_opt, singular_values, vt_opt) =
@@ -276,7 +276,7 @@ fn decompose_complex_impl(
         let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
         Ok(NdarrayComplexSVD { u, singular_values, vt })
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         decompose_complex_internal(matrix)
     }
@@ -595,7 +595,7 @@ mod tests {
         assert!(matches!(decompose(&empty), Err(SVDError::EmptyMatrix)));
     }
 
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     #[test]
     fn internal_decompose_rejects_non_finite_input() {
         let non_finite = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();

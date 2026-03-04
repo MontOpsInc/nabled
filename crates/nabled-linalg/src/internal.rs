@@ -1,6 +1,6 @@
 //! Internal ndarray-native helpers used across domain modules.
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use ndarray::ArrayView1;
 use ndarray::{Array1, Array2, ArrayView2};
 
@@ -14,7 +14,7 @@ impl DenseKernelPolicy {
     pub(crate) const BASE_TOLERANCE: f64 = DEFAULT_TOLERANCE;
     pub(crate) const JACOBI_MAX_ITERATIONS: usize = 256;
     pub(crate) const MATRIX_FUNCTION_SERIES_TERMS: usize = 128;
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     pub(crate) const POLAR_MAX_ITERATIONS: usize = 64;
     pub(crate) const QR_MAX_ITERATIONS: usize = 100;
     pub(crate) const SCHUR_MIN_ITERATIONS: usize = 128;
@@ -30,7 +30,7 @@ impl DenseKernelPolicy {
         requested.max(Self::SCHUR_MIN_ITERATIONS)
     }
 
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     #[must_use]
     pub(crate) fn polar_convergence_tolerance() -> f64 { Self::BASE_TOLERANCE.sqrt() }
 
@@ -154,7 +154,7 @@ pub(crate) fn lu_decompose(matrix: &ArrayView2<'_, f64>) -> Result<LuDecompositi
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 pub(crate) fn lu_solve(
     l: &Array2<f64>,
     u: &Array2<f64>,
@@ -198,7 +198,7 @@ pub(crate) fn lu_solve(
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 pub(crate) fn inverse_from_lu(
     l: &Array2<f64>,
     u: &Array2<f64>,

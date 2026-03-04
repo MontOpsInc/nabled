@@ -6,10 +6,10 @@ use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::Complex64;
 
 use crate::cholesky;
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::jacobi_eigen_symmetric;
 use crate::internal::{DenseKernelPolicy, sort_eigenpairs_desc};
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::schur;
 
 /// Result of symmetric eigen decomposition.
@@ -265,7 +265,7 @@ fn match_left_eigenvectors(
     matched
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn symmetric_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
     validate_symmetric_input(matrix)?;
     let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
@@ -278,7 +278,7 @@ fn symmetric_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult
     Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn symmetric_provider(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
     use ndarray_linalg::{Eigh as _, UPLO};
 
@@ -289,7 +289,7 @@ fn symmetric_provider(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult
     Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn generalized_internal(
     matrix_a: &ArrayView2<'_, f64>,
     matrix_b: &ArrayView2<'_, f64>,
@@ -321,7 +321,7 @@ fn generalized_internal(
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn generalized_provider(
     matrix_a: &ArrayView2<'_, f64>,
     matrix_b: &ArrayView2<'_, f64>,
@@ -346,7 +346,7 @@ fn generalized_provider(
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(not(feature = "openblas-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 fn nonsymmetric_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
@@ -398,7 +398,7 @@ fn nonsymmetric_complex_internal(
     Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: decomposition.q })
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn nonsymmetric_provider(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
@@ -410,7 +410,7 @@ fn nonsymmetric_provider(
     Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
 }
 
-#[cfg(feature = "openblas-system")]
+#[cfg(feature = "lapack-provider")]
 fn nonsymmetric_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
@@ -431,11 +431,11 @@ pub fn symmetric(matrix: &Array2<f64>) -> Result<NdarrayEigenResult, EigenError>
 }
 
 fn symmetric_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayEigenResult, EigenError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         symmetric_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         symmetric_internal(matrix)
     }
@@ -464,11 +464,11 @@ fn generalized_impl(
     matrix_a: &ArrayView2<'_, f64>,
     matrix_b: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayGeneralizedEigenResult, EigenError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         generalized_provider(matrix_a, matrix_b)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         generalized_internal(matrix_a, matrix_b)
     }
@@ -496,11 +496,11 @@ pub fn nonsymmetric(matrix: &Array2<f64>) -> Result<NdarrayNonsymmetricEigenResu
 fn nonsymmetric_impl(
     matrix: &ArrayView2<'_, f64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         nonsymmetric_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         validate_nonsymmetric_input(matrix)?;
         let matrix_complex = matrix.mapv(|value| Complex64::new(value, 0.0));
@@ -531,11 +531,11 @@ pub fn nonsymmetric_complex(
 fn nonsymmetric_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
-    #[cfg(feature = "openblas-system")]
+    #[cfg(feature = "lapack-provider")]
     {
         nonsymmetric_complex_provider(matrix)
     }
-    #[cfg(not(feature = "openblas-system"))]
+    #[cfg(not(feature = "lapack-provider"))]
     {
         nonsymmetric_complex_internal(matrix)
     }

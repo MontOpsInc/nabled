@@ -18,6 +18,9 @@ categories = ["mathematics", "science", "algorithms"]
 default = []
 blas = ["nabled-linalg/blas"]
 openblas-system = ["blas", "nabled-linalg/openblas-system"]
+openblas-static = ["blas", "nabled-linalg/openblas-static"]
+netlib-system = ["blas", "nabled-linalg/netlib-system"]
+netlib-static = ["blas", "nabled-linalg/netlib-static"]
 
 [dependencies]
 nabled-core.workspace = true
