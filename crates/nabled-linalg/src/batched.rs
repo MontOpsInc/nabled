@@ -1,5 +1,6 @@
 //! Batched decomposition helpers over stacks of matrices.
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array3, ArrayView3, Axis};
 
 use crate::{cholesky, eigen, lu, qr, svd};
@@ -10,10 +11,28 @@ use crate::{cholesky, eigen, lu, qr, svd};
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn qr(
-    matrices: &Array3<f64>,
-    config: &qr::QRConfig<f64>,
-) -> Result<Vec<qr::QRResult<f64>>, qr::QRError> {
+#[cfg(feature = "lapack-provider")]
+pub fn qr<T>(
+    matrices: &Array3<T>,
+    config: &qr::QRConfig<T>,
+) -> Result<Vec<qr::QRResult<T>>, qr::QRError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    qr_view(&matrices.view(), config)
+}
+
+/// Compute QR decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn qr<T: NabledReal>(
+    matrices: &Array3<T>,
+    config: &qr::QRConfig<T>,
+) -> Result<Vec<qr::QRResult<T>>, qr::QRError> {
     qr_view(&matrices.view(), config)
 }
 
@@ -23,10 +42,35 @@ pub fn qr(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn qr_view(
-    matrices: &ArrayView3<'_, f64>,
-    config: &qr::QRConfig<f64>,
-) -> Result<Vec<qr::QRResult<f64>>, qr::QRError> {
+#[cfg(feature = "lapack-provider")]
+pub fn qr_view<T>(
+    matrices: &ArrayView3<'_, T>,
+    config: &qr::QRConfig<T>,
+) -> Result<Vec<qr::QRResult<T>>, qr::QRError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(qr::QRError::EmptyMatrix);
+    }
+    let mut output = Vec::with_capacity(matrices.dim().0);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(qr::decompose_view(&matrix, config)?);
+    }
+    Ok(output)
+}
+
+/// Compute QR decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn qr_view<T: NabledReal>(
+    matrices: &ArrayView3<'_, T>,
+    config: &qr::QRConfig<T>,
+) -> Result<Vec<qr::QRResult<T>>, qr::QRError> {
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(qr::QRError::EmptyMatrix);
     }
@@ -43,7 +87,22 @@ pub fn qr_view(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn svd(matrices: &Array3<f64>) -> Result<Vec<svd::NdarraySVD>, svd::SVDError> {
+#[cfg(feature = "lapack-provider")]
+pub fn svd<T>(matrices: &Array3<T>) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    svd_view(&matrices.view())
+}
+
+/// Compute SVD decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn svd<T: NabledReal>(matrices: &Array3<T>) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
     svd_view(&matrices.view())
 }
 
@@ -53,7 +112,31 @@ pub fn svd(matrices: &Array3<f64>) -> Result<Vec<svd::NdarraySVD>, svd::SVDError
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn svd_view(matrices: &ArrayView3<'_, f64>) -> Result<Vec<svd::NdarraySVD>, svd::SVDError> {
+#[cfg(feature = "lapack-provider")]
+pub fn svd_view<T>(matrices: &ArrayView3<'_, T>) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(svd::SVDError::EmptyMatrix);
+    }
+    let mut output = Vec::with_capacity(matrices.dim().0);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(svd::decompose_view(&matrix)?);
+    }
+    Ok(output)
+}
+
+/// Compute SVD decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn svd_view<T: NabledReal>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(svd::SVDError::EmptyMatrix);
     }
@@ -70,7 +153,22 @@ pub fn svd_view(matrices: &ArrayView3<'_, f64>) -> Result<Vec<svd::NdarraySVD>, 
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn lu(matrices: &Array3<f64>) -> Result<Vec<lu::NdarrayLUResult>, lu::LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn lu<T>(matrices: &Array3<T>) -> Result<Vec<lu::NdarrayLUResult<T>>, lu::LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
+    lu_view(&matrices.view())
+}
+
+/// Compute LU decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn lu<T: NabledReal>(matrices: &Array3<T>) -> Result<Vec<lu::NdarrayLUResult<T>>, lu::LUError> {
     lu_view(&matrices.view())
 }
 
@@ -80,7 +178,31 @@ pub fn lu(matrices: &Array3<f64>) -> Result<Vec<lu::NdarrayLUResult>, lu::LUErro
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn lu_view(matrices: &ArrayView3<'_, f64>) -> Result<Vec<lu::NdarrayLUResult>, lu::LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn lu_view<T>(matrices: &ArrayView3<'_, T>) -> Result<Vec<lu::NdarrayLUResult<T>>, lu::LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(lu::LUError::EmptyMatrix);
+    }
+    let mut output = Vec::with_capacity(matrices.dim().0);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(lu::decompose_view(&matrix)?);
+    }
+    Ok(output)
+}
+
+/// Compute LU decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn lu_view<T: NabledReal>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<lu::NdarrayLUResult<T>>, lu::LUError> {
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(lu::LUError::EmptyMatrix);
     }
@@ -97,9 +219,26 @@ pub fn lu_view(matrices: &ArrayView3<'_, f64>) -> Result<Vec<lu::NdarrayLUResult
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn cholesky(
-    matrices: &Array3<f64>,
-) -> Result<Vec<cholesky::NdarrayCholeskyResult>, cholesky::CholeskyError> {
+#[cfg(feature = "lapack-provider")]
+pub fn cholesky<T>(
+    matrices: &Array3<T>,
+) -> Result<Vec<cholesky::NdarrayCholeskyResult<T>>, cholesky::CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    cholesky_view(&matrices.view())
+}
+
+/// Compute Cholesky decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn cholesky<T: NabledReal>(
+    matrices: &Array3<T>,
+) -> Result<Vec<cholesky::NdarrayCholeskyResult<T>>, cholesky::CholeskyError> {
     cholesky_view(&matrices.view())
 }
 
@@ -109,9 +248,33 @@ pub fn cholesky(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn cholesky_view(
-    matrices: &ArrayView3<'_, f64>,
-) -> Result<Vec<cholesky::NdarrayCholeskyResult>, cholesky::CholeskyError> {
+#[cfg(feature = "lapack-provider")]
+pub fn cholesky_view<T>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<cholesky::NdarrayCholeskyResult<T>>, cholesky::CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(cholesky::CholeskyError::EmptyMatrix);
+    }
+    let mut output = Vec::with_capacity(matrices.dim().0);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(cholesky::decompose_view(&matrix)?);
+    }
+    Ok(output)
+}
+
+/// Compute Cholesky decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn cholesky_view<T: NabledReal>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<cholesky::NdarrayCholeskyResult<T>>, cholesky::CholeskyError> {
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(cholesky::CholeskyError::EmptyMatrix);
     }
@@ -128,9 +291,26 @@ pub fn cholesky_view(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn symmetric_eigen(
-    matrices: &Array3<f64>,
-) -> Result<Vec<eigen::NdarrayEigenResult>, eigen::EigenError> {
+#[cfg(feature = "lapack-provider")]
+pub fn symmetric_eigen<T>(
+    matrices: &Array3<T>,
+) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    symmetric_eigen_view(&matrices.view())
+}
+
+/// Compute symmetric eigen decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, n, n)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn symmetric_eigen<T: NabledReal>(
+    matrices: &Array3<T>,
+) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError> {
     symmetric_eigen_view(&matrices.view())
 }
 
@@ -140,9 +320,33 @@ pub fn symmetric_eigen(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-pub fn symmetric_eigen_view(
-    matrices: &ArrayView3<'_, f64>,
-) -> Result<Vec<eigen::NdarrayEigenResult>, eigen::EigenError> {
+#[cfg(feature = "lapack-provider")]
+pub fn symmetric_eigen_view<T>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(eigen::EigenError::EmptyMatrix);
+    }
+    let mut output = Vec::with_capacity(matrices.dim().0);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(eigen::symmetric_view(&matrix)?);
+    }
+    Ok(output)
+}
+
+/// Compute symmetric eigen decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, n, n)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn symmetric_eigen_view<T: NabledReal>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError> {
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(eigen::EigenError::EmptyMatrix);
     }
@@ -162,8 +366,8 @@ mod tests {
     #[test]
     fn batched_qr_reconstructs_inputs() {
         let matrices = Array3::from_shape_vec((2, 2, 2), vec![
-            1.0, 2.0, 3.0, 4.0, //
-            2.0, 0.0, 1.0, 2.0,
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, //
+            2.0_f64, 0.0_f64, 1.0_f64, 2.0_f64,
         ])
         .expect("valid shape");
         let results = qr(&matrices, &qr::QRConfig::default()).expect("batched qr");
@@ -174,7 +378,7 @@ mod tests {
             let reconstructed = qr::reconstruct_matrix(result);
             for row in 0..2 {
                 for col in 0..2 {
-                    assert!((original[[row, col]] - reconstructed[[row, col]]).abs() < 1e-8);
+                    assert!((original[[row, col]] - reconstructed[[row, col]]).abs() < 1e-8_f64);
                 }
             }
         }
@@ -183,8 +387,8 @@ mod tests {
     #[test]
     fn batched_svd_matches_single_path() {
         let matrices = Array3::from_shape_vec((2, 2, 2), vec![
-            3.0, 0.0, 0.0, 2.0, //
-            1.0, 2.0, 2.0, 4.0,
+            3.0_f64, 0.0_f64, 0.0_f64, 2.0_f64, //
+            1.0_f64, 2.0_f64, 2.0_f64, 4.0_f64,
         ])
         .expect("valid shape");
         let batch = svd(&matrices).expect("batched svd");
@@ -196,7 +400,7 @@ mod tests {
             assert_eq!(decomposition.singular_values.len(), direct.singular_values.len());
             for i in 0..decomposition.singular_values.len() {
                 assert!(
-                    (decomposition.singular_values[i] - direct.singular_values[i]).abs() < 1e-8
+                    (decomposition.singular_values[i] - direct.singular_values[i]).abs() < 1e-8_f64
                 );
             }
         }
@@ -205,16 +409,16 @@ mod tests {
     #[test]
     fn batched_lu_cholesky_and_eigen_work() {
         let lu_matrices = Array3::from_shape_vec((2, 2, 2), vec![
-            4.0, 3.0, 6.0, 3.0, //
-            2.0, 1.0, 5.0, 3.0,
+            4.0_f64, 3.0_f64, 6.0_f64, 3.0_f64, //
+            2.0_f64, 1.0_f64, 5.0_f64, 3.0_f64,
         ])
         .expect("valid shape");
         let lu_results = lu(&lu_matrices).expect("batched lu");
         assert_eq!(lu_results.len(), 2);
 
         let spd = Array3::from_shape_vec((2, 2, 2), vec![
-            4.0, 1.0, 1.0, 3.0, //
-            9.0, 3.0, 3.0, 5.0,
+            4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
+            9.0_f64, 3.0_f64, 3.0_f64, 5.0_f64,
         ])
         .expect("valid shape");
         let chol_results = cholesky(&spd).expect("batched cholesky");
@@ -222,11 +426,12 @@ mod tests {
         assert_eq!(chol_results.len(), 2);
         assert_eq!(eig_results.len(), 2);
 
-        let first = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).expect("valid shape");
+        let first = Array2::from_shape_vec((2, 2), vec![4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64])
+            .expect("valid shape");
         let reconstructed = chol_results[0].l.dot(&chol_results[0].l.t());
         for row in 0..2 {
             for col in 0..2 {
-                assert!((first[[row, col]] - reconstructed[[row, col]]).abs() < 1e-8);
+                assert!((first[[row, col]] - reconstructed[[row, col]]).abs() < 1e-8_f64);
             }
         }
         assert!(eig_results[0].eigenvalues[0] >= eig_results[0].eigenvalues[1]);

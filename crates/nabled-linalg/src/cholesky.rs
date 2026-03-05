@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
@@ -10,9 +11,9 @@ use crate::internal::DenseKernelPolicy;
 
 /// Result of Cholesky decomposition.
 #[derive(Debug, Clone)]
-pub struct NdarrayCholeskyResult {
+pub struct NdarrayCholeskyResult<T: NabledReal> {
     /// Lower-triangular factor `L` where `A = L L^T`.
-    pub l: Array2<f64>,
+    pub l: Array2<T>,
 }
 
 /// Result of complex Cholesky decomposition.
@@ -53,7 +54,9 @@ impl fmt::Display for CholeskyError {
 
 impl std::error::Error for CholeskyError {}
 
-fn validate_square_finite_view(matrix: &ArrayView2<'_, f64>) -> Result<(), CholeskyError> {
+fn validate_square_finite_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<(), CholeskyError> {
     if matrix.is_empty() {
         return Err(CholeskyError::EmptyMatrix);
     }
@@ -119,101 +122,45 @@ fn decompose_complex_internal(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
+fn decompose_internal<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, CholeskyError> {
     validate_square_finite_view(matrix)?;
 
     let n = matrix.nrows();
-    let mut lower = Array2::<f64>::zeros((n, n));
+    let mut lower = Array2::<T>::zeros((n, n));
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
 
-    if let (Some(input), Some(data)) =
-        (matrix.as_slice_memory_order(), lower.as_slice_memory_order_mut())
-    {
-        for i in 0..n {
-            let row_i = i * n;
-            for j in 0..=i {
-                let row_j = j * n;
-                let mut sum = {
-                    // SAFETY: `row_i + j < n * n` from loop bounds.
-                    unsafe { *input.get_unchecked(row_i + j) }
-                };
-                let mut dot = 0.0_f64;
-                let mut k = 0;
-                while k + 3 < j {
-                    dot += {
-                        // SAFETY: offsets are bounded by loop invariants.
-                        unsafe {
-                            *data.get_unchecked(row_i + k) * *data.get_unchecked(row_j + k)
-                                + *data.get_unchecked(row_i + k + 1)
-                                    * *data.get_unchecked(row_j + k + 1)
-                                + *data.get_unchecked(row_i + k + 2)
-                                    * *data.get_unchecked(row_j + k + 2)
-                                + *data.get_unchecked(row_i + k + 3)
-                                    * *data.get_unchecked(row_j + k + 3)
-                        }
-                    };
-                    k += 4;
-                }
-                while k < j {
-                    dot += {
-                        // SAFETY: row/column offsets are bounded by loop invariants.
-                        unsafe { *data.get_unchecked(row_i + k) * *data.get_unchecked(row_j + k) }
-                    };
-                    k += 1;
-                }
-                sum -= dot;
+    for i in 0..n {
+        for j in 0..=i {
+            let mut sum = matrix[[i, j]];
+            for k in 0..j {
+                sum -= lower[[i, k]] * lower[[j, k]];
+            }
 
-                if i == j {
-                    if sum <= DenseKernelPolicy::BASE_TOLERANCE {
-                        return Err(CholeskyError::NotPositiveDefinite);
-                    }
-                    // SAFETY: `row_i + j < n * n` from loop bounds.
-                    unsafe {
-                        *data.get_unchecked_mut(row_i + j) = sum.sqrt();
-                    }
-                } else {
-                    let diagonal = {
-                        // SAFETY: `row_j + j < n * n` from loop bounds.
-                        unsafe { *data.get_unchecked(row_j + j) }
-                    };
-                    if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
-                        return Err(CholeskyError::NotPositiveDefinite);
-                    }
-                    // SAFETY: `row_i + j < n * n` from loop bounds.
-                    unsafe {
-                        *data.get_unchecked_mut(row_i + j) = sum / diagonal;
-                    }
+            if i == j {
+                if sum <= tolerance {
+                    return Err(CholeskyError::NotPositiveDefinite);
                 }
+                lower[[i, j]] = sum.sqrt();
+            } else {
+                let diagonal = lower[[j, j]];
+                if diagonal.abs() <= tolerance {
+                    return Err(CholeskyError::NotPositiveDefinite);
+                }
+                lower[[i, j]] = sum / diagonal;
             }
         }
-        Ok(lower)
-    } else {
-        for i in 0..n {
-            for j in 0..=i {
-                let mut sum = matrix[[i, j]];
-                for k in 0..j {
-                    sum -= lower[[i, k]] * lower[[j, k]];
-                }
-
-                if i == j {
-                    if sum <= DenseKernelPolicy::BASE_TOLERANCE {
-                        return Err(CholeskyError::NotPositiveDefinite);
-                    }
-                    lower[[i, j]] = sum.sqrt();
-                } else {
-                    let diagonal = lower[[j, j]];
-                    if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
-                        return Err(CholeskyError::NotPositiveDefinite);
-                    }
-                    lower[[i, j]] = sum / diagonal;
-                }
-            }
-        }
-        Ok(lower)
     }
+
+    Ok(lower)
 }
 
 #[cfg(feature = "lapack-provider")]
-fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
+fn decompose_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     use ndarray_linalg::{Cholesky as _, UPLO};
 
     validate_square_finite_view(matrix)?;
@@ -222,10 +169,13 @@ fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Chole
 }
 
 #[cfg(feature = "lapack-provider")]
-fn solve_provider(
-    matrix: &ArrayView2<'_, f64>,
-    rhs: &ArrayView1<'_, f64>,
-) -> Result<Array1<f64>, CholeskyError> {
+fn solve_provider<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     use ndarray_linalg::SolveC as _;
 
     validate_square_finite_view(matrix)?;
@@ -233,7 +183,10 @@ fn solve_provider(
 }
 
 #[cfg(feature = "lapack-provider")]
-fn inverse_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
+fn inverse_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     use ndarray_linalg::InverseC as _;
 
     validate_square_finite_view(matrix)?;
@@ -319,24 +272,27 @@ fn solve_complex_from_factor(
     Ok(x)
 }
 
-fn decompose_dispatch(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
-    #[cfg(feature = "lapack-provider")]
-    {
-        decompose_provider(matrix)
-    }
-    #[cfg(not(feature = "lapack-provider"))]
-    {
-        decompose_internal(matrix)
-    }
+#[cfg(feature = "lapack-provider")]
+fn decompose_dispatch<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    decompose_provider(matrix)
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn decompose_dispatch<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, CholeskyError> {
+    decompose_internal(matrix)
 }
 
 #[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
-#[allow(clippy::too_many_lines)]
-fn solve_from_factor(
-    lower_factor: &Array2<f64>,
-    rhs: &ArrayView1<'_, f64>,
-    output: &mut Array1<f64>,
+fn solve_from_factor<T: NabledReal>(
+    lower_factor: &Array2<T>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut Array1<T>,
 ) -> Result<(), CholeskyError> {
     let size = lower_factor.nrows();
     if rhs.len() != size || output.len() != size {
@@ -345,207 +301,76 @@ fn solve_from_factor(
         ));
     }
 
-    if let (Some(factor), Some(rhs_slice), Some(output_slice)) = (
-        lower_factor.as_slice_memory_order(),
-        rhs.as_slice_memory_order(),
-        output.as_slice_memory_order_mut(),
-    ) {
-        let mut y = vec![0.0_f64; size];
-        for i in 0..size {
-            let row_i = i * size;
-            let mut sum = {
-                // SAFETY: `i < rhs_slice.len() == size`.
-                unsafe { *rhs_slice.get_unchecked(i) }
-            };
-            let mut dot = 0.0_f64;
-            let mut j = 0;
-            while j + 3 < i {
-                dot += {
-                    // SAFETY: offsets are bounded by loop bounds.
-                    unsafe {
-                        *factor.get_unchecked(row_i + j) * *y.get_unchecked(j)
-                            + *factor.get_unchecked(row_i + j + 1) * *y.get_unchecked(j + 1)
-                            + *factor.get_unchecked(row_i + j + 2) * *y.get_unchecked(j + 2)
-                            + *factor.get_unchecked(row_i + j + 3) * *y.get_unchecked(j + 3)
-                    }
-                };
-                j += 4;
-            }
-            while j < i {
-                dot += {
-                    // SAFETY: offsets are bounded by loop bounds.
-                    unsafe { *factor.get_unchecked(row_i + j) * *y.get_unchecked(j) }
-                };
-                j += 1;
-            }
-            sum -= dot;
-            let diagonal = {
-                // SAFETY: `row_i + i < size * size`.
-                unsafe { *factor.get_unchecked(row_i + i) }
-            };
-            if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
-                return Err(CholeskyError::NotPositiveDefinite);
-            }
-            // SAFETY: `i < y.len()`.
-            unsafe {
-                *y.get_unchecked_mut(i) = sum / diagonal;
-            }
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    let mut y = Array1::<T>::zeros(size);
+    for i in 0..size {
+        let mut sum = rhs[i];
+        for j in 0..i {
+            sum -= lower_factor[[i, j]] * y[j];
         }
-
-        for i_rev in 0..size {
-            let i = size - 1 - i_rev;
-            let mut sum = {
-                // SAFETY: `i < y.len()`.
-                unsafe { *y.get_unchecked(i) }
-            };
-            let mut dot = 0.0_f64;
-            let mut j = i + 1;
-            while j + 3 < size {
-                dot += {
-                    // SAFETY: offsets are bounded by loop bounds.
-                    unsafe {
-                        *factor.get_unchecked(j * size + i) * *output_slice.get_unchecked(j)
-                            + *factor.get_unchecked((j + 1) * size + i)
-                                * *output_slice.get_unchecked(j + 1)
-                            + *factor.get_unchecked((j + 2) * size + i)
-                                * *output_slice.get_unchecked(j + 2)
-                            + *factor.get_unchecked((j + 3) * size + i)
-                                * *output_slice.get_unchecked(j + 3)
-                    }
-                };
-                j += 4;
-            }
-            while j < size {
-                dot += {
-                    // SAFETY: offsets are bounded by loop bounds.
-                    unsafe { *factor.get_unchecked(j * size + i) * *output_slice.get_unchecked(j) }
-                };
-                j += 1;
-            }
-            sum -= dot;
-            let diagonal = {
-                // SAFETY: `i * size + i < size * size`.
-                unsafe { *factor.get_unchecked(i * size + i) }
-            };
-            if diagonal.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
-                return Err(CholeskyError::NotPositiveDefinite);
-            }
-            // SAFETY: `i < output_slice.len()`.
-            unsafe {
-                *output_slice.get_unchecked_mut(i) = sum / diagonal;
-            }
+        let diagonal = lower_factor[[i, i]];
+        if diagonal.abs() <= tolerance {
+            return Err(CholeskyError::NotPositiveDefinite);
         }
-        Ok(())
-    } else {
-        let mut y = Array1::<f64>::zeros(size);
-        for i in 0..size {
-            let mut sum = rhs[i];
-            for j in 0..i {
-                sum -= lower_factor[[i, j]] * y[j];
-            }
-            y[i] = sum / lower_factor[[i, i]];
-        }
-
-        for i_rev in 0..size {
-            let i = size - 1 - i_rev;
-            let mut sum = y[i];
-            for j in (i + 1)..size {
-                sum -= lower_factor[[j, i]] * output[j];
-            }
-            output[i] = sum / lower_factor[[i, i]];
-        }
-
-        Ok(())
+        y[i] = sum / diagonal;
     }
+
+    for i_rev in 0..size {
+        let i = size - 1 - i_rev;
+        let mut sum = y[i];
+        for j in (i + 1)..size {
+            sum -= lower_factor[[j, i]] * output[j];
+        }
+        let diagonal = lower_factor[[i, i]];
+        if diagonal.abs() <= tolerance {
+            return Err(CholeskyError::NotPositiveDefinite);
+        }
+        output[i] = sum / diagonal;
+    }
+
+    Ok(())
 }
 
 #[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
-fn inverse_from_factor(lower_factor: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+fn inverse_from_factor<T: NabledReal>(
+    lower_factor: &Array2<T>,
+) -> Result<Array2<T>, CholeskyError> {
     let n = lower_factor.nrows();
-    if let Some(factor) = lower_factor.as_slice_memory_order() {
-        let mut inv_lower = vec![0.0_f64; n * n];
-        for col in 0..n {
-            let diag = {
-                // SAFETY: `col * n + col < n * n`.
-                unsafe { *factor.get_unchecked(col * n + col) }
-            };
-            if diag.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
-                return Err(CholeskyError::NotPositiveDefinite);
-            }
-            // SAFETY: `col * n + col < n * n`.
-            unsafe {
-                *inv_lower.get_unchecked_mut(col * n + col) = 1.0 / diag;
-            }
-
-            for row in (col + 1)..n {
-                let row_offset = row * n;
-                let mut sum = 0.0_f64;
-                for k in col..row {
-                    sum += {
-                        // SAFETY: offsets are bounded by loop bounds.
-                        unsafe {
-                            *factor.get_unchecked(row_offset + k)
-                                * *inv_lower.get_unchecked(k * n + col)
-                        }
-                    };
-                }
-
-                let row_diag = {
-                    // SAFETY: `row_offset + row < n * n`.
-                    unsafe { *factor.get_unchecked(row_offset + row) }
-                };
-                if row_diag.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
-                    return Err(CholeskyError::NotPositiveDefinite);
-                }
-                // SAFETY: `row_offset + col < n * n`.
-                unsafe {
-                    *inv_lower.get_unchecked_mut(row_offset + col) = -sum / row_diag;
-                }
-            }
+    let mut inverse = Array2::<T>::zeros((n, n));
+    for col in 0..n {
+        let mut basis = Array1::<T>::zeros(n);
+        basis[col] = T::one();
+        let mut solution = Array1::<T>::zeros(n);
+        solve_from_factor(lower_factor, &basis.view(), &mut solution)?;
+        for row in 0..n {
+            inverse[[row, col]] = solution[row];
         }
-
-        let mut inverse = Array2::<f64>::zeros((n, n));
-        if let Some(inverse_data) = inverse.as_slice_memory_order_mut() {
-            for i in 0..n {
-                let row_i = i * n;
-                for j in 0..=i {
-                    let mut sum = 0.0_f64;
-                    for k in usize::max(i, j)..n {
-                        sum += {
-                            // SAFETY: offsets are bounded by loop bounds.
-                            unsafe {
-                                *inv_lower.get_unchecked(k * n + i)
-                                    * *inv_lower.get_unchecked(k * n + j)
-                            }
-                        };
-                    }
-                    // SAFETY: `row_i + j < n * n`.
-                    unsafe {
-                        *inverse_data.get_unchecked_mut(row_i + j) = sum;
-                    }
-                    if i != j {
-                        // SAFETY: `j * n + i < n * n`.
-                        unsafe {
-                            *inverse_data.get_unchecked_mut(j * n + i) = sum;
-                        }
-                    }
-                }
-            }
-            Ok(inverse)
-        } else {
-            Err(CholeskyError::InvalidInput("inverse storage must be contiguous".to_string()))
-        }
-    } else {
-        Err(CholeskyError::InvalidInput("factor storage must be contiguous".to_string()))
     }
+    Ok(inverse)
 }
 
 /// Compute Cholesky decomposition.
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayCholeskyResult, CholeskyError> {
+#[cfg(feature = "lapack-provider")]
+pub fn decompose<T>(matrix: &Array2<T>) -> Result<NdarrayCholeskyResult<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    let l = decompose_dispatch(&matrix.view())?;
+    Ok(NdarrayCholeskyResult { l })
+}
+
+/// Compute Cholesky decomposition.
+///
+/// # Errors
+/// Returns an error if matrix is not SPD.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose<T: NabledReal>(
+    matrix: &Array2<T>,
+) -> Result<NdarrayCholeskyResult<T>, CholeskyError> {
     let l = decompose_dispatch(&matrix.view())?;
     Ok(NdarrayCholeskyResult { l })
 }
@@ -579,9 +404,25 @@ fn decompose_complex_impl(
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-pub fn decompose_view(
-    matrix: &ArrayView2<'_, f64>,
-) -> Result<NdarrayCholeskyResult, CholeskyError> {
+#[cfg(feature = "lapack-provider")]
+pub fn decompose_view<T>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayCholeskyResult<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    let l = decompose_dispatch(matrix)?;
+    Ok(NdarrayCholeskyResult { l })
+}
+
+/// Compute Cholesky decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if matrix is not SPD.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayCholeskyResult<T>, CholeskyError> {
     let l = decompose_dispatch(matrix)?;
     Ok(NdarrayCholeskyResult { l })
 }
@@ -601,24 +442,45 @@ pub fn decompose_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, CholeskyError> {
+#[cfg(feature = "lapack-provider")]
+pub fn solve<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     solve_impl(&matrix.view(), &rhs.view())
 }
 
-fn solve_impl(
-    matrix: &ArrayView2<'_, f64>,
-    rhs: &ArrayView1<'_, f64>,
-) -> Result<Array1<f64>, CholeskyError> {
-    #[cfg(feature = "lapack-provider")]
-    {
-        solve_provider(matrix, rhs)
-    }
-    #[cfg(not(feature = "lapack-provider"))]
-    {
-        let mut output = Array1::<f64>::zeros(rhs.len());
-        solve_into_impl(matrix, rhs, &mut output)?;
-        Ok(output)
-    }
+/// Solve `Ax=b` using Cholesky decomposition.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-SPD matrix.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn solve<T: NabledReal>(
+    matrix: &Array2<T>,
+    rhs: &Array1<T>,
+) -> Result<Array1<T>, CholeskyError> {
+    solve_impl(&matrix.view(), &rhs.view())
+}
+
+#[cfg(feature = "lapack-provider")]
+fn solve_impl<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    solve_provider(matrix, rhs)
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn solve_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, CholeskyError> {
+    let mut output = Array1::<T>::zeros(rhs.len());
+    solve_into_impl(matrix, rhs, &mut output)?;
+    Ok(output)
 }
 
 /// Solve complex-valued `Ax=b` using Cholesky decomposition.
@@ -651,10 +513,26 @@ fn solve_complex_impl(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-pub fn solve_view(
-    matrix: &ArrayView2<'_, f64>,
-    rhs: &ArrayView1<'_, f64>,
-) -> Result<Array1<f64>, CholeskyError> {
+#[cfg(feature = "lapack-provider")]
+pub fn solve_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    solve_impl(matrix, rhs)
+}
+
+/// Solve `Ax=b` using Cholesky decomposition from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-SPD matrix.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn solve_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, CholeskyError> {
     solve_impl(matrix, rhs)
 }
 
@@ -674,19 +552,62 @@ pub fn solve_complex_view(
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
 #[allow(clippy::many_single_char_names)]
-pub fn solve_into(
-    matrix: &Array2<f64>,
-    rhs: &Array1<f64>,
-    output: &mut Array1<f64>,
+#[cfg(feature = "lapack-provider")]
+pub fn solve_into<T>(
+    matrix: &Array2<T>,
+    rhs: &Array1<T>,
+    output: &mut Array1<T>,
+) -> Result<(), CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    solve_into_impl(&matrix.view(), &rhs.view(), output)
+}
+
+/// Solve `Ax=b` into `output` using Cholesky decomposition.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-SPD matrix.
+#[allow(clippy::many_single_char_names)]
+#[cfg(not(feature = "lapack-provider"))]
+pub fn solve_into<T: NabledReal>(
+    matrix: &Array2<T>,
+    rhs: &Array1<T>,
+    output: &mut Array1<T>,
 ) -> Result<(), CholeskyError> {
     solve_into_impl(&matrix.view(), &rhs.view(), output)
 }
 
 #[allow(clippy::many_single_char_names)]
-fn solve_into_impl(
-    matrix: &ArrayView2<'_, f64>,
-    rhs: &ArrayView1<'_, f64>,
-    output: &mut Array1<f64>,
+#[cfg(feature = "lapack-provider")]
+fn solve_into_impl<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut Array1<T>,
+) -> Result<(), CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    if rhs.len() != matrix.nrows() {
+        return Err(CholeskyError::InvalidInput(
+            "RHS length must match matrix dimensions".to_string(),
+        ));
+    }
+    if output.len() != rhs.len() {
+        return Err(CholeskyError::InvalidInput("output length must match rhs length".to_string()));
+    }
+
+    let solution = solve_provider(matrix, rhs)?;
+    output.assign(&solution);
+    Ok(())
+}
+
+#[allow(clippy::many_single_char_names)]
+#[cfg(not(feature = "lapack-provider"))]
+fn solve_into_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut Array1<T>,
 ) -> Result<(), CholeskyError> {
     if rhs.len() != matrix.nrows() {
         return Err(CholeskyError::InvalidInput(
@@ -697,37 +618,43 @@ fn solve_into_impl(
         return Err(CholeskyError::InvalidInput("output length must match rhs length".to_string()));
     }
 
-    #[cfg(feature = "lapack-provider")]
-    {
-        let solution = solve_provider(matrix, rhs)?;
-        output.assign(&solution);
-        Ok(())
-    }
-    #[cfg(not(feature = "lapack-provider"))]
-    {
-        let lower_factor = decompose_dispatch(matrix)?;
-        solve_from_factor(&lower_factor, rhs, output)
-    }
+    let lower_factor = decompose_dispatch(matrix)?;
+    solve_from_factor(&lower_factor, rhs, output)
 }
 
 /// Compute inverse via Cholesky decomposition.
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, CholeskyError> {
+#[cfg(feature = "lapack-provider")]
+pub fn inverse<T>(matrix: &Array2<T>) -> Result<Array2<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     inverse_impl(&matrix.view())
 }
 
-fn inverse_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
-    #[cfg(feature = "lapack-provider")]
-    {
-        inverse_provider(matrix)
-    }
-    #[cfg(not(feature = "lapack-provider"))]
-    {
-        let lower_factor = decompose_dispatch(matrix)?;
-        inverse_from_factor(&lower_factor)
-    }
+/// Compute inverse via Cholesky decomposition.
+///
+/// # Errors
+/// Returns an error if matrix is not SPD.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn inverse<T: NabledReal>(matrix: &Array2<T>) -> Result<Array2<T>, CholeskyError> {
+    inverse_impl(&matrix.view())
+}
+
+#[cfg(feature = "lapack-provider")]
+fn inverse_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    inverse_provider(matrix)
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn inverse_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError> {
+    let lower_factor = decompose_dispatch(matrix)?;
+    inverse_from_factor(&lower_factor)
 }
 
 /// Compute complex inverse via Cholesky decomposition.
@@ -768,7 +695,20 @@ fn inverse_complex_impl(
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, CholeskyError> {
+#[cfg(feature = "lapack-provider")]
+pub fn inverse_view<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    inverse_impl(matrix)
+}
+
+/// Compute inverse via Cholesky decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if matrix is not SPD.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn inverse_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError> {
     inverse_impl(matrix)
 }
 
@@ -791,20 +731,24 @@ mod tests {
 
     #[test]
     fn cholesky_reconstructs_spd_matrix() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![4.0_f64, 2.0_f64, 2.0_f64, 3.0_f64])
+                .unwrap();
         let decomposition = decompose(&matrix).unwrap();
         let reconstructed = decomposition.l.dot(&decomposition.l.t());
         for i in 0..2 {
             for j in 0..2 {
-                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-10);
+                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-10_f64);
             }
         }
     }
 
     #[test]
     fn cholesky_view_variants_match_owned() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![9.0, 3.0, 3.0, 5.0]).unwrap();
-        let rhs = Array1::from_vec(vec![12.0, 8.0]);
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![9.0_f64, 3.0_f64, 3.0_f64, 5.0_f64])
+                .unwrap();
+        let rhs = Array1::from_vec(vec![12.0_f64, 8.0_f64]);
 
         let owned = decompose(&matrix).unwrap();
         let viewed = decompose_view(&matrix.view()).unwrap();
@@ -813,70 +757,80 @@ mod tests {
         let solution_owned = solve(&matrix, &rhs).unwrap();
         let solution_viewed = solve_view(&matrix.view(), &rhs.view()).unwrap();
         for i in 0..rhs.len() {
-            assert!((solution_owned[i] - solution_viewed[i]).abs() < 1e-12);
+            assert!((solution_owned[i] - solution_viewed[i]).abs() < 1e-12_f64);
         }
 
         let inverse_owned = inverse(&matrix).unwrap();
         let inverse_viewed = inverse_view(&matrix.view()).unwrap();
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
-                assert!((inverse_owned[[i, j]] - inverse_viewed[[i, j]]).abs() < 1e-12);
+                assert!((inverse_owned[[i, j]] - inverse_viewed[[i, j]]).abs() < 1e-12_f64);
             }
         }
     }
 
     #[test]
     fn solve_reconstructs_rhs() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
-        let rhs = Array1::from_vec(vec![1.0, 1.0]);
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![4.0_f64, 2.0_f64, 2.0_f64, 3.0_f64])
+                .unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 1.0_f64]);
         let x = solve(&matrix, &rhs).unwrap();
         let reconstructed = matrix.dot(&x);
-        assert!((reconstructed[0] - rhs[0]).abs() < 1e-10);
-        assert!((reconstructed[1] - rhs[1]).abs() < 1e-10);
+        assert!((reconstructed[0] - rhs[0]).abs() < 1e-10_f64);
+        assert!((reconstructed[1] - rhs[1]).abs() < 1e-10_f64);
     }
 
     #[test]
     fn non_spd_input_errors() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 2.0, 1.0]).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64])
+                .unwrap();
         let result = decompose(&matrix);
         assert!(matches!(result, Err(CholeskyError::NotPositiveDefinite)));
     }
 
     #[test]
     fn inverse_multiplied_by_matrix_is_identity() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![4.0_f64, 2.0_f64, 2.0_f64, 3.0_f64])
+                .unwrap();
         let inverse = inverse(&matrix).unwrap();
         let product = matrix.dot(&inverse);
-        assert!((product[[0, 0]] - 1.0).abs() < 1e-8);
-        assert!((product[[1, 1]] - 1.0).abs() < 1e-8);
-        assert!(product[[0, 1]].abs() < 1e-8);
-        assert!(product[[1, 0]].abs() < 1e-8);
+        assert!((product[[0, 0]] - 1.0_f64).abs() < 1e-8_f64);
+        assert!((product[[1, 1]] - 1.0_f64).abs() < 1e-8_f64);
+        assert!(product[[0, 1]].abs() < 1e-8_f64);
+        assert!(product[[1, 0]].abs() < 1e-8_f64);
     }
 
     #[test]
     fn solve_into_rejects_bad_output_length() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
-        let rhs = Array1::from_vec(vec![1.0, 1.0]);
-        let mut output = Array1::from_vec(vec![0.0]);
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![4.0_f64, 2.0_f64, 2.0_f64, 3.0_f64])
+                .unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 1.0_f64]);
+        let mut output = Array1::from_vec(vec![0.0_f64]);
         let result = solve_into(&matrix, &rhs, &mut output);
         assert!(matches!(result, Err(CholeskyError::InvalidInput(_))));
     }
 
     #[test]
     fn solve_into_matches_solve() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![5.0, 1.0, 1.0, 2.0]).unwrap();
-        let rhs = Array1::from_vec(vec![3.0, 4.0]);
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![5.0_f64, 1.0_f64, 1.0_f64, 2.0_f64])
+                .unwrap();
+        let rhs = Array1::from_vec(vec![3.0_f64, 4.0_f64]);
         let expected = solve(&matrix, &rhs).unwrap();
         let mut output = Array1::<f64>::zeros(2);
         solve_into(&matrix, &rhs, &mut output).unwrap();
-        assert!((output[0] - expected[0]).abs() < 1e-10);
-        assert!((output[1] - expected[1]).abs() < 1e-10);
+        assert!((output[0] - expected[0]).abs() < 1e-10_f64);
+        assert!((output[1] - expected[1]).abs() < 1e-10_f64);
     }
 
     #[test]
     fn solve_rejects_bad_rhs_length() {
-        let matrix = Array2::eye(2);
-        let rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        let matrix = Array2::<f64>::eye(2);
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64, 3.0_f64]);
         let mut output = Array1::<f64>::zeros(3);
         let result = solve_into(&matrix, &rhs, &mut output);
         assert!(matches!(result, Err(CholeskyError::InvalidInput(_))));
@@ -884,9 +838,39 @@ mod tests {
 
     #[test]
     fn decompose_rejects_non_finite_input() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![1.0_f64, f64::NAN, 0.0_f64, 1.0_f64])
+                .unwrap();
         let result = decompose(&matrix);
         assert!(matches!(result, Err(CholeskyError::NumericalInstability)));
+    }
+
+    #[test]
+    fn real_f32_paths_match_expected() {
+        let matrix =
+            Array2::<f32>::from_shape_vec((2, 2), vec![4.0_f32, 2.0_f32, 2.0_f32, 3.0_f32])
+                .unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f32, 1.0_f32]);
+
+        let decomposition = decompose(&matrix).unwrap();
+        let reconstructed = decomposition.l.dot(&decomposition.l.t());
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-4_f32);
+            }
+        }
+
+        let solution = solve(&matrix, &rhs).unwrap();
+        let mut output = Array1::<f32>::zeros(rhs.len());
+        solve_into(&matrix, &rhs, &mut output).unwrap();
+        for i in 0..rhs.len() {
+            assert!((solution[i] - output[i]).abs() < 1e-5_f32);
+        }
+
+        let inverse = inverse(&matrix).unwrap();
+        let product = matrix.dot(&inverse);
+        assert!((product[[0, 0]] - 1.0_f32).abs() < 1e-3_f32);
+        assert!((product[[1, 1]] - 1.0_f32).abs() < 1e-3_f32);
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
 
@@ -38,23 +39,23 @@ impl std::error::Error for OptimizationError {}
 
 /// Configuration for backtracking line search.
 #[derive(Debug, Clone, Copy)]
-pub struct LineSearchConfig {
+pub struct LineSearchConfig<T: NabledReal = f64> {
     /// Initial step size.
-    pub initial_step:        f64,
+    pub initial_step:        T,
     /// Contraction factor in `(0, 1)`.
-    pub contraction:         f64,
+    pub contraction:         T,
     /// Armijo sufficient decrease coefficient in `(0, 1)`.
-    pub sufficient_decrease: f64,
+    pub sufficient_decrease: T,
     /// Maximum backtracking iterations.
     pub max_iterations:      usize,
 }
 
-impl Default for LineSearchConfig {
+impl<T: NabledReal> Default for LineSearchConfig<T> {
     fn default() -> Self {
         Self {
-            initial_step:        1.0,
-            contraction:         0.5,
-            sufficient_decrease: 1e-4,
+            initial_step:        T::one(),
+            contraction:         T::from_f64(0.5).unwrap_or(T::epsilon()),
+            sufficient_decrease: T::from_f64(1e-4).unwrap_or(T::epsilon()),
             max_iterations:      64,
         }
     }
@@ -62,148 +63,164 @@ impl Default for LineSearchConfig {
 
 /// Configuration for SGD.
 #[derive(Debug, Clone, Copy)]
-pub struct SGDConfig {
+pub struct SGDConfig<T: NabledReal = f64> {
     /// Fixed learning rate.
-    pub learning_rate:  f64,
+    pub learning_rate:  T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      f64,
+    pub tolerance:      T,
 }
 
-impl Default for SGDConfig {
-    fn default() -> Self { Self { learning_rate: 1e-2, max_iterations: 10_000, tolerance: 1e-8 } }
+impl<T: NabledReal> Default for SGDConfig<T> {
+    fn default() -> Self {
+        Self {
+            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            max_iterations: 10_000,
+            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
+        }
+    }
 }
 
 /// Configuration for Adam optimizer.
 #[derive(Debug, Clone, Copy)]
-pub struct AdamConfig {
+pub struct AdamConfig<T: NabledReal = f64> {
     /// Base learning rate.
-    pub learning_rate:  f64,
+    pub learning_rate:  T,
     /// Exponential decay for first moment.
-    pub beta1:          f64,
+    pub beta1:          T,
     /// Exponential decay for second moment.
-    pub beta2:          f64,
+    pub beta2:          T,
     /// Numerical epsilon.
-    pub epsilon:        f64,
+    pub epsilon:        T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      f64,
+    pub tolerance:      T,
 }
 
-impl Default for AdamConfig {
+impl<T: NabledReal> Default for AdamConfig<T> {
     fn default() -> Self {
         Self {
-            learning_rate:  1e-2,
-            beta1:          0.9,
-            beta2:          0.999,
-            epsilon:        1e-8,
+            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            beta1:          T::from_f64(0.9).unwrap_or(T::epsilon()),
+            beta2:          T::from_f64(0.999).unwrap_or(T::epsilon()),
+            epsilon:        T::from_f64(1e-8).unwrap_or(T::epsilon()),
             max_iterations: 10_000,
-            tolerance:      1e-8,
+            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
 
 /// Configuration for momentum gradient descent.
 #[derive(Debug, Clone, Copy)]
-pub struct MomentumConfig {
+pub struct MomentumConfig<T: NabledReal = f64> {
     /// Base learning rate.
-    pub learning_rate:  f64,
+    pub learning_rate:  T,
     /// Momentum coefficient in `[0, 1)`.
-    pub momentum:       f64,
+    pub momentum:       T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      f64,
+    pub tolerance:      T,
 }
 
-impl Default for MomentumConfig {
+impl<T: NabledReal> Default for MomentumConfig<T> {
     fn default() -> Self {
         Self {
-            learning_rate:  1e-2,
-            momentum:       0.9,
+            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            momentum:       T::from_f64(0.9).unwrap_or(T::epsilon()),
             max_iterations: 10_000,
-            tolerance:      1e-8,
+            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
 
 /// Configuration for `RMSProp` optimizer.
 #[derive(Debug, Clone, Copy)]
-pub struct RMSPropConfig {
+pub struct RMSPropConfig<T: NabledReal = f64> {
     /// Base learning rate.
-    pub learning_rate:  f64,
+    pub learning_rate:  T,
     /// Exponential decay factor for squared gradients in `[0, 1)`.
-    pub rho:            f64,
+    pub rho:            T,
     /// Numerical epsilon.
-    pub epsilon:        f64,
+    pub epsilon:        T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      f64,
+    pub tolerance:      T,
 }
 
-impl Default for RMSPropConfig {
+impl<T: NabledReal> Default for RMSPropConfig<T> {
     fn default() -> Self {
         Self {
-            learning_rate:  1e-2,
-            rho:            0.9,
-            epsilon:        1e-8,
+            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            rho:            T::from_f64(0.9).unwrap_or(T::epsilon()),
+            epsilon:        T::from_f64(1e-8).unwrap_or(T::epsilon()),
             max_iterations: 10_000,
-            tolerance:      1e-8,
+            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
 
 /// Configuration for projected gradient descent with box constraints.
 #[derive(Debug, Clone, Copy)]
-pub struct ProjectedGradientConfig {
+pub struct ProjectedGradientConfig<T: NabledReal = f64> {
     /// Base learning rate.
-    pub learning_rate:  f64,
+    pub learning_rate:  T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      f64,
+    pub tolerance:      T,
 }
 
-impl Default for ProjectedGradientConfig {
-    fn default() -> Self { Self { learning_rate: 1e-2, max_iterations: 10_000, tolerance: 1e-8 } }
-}
-
-/// Configuration for `BFGS` quasi-Newton optimization.
-#[derive(Debug, Clone, Copy)]
-pub struct BFGSConfig {
-    /// Initial step size multiplier.
-    pub step_size:           f64,
-    /// Maximum optimization iterations.
-    pub max_iterations:      usize,
-    /// Gradient norm tolerance for convergence.
-    pub tolerance:           f64,
-    /// Minimum curvature `s^T y` required for Hessian updates.
-    pub curvature_tolerance: f64,
-}
-
-impl Default for BFGSConfig {
+impl<T: NabledReal> Default for ProjectedGradientConfig<T> {
     fn default() -> Self {
         Self {
-            step_size:           1.0,
-            max_iterations:      2_000,
-            tolerance:           1e-8,
-            curvature_tolerance: 1e-12,
+            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            max_iterations: 10_000,
+            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
 
-fn l2_norm(vector: &Array1<f64>) -> f64 {
-    vector.iter().map(|value| value * value).sum::<f64>().sqrt()
+/// Configuration for `BFGS` quasi-Newton optimization.
+#[derive(Debug, Clone, Copy)]
+pub struct BFGSConfig<T: NabledReal = f64> {
+    /// Initial step size multiplier.
+    pub step_size:           T,
+    /// Maximum optimization iterations.
+    pub max_iterations:      usize,
+    /// Gradient norm tolerance for convergence.
+    pub tolerance:           T,
+    /// Minimum curvature `s^T y` required for Hessian updates.
+    pub curvature_tolerance: T,
+}
+
+impl<T: NabledReal> Default for BFGSConfig<T> {
+    fn default() -> Self {
+        Self {
+            step_size:           T::one(),
+            max_iterations:      2_000,
+            tolerance:           T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            curvature_tolerance: T::from_f64(1e-12).unwrap_or(T::epsilon()),
+        }
+    }
+}
+
+fn l2_norm<T: NabledReal>(vector: &Array1<T>) -> T {
+    vector
+        .iter()
+        .map(|value| *value * *value)
+        .fold(T::zero(), |acc, value| acc + value)
+        .sqrt()
 }
 
 fn l2_norm_complex(vector: &Array1<Complex64>) -> f64 {
     vector.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
 }
 
-fn validate_vector(vector: &Array1<f64>) -> Result<(), OptimizationError> {
+fn validate_vector<T: NabledReal>(vector: &Array1<T>) -> Result<(), OptimizationError> {
     if vector.is_empty() {
         return Err(OptimizationError::EmptyInput);
     }
@@ -223,84 +240,102 @@ fn validate_vector_complex(vector: &Array1<Complex64>) -> Result<(), Optimizatio
     Ok(())
 }
 
-fn validate_line_search_config(config: &LineSearchConfig) -> Result<(), OptimizationError> {
-    if config.initial_step <= 0.0
-        || !(0.0..1.0).contains(&config.contraction)
-        || !(0.0..1.0).contains(&config.sufficient_decrease)
-        || config.max_iterations == 0
-    {
-        return Err(OptimizationError::InvalidConfig);
-    }
-    Ok(())
-}
-
-fn validate_sgd_config(config: &SGDConfig) -> Result<(), OptimizationError> {
-    if config.learning_rate <= 0.0 || config.max_iterations == 0 || config.tolerance < 0.0 {
-        return Err(OptimizationError::InvalidConfig);
-    }
-    Ok(())
-}
-
-fn validate_adam_config(config: &AdamConfig) -> Result<(), OptimizationError> {
-    if config.learning_rate <= 0.0
-        || !(0.0..1.0).contains(&config.beta1)
-        || !(0.0..1.0).contains(&config.beta2)
-        || config.epsilon <= 0.0
-        || config.max_iterations == 0
-        || config.tolerance < 0.0
-    {
-        return Err(OptimizationError::InvalidConfig);
-    }
-    Ok(())
-}
-
-fn validate_momentum_config(config: &MomentumConfig) -> Result<(), OptimizationError> {
-    if config.learning_rate <= 0.0
-        || !(0.0..1.0).contains(&config.momentum)
-        || config.max_iterations == 0
-        || config.tolerance < 0.0
-    {
-        return Err(OptimizationError::InvalidConfig);
-    }
-    Ok(())
-}
-
-fn validate_rmsprop_config(config: &RMSPropConfig) -> Result<(), OptimizationError> {
-    if config.learning_rate <= 0.0
-        || !(0.0..1.0).contains(&config.rho)
-        || config.epsilon <= 0.0
-        || config.max_iterations == 0
-        || config.tolerance < 0.0
-    {
-        return Err(OptimizationError::InvalidConfig);
-    }
-    Ok(())
-}
-
-fn validate_projected_gradient_config(
-    config: &ProjectedGradientConfig,
+fn validate_line_search_config<T: NabledReal>(
+    config: &LineSearchConfig<T>,
 ) -> Result<(), OptimizationError> {
-    if config.learning_rate <= 0.0 || config.max_iterations == 0 || config.tolerance < 0.0 {
-        return Err(OptimizationError::InvalidConfig);
-    }
-    Ok(())
-}
-
-fn validate_bfgs_config(config: &BFGSConfig) -> Result<(), OptimizationError> {
-    if config.step_size <= 0.0
+    if config.initial_step <= T::zero()
+        || config.contraction <= T::zero()
+        || config.contraction >= T::one()
+        || config.sufficient_decrease <= T::zero()
+        || config.sufficient_decrease >= T::one()
         || config.max_iterations == 0
-        || config.tolerance < 0.0
-        || config.curvature_tolerance <= 0.0
     {
         return Err(OptimizationError::InvalidConfig);
     }
     Ok(())
 }
 
-fn validate_bounds(
-    initial: &Array1<f64>,
-    lower_bounds: &Array1<f64>,
-    upper_bounds: &Array1<f64>,
+fn validate_sgd_config<T: NabledReal>(config: &SGDConfig<T>) -> Result<(), OptimizationError> {
+    if config.learning_rate <= T::zero()
+        || config.max_iterations == 0
+        || config.tolerance < T::zero()
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_adam_config<T: NabledReal>(config: &AdamConfig<T>) -> Result<(), OptimizationError> {
+    if config.learning_rate <= T::zero()
+        || config.beta1 <= T::zero()
+        || config.beta1 >= T::one()
+        || config.beta2 <= T::zero()
+        || config.beta2 >= T::one()
+        || config.epsilon <= T::zero()
+        || config.max_iterations == 0
+        || config.tolerance < T::zero()
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_momentum_config<T: NabledReal>(
+    config: &MomentumConfig<T>,
+) -> Result<(), OptimizationError> {
+    if config.learning_rate <= T::zero()
+        || config.momentum < T::zero()
+        || config.momentum >= T::one()
+        || config.max_iterations == 0
+        || config.tolerance < T::zero()
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_rmsprop_config<T: NabledReal>(
+    config: &RMSPropConfig<T>,
+) -> Result<(), OptimizationError> {
+    if config.learning_rate <= T::zero()
+        || config.rho <= T::zero()
+        || config.rho >= T::one()
+        || config.epsilon <= T::zero()
+        || config.max_iterations == 0
+        || config.tolerance < T::zero()
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_projected_gradient_config<T: NabledReal>(
+    config: &ProjectedGradientConfig<T>,
+) -> Result<(), OptimizationError> {
+    if config.learning_rate <= T::zero()
+        || config.max_iterations == 0
+        || config.tolerance < T::zero()
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_bfgs_config<T: NabledReal>(config: &BFGSConfig<T>) -> Result<(), OptimizationError> {
+    if config.step_size <= T::zero()
+        || config.max_iterations == 0
+        || config.tolerance < T::zero()
+        || config.curvature_tolerance <= T::zero()
+    {
+        return Err(OptimizationError::InvalidConfig);
+    }
+    Ok(())
+}
+
+fn validate_bounds<T: NabledReal>(
+    initial: &Array1<T>,
+    lower_bounds: &Array1<T>,
+    upper_bounds: &Array1<T>,
 ) -> Result<(), OptimizationError> {
     if initial.len() != lower_bounds.len() || initial.len() != upper_bounds.len() {
         return Err(OptimizationError::DimensionMismatch);
@@ -340,13 +375,19 @@ fn validate_bounds_complex(
     Ok(())
 }
 
-fn project_to_bounds(
-    point: &mut Array1<f64>,
-    lower_bounds: &Array1<f64>,
-    upper_bounds: &Array1<f64>,
+fn project_to_bounds<T: NabledReal>(
+    point: &mut Array1<T>,
+    lower_bounds: &Array1<T>,
+    upper_bounds: &Array1<T>,
 ) {
     for i in 0..point.len() {
-        point[i] = point[i].clamp(lower_bounds[i], upper_bounds[i]);
+        point[i] = if point[i] < lower_bounds[i] {
+            lower_bounds[i]
+        } else if point[i] > upper_bounds[i] {
+            upper_bounds[i]
+        } else {
+            point[i]
+        };
     }
 }
 
@@ -362,8 +403,8 @@ fn project_to_bounds_complex(
     }
 }
 
-fn outer_product(left: &Array1<f64>, right: &Array1<f64>) -> Array2<f64> {
-    let mut output = Array2::<f64>::zeros((left.len(), right.len()));
+fn outer_product<T: NabledReal>(left: &Array1<T>, right: &Array1<T>) -> Array2<T> {
+    let mut output = Array2::<T>::zeros((left.len(), right.len()));
     for row in 0..left.len() {
         for col in 0..right.len() {
             output[[row, col]] = left[row] * right[col];
@@ -394,16 +435,17 @@ fn hermitian_dot(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Complex
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite objective evaluations.
-pub fn backtracking_line_search<F, G>(
-    point: &Array1<f64>,
-    direction: &Array1<f64>,
+pub fn backtracking_line_search<T, F, G>(
+    point: &Array1<T>,
+    direction: &Array1<T>,
     objective: F,
     gradient: G,
-    config: &LineSearchConfig,
-) -> Result<f64, OptimizationError>
+    config: &LineSearchConfig<T>,
+) -> Result<T, OptimizationError>
 where
-    F: Fn(&Array1<f64>) -> f64,
-    G: Fn(&Array1<f64>) -> Array1<f64>,
+    T: NabledReal,
+    F: Fn(&Array1<T>) -> T,
+    G: Fn(&Array1<T>) -> Array1<T>,
 {
     validate_vector(point)?;
     validate_vector(direction)?;
@@ -424,16 +466,18 @@ where
     let directional_derivative = grad.dot(direction);
 
     let mut alpha = config.initial_step;
+    let contraction = config.contraction;
+    let sufficient_decrease = config.sufficient_decrease;
     for _ in 0..config.max_iterations {
         let candidate = point + &direction.mapv(|value| value * alpha);
         let candidate_value = objective(&candidate);
         if !candidate_value.is_finite() {
             return Err(OptimizationError::NonFiniteInput);
         }
-        if candidate_value <= fx + config.sufficient_decrease * alpha * directional_derivative {
+        if candidate_value <= fx + sufficient_decrease * alpha * directional_derivative {
             return Ok(alpha);
         }
-        alpha *= config.contraction;
+        alpha *= contraction;
     }
     Err(OptimizationError::MaxIterationsExceeded)
 }
@@ -442,22 +486,24 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn gradient_descent<F, G>(
-    initial: &Array1<f64>,
+pub fn gradient_descent<T, F, G>(
+    initial: &Array1<T>,
     objective: F,
     gradient: G,
-    config: &SGDConfig,
-) -> Result<Array1<f64>, OptimizationError>
+    config: &SGDConfig<T>,
+) -> Result<Array1<T>, OptimizationError>
 where
-    F: Fn(&Array1<f64>) -> f64,
-    G: Fn(&Array1<f64>) -> Array1<f64>,
+    T: NabledReal,
+    F: Fn(&Array1<T>) -> T,
+    G: Fn(&Array1<T>) -> Array1<T>,
 {
     validate_vector(initial)?;
     validate_sgd_config(config)?;
 
     let mut x = initial.clone();
     let _ = objective(&x);
-    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
+    let learning_rate = config.learning_rate;
 
     for _ in 0..config.max_iterations {
         let grad = gradient(&x);
@@ -467,7 +513,7 @@ where
         if l2_norm(&grad) <= tolerance {
             return Ok(x);
         }
-        x = &x - &grad.mapv(|value| value * config.learning_rate);
+        x = &x - &grad.mapv(|value| value * learning_rate);
     }
 
     Err(OptimizationError::MaxIterationsExceeded)
@@ -477,25 +523,30 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn adam<F, G>(
-    initial: &Array1<f64>,
+pub fn adam<T, F, G>(
+    initial: &Array1<T>,
     objective: F,
     gradient: G,
-    config: &AdamConfig,
-) -> Result<Array1<f64>, OptimizationError>
+    config: &AdamConfig<T>,
+) -> Result<Array1<T>, OptimizationError>
 where
-    F: Fn(&Array1<f64>) -> f64,
-    G: Fn(&Array1<f64>) -> Array1<f64>,
+    T: NabledReal,
+    F: Fn(&Array1<T>) -> T,
+    G: Fn(&Array1<T>) -> Array1<T>,
 {
     validate_vector(initial)?;
     validate_adam_config(config)?;
 
     let mut x = initial.clone();
-    let mut m = Array1::<f64>::zeros(x.len());
-    let mut v = Array1::<f64>::zeros(x.len());
-    let mut beta1_power = 1.0_f64;
-    let mut beta2_power = 1.0_f64;
-    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    let mut m = Array1::<T>::zeros(x.len());
+    let mut v = Array1::<T>::zeros(x.len());
+    let mut beta1_power = T::one();
+    let mut beta2_power = T::one();
+    let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
+    let beta1 = config.beta1;
+    let beta2 = config.beta2;
+    let learning_rate = config.learning_rate;
+    let epsilon = config.epsilon;
 
     let _ = objective(&x);
     for _ in 0..config.max_iterations {
@@ -507,16 +558,16 @@ where
             return Ok(x);
         }
 
-        beta1_power *= config.beta1;
-        beta2_power *= config.beta2;
+        beta1_power *= beta1;
+        beta2_power *= beta2;
 
         for i in 0..x.len() {
-            m[i] = config.beta1 * m[i] + (1.0 - config.beta1) * grad[i];
-            v[i] = config.beta2 * v[i] + (1.0 - config.beta2) * grad[i] * grad[i];
+            m[i] = beta1 * m[i] + (T::one() - beta1) * grad[i];
+            v[i] = beta2 * v[i] + (T::one() - beta2) * grad[i] * grad[i];
 
-            let m_hat = m[i] / (1.0 - beta1_power);
-            let v_hat = v[i] / (1.0 - beta2_power);
-            x[i] -= config.learning_rate * m_hat / (v_hat.sqrt() + config.epsilon);
+            let m_hat = m[i] / (T::one() - beta1_power);
+            let v_hat = v[i] / (T::one() - beta2_power);
+            x[i] -= learning_rate * m_hat / (v_hat.sqrt() + epsilon);
         }
     }
 
@@ -527,22 +578,25 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn momentum_descent<F, G>(
-    initial: &Array1<f64>,
+pub fn momentum_descent<T, F, G>(
+    initial: &Array1<T>,
     objective: F,
     gradient: G,
-    config: &MomentumConfig,
-) -> Result<Array1<f64>, OptimizationError>
+    config: &MomentumConfig<T>,
+) -> Result<Array1<T>, OptimizationError>
 where
-    F: Fn(&Array1<f64>) -> f64,
-    G: Fn(&Array1<f64>) -> Array1<f64>,
+    T: NabledReal,
+    F: Fn(&Array1<T>) -> T,
+    G: Fn(&Array1<T>) -> Array1<T>,
 {
     validate_vector(initial)?;
     validate_momentum_config(config)?;
 
     let mut x = initial.clone();
-    let mut velocity = Array1::<f64>::zeros(x.len());
-    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    let mut velocity = Array1::<T>::zeros(x.len());
+    let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
+    let learning_rate = config.learning_rate;
+    let momentum = config.momentum;
 
     let _ = objective(&x);
     for _ in 0..config.max_iterations {
@@ -555,8 +609,8 @@ where
         }
 
         for i in 0..x.len() {
-            velocity[i] = config.momentum * velocity[i] + grad[i];
-            x[i] -= config.learning_rate * velocity[i];
+            velocity[i] = momentum * velocity[i] + grad[i];
+            x[i] -= learning_rate * velocity[i];
         }
     }
 
@@ -567,22 +621,26 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn rmsprop<F, G>(
-    initial: &Array1<f64>,
+pub fn rmsprop<T, F, G>(
+    initial: &Array1<T>,
     objective: F,
     gradient: G,
-    config: &RMSPropConfig,
-) -> Result<Array1<f64>, OptimizationError>
+    config: &RMSPropConfig<T>,
+) -> Result<Array1<T>, OptimizationError>
 where
-    F: Fn(&Array1<f64>) -> f64,
-    G: Fn(&Array1<f64>) -> Array1<f64>,
+    T: NabledReal,
+    F: Fn(&Array1<T>) -> T,
+    G: Fn(&Array1<T>) -> Array1<T>,
 {
     validate_vector(initial)?;
     validate_rmsprop_config(config)?;
 
     let mut x = initial.clone();
-    let mut avg_sq = Array1::<f64>::zeros(x.len());
-    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    let mut avg_sq = Array1::<T>::zeros(x.len());
+    let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
+    let learning_rate = config.learning_rate;
+    let rho = config.rho;
+    let epsilon = config.epsilon;
 
     let _ = objective(&x);
     for _ in 0..config.max_iterations {
@@ -595,8 +653,8 @@ where
         }
 
         for i in 0..x.len() {
-            avg_sq[i] = config.rho * avg_sq[i] + (1.0 - config.rho) * grad[i] * grad[i];
-            x[i] -= config.learning_rate * grad[i] / (avg_sq[i].sqrt() + config.epsilon);
+            avg_sq[i] = rho * avg_sq[i] + (T::one() - rho) * grad[i] * grad[i];
+            x[i] -= learning_rate * grad[i] / (avg_sq[i].sqrt() + epsilon);
         }
     }
 
@@ -607,17 +665,18 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration, invalid bounds, or non-finite gradients.
-pub fn projected_gradient_descent_box<F, G>(
-    initial: &Array1<f64>,
+pub fn projected_gradient_descent_box<T, F, G>(
+    initial: &Array1<T>,
     objective: F,
     gradient: G,
-    lower_bounds: &Array1<f64>,
-    upper_bounds: &Array1<f64>,
-    config: &ProjectedGradientConfig,
-) -> Result<Array1<f64>, OptimizationError>
+    lower_bounds: &Array1<T>,
+    upper_bounds: &Array1<T>,
+    config: &ProjectedGradientConfig<T>,
+) -> Result<Array1<T>, OptimizationError>
 where
-    F: Fn(&Array1<f64>) -> f64,
-    G: Fn(&Array1<f64>) -> Array1<f64>,
+    T: NabledReal,
+    F: Fn(&Array1<T>) -> T,
+    G: Fn(&Array1<T>) -> Array1<T>,
 {
     validate_vector(initial)?;
     validate_vector(lower_bounds)?;
@@ -628,7 +687,8 @@ where
     let mut x = initial.clone();
     project_to_bounds(&mut x, lower_bounds, upper_bounds);
     let _ = objective(&x);
-    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
+    let learning_rate = config.learning_rate;
 
     for _ in 0..config.max_iterations {
         let grad = gradient(&x);
@@ -636,7 +696,7 @@ where
             return Err(OptimizationError::NonFiniteInput);
         }
         let previous = x.clone();
-        x = &x - &grad.mapv(|value| value * config.learning_rate);
+        x = &x - &grad.mapv(|value| value * learning_rate);
         project_to_bounds(&mut x, lower_bounds, upper_bounds);
         let step_norm = l2_norm(&(&x - &previous));
         if step_norm <= tolerance || l2_norm(&grad) <= tolerance {
@@ -653,19 +713,21 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn stochastic_gradient_descent<G>(
-    initial: &Array1<f64>,
+pub fn stochastic_gradient_descent<T, G>(
+    initial: &Array1<T>,
     stochastic_gradient: G,
-    config: &SGDConfig,
-) -> Result<Array1<f64>, OptimizationError>
+    config: &SGDConfig<T>,
+) -> Result<Array1<T>, OptimizationError>
 where
-    G: Fn(&Array1<f64>, usize) -> Array1<f64>,
+    T: NabledReal,
+    G: Fn(&Array1<T>, usize) -> Array1<T>,
 {
     validate_vector(initial)?;
     validate_sgd_config(config)?;
 
     let mut x = initial.clone();
-    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
+    let learning_rate = config.learning_rate;
     for iteration in 0..config.max_iterations {
         let grad = stochastic_gradient(&x, iteration);
         if grad.len() != x.len() || grad.iter().any(|value| !value.is_finite()) {
@@ -674,7 +736,7 @@ where
         if l2_norm(&grad) <= tolerance {
             return Ok(x);
         }
-        x = &x - &grad.mapv(|value| value * config.learning_rate);
+        x = &x - &grad.mapv(|value| value * learning_rate);
     }
     Err(OptimizationError::MaxIterationsExceeded)
 }
@@ -683,23 +745,26 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn bfgs<F, G>(
-    initial: &Array1<f64>,
+pub fn bfgs<T, F, G>(
+    initial: &Array1<T>,
     objective: F,
     gradient: G,
-    config: &BFGSConfig,
-) -> Result<Array1<f64>, OptimizationError>
+    config: &BFGSConfig<T>,
+) -> Result<Array1<T>, OptimizationError>
 where
-    F: Fn(&Array1<f64>) -> f64,
-    G: Fn(&Array1<f64>) -> Array1<f64>,
+    T: NabledReal,
+    F: Fn(&Array1<T>) -> T,
+    G: Fn(&Array1<T>) -> Array1<T>,
 {
     validate_vector(initial)?;
     validate_bfgs_config(config)?;
 
     let dimension = initial.len();
     let mut x = initial.clone();
-    let mut h_inv = Array2::<f64>::eye(dimension);
-    let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
+    let mut h_inv = Array2::<T>::eye(dimension);
+    let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
+    let step = config.step_size;
+    let curvature_tolerance = config.curvature_tolerance;
 
     let _ = objective(&x);
     for _ in 0..config.max_iterations {
@@ -712,7 +777,6 @@ where
         }
 
         let direction = -h_inv.dot(&grad);
-        let step = config.step_size;
         let x_next = &x + &direction.mapv(|value| value * step);
         let grad_next = gradient(&x_next);
         if grad_next.len() != x.len() || grad_next.iter().any(|value| !value.is_finite()) {
@@ -722,16 +786,19 @@ where
         let s = &x_next - &x;
         let y = &grad_next - &grad;
         let ys = y.dot(&s);
-        if ys.abs() > config.curvature_tolerance {
-            let rho = 1.0 / ys;
-            let identity = Array2::<f64>::eye(dimension);
+        if ys.abs() > curvature_tolerance {
+            let rho = T::one() / ys;
+            let identity = Array2::<T>::eye(dimension);
             let sy = outer_product(&s, &y);
             let ys_outer = outer_product(&y, &s);
             let ss = outer_product(&s, &s);
 
-            let left = &identity - &(rho * sy);
-            let right = &identity - &(rho * ys_outer);
-            h_inv = left.dot(&h_inv).dot(&right) + rho * ss;
+            let scaled_cross_left = sy.mapv(|value| rho * value);
+            let scaled_cross_right = ys_outer.mapv(|value| rho * value);
+            let scaled_rank_one = ss.mapv(|value| rho * value);
+            let left = &identity - &scaled_cross_left;
+            let right = &identity - &scaled_cross_right;
+            h_inv = left.dot(&h_inv).dot(&right) + scaled_rank_one;
         }
 
         x = x_next;
@@ -749,7 +816,7 @@ pub fn backtracking_line_search_complex<F, G>(
     direction: &Array1<Complex64>,
     objective: F,
     gradient: G,
-    config: &LineSearchConfig,
+    config: &LineSearchConfig<f64>,
 ) -> Result<f64, OptimizationError>
 where
     F: Fn(&Array1<Complex64>) -> f64,
@@ -798,7 +865,7 @@ pub fn gradient_descent_complex<F, G>(
     initial: &Array1<Complex64>,
     objective: F,
     gradient: G,
-    config: &SGDConfig,
+    config: &SGDConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
 where
     F: Fn(&Array1<Complex64>) -> f64,
@@ -835,7 +902,7 @@ pub fn adam_complex<F, G>(
     initial: &Array1<Complex64>,
     objective: F,
     gradient: G,
-    config: &AdamConfig,
+    config: &AdamConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
 where
     F: Fn(&Array1<Complex64>) -> f64,
@@ -887,7 +954,7 @@ pub fn momentum_descent_complex<F, G>(
     initial: &Array1<Complex64>,
     objective: F,
     gradient: G,
-    config: &MomentumConfig,
+    config: &MomentumConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
 where
     F: Fn(&Array1<Complex64>) -> f64,
@@ -929,7 +996,7 @@ pub fn rmsprop_complex<F, G>(
     initial: &Array1<Complex64>,
     objective: F,
     gradient: G,
-    config: &RMSPropConfig,
+    config: &RMSPropConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
 where
     F: Fn(&Array1<Complex64>) -> f64,
@@ -975,7 +1042,7 @@ pub fn projected_gradient_descent_box_complex<F, G>(
     gradient: G,
     lower_bounds: &Array1<Complex64>,
     upper_bounds: &Array1<Complex64>,
-    config: &ProjectedGradientConfig,
+    config: &ProjectedGradientConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
 where
     F: Fn(&Array1<Complex64>) -> f64,
@@ -1020,7 +1087,7 @@ where
 pub fn stochastic_gradient_descent_complex<G>(
     initial: &Array1<Complex64>,
     stochastic_gradient: G,
-    config: &SGDConfig,
+    config: &SGDConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
 where
     G: Fn(&Array1<Complex64>, usize) -> Array1<Complex64>,
@@ -1053,7 +1120,7 @@ pub fn bfgs_complex<F, G>(
     initial: &Array1<Complex64>,
     objective: F,
     gradient: G,
-    config: &BFGSConfig,
+    config: &BFGSConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
 where
     F: Fn(&Array1<Complex64>) -> f64,
@@ -1119,19 +1186,19 @@ mod tests {
     use super::*;
 
     fn objective(x: &Array1<f64>) -> f64 {
-        let delta = x[0] - 3.0;
+        let delta = x[0] - 3.0_f64;
         delta * delta
     }
 
-    fn gradient(x: &Array1<f64>) -> Array1<f64> { arr1(&[2.0 * (x[0] - 3.0)]) }
+    fn gradient(x: &Array1<f64>) -> Array1<f64> { arr1(&[2.0_f64 * (x[0] - 3.0_f64)]) }
 
     fn objective_complex(x: &Array1<Complex64>) -> f64 {
-        let delta = x[0] - Complex64::new(3.0, 2.0);
+        let delta = x[0] - Complex64::new(3.0_f64, 2.0_f64);
         delta.norm_sqr()
     }
 
     fn gradient_complex(x: &Array1<Complex64>) -> Array1<Complex64> {
-        arr1(&[Complex64::new(2.0, 0.0) * (x[0] - Complex64::new(3.0, 2.0))])
+        arr1(&[Complex64::new(2.0_f64, 0.0_f64) * (x[0] - Complex64::new(3.0_f64, 2.0_f64))])
     }
 
     #[test]
@@ -1146,21 +1213,21 @@ mod tests {
             &LineSearchConfig::default(),
         )
         .unwrap();
-        assert!(alpha > 0.0);
+        assert!(alpha > 0.0_f64);
     }
 
     #[test]
     fn gradient_descent_converges_on_quadratic() {
         let x0 = arr1(&[0.0_f64]);
         let solution = gradient_descent(&x0, objective, gradient, &SGDConfig::default()).unwrap();
-        assert!((solution[0] - 3.0).abs() < 1e-4);
+        assert!((solution[0] - 3.0_f64).abs() < 1e-4_f64);
     }
 
     #[test]
     fn adam_converges_on_quadratic() {
         let x0 = arr1(&[-5.0_f64]);
         let solution = adam(&x0, objective, gradient, &AdamConfig::default()).unwrap();
-        assert!((solution[0] - 3.0).abs() < 1e-3);
+        assert!((solution[0] - 3.0_f64).abs() < 1e-3_f64);
     }
 
     #[test]
@@ -1176,7 +1243,7 @@ mod tests {
         );
         assert!(matches!(result, Err(OptimizationError::DimensionMismatch)));
 
-        let bad_config = LineSearchConfig { contraction: 1.0, ..LineSearchConfig::default() };
+        let bad_config = LineSearchConfig { contraction: 1.0_f64, ..LineSearchConfig::default() };
         let result =
             backtracking_line_search(&x, &arr1(&[1.0_f64]), objective, gradient, &bad_config);
         assert!(matches!(result, Err(OptimizationError::InvalidConfig)));
@@ -1191,13 +1258,13 @@ mod tests {
         assert!(matches!(gd_non_finite, Err(OptimizationError::NonFiniteInput)));
 
         let gd_stall = gradient_descent(&x0, objective, gradient, &SGDConfig {
-            learning_rate:  1e-12,
+            learning_rate:  1e-12_f64,
             max_iterations: 1,
-            tolerance:      0.0,
+            tolerance:      0.0_f64,
         });
         assert!(matches!(gd_stall, Err(OptimizationError::MaxIterationsExceeded)));
 
-        let bad_adam = AdamConfig { beta1: 1.0, ..AdamConfig::default() };
+        let bad_adam = AdamConfig { beta1: 1.0_f64, ..AdamConfig::default() };
         let adam_invalid = adam(&x0, objective, gradient, &bad_adam);
         assert!(matches!(adam_invalid, Err(OptimizationError::InvalidConfig)));
     }
@@ -1208,22 +1275,22 @@ mod tests {
 
         let momentum_solution =
             momentum_descent(&x0, objective, gradient, &MomentumConfig::default()).unwrap();
-        assert!((momentum_solution[0] - 3.0).abs() < 1e-3);
+        assert!((momentum_solution[0] - 3.0_f64).abs() < 1e-3_f64);
 
         let rmsprop_solution =
             rmsprop(&x0, objective, gradient, &RMSPropConfig::default()).unwrap();
-        assert!((rmsprop_solution[0] - 3.0).abs() < 1e-3);
+        assert!((rmsprop_solution[0] - 3.0_f64).abs() < 1e-3_f64);
     }
 
     #[test]
     fn momentum_and_rmsprop_reject_invalid_config() {
         let x0 = arr1(&[0.0_f64]);
 
-        let bad_momentum = MomentumConfig { momentum: 1.0, ..MomentumConfig::default() };
+        let bad_momentum = MomentumConfig { momentum: 1.0_f64, ..MomentumConfig::default() };
         let momentum_invalid = momentum_descent(&x0, objective, gradient, &bad_momentum);
         assert!(matches!(momentum_invalid, Err(OptimizationError::InvalidConfig)));
 
-        let bad_rmsprop = RMSPropConfig { rho: 1.0, ..RMSPropConfig::default() };
+        let bad_rmsprop = RMSPropConfig { rho: 1.0_f64, ..RMSPropConfig::default() };
         let rmsprop_invalid = rmsprop(&x0, objective, gradient, &bad_rmsprop);
         assert!(matches!(rmsprop_invalid, Err(OptimizationError::InvalidConfig)));
     }
@@ -1242,7 +1309,7 @@ mod tests {
             &ProjectedGradientConfig::default(),
         )
         .unwrap();
-        assert!((solution[0] - 2.5).abs() < 1e-8);
+        assert!((solution[0] - 2.5_f64).abs() < 1e-8_f64);
     }
 
     #[test]
@@ -1250,18 +1317,22 @@ mod tests {
         let x0 = arr1(&[-3.0_f64]);
         let solution = stochastic_gradient_descent(
             &x0,
-            |x, _iteration| arr1(&[2.0 * (x[0] - 3.0)]),
-            &SGDConfig { learning_rate: 5e-2, max_iterations: 2_000, tolerance: 1e-6 },
+            |x, _iteration| arr1(&[2.0_f64 * (x[0] - 3.0_f64)]),
+            &SGDConfig {
+                learning_rate:  5e-2_f64,
+                max_iterations: 2_000,
+                tolerance:      1e-6_f64,
+            },
         )
         .unwrap();
-        assert!((solution[0] - 3.0).abs() < 1e-3);
+        assert!((solution[0] - 3.0_f64).abs() < 1e-3_f64);
     }
 
     #[test]
     fn bfgs_converges_on_quadratic() {
         let x0 = arr1(&[-8.0_f64]);
         let solution = bfgs(&x0, objective, gradient, &BFGSConfig::default()).unwrap();
-        assert!((solution[0] - 3.0).abs() < 1e-6);
+        assert!((solution[0] - 3.0_f64).abs() < 1e-6_f64);
     }
 
     #[test]
@@ -1283,15 +1354,17 @@ mod tests {
             stochastic_gradient_descent(&x0, |_x, _| arr1(&[f64::NAN]), &SGDConfig::default());
         assert!(matches!(sgd_non_finite, Err(OptimizationError::NonFiniteInput)));
 
-        let bfgs_invalid =
-            bfgs(&x0, objective, gradient, &BFGSConfig { step_size: 0.0, ..BFGSConfig::default() });
+        let bfgs_invalid = bfgs(&x0, objective, gradient, &BFGSConfig {
+            step_size: 0.0_f64,
+            ..BFGSConfig::default()
+        });
         assert!(matches!(bfgs_invalid, Err(OptimizationError::InvalidConfig)));
     }
 
     #[test]
     fn complex_line_search_and_optimizers_converge() {
-        let x = arr1(&[Complex64::new(0.0, 0.0)]);
-        let direction = arr1(&[Complex64::new(1.0, 1.0)]);
+        let x = arr1(&[Complex64::new(0.0_f64, 0.0_f64)]);
+        let direction = arr1(&[Complex64::new(1.0_f64, 1.0_f64)]);
         let alpha = backtracking_line_search_complex(
             &x,
             &direction,
@@ -1300,7 +1373,7 @@ mod tests {
             &LineSearchConfig::default(),
         )
         .unwrap();
-        assert!(alpha > 0.0);
+        assert!(alpha > 0.0_f64);
 
         let gd = gradient_descent_complex(
             &x,
@@ -1309,11 +1382,11 @@ mod tests {
             &SGDConfig::default(),
         )
         .unwrap();
-        assert!((gd[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+        assert!((gd[0] - Complex64::new(3.0_f64, 2.0_f64)).norm() < 1e-3_f64);
 
         let adam_solution =
             adam_complex(&x, objective_complex, gradient_complex, &AdamConfig::default()).unwrap();
-        assert!((adam_solution[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+        assert!((adam_solution[0] - Complex64::new(3.0_f64, 2.0_f64)).norm() < 1e-3_f64);
 
         let momentum_solution = momentum_descent_complex(
             &x,
@@ -1322,23 +1395,23 @@ mod tests {
             &MomentumConfig::default(),
         )
         .unwrap();
-        assert!((momentum_solution[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+        assert!((momentum_solution[0] - Complex64::new(3.0_f64, 2.0_f64)).norm() < 1e-3_f64);
 
         let rmsprop_solution =
             rmsprop_complex(&x, objective_complex, gradient_complex, &RMSPropConfig::default())
                 .unwrap();
-        assert!((rmsprop_solution[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+        assert!((rmsprop_solution[0] - Complex64::new(3.0_f64, 2.0_f64)).norm() < 1e-3_f64);
 
         let bfgs_solution =
             bfgs_complex(&x, objective_complex, gradient_complex, &BFGSConfig::default()).unwrap();
-        assert!((bfgs_solution[0] - Complex64::new(3.0, 2.0)).norm() < 1e-6);
+        assert!((bfgs_solution[0] - Complex64::new(3.0_f64, 2.0_f64)).norm() < 1e-6_f64);
     }
 
     #[test]
     fn complex_projected_and_stochastic_paths_work() {
-        let x = arr1(&[Complex64::new(-5.0, -5.0)]);
-        let lower = arr1(&[Complex64::new(0.0, 0.0)]);
-        let upper = arr1(&[Complex64::new(2.5, 2.5)]);
+        let x = arr1(&[Complex64::new(-5.0_f64, -5.0_f64)]);
+        let lower = arr1(&[Complex64::new(0.0_f64, 0.0_f64)]);
+        let upper = arr1(&[Complex64::new(2.5_f64, 2.5_f64)]);
         let projected = projected_gradient_descent_box_complex(
             &x,
             objective_complex,
@@ -1348,16 +1421,22 @@ mod tests {
             &ProjectedGradientConfig::default(),
         )
         .unwrap();
-        assert!((projected[0] - Complex64::new(2.5, 2.0)).norm() < 1e-3);
+        assert!((projected[0] - Complex64::new(2.5_f64, 2.0_f64)).norm() < 1e-3_f64);
 
         let stochastic = stochastic_gradient_descent_complex(
-            &arr1(&[Complex64::new(-3.0, -1.0)]),
+            &arr1(&[Complex64::new(-3.0_f64, -1.0_f64)]),
             |point, _iteration| {
-                arr1(&[Complex64::new(2.0, 0.0) * (point[0] - Complex64::new(3.0, 2.0))])
+                let grad_sample = Complex64::new(2.0_f64, 0.0_f64)
+                    * (point[0] - Complex64::new(3.0_f64, 2.0_f64));
+                arr1(&[grad_sample])
             },
-            &SGDConfig { learning_rate: 5e-2, max_iterations: 2_000, tolerance: 1e-6 },
+            &SGDConfig {
+                learning_rate:  5e-2_f64,
+                max_iterations: 2_000,
+                tolerance:      1e-6_f64,
+            },
         )
         .unwrap();
-        assert!((stochastic[0] - Complex64::new(3.0, 2.0)).norm() < 1e-3);
+        assert!((stochastic[0] - Complex64::new(3.0_f64, 2.0_f64)).norm() < 1e-3_f64);
     }
 }

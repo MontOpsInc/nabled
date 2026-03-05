@@ -2,23 +2,24 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use nabled_linalg::svd;
 use ndarray::{Array1, Array2, ArrayView2, Axis, s};
 use num_complex::Complex64;
 
 /// PCA result for ndarray matrices.
 #[derive(Debug, Clone)]
-pub struct NdarrayPCAResult {
+pub struct NdarrayPCAResult<T: NabledReal> {
     /// Principal components as rows (`k x features`).
-    pub components:               Array2<f64>,
+    pub components:               Array2<T>,
     /// Explained variance for each retained component.
-    pub explained_variance:       Array1<f64>,
+    pub explained_variance:       Array1<T>,
     /// Explained variance ratio for each retained component.
-    pub explained_variance_ratio: Array1<f64>,
+    pub explained_variance_ratio: Array1<T>,
     /// Column means used for centering.
-    pub mean:                     Array1<f64>,
+    pub mean:                     Array1<T>,
     /// Scores (`samples x k`).
-    pub scores:                   Array2<f64>,
+    pub scores:                   Array2<T>,
 }
 
 /// PCA result for complex ndarray matrices.
@@ -59,9 +60,14 @@ impl fmt::Display for PCAError {
 
 impl std::error::Error for PCAError {}
 
-fn usize_to_f64(value: usize) -> f64 { u32::try_from(value).map_or(f64::from(u32::MAX), f64::from) }
+fn usize_to_real<T: NabledReal>(value: usize) -> T {
+    let fallback = T::from_u32(u32::MAX).unwrap_or(T::one());
+    T::from_usize(value).unwrap_or(fallback)
+}
 
-fn center_columns(matrix: &ArrayView2<'_, f64>) -> Result<(Array2<f64>, Array1<f64>), PCAError> {
+fn center_columns<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<(Array2<T>, Array1<T>), PCAError> {
     if matrix.is_empty() {
         return Err(PCAError::EmptyMatrix);
     }
@@ -77,8 +83,11 @@ fn center_columns(matrix: &ArrayView2<'_, f64>) -> Result<(Array2<f64>, Array1<f
     Ok((centered, mean))
 }
 
-fn transform_impl(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
-    let mut centered = Array2::<f64>::zeros((matrix.nrows(), matrix.ncols()));
+fn transform_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    pca: &NdarrayPCAResult<T>,
+) -> Array2<T> {
+    let mut centered = Array2::<T>::zeros((matrix.nrows(), matrix.ncols()));
     for row in 0..matrix.nrows() {
         for col in 0..matrix.ncols() {
             centered[[row, col]] = matrix[[row, col]] - pca.mean[col];
@@ -87,7 +96,10 @@ fn transform_impl(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array
     centered.dot(&pca.components.t())
 }
 
-fn inverse_transform_impl(scores: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+fn inverse_transform_impl<T: NabledReal>(
+    scores: &ArrayView2<'_, T>,
+    pca: &NdarrayPCAResult<T>,
+) -> Array2<T> {
     let mut reconstructed = scores.dot(&pca.components);
     for row in 0..reconstructed.nrows() {
         for col in 0..reconstructed.ncols() {
@@ -109,7 +121,7 @@ fn center_columns_complex(
         for row in 0..matrix.nrows() {
             sum += matrix[[row, col]];
         }
-        mean[col] = sum / usize_to_f64(matrix.nrows());
+        mean[col] = sum / usize_to_real::<f64>(matrix.nrows());
     }
 
     let mut centered = matrix.to_owned();
@@ -153,17 +165,52 @@ fn inverse_transform_complex_impl(
 ///
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
-pub fn compute_pca(
-    matrix: &Array2<f64>,
+#[cfg(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+))]
+pub fn compute_pca<T>(
+    matrix: &Array2<T>,
     n_components: Option<usize>,
-) -> Result<NdarrayPCAResult, PCAError> {
+) -> Result<NdarrayPCAResult<T>, PCAError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     compute_pca_impl(&matrix.view(), n_components)
 }
 
-fn compute_pca_impl(
-    matrix: &ArrayView2<'_, f64>,
+/// Compute principal component analysis.
+///
+/// # Errors
+/// Returns an error for invalid input or decomposition failure.
+#[cfg(not(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+)))]
+pub fn compute_pca<T: NabledReal>(
+    matrix: &Array2<T>,
     n_components: Option<usize>,
-) -> Result<NdarrayPCAResult, PCAError> {
+) -> Result<NdarrayPCAResult<T>, PCAError> {
+    compute_pca_impl(&matrix.view(), n_components)
+}
+
+#[cfg(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+))]
+fn compute_pca_impl<T>(
+    matrix: &ArrayView2<'_, T>,
+    n_components: Option<usize>,
+) -> Result<NdarrayPCAResult<T>, PCAError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     let (centered, mean) = center_columns(matrix)?;
     let svd = svd::decompose(&centered).map_err(|_| PCAError::DecompositionFailed)?;
 
@@ -176,13 +223,57 @@ fn compute_pca_impl(
     let components = svd.vt.slice(s![..keep, ..]).to_owned();
     let scores = centered.dot(&components.t());
 
-    let denominator = (usize_to_f64(centered.nrows()) - 1.0).max(1.0);
-    let mut explained_variance = Array1::<f64>::zeros(keep);
+    let one = T::one();
+    let denominator = (usize_to_real::<T>(centered.nrows()) - one).max(one);
+    let mut explained_variance = Array1::<T>::zeros(keep);
     for i in 0..keep {
         explained_variance[i] = (svd.singular_values[i] * svd.singular_values[i]) / denominator;
     }
 
-    let total_variance = explained_variance.iter().sum::<f64>().max(f64::EPSILON);
+    let total_variance = explained_variance
+        .iter()
+        .copied()
+        .fold(T::zero(), |acc, value| acc + value)
+        .max(T::epsilon());
+    let explained_variance_ratio = explained_variance.map(|value| *value / total_variance);
+
+    Ok(NdarrayPCAResult { components, explained_variance, explained_variance_ratio, mean, scores })
+}
+
+#[cfg(not(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+)))]
+fn compute_pca_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    n_components: Option<usize>,
+) -> Result<NdarrayPCAResult<T>, PCAError> {
+    let (centered, mean) = center_columns(matrix)?;
+    let svd = svd::decompose(&centered).map_err(|_| PCAError::DecompositionFailed)?;
+
+    let max_components = centered.nrows().min(centered.ncols());
+    let keep = n_components.unwrap_or(max_components).min(max_components);
+    if keep == 0 {
+        return Err(PCAError::InvalidInput("n_components must be greater than 0".to_string()));
+    }
+
+    let components = svd.vt.slice(s![..keep, ..]).to_owned();
+    let scores = centered.dot(&components.t());
+
+    let one = T::one();
+    let denominator = (usize_to_real::<T>(centered.nrows()) - one).max(one);
+    let mut explained_variance = Array1::<T>::zeros(keep);
+    for i in 0..keep {
+        explained_variance[i] = (svd.singular_values[i] * svd.singular_values[i]) / denominator;
+    }
+
+    let total_variance = explained_variance
+        .iter()
+        .copied()
+        .fold(T::zero(), |acc, value| acc + value)
+        .max(T::epsilon());
     let explained_variance_ratio = explained_variance.map(|value| *value / total_variance);
 
     Ok(NdarrayPCAResult { components, explained_variance, explained_variance_ratio, mean, scores })
@@ -192,10 +283,36 @@ fn compute_pca_impl(
 ///
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
-pub fn compute_pca_view(
-    matrix: &ArrayView2<'_, f64>,
+#[cfg(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+))]
+pub fn compute_pca_view<T>(
+    matrix: &ArrayView2<'_, T>,
     n_components: Option<usize>,
-) -> Result<NdarrayPCAResult, PCAError> {
+) -> Result<NdarrayPCAResult<T>, PCAError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    compute_pca_impl(matrix, n_components)
+}
+
+/// Compute principal component analysis from a matrix view.
+///
+/// # Errors
+/// Returns an error for invalid input or decomposition failure.
+#[cfg(not(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+)))]
+pub fn compute_pca_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    n_components: Option<usize>,
+) -> Result<NdarrayPCAResult<T>, PCAError> {
     compute_pca_impl(matrix, n_components)
 }
 
@@ -227,7 +344,7 @@ fn compute_pca_complex_impl(
     let projection = components.t().mapv(|value| value.conj());
     let scores = centered.dot(&projection);
 
-    let denominator = (usize_to_f64(centered.nrows()) - 1.0).max(1.0);
+    let denominator = (usize_to_real::<f64>(centered.nrows()) - 1.0_f64).max(1.0_f64);
     let mut explained_variance = Array1::<f64>::zeros(keep);
     for i in 0..keep {
         explained_variance[i] = (svd.singular_values[i] * svd.singular_values[i]) / denominator;
@@ -258,25 +375,34 @@ pub fn compute_pca_complex_view(
 
 /// Project data to PCA score space.
 #[must_use]
-pub fn transform(matrix: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+pub fn transform<T: NabledReal>(matrix: &Array2<T>, pca: &NdarrayPCAResult<T>) -> Array2<T> {
     transform_impl(&matrix.view(), pca)
 }
 
 /// Project data to PCA score space from a matrix view.
 #[must_use]
-pub fn transform_view(matrix: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+pub fn transform_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    pca: &NdarrayPCAResult<T>,
+) -> Array2<T> {
     transform_impl(matrix, pca)
 }
 
 /// Reconstruct from PCA scores.
 #[must_use]
-pub fn inverse_transform(scores: &Array2<f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+pub fn inverse_transform<T: NabledReal>(
+    scores: &Array2<T>,
+    pca: &NdarrayPCAResult<T>,
+) -> Array2<T> {
     inverse_transform_impl(&scores.view(), pca)
 }
 
 /// Reconstruct from PCA scores provided as a matrix view.
 #[must_use]
-pub fn inverse_transform_view(scores: &ArrayView2<'_, f64>, pca: &NdarrayPCAResult) -> Array2<f64> {
+pub fn inverse_transform_view<T: NabledReal>(
+    scores: &ArrayView2<'_, T>,
+    pca: &NdarrayPCAResult<T>,
+) -> Array2<T> {
     inverse_transform_impl(scores, pca)
 }
 
@@ -325,39 +451,47 @@ mod tests {
 
     #[test]
     fn pca_roundtrip_is_consistent() {
-        let matrix =
-            Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
+        .unwrap();
         let pca = compute_pca(&matrix, Some(2)).unwrap();
         let transformed = transform(&matrix, &pca);
         let reconstructed = inverse_transform(&transformed, &pca);
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
-                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8);
+                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8_f64);
             }
         }
     }
 
     #[test]
     fn pca_rejects_zero_components() {
-        let matrix =
-            Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
+        .unwrap();
         let result = compute_pca(&matrix, Some(0));
         assert!(matches!(result, Err(PCAError::InvalidInput(_))));
     }
 
     #[test]
     fn explained_variance_ratio_sums_to_one() {
-        let matrix =
-            Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
+        .unwrap();
         let pca = compute_pca(&matrix, Some(2)).unwrap();
         let sum = pca.explained_variance_ratio.iter().sum::<f64>();
-        assert!((sum - 1.0).abs() < 1e-10);
+        assert!((sum - 1.0_f64).abs() < 1e-10_f64);
     }
 
     #[test]
     fn pca_view_variants_match_owned() {
-        let matrix =
-            Array2::from_shape_vec((4, 2), vec![1.0, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0]).unwrap();
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
+        .unwrap();
         let pca_owned = compute_pca(&matrix, Some(2)).unwrap();
         let pca_view = compute_pca_view(&matrix.view(), Some(2)).unwrap();
 
@@ -371,8 +505,30 @@ mod tests {
 
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
-                assert!((transformed_owned[[i, j]] - transformed_view[[i, j]]).abs() < 1e-12);
-                assert!((reconstructed_owned[[i, j]] - reconstructed_view[[i, j]]).abs() < 1e-12);
+                assert!((transformed_owned[[i, j]] - transformed_view[[i, j]]).abs() < 1e-12_f64);
+                assert!(
+                    (reconstructed_owned[[i, j]] - reconstructed_view[[i, j]]).abs() < 1e-12_f64
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pca_real_f32_paths_are_consistent() {
+        let matrix = Array2::<f32>::from_shape_vec((4, 2), vec![
+            1.0_f32, 2.0_f32, 2.0_f32, 1.0_f32, 3.0_f32, 4.0_f32, 4.0_f32, 3.0_f32,
+        ])
+        .unwrap();
+        let pca = compute_pca(&matrix, Some(2)).unwrap();
+        let transformed = transform(&matrix, &pca);
+        let reconstructed = inverse_transform(&transformed, &pca);
+
+        assert_eq!(pca.components.dim(), (2, 2));
+        assert_eq!(pca.explained_variance.len(), 2);
+        assert_eq!(pca.explained_variance_ratio.len(), 2);
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-4_f32);
             }
         }
     }

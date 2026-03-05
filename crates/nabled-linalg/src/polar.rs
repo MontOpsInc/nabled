@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array2, ArrayView2};
 use num_complex::Complex64;
 
@@ -13,11 +14,11 @@ use crate::svd;
 
 /// Result of polar decomposition `A = U P`.
 #[derive(Debug, Clone)]
-pub struct NdarrayPolarResult {
+pub struct NdarrayPolarResult<T: NabledReal = f64> {
     /// Orthogonal/unitary factor.
-    pub u: Array2<f64>,
+    pub u: Array2<T>,
     /// Symmetric positive-semidefinite factor.
-    pub p: Array2<f64>,
+    pub p: Array2<T>,
 }
 
 /// Result of complex polar decomposition `A = U P`.
@@ -55,7 +56,7 @@ impl fmt::Display for PolarError {
 
 impl std::error::Error for PolarError {}
 
-fn validate_square_non_empty_view(matrix: &ArrayView2<'_, f64>) -> Result<(), PolarError> {
+fn validate_square_non_empty_view<T>(matrix: &ArrayView2<'_, T>) -> Result<(), PolarError> {
     if matrix.is_empty() {
         return Err(PolarError::EmptyMatrix);
     }
@@ -65,7 +66,7 @@ fn validate_square_non_empty_view(matrix: &ArrayView2<'_, f64>) -> Result<(), Po
     Ok(())
 }
 
-fn validate_finite_view(matrix: &ArrayView2<'_, f64>) -> Result<(), PolarError> {
+fn validate_finite_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<(), PolarError> {
     if matrix.iter().any(|value| !value.is_finite()) {
         return Err(PolarError::NumericalInstability);
     }
@@ -149,11 +150,30 @@ fn compute_polar_complex_internal(
 ///
 /// # Errors
 /// Returns an error if matrix is invalid or SVD fails.
-pub fn compute_polar(matrix: &Array2<f64>) -> Result<NdarrayPolarResult, PolarError> {
+#[cfg(feature = "lapack-provider")]
+pub fn compute_polar<T>(matrix: &Array2<T>) -> Result<NdarrayPolarResult<T>, PolarError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
     compute_polar_impl(&matrix.view())
 }
 
-fn compute_polar_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarResult, PolarError> {
+/// Compute polar decomposition using SVD.
+///
+/// # Errors
+/// Returns an error if matrix is invalid or SVD fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn compute_polar<T: NabledReal>(
+    matrix: &Array2<T>,
+) -> Result<NdarrayPolarResult<T>, PolarError> {
+    compute_polar_impl(&matrix.view())
+}
+
+#[cfg(feature = "lapack-provider")]
+fn compute_polar_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarrayPolarResult<T>, PolarError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
     validate_square_non_empty_view(matrix)?;
     validate_finite_view(matrix)?;
 
@@ -163,7 +183,31 @@ fn compute_polar_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarResult
 
     let column_count = matrix.ncols();
     let retained_rank = svd.singular_values.len();
-    let mut sigma = Array2::<f64>::zeros((retained_rank, retained_rank));
+    let mut sigma = Array2::<T>::zeros((retained_rank, retained_rank));
+    for i in 0..retained_rank {
+        sigma[[i, i]] = svd.singular_values[i];
+    }
+
+    let psd_factor = svd.vt.t().dot(&sigma).dot(&svd.vt);
+    debug_assert_eq!(psd_factor.nrows(), column_count);
+
+    Ok(NdarrayPolarResult { u: orthogonal_factor, p: psd_factor })
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn compute_polar_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayPolarResult<T>, PolarError> {
+    validate_square_non_empty_view(matrix)?;
+    validate_finite_view(matrix)?;
+
+    let svd = svd::decompose_view(matrix).map_err(|_| PolarError::DecompositionFailed)?;
+
+    let orthogonal_factor = svd.u.dot(&svd.vt);
+
+    let column_count = matrix.ncols();
+    let retained_rank = svd.singular_values.len();
+    let mut sigma = Array2::<T>::zeros((retained_rank, retained_rank));
     for i in 0..retained_rank {
         sigma[[i, i]] = svd.singular_values[i];
     }
@@ -178,7 +222,24 @@ fn compute_polar_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarResult
 ///
 /// # Errors
 /// Returns an error if matrix is invalid or SVD fails.
-pub fn compute_polar_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayPolarResult, PolarError> {
+#[cfg(feature = "lapack-provider")]
+pub fn compute_polar_view<T>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayPolarResult<T>, PolarError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    compute_polar_impl(matrix)
+}
+
+/// Compute polar decomposition using SVD from a matrix view.
+///
+/// # Errors
+/// Returns an error if matrix is invalid or SVD fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn compute_polar_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayPolarResult<T>, PolarError> {
     compute_polar_impl(matrix)
 }
 
@@ -240,32 +301,37 @@ mod tests {
 
     #[test]
     fn polar_reconstructs_input() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 1.0, 3.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![3.0_f64, 1.0_f64, 1.0_f64, 3.0_f64]).unwrap();
         let polar = compute_polar(&matrix).unwrap();
         let reconstructed = polar.u.dot(&polar.p);
         for i in 0..2 {
             for j in 0..2 {
-                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8);
+                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8_f64);
             }
         }
     }
 
     #[test]
     fn polar_rejects_non_square_input() {
-        let matrix = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let matrix = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64,
+        ])
+        .unwrap();
         let result = compute_polar(&matrix);
         assert!(matches!(result, Err(PolarError::NotSquare)));
     }
 
     #[test]
     fn polar_view_matches_owned() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 1.0, 2.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![2.0_f64, 1.0_f64, 1.0_f64, 2.0_f64]).unwrap();
         let owned = compute_polar(&matrix).unwrap();
         let viewed = compute_polar_view(&matrix.view()).unwrap();
         for i in 0..2 {
             for j in 0..2 {
-                assert!((owned.u[[i, j]] - viewed.u[[i, j]]).abs() < 1e-12);
-                assert!((owned.p[[i, j]] - viewed.p[[i, j]]).abs() < 1e-12);
+                assert!((owned.u[[i, j]] - viewed.u[[i, j]]).abs() < 1e-12_f64);
+                assert!((owned.p[[i, j]] - viewed.p[[i, j]]).abs() < 1e-12_f64);
             }
         }
     }
@@ -275,17 +341,18 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
         assert!(matches!(compute_polar(&empty), Err(PolarError::EmptyMatrix)));
 
-        let non_finite = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();
+        let non_finite =
+            Array2::from_shape_vec((2, 2), vec![1.0_f64, f64::NAN, 0.0_f64, 1.0_f64]).unwrap();
         assert!(matches!(compute_polar(&non_finite), Err(PolarError::NumericalInstability)));
     }
 
     #[test]
     fn complex_polar_reconstructs_input_and_view_matches_owned() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0, 0.5),
-            Complex64::new(0.5, -0.25),
-            Complex64::new(-1.0, 1.0),
-            Complex64::new(1.5, -0.75),
+            Complex64::new(2.0_f64, 0.5_f64),
+            Complex64::new(0.5_f64, -0.25_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
+            Complex64::new(1.5_f64, -0.75_f64),
         ])
         .unwrap();
 
@@ -295,9 +362,9 @@ mod tests {
 
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
-                assert!((reconstructed[[i, j]] - matrix[[i, j]]).norm() < 1e-8);
-                assert!((owned.u[[i, j]] - viewed.u[[i, j]]).norm() < 1e-10);
-                assert!((owned.p[[i, j]] - viewed.p[[i, j]]).norm() < 1e-10);
+                assert!((reconstructed[[i, j]] - matrix[[i, j]]).norm() < 1e-8_f64);
+                assert!((owned.u[[i, j]] - viewed.u[[i, j]]).norm() < 1e-10_f64);
+                assert!((owned.p[[i, j]] - viewed.p[[i, j]]).norm() < 1e-10_f64);
             }
         }
     }
@@ -307,11 +374,12 @@ mod tests {
         let empty = Array2::<Complex64>::zeros((0, 0));
         assert!(matches!(compute_polar_complex(&empty), Err(PolarError::EmptyMatrix)));
 
-        let non_square = Array2::from_shape_vec((1, 2), vec![Complex64::new(1.0, 0.0); 2]).unwrap();
+        let non_square =
+            Array2::from_shape_vec((1, 2), vec![Complex64::new(1.0_f64, 0.0_f64); 2]).unwrap();
         assert!(matches!(compute_polar_complex(&non_square), Err(PolarError::NotSquare)));
 
         let non_finite =
-            Array2::from_shape_vec((1, 1), vec![Complex64::new(f64::NAN, 0.0)]).unwrap();
+            Array2::from_shape_vec((1, 1), vec![Complex64::new(f64::NAN, 0.0_f64)]).unwrap();
         assert!(matches!(
             compute_polar_complex(&non_finite),
             Err(PolarError::NumericalInstability)

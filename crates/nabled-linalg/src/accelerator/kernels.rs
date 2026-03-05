@@ -1,3 +1,4 @@
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, Array3, ArrayD};
 
 use super::backends::{AcceleratorError, ComputeBackend};
@@ -34,15 +35,15 @@ pub trait BatchedMatMatKernel<T>: ComputeBackend {
 }
 
 /// Kernel contract for sparse matrix-vector multiplication.
-pub trait SparseMatVecKernel: ComputeBackend {
+pub trait SparseMatVecKernel<T: NabledReal>: ComputeBackend {
     /// Compute a sparse matrix-vector product for backend `Self`.
     ///
     /// # Errors
     /// Returns an error when dimensions are incompatible or backend execution fails.
     fn sparse_matvec(
-        matrix: &CsrMatrix,
-        vector: &Array1<f64>,
-    ) -> Result<Array1<f64>, AcceleratorError>;
+        matrix: &CsrMatrix<T>,
+        vector: &Array1<T>,
+    ) -> Result<Array1<T>, AcceleratorError>;
 }
 
 /// Kernel contract for batched row-vector by matrix transforms.
@@ -58,27 +59,27 @@ pub trait BatchedRowMatVecKernel<T>: ComputeBackend {
 }
 
 /// Kernel contract for sparse-dense matrix multiplication.
-pub trait SparseMatMatDenseKernel: ComputeBackend {
+pub trait SparseMatMatDenseKernel<T: NabledReal>: ComputeBackend {
     /// Multiply sparse matrix with dense right-hand matrix.
     ///
     /// # Errors
     /// Returns an error when dimensions are incompatible or backend execution fails.
     fn sparse_matmat_dense(
-        matrix: &CsrMatrix,
-        dense: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError>;
+        matrix: &CsrMatrix<T>,
+        dense: &Array2<T>,
+    ) -> Result<Array2<T>, AcceleratorError>;
 }
 
 /// Kernel contract for sparse-sparse matrix multiplication.
-pub trait SparseMatMatSparseKernel: ComputeBackend {
+pub trait SparseMatMatSparseKernel<T: NabledReal>: ComputeBackend {
     /// Multiply sparse matrix with sparse matrix.
     ///
     /// # Errors
     /// Returns an error when dimensions are incompatible or backend execution fails.
     fn sparse_matmat_sparse(
-        left: &CsrMatrix,
-        right: &CsrMatrix,
-    ) -> Result<CsrMatrix, AcceleratorError>;
+        left: &CsrMatrix<T>,
+        right: &CsrMatrix<T>,
+    ) -> Result<CsrMatrix<T>, AcceleratorError>;
 }
 
 /// Kernel contract for dense triangular solves with vector right-hand side.
@@ -121,27 +122,21 @@ pub trait DotKernel<T>: ComputeBackend {
 }
 
 /// Kernel contract for pairwise L2 distance matrix computation.
-pub trait PairwiseL2Kernel: ComputeBackend {
+pub trait PairwiseL2Kernel<T>: ComputeBackend {
     /// Compute pairwise L2 distance matrix between row vectors.
     ///
     /// # Errors
     /// Returns an error when dimensions are incompatible or backend execution fails.
-    fn pairwise_l2(
-        left: &Array2<f64>,
-        right: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError>;
+    fn pairwise_l2(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError>;
 }
 
 /// Kernel contract for pairwise cosine similarity matrix computation.
-pub trait PairwiseCosineKernel: ComputeBackend {
+pub trait PairwiseCosineKernel<T>: ComputeBackend {
     /// Compute pairwise cosine similarity matrix between row vectors.
     ///
     /// # Errors
     /// Returns an error when dimensions are incompatible or backend execution fails.
-    fn pairwise_cosine(
-        left: &Array2<f64>,
-        right: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError>;
+    fn pairwise_cosine(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError>;
 }
 
 /// Kernel contract for tensor axis contraction.

@@ -88,6 +88,12 @@ Workspace migration for library domains is complete.
 80. Individual workspace crate docs.rs pages are now upgraded (`nabled-core`, `nabled-linalg`, `nabled-ml`) with scope/module overviews, feature semantics, and runnable quick-start examples.
 81. Provider-feature docs/tests/workflows are now aligned to the expanded provider set (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`) with integration gates running full `nabled` integration tests (`--tests`) instead of a single test file.
 82. Feature-gate helper coverage is now explicit for all declared providers in local release checks, with an optional static-provider validation command (`just check-provider-static`) for toolchain-equipped environments.
+83. NI-001 real-scalar widening advanced in `nabled-linalg::matrix`: dense real APIs (`matvec`, `matmat`, batched/broadcast variants, and `*_view`/`*_into` families) are now generic `f32`/`f64` with parity tests.
+84. NI-001 real-scalar widening advanced in `nabled-ml::iterative`: real CG/GMRES APIs now accept generic `IterativeConfig<T>` (`f32`/`f64`) with provider-safe compilation and new `f32` solver parity coverage.
+85. NI-001 real-scalar widening advanced in `nabled-linalg::svd`: real SVD APIs and result/config types are now generic (`NdarraySVD<T>`, `PseudoInverseConfig<T>`) across internal/provider paths, with new `f32` parity coverage and workspace tests green in both modes.
+86. NI-001 real-scalar widening advanced in `nabled-ml::pca`: real PCA APIs/results are now generic (`NdarrayPCAResult<T>`, compute/transform/inverse families) with provider-safe bounds and new `f32` parity tests in provider/no-provider builds.
+87. NI-001 real-scalar widening advanced in `nabled-linalg::cholesky`: real Cholesky APIs/results are now generic (`NdarrayCholeskyResult<T>`, `decompose/solve/inverse` and view/into variants) across internal/provider paths, with new `f32` parity coverage and workspace gates green in both modes.
+88. NI-001 is now complete: remaining real domains (`eigen`, `matrix_functions`, `sparse`) are fully generic `f32`/`f64`, explicit `f32` parity tests were added in each domain, and full quality gates (including provider-enabled permutations and coverage threshold) remain green.
 
 ## Current Code Ownership
 

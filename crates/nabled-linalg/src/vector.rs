@@ -1,11 +1,9 @@
 //! Vector-first primitives for embedding-style workloads.
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 use thiserror::Error;
-
-use crate::accelerator::backends::AcceleratorError;
-use crate::accelerator::dispatch::{dot_cpu, pairwise_cosine_cpu, pairwise_l2_cpu};
 
 /// Errors for vector primitives.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -22,32 +20,31 @@ pub enum VectorError {
 }
 
 /// Reusable workspace for pairwise cosine similarity kernels.
-#[derive(Debug, Clone, Default)]
-pub struct PairwiseCosineWorkspace {
-    left_norms:  Array1<f64>,
-    right_norms: Array1<f64>,
+#[derive(Debug, Clone)]
+pub struct PairwiseCosineWorkspace<T: NabledReal> {
+    left_norms:  Array1<T>,
+    right_norms: Array1<T>,
 }
 
-impl PairwiseCosineWorkspace {
+impl<T: NabledReal> Default for PairwiseCosineWorkspace<T> {
+    fn default() -> Self {
+        Self { left_norms: Array1::<T>::zeros(0), right_norms: Array1::<T>::zeros(0) }
+    }
+}
+
+impl<T: NabledReal> PairwiseCosineWorkspace<T> {
     /// Ensure workspace vectors are sized for `left` and `right` row counts.
     fn ensure_dims(&mut self, left_rows: usize, right_rows: usize) {
         if self.left_norms.len() != left_rows {
-            self.left_norms = Array1::<f64>::zeros(left_rows);
+            self.left_norms = Array1::<T>::zeros(left_rows);
         }
         if self.right_norms.len() != right_rows {
-            self.right_norms = Array1::<f64>::zeros(right_rows);
+            self.right_norms = Array1::<T>::zeros(right_rows);
         }
     }
 }
 
-fn map_accelerator_error_to_vector(error: AcceleratorError) -> VectorError {
-    match error {
-        AcceleratorError::KernelExecutionFailed => VectorError::ZeroNorm,
-        _ => VectorError::DimensionMismatch,
-    }
-}
-
-fn validate_vector_pair(a: &Array1<f64>, b: &Array1<f64>) -> Result<(), VectorError> {
+fn validate_vector_pair<T: NabledReal>(a: &Array1<T>, b: &Array1<T>) -> Result<(), VectorError> {
     if a.is_empty() || b.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -57,7 +54,10 @@ fn validate_vector_pair(a: &Array1<f64>, b: &Array1<f64>) -> Result<(), VectorEr
     Ok(())
 }
 
-fn validate_pairwise_inputs(left: &Array2<f64>, right: &Array2<f64>) -> Result<(), VectorError> {
+fn validate_pairwise_inputs<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<(), VectorError> {
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -71,16 +71,19 @@ fn validate_pairwise_inputs(left: &Array2<f64>, right: &Array2<f64>) -> Result<(
 ///
 /// # Errors
 /// Returns an error when vector lengths mismatch or either input is empty.
-pub fn dot(a: &Array1<f64>, b: &Array1<f64>) -> Result<f64, VectorError> {
+pub fn dot<T: NabledReal>(a: &Array1<T>, b: &Array1<T>) -> Result<T, VectorError> {
     validate_vector_pair(a, b)?;
-    dot_cpu(a, b).map_err(map_accelerator_error_to_vector)
+    Ok(a.dot(b))
 }
 
 /// Compute dot product of two vector views.
 ///
 /// # Errors
 /// Returns an error when vector lengths mismatch or either input is empty.
-pub fn dot_view(a: &ArrayView1<'_, f64>, b: &ArrayView1<'_, f64>) -> Result<f64, VectorError> {
+pub fn dot_view<T: NabledReal>(
+    a: &ArrayView1<'_, T>,
+    b: &ArrayView1<'_, T>,
+) -> Result<T, VectorError> {
     if a.is_empty() || b.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -111,7 +114,7 @@ pub fn dot_hermitian(
 ///
 /// # Errors
 /// Returns an error if the vector is empty.
-pub fn l2_norm(v: &Array1<f64>) -> Result<f64, VectorError> {
+pub fn l2_norm<T: NabledReal>(v: &Array1<T>) -> Result<T, VectorError> {
     if v.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -133,11 +136,11 @@ pub fn l2_norm_complex(v: &Array1<Complex64>) -> Result<f64, VectorError> {
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm vectors.
-pub fn cosine_similarity(a: &Array1<f64>, b: &Array1<f64>) -> Result<f64, VectorError> {
+pub fn cosine_similarity<T: NabledReal>(a: &Array1<T>, b: &Array1<T>) -> Result<T, VectorError> {
     validate_vector_pair(a, b)?;
     let dot_value = a.dot(b);
     let denominator = a.dot(a).sqrt() * b.dot(b).sqrt();
-    if denominator <= f64::EPSILON {
+    if denominator <= T::epsilon() {
         return Err(VectorError::ZeroNorm);
     }
     Ok(dot_value / denominator)
@@ -147,10 +150,10 @@ pub fn cosine_similarity(a: &Array1<f64>, b: &Array1<f64>) -> Result<f64, Vector
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm vectors.
-pub fn cosine_similarity_view(
-    a: &ArrayView1<'_, f64>,
-    b: &ArrayView1<'_, f64>,
-) -> Result<f64, VectorError> {
+pub fn cosine_similarity_view<T: NabledReal>(
+    a: &ArrayView1<'_, T>,
+    b: &ArrayView1<'_, T>,
+) -> Result<T, VectorError> {
     if a.is_empty() || b.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -159,7 +162,7 @@ pub fn cosine_similarity_view(
     }
     let dot_value = a.dot(b);
     let denominator = a.dot(a).sqrt() * b.dot(b).sqrt();
-    if denominator <= f64::EPSILON {
+    if denominator <= T::epsilon() {
         return Err(VectorError::ZeroNorm);
     }
     Ok(dot_value / denominator)
@@ -187,30 +190,32 @@ pub fn cosine_similarity_complex(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm vectors.
-pub fn cosine_distance(a: &Array1<f64>, b: &Array1<f64>) -> Result<f64, VectorError> {
-    Ok(1.0 - cosine_similarity(a, b)?)
+pub fn cosine_distance<T: NabledReal>(a: &Array1<T>, b: &Array1<T>) -> Result<T, VectorError> {
+    Ok(T::one() - cosine_similarity(a, b)?)
 }
 
 /// Compute pairwise L2 distances between row vectors in `left` and `right`.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or empty inputs.
-pub fn pairwise_l2_distance(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, VectorError> {
+pub fn pairwise_l2_distance<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, VectorError> {
     validate_pairwise_inputs(left, right)?;
-    pairwise_l2_cpu(left, right).map_err(map_accelerator_error_to_vector)
+    let mut output = Array2::<T>::zeros((left.nrows(), right.nrows()));
+    pairwise_l2_distance_view_into(&left.view(), &right.view(), &mut output)?;
+    Ok(output)
 }
 
 /// Compute pairwise L2 distances into `output`.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or empty inputs.
-pub fn pairwise_l2_distance_into(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-    output: &mut Array2<f64>,
+pub fn pairwise_l2_distance_into<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+    output: &mut Array2<T>,
 ) -> Result<(), VectorError> {
     pairwise_l2_distance_view_into(&left.view(), &right.view(), output)
 }
@@ -219,10 +224,10 @@ pub fn pairwise_l2_distance_into(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or empty inputs.
-pub fn pairwise_l2_distance_view_into(
-    left: &ArrayView2<'_, f64>,
-    right: &ArrayView2<'_, f64>,
-    output: &mut Array2<f64>,
+pub fn pairwise_l2_distance_view_into<T: NabledReal>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+    output: &mut Array2<T>,
 ) -> Result<(), VectorError> {
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
@@ -233,7 +238,7 @@ pub fn pairwise_l2_distance_view_into(
 
     for i in 0..left.nrows() {
         for j in 0..right.nrows() {
-            let mut sum = 0.0_f64;
+            let mut sum = T::zero();
             for k in 0..left.ncols() {
                 let delta = left[[i, k]] - right[[j, k]];
                 sum += delta * delta;
@@ -249,24 +254,26 @@ pub fn pairwise_l2_distance_view_into(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
-pub fn pairwise_cosine_similarity(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, VectorError> {
+pub fn pairwise_cosine_similarity<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, VectorError> {
     validate_pairwise_inputs(left, right)?;
-    pairwise_cosine_cpu(left, right).map_err(map_accelerator_error_to_vector)
+    let mut output = Array2::<T>::zeros((left.nrows(), right.nrows()));
+    pairwise_cosine_similarity_into(left, right, &mut output)?;
+    Ok(output)
 }
 
 /// Compute pairwise cosine similarity into `output`.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
-pub fn pairwise_cosine_similarity_into(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-    output: &mut Array2<f64>,
+pub fn pairwise_cosine_similarity_into<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+    output: &mut Array2<T>,
 ) -> Result<(), VectorError> {
-    let mut workspace = PairwiseCosineWorkspace::default();
+    let mut workspace = PairwiseCosineWorkspace::<T>::default();
     pairwise_cosine_similarity_with_workspace_into(left, right, output, &mut workspace)
 }
 
@@ -274,11 +281,11 @@ pub fn pairwise_cosine_similarity_into(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
-pub fn pairwise_cosine_similarity_with_workspace_into(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-    output: &mut Array2<f64>,
-    workspace: &mut PairwiseCosineWorkspace,
+pub fn pairwise_cosine_similarity_with_workspace_into<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+    output: &mut Array2<T>,
+    workspace: &mut PairwiseCosineWorkspace<T>,
 ) -> Result<(), VectorError> {
     validate_pairwise_inputs(left, right)?;
     if output.dim() != (left.nrows(), right.nrows()) {
@@ -288,26 +295,26 @@ pub fn pairwise_cosine_similarity_with_workspace_into(
     workspace.ensure_dims(left.nrows(), right.nrows());
 
     for i in 0..left.nrows() {
-        let mut sq_sum = 0.0_f64;
+        let mut sq_sum = T::zero();
         for k in 0..left.ncols() {
             let value = left[[i, k]];
             sq_sum += value * value;
         }
         let norm = sq_sum.sqrt();
-        if norm <= f64::EPSILON {
+        if norm <= T::epsilon() {
             return Err(VectorError::ZeroNorm);
         }
         workspace.left_norms[i] = norm;
     }
 
     for j in 0..right.nrows() {
-        let mut sq_sum = 0.0_f64;
+        let mut sq_sum = T::zero();
         for k in 0..right.ncols() {
             let value = right[[j, k]];
             sq_sum += value * value;
         }
         let norm = sq_sum.sqrt();
-        if norm <= f64::EPSILON {
+        if norm <= T::epsilon() {
             return Err(VectorError::ZeroNorm);
         }
         workspace.right_norms[j] = norm;
@@ -315,7 +322,7 @@ pub fn pairwise_cosine_similarity_with_workspace_into(
 
     for i in 0..left.nrows() {
         for j in 0..right.nrows() {
-            let mut dot = 0.0_f64;
+            let mut dot = T::zero();
             for k in 0..left.ncols() {
                 dot += left[[i, k]] * right[[j, k]];
             }
@@ -330,20 +337,23 @@ pub fn pairwise_cosine_similarity_with_workspace_into(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
-pub fn pairwise_cosine_distance(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, VectorError> {
+pub fn pairwise_cosine_distance<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, VectorError> {
     let similarity = pairwise_cosine_similarity(left, right)?;
-    Ok(similarity.mapv(|value| 1.0 - value))
+    Ok(similarity.mapv(|value| T::one() - value))
 }
 
 /// Compute row-wise dot products for two matrices of equal shape.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or empty inputs.
-pub fn batched_dot(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array1<f64>, VectorError> {
-    let mut output = Array1::<f64>::zeros(left.nrows());
+pub fn batched_dot<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array1<T>, VectorError> {
+    let mut output = Array1::<T>::zeros(left.nrows());
     batched_dot_into(left, right, &mut output)?;
     Ok(output)
 }
@@ -352,10 +362,10 @@ pub fn batched_dot(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array1<f64
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or empty inputs.
-pub fn batched_dot_into(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-    output: &mut Array1<f64>,
+pub fn batched_dot_into<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+    output: &mut Array1<T>,
 ) -> Result<(), VectorError> {
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
@@ -365,7 +375,7 @@ pub fn batched_dot_into(
     }
 
     for i in 0..left.nrows() {
-        let mut sum = 0.0_f64;
+        let mut sum = T::zero();
         for j in 0..left.ncols() {
             sum += left[[i, j]] * right[[i, j]];
         }
@@ -392,6 +402,18 @@ mod tests {
 
         assert!((dot - 32.0).abs() < 1e-12);
         assert!((norm - 14.0_f64.sqrt()).abs() < 1e-12);
+    }
+
+    #[test]
+    fn dot_and_norm_support_f32() {
+        let a = arr1(&[1.0_f32, 2.0, 3.0]);
+        let b = arr1(&[4.0_f32, 5.0, 6.0]);
+
+        let dot = dot(&a, &b).unwrap();
+        let norm = l2_norm(&a).unwrap();
+
+        assert!((dot - 32.0).abs() < 1e-5);
+        assert!((norm - 14.0_f32.sqrt()).abs() < 1e-5);
     }
 
     #[test]
@@ -460,8 +482,8 @@ mod tests {
         let dot_owned = dot(&a, &b).unwrap();
         let a_view = a.view();
         let b_view = b.view();
-        let dot_view = dot_view(&a_view, &b_view).unwrap();
-        assert!((dot_owned - dot_view).abs() < 1e-12);
+        let dot_viewed = dot_view(&a_view, &b_view).unwrap();
+        assert!((dot_owned - dot_viewed).abs() < 1e-12);
 
         let left = arr2(&[[0.0_f64, 0.0], [1.0, 1.0]]);
         let right = arr2(&[[1.0_f64, 0.0], [2.0, 2.0]]);

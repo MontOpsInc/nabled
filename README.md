@@ -9,6 +9,8 @@
 Nabled is an ndarray-native Rust numerical library focused on production-grade
 linear algebra and ML-oriented matrix/vector operations.
 
+Important! Nabled is under active development right now, so the only way to be sure the public APIs don't break is to pin your version. When stabilizied, it will follow proper versioning, but for now it is guaranteed to change. 
+
 ## Install
 
 ```toml

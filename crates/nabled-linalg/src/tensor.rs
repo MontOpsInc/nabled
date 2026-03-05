@@ -3,6 +3,7 @@
 use std::fmt;
 use std::ops::{AddAssign, Mul};
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{
     Array2, Array3, ArrayD, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2, ArrayViewMut3, Axis,
     IxDyn, s,
@@ -41,27 +42,27 @@ fn map_accelerator_error_to_tensor(_error: AcceleratorError) -> TensorError {
 
 /// HOSVD decomposition result for rank-3 real tensors.
 #[derive(Debug, Clone)]
-pub struct Hosvd3Result {
+pub struct Hosvd3Result<T: NabledReal = f64> {
     /// Core tensor with shape `(r0, r1, r2)`.
-    pub core: Array3<f64>,
+    pub core: Array3<T>,
     /// Mode-0 factor matrix `(i0, r0)`.
-    pub u0:   Array2<f64>,
+    pub u0:   Array2<T>,
     /// Mode-1 factor matrix `(i1, r1)`.
-    pub u1:   Array2<f64>,
+    pub u1:   Array2<T>,
     /// Mode-2 factor matrix `(i2, r2)`.
-    pub u2:   Array2<f64>,
+    pub u2:   Array2<T>,
 }
 
 type EinsumOperands = (Vec<char>, Vec<char>, Vec<char>);
 
-fn validate_cube_non_empty(cube: &ArrayView3<'_, f64>) -> Result<(), TensorError> {
+fn validate_cube_non_empty<T>(cube: &ArrayView3<'_, T>) -> Result<(), TensorError> {
     if cube.is_empty() {
         return Err(TensorError::EmptyInput);
     }
     Ok(())
 }
 
-fn validate_matrix_non_empty(matrix: &ArrayView2<'_, f64>) -> Result<(), TensorError> {
+fn validate_matrix_non_empty<T>(matrix: &ArrayView2<'_, T>) -> Result<(), TensorError> {
     if matrix.is_empty() {
         return Err(TensorError::EmptyInput);
     }
@@ -84,7 +85,7 @@ fn validate_matrix_non_empty_complex(
     Ok(())
 }
 
-fn validate_tensor_nd_non_empty(tensor: &ArrayViewD<'_, f64>) -> Result<(), TensorError> {
+fn validate_tensor_nd_non_empty<T>(tensor: &ArrayViewD<'_, T>) -> Result<(), TensorError> {
     if tensor.is_empty() {
         return Err(TensorError::EmptyInput);
     }
@@ -294,8 +295,11 @@ where
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn cube_matvec(cube: &Array3<f64>, vectors: &Array2<f64>) -> Result<Array2<f64>, TensorError> {
-    let mut output = Array2::<f64>::zeros((cube.dim().0, cube.dim().1));
+pub fn cube_matvec<T: NabledReal>(
+    cube: &Array3<T>,
+    vectors: &Array2<T>,
+) -> Result<Array2<T>, TensorError> {
+    let mut output = Array2::<T>::zeros((cube.dim().0, cube.dim().1));
     cube_matvec_view_into(&cube.view(), &vectors.view(), output.view_mut())?;
     Ok(output)
 }
@@ -307,11 +311,11 @@ pub fn cube_matvec(cube: &Array3<f64>, vectors: &Array2<f64>) -> Result<Array2<f
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn cube_matvec_view(
-    cube: &ArrayView3<'_, f64>,
-    vectors: &ArrayView2<'_, f64>,
-) -> Result<Array2<f64>, TensorError> {
-    let mut output = Array2::<f64>::zeros((cube.dim().0, cube.dim().1));
+pub fn cube_matvec_view<T: NabledReal>(
+    cube: &ArrayView3<'_, T>,
+    vectors: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, TensorError> {
+    let mut output = Array2::<T>::zeros((cube.dim().0, cube.dim().1));
     cube_matvec_view_into(cube, vectors, output.view_mut())?;
     Ok(output)
 }
@@ -320,10 +324,10 @@ pub fn cube_matvec_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn cube_matvec_into(
-    cube: &Array3<f64>,
-    vectors: &Array2<f64>,
-    output: &mut Array2<f64>,
+pub fn cube_matvec_into<T: NabledReal>(
+    cube: &Array3<T>,
+    vectors: &Array2<T>,
+    output: &mut Array2<T>,
 ) -> Result<(), TensorError> {
     cube_matvec_view_into(&cube.view(), &vectors.view(), output.view_mut())
 }
@@ -332,10 +336,10 @@ pub fn cube_matvec_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn cube_matvec_view_into(
-    cube: &ArrayView3<'_, f64>,
-    vectors: &ArrayView2<'_, f64>,
-    mut output: ArrayViewMut2<'_, f64>,
+pub fn cube_matvec_view_into<T: NabledReal>(
+    cube: &ArrayView3<'_, T>,
+    vectors: &ArrayView2<'_, T>,
+    mut output: ArrayViewMut2<'_, T>,
 ) -> Result<(), TensorError> {
     validate_cube_non_empty(cube)?;
     validate_matrix_non_empty(vectors)?;
@@ -344,11 +348,11 @@ pub fn cube_matvec_view_into(
         return Err(TensorError::DimensionMismatch);
     }
 
-    output.fill(0.0);
+    output.fill(T::zero());
     let (batch, rows, cols) = cube.dim();
     for b in 0..batch {
         for row in 0..rows {
-            let mut sum = 0.0_f64;
+            let mut sum = T::zero();
             for col in 0..cols {
                 sum += cube[[b, row, col]] * vectors[[b, col]];
             }
@@ -440,12 +444,12 @@ pub fn cube_matvec_complex_view_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn cube_matmat(
-    left_cubes: &Array3<f64>,
-    right_cubes: &Array3<f64>,
-) -> Result<Array3<f64>, TensorError> {
+pub fn cube_matmat<T: NabledReal>(
+    left_cubes: &Array3<T>,
+    right_cubes: &Array3<T>,
+) -> Result<Array3<T>, TensorError> {
     let mut output =
-        Array3::<f64>::zeros((left_cubes.dim().0, left_cubes.dim().1, right_cubes.dim().2));
+        Array3::<T>::zeros((left_cubes.dim().0, left_cubes.dim().1, right_cubes.dim().2));
     cube_matmat_view_into(&left_cubes.view(), &right_cubes.view(), output.view_mut())?;
     Ok(output)
 }
@@ -456,12 +460,12 @@ pub fn cube_matmat(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn cube_matmat_view(
-    left_cubes: &ArrayView3<'_, f64>,
-    right_cubes: &ArrayView3<'_, f64>,
-) -> Result<Array3<f64>, TensorError> {
+pub fn cube_matmat_view<T: NabledReal>(
+    left_cubes: &ArrayView3<'_, T>,
+    right_cubes: &ArrayView3<'_, T>,
+) -> Result<Array3<T>, TensorError> {
     let mut output =
-        Array3::<f64>::zeros((left_cubes.dim().0, left_cubes.dim().1, right_cubes.dim().2));
+        Array3::<T>::zeros((left_cubes.dim().0, left_cubes.dim().1, right_cubes.dim().2));
     cube_matmat_view_into(left_cubes, right_cubes, output.view_mut())?;
     Ok(output)
 }
@@ -470,10 +474,10 @@ pub fn cube_matmat_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn cube_matmat_into(
-    left_cubes: &Array3<f64>,
-    right_cubes: &Array3<f64>,
-    output: &mut Array3<f64>,
+pub fn cube_matmat_into<T: NabledReal>(
+    left_cubes: &Array3<T>,
+    right_cubes: &Array3<T>,
+    output: &mut Array3<T>,
 ) -> Result<(), TensorError> {
     cube_matmat_view_into(&left_cubes.view(), &right_cubes.view(), output.view_mut())
 }
@@ -482,10 +486,10 @@ pub fn cube_matmat_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn cube_matmat_view_into(
-    left_cubes: &ArrayView3<'_, f64>,
-    right_cubes: &ArrayView3<'_, f64>,
-    mut output: ArrayViewMut3<'_, f64>,
+pub fn cube_matmat_view_into<T: NabledReal>(
+    left_cubes: &ArrayView3<'_, T>,
+    right_cubes: &ArrayView3<'_, T>,
+    mut output: ArrayViewMut3<'_, T>,
 ) -> Result<(), TensorError> {
     validate_cube_non_empty(left_cubes)?;
     validate_cube_non_empty(right_cubes)?;
@@ -496,7 +500,7 @@ pub fn cube_matmat_view_into(
         return Err(TensorError::DimensionMismatch);
     }
 
-    output.fill(0.0);
+    output.fill(T::zero());
     let (batch, rows, inner) = left_cubes.dim();
     let cols = right_cubes.dim().2;
     for b in 0..batch {
@@ -598,12 +602,12 @@ pub fn cube_matmat_complex_view_into(
 ///
 /// # Errors
 /// Returns an error if input is empty.
-pub fn flatten_cubes(cube: &Array3<f64>) -> Result<Array2<f64>, TensorError> {
+pub fn flatten_cubes<T: NabledReal>(cube: &Array3<T>) -> Result<Array2<T>, TensorError> {
     let cube_view = cube.view();
     validate_cube_non_empty(&cube_view)?;
 
     let (batch, rows, cols) = cube.dim();
-    let mut output = Array2::<f64>::zeros((batch, rows * cols));
+    let mut output = Array2::<T>::zeros((batch, rows * cols));
     for b in 0..batch {
         for row in 0..rows {
             for col in 0..cols {
@@ -618,7 +622,9 @@ pub fn flatten_cubes(cube: &Array3<f64>) -> Result<Array2<f64>, TensorError> {
 ///
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
-pub fn sum_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
+pub fn sum_last_axis<T: NabledReal + Default>(
+    tensor: &ArrayD<T>,
+) -> Result<ArrayD<T>, TensorError> {
     sum_last_axis_view(&tensor.view())
 }
 
@@ -626,7 +632,9 @@ pub fn sum_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
 ///
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
-pub fn sum_last_axis_view(tensor: &ArrayViewD<'_, f64>) -> Result<ArrayD<f64>, TensorError> {
+pub fn sum_last_axis_view<T: NabledReal + Default>(
+    tensor: &ArrayViewD<'_, T>,
+) -> Result<ArrayD<T>, TensorError> {
     validate_tensor_nd_non_empty(tensor)?;
     let owned = tensor.to_owned();
     tensor_sum_last_axis_cpu(&owned).map_err(map_accelerator_error_to_tensor)
@@ -636,9 +644,9 @@ pub fn sum_last_axis_view(tensor: &ArrayViewD<'_, f64>) -> Result<ArrayD<f64>, T
 ///
 /// # Errors
 /// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
-pub fn sum_last_axis_view_into(
-    tensor: &ArrayViewD<'_, f64>,
-    output: &mut ArrayD<f64>,
+pub fn sum_last_axis_view_into<T: NabledReal>(
+    tensor: &ArrayViewD<'_, T>,
+    output: &mut ArrayD<T>,
 ) -> Result<(), TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
@@ -655,16 +663,20 @@ pub fn sum_last_axis_view_into(
 ///
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
-pub fn l2_norm_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
+pub fn l2_norm_last_axis<T: NabledReal>(tensor: &ArrayD<T>) -> Result<ArrayD<T>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
 
     let axis = Axis(tensor_view.ndim() - 1);
     let mut output_shape = tensor_view.shape().to_vec();
     let _ = output_shape.pop();
-    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
     for (out_value, lane) in output.iter_mut().zip(tensor_view.lanes(axis)) {
-        let sum_sq = lane.iter().map(|value| value * value).sum::<f64>();
+        let sum_sq = lane
+            .iter()
+            .copied()
+            .map(|value| value * value)
+            .fold(T::zero(), |acc, value| acc + value);
         *out_value = sum_sq.sqrt();
     }
     Ok(output)
@@ -674,15 +686,20 @@ pub fn l2_norm_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorErro
 ///
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
-pub fn normalize_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorError> {
+pub fn normalize_last_axis<T: NabledReal>(tensor: &ArrayD<T>) -> Result<ArrayD<T>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
 
     let mut output = tensor.clone();
     let axis = Axis(tensor_view.ndim() - 1);
     for mut lane in output.lanes_mut(axis) {
-        let norm = lane.iter().map(|value| value * value).sum::<f64>().sqrt();
-        let denominator = norm.max(f64::EPSILON);
+        let norm = lane
+            .iter()
+            .copied()
+            .map(|value| value * value)
+            .fold(T::zero(), |acc, value| acc + value)
+            .sqrt();
+        let denominator = norm.max(T::epsilon());
         for value in &mut lane {
             *value /= denominator;
         }
@@ -697,10 +714,10 @@ pub fn normalize_last_axis(tensor: &ArrayD<f64>) -> Result<ArrayD<f64>, TensorEr
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_dot_last_axis(
-    left: &ArrayD<f64>,
-    right: &ArrayD<f64>,
-) -> Result<ArrayD<f64>, TensorError> {
+pub fn batched_dot_last_axis<T: NabledReal>(
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
+) -> Result<ArrayD<T>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -712,11 +729,15 @@ pub fn batched_dot_last_axis(
     let axis = Axis(left_view.ndim() - 1);
     let mut output_shape = left_view.shape().to_vec();
     let _ = output_shape.pop();
-    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
     for ((out_value, left_lane), right_lane) in
         output.iter_mut().zip(left_view.lanes(axis)).zip(right_view.lanes(axis))
     {
-        let dot = left_lane.iter().zip(right_lane.iter()).map(|(lhs, rhs)| lhs * rhs).sum::<f64>();
+        let dot = left_lane
+            .iter()
+            .zip(right_lane.iter())
+            .map(|(lhs, rhs)| *lhs * *rhs)
+            .fold(T::zero(), |acc, value| acc + value);
         *out_value = dot;
     }
     Ok(output)
@@ -726,10 +747,10 @@ pub fn batched_dot_last_axis(
 ///
 /// # Errors
 /// Returns an error if the tensor is empty, has zero dimensions, or permutation is invalid.
-pub fn permute_axes(
-    tensor: &ArrayD<f64>,
+pub fn permute_axes<T: NabledReal>(
+    tensor: &ArrayD<T>,
     permutation: &[usize],
-) -> Result<ArrayD<f64>, TensorError> {
+) -> Result<ArrayD<T>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
     if !validate_permutation(tensor_view.ndim(), permutation) {
@@ -746,12 +767,12 @@ pub fn permute_axes(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
-pub fn contract_axes(
-    left: &ArrayD<f64>,
-    right: &ArrayD<f64>,
+pub fn contract_axes<T: NabledReal + Default>(
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
     left_axes: &[usize],
     right_axes: &[usize],
-) -> Result<ArrayD<f64>, TensorError> {
+) -> Result<ArrayD<T>, TensorError> {
     contract_axes_view(&left.view(), &right.view(), left_axes, right_axes)
 }
 
@@ -759,12 +780,12 @@ pub fn contract_axes(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
-pub fn contract_axes_view(
-    left: &ArrayViewD<'_, f64>,
-    right: &ArrayViewD<'_, f64>,
+pub fn contract_axes_view<T: NabledReal + Default>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
     left_axes: &[usize],
     right_axes: &[usize],
-) -> Result<ArrayD<f64>, TensorError> {
+) -> Result<ArrayD<T>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -790,7 +811,7 @@ pub fn contract_axes_view(
     let mut output_shape =
         left_free_axes.iter().map(|axis| left_view.shape()[*axis]).collect::<Vec<_>>();
     output_shape.extend(right_free_axes.iter().map(|axis| right_view.shape()[*axis]));
-    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
     contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, &mut output)?;
     Ok(output)
 }
@@ -803,12 +824,12 @@ pub fn contract_axes_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
-pub fn contract_axes_into(
-    left: &ArrayD<f64>,
-    right: &ArrayD<f64>,
+pub fn contract_axes_into<T: NabledReal + Default>(
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
     left_axes: &[usize],
     right_axes: &[usize],
-    output: &mut ArrayD<f64>,
+    output: &mut ArrayD<T>,
 ) -> Result<(), TensorError> {
     contract_axes_view_into(&left.view(), &right.view(), left_axes, right_axes, output)
 }
@@ -817,12 +838,12 @@ pub fn contract_axes_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
-pub fn contract_axes_view_into(
-    left: &ArrayViewD<'_, f64>,
-    right: &ArrayViewD<'_, f64>,
+pub fn contract_axes_view_into<T: NabledReal + Default>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
     left_axes: &[usize],
     right_axes: &[usize],
-    output: &mut ArrayD<f64>,
+    output: &mut ArrayD<T>,
 ) -> Result<(), TensorError> {
     let left_view = left.view();
     let right_view = right.view();
@@ -842,10 +863,10 @@ pub fn contract_axes_view_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
-pub fn batched_matmul_last_two(
-    left: &ArrayD<f64>,
-    right: &ArrayD<f64>,
-) -> Result<ArrayD<f64>, TensorError> {
+pub fn batched_matmul_last_two<T: NabledReal + Default>(
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
+) -> Result<ArrayD<T>, TensorError> {
     batched_matmul_last_two_view(&left.view(), &right.view())
 }
 
@@ -853,10 +874,10 @@ pub fn batched_matmul_last_two(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
-pub fn batched_matmul_last_two_view(
-    left: &ArrayViewD<'_, f64>,
-    right: &ArrayViewD<'_, f64>,
-) -> Result<ArrayD<f64>, TensorError> {
+pub fn batched_matmul_last_two_view<T: NabledReal + Default>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
+) -> Result<ArrayD<T>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -890,10 +911,10 @@ pub fn batched_matmul_last_two_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
-pub fn batched_matmul_last_two_into(
-    left: &ArrayD<f64>,
-    right: &ArrayD<f64>,
-    output: &mut ArrayD<f64>,
+pub fn batched_matmul_last_two_into<T: NabledReal + Default>(
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
+    output: &mut ArrayD<T>,
 ) -> Result<(), TensorError> {
     batched_matmul_last_two_view_into(&left.view(), &right.view(), output)
 }
@@ -902,10 +923,10 @@ pub fn batched_matmul_last_two_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
-pub fn batched_matmul_last_two_view_into(
-    left: &ArrayViewD<'_, f64>,
-    right: &ArrayViewD<'_, f64>,
-    output: &mut ArrayD<f64>,
+pub fn batched_matmul_last_two_view_into<T: NabledReal + Default>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
+    output: &mut ArrayD<T>,
 ) -> Result<(), TensorError> {
     let left_view = left.view();
     let right_view = right.view();
@@ -1285,9 +1306,9 @@ fn union_labels(left: &[char], right: &[char]) -> Vec<char> {
     labels.into_iter().collect::<Vec<_>>()
 }
 
-fn build_einsum_dimensions(
-    left: &ArrayViewD<'_, f64>,
-    right: &ArrayViewD<'_, f64>,
+fn build_einsum_dimensions<T>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
     left_labels: &[char],
     right_labels: &[char],
 ) -> Result<std::collections::BTreeMap<char, usize>, TensorError> {
@@ -1341,13 +1362,13 @@ fn build_einsum_dimensions_complex(
     Ok(dims)
 }
 
-fn einsum_binary_impl(
-    left: &ArrayViewD<'_, f64>,
-    right: &ArrayViewD<'_, f64>,
+fn einsum_binary_impl<T: NabledReal>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
     left_labels: &[char],
     right_labels: &[char],
     output_labels: &[char],
-) -> Result<ArrayD<f64>, TensorError> {
+) -> Result<ArrayD<T>, TensorError> {
     if left_labels.len() != left.ndim() || right_labels.len() != right.ndim() {
         return Err(TensorError::DimensionMismatch);
     }
@@ -1377,7 +1398,7 @@ fn einsum_binary_impl(
     let output_size = shape_product(&output_shape);
     let sum_size = shape_product(&sum_shape);
 
-    let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
     let mut output_coords = vec![0_usize; output_shape.len()];
     let mut sum_coords = vec![0_usize; sum_shape.len()];
     let label_to_slot = label_index_map(&union);
@@ -1392,7 +1413,7 @@ fn einsum_binary_impl(
             label_values[slot] = coord;
         }
 
-        let mut sum = 0.0_f64;
+        let mut sum = T::zero();
         for sum_flat in 0..sum_size {
             decode_flat_index(sum_flat, &sum_shape, &mut sum_coords);
             for (&label, &coord) in sum_labels.iter().zip(sum_coords.iter()) {
@@ -1504,11 +1525,11 @@ fn einsum_binary_impl_complex(
 ///
 /// # Errors
 /// Returns an error if expression syntax is invalid or dimensions are incompatible.
-pub fn einsum(
+pub fn einsum<T: NabledReal>(
     expression: &str,
-    left: &ArrayD<f64>,
-    right: &ArrayD<f64>,
-) -> Result<ArrayD<f64>, TensorError> {
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
+) -> Result<ArrayD<T>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -1537,12 +1558,15 @@ pub fn einsum_complex(
     einsum_binary_impl_complex(&left_view, &right_view, &left_labels, &right_labels, &output_labels)
 }
 
-fn mode0_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f64>, TensorError> {
+fn mode0_product<T: NabledReal>(
+    tensor: &Array3<T>,
+    matrix: &Array2<T>,
+) -> Result<Array3<T>, TensorError> {
     let (i0, i1, i2) = tensor.dim();
     if matrix.ncols() != i0 {
         return Err(TensorError::DimensionMismatch);
     }
-    let mut output = Array3::<f64>::zeros((matrix.nrows(), i1, i2));
+    let mut output = Array3::<T>::zeros((matrix.nrows(), i1, i2));
     for r in 0..matrix.nrows() {
         for i in 0..i0 {
             let weight = matrix[[r, i]];
@@ -1556,12 +1580,15 @@ fn mode0_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f6
     Ok(output)
 }
 
-fn mode1_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f64>, TensorError> {
+fn mode1_product<T: NabledReal>(
+    tensor: &Array3<T>,
+    matrix: &Array2<T>,
+) -> Result<Array3<T>, TensorError> {
     let (i0, i1, i2) = tensor.dim();
     if matrix.ncols() != i1 {
         return Err(TensorError::DimensionMismatch);
     }
-    let mut output = Array3::<f64>::zeros((i0, matrix.nrows(), i2));
+    let mut output = Array3::<T>::zeros((i0, matrix.nrows(), i2));
     for r in 0..matrix.nrows() {
         for j in 0..i1 {
             let weight = matrix[[r, j]];
@@ -1575,12 +1602,15 @@ fn mode1_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f6
     Ok(output)
 }
 
-fn mode2_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f64>, TensorError> {
+fn mode2_product<T: NabledReal>(
+    tensor: &Array3<T>,
+    matrix: &Array2<T>,
+) -> Result<Array3<T>, TensorError> {
     let (i0, i1, i2) = tensor.dim();
     if matrix.ncols() != i2 {
         return Err(TensorError::DimensionMismatch);
     }
-    let mut output = Array3::<f64>::zeros((i0, i1, matrix.nrows()));
+    let mut output = Array3::<T>::zeros((i0, i1, matrix.nrows()));
     for r in 0..matrix.nrows() {
         for k in 0..i2 {
             let weight = matrix[[r, k]];
@@ -1594,9 +1624,9 @@ fn mode2_product(tensor: &Array3<f64>, matrix: &Array2<f64>) -> Result<Array3<f6
     Ok(output)
 }
 
-fn unfold_mode0(tensor: &Array3<f64>) -> Array2<f64> {
+fn unfold_mode0<T: NabledReal>(tensor: &Array3<T>) -> Array2<T> {
     let (i0, i1, i2) = tensor.dim();
-    let mut unfolded = Array2::<f64>::zeros((i0, i1 * i2));
+    let mut unfolded = Array2::<T>::zeros((i0, i1 * i2));
     for i in 0..i0 {
         for j in 0..i1 {
             for k in 0..i2 {
@@ -1607,9 +1637,9 @@ fn unfold_mode0(tensor: &Array3<f64>) -> Array2<f64> {
     unfolded
 }
 
-fn unfold_mode1(tensor: &Array3<f64>) -> Array2<f64> {
+fn unfold_mode1<T: NabledReal>(tensor: &Array3<T>) -> Array2<T> {
     let (i0, i1, i2) = tensor.dim();
-    let mut unfolded = Array2::<f64>::zeros((i1, i0 * i2));
+    let mut unfolded = Array2::<T>::zeros((i1, i0 * i2));
     for j in 0..i1 {
         for i in 0..i0 {
             for k in 0..i2 {
@@ -1620,9 +1650,9 @@ fn unfold_mode1(tensor: &Array3<f64>) -> Array2<f64> {
     unfolded
 }
 
-fn unfold_mode2(tensor: &Array3<f64>) -> Array2<f64> {
+fn unfold_mode2<T: NabledReal>(tensor: &Array3<T>) -> Array2<T> {
     let (i0, i1, i2) = tensor.dim();
-    let mut unfolded = Array2::<f64>::zeros((i2, i0 * i1));
+    let mut unfolded = Array2::<T>::zeros((i2, i0 * i1));
     for k in 0..i2 {
         for i in 0..i0 {
             for j in 0..i1 {
@@ -1637,10 +1667,67 @@ fn unfold_mode2(tensor: &Array3<f64>) -> Array2<f64> {
 ///
 /// # Errors
 /// Returns an error if input is empty, ranks are invalid, or factorization fails.
-pub fn hosvd3(
-    cube: &Array3<f64>,
+#[cfg(feature = "lapack-provider")]
+pub fn hosvd3<T>(
+    cube: &Array3<T>,
     ranks: (usize, usize, usize),
-) -> Result<Hosvd3Result, TensorError> {
+) -> Result<Hosvd3Result<T>, TensorError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + AddAssign,
+{
+    hosvd3_impl(cube, ranks)
+}
+
+/// Compute rank-truncated HOSVD for a rank-3 real tensor.
+///
+/// # Errors
+/// Returns an error if input is empty, ranks are invalid, or factorization fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn hosvd3<T: NabledReal>(
+    cube: &Array3<T>,
+    ranks: (usize, usize, usize),
+) -> Result<Hosvd3Result<T>, TensorError> {
+    hosvd3_impl(cube, ranks)
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn hosvd3_impl<T: NabledReal>(
+    cube: &Array3<T>,
+    ranks: (usize, usize, usize),
+) -> Result<Hosvd3Result<T>, TensorError> {
+    let cube_view = cube.view();
+    validate_cube_non_empty(&cube_view)?;
+    let (i0, i1, i2) = cube.dim();
+    if ranks.0 == 0 || ranks.1 == 0 || ranks.2 == 0 || ranks.0 > i0 || ranks.1 > i1 || ranks.2 > i2
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let u0_full =
+        svd::decompose(&unfold_mode0(cube)).map_err(|_| TensorError::DimensionMismatch)?.u;
+    let u1_full =
+        svd::decompose(&unfold_mode1(cube)).map_err(|_| TensorError::DimensionMismatch)?.u;
+    let u2_full =
+        svd::decompose(&unfold_mode2(cube)).map_err(|_| TensorError::DimensionMismatch)?.u;
+
+    let u0 = u0_full.slice(s![.., 0..ranks.0]).to_owned();
+    let u1 = u1_full.slice(s![.., 0..ranks.1]).to_owned();
+    let u2 = u2_full.slice(s![.., 0..ranks.2]).to_owned();
+
+    let core_mode0 = mode0_product(cube, &u0.t().to_owned())?;
+    let core_mode1 = mode1_product(&core_mode0, &u1.t().to_owned())?;
+    let core = mode2_product(&core_mode1, &u2.t().to_owned())?;
+    Ok(Hosvd3Result { core, u0, u1, u2 })
+}
+
+#[cfg(feature = "lapack-provider")]
+fn hosvd3_impl<T>(
+    cube: &Array3<T>,
+    ranks: (usize, usize, usize),
+) -> Result<Hosvd3Result<T>, TensorError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + AddAssign,
+{
     let cube_view = cube.view();
     validate_cube_non_empty(&cube_view)?;
     let (i0, i1, i2) = cube.dim();
@@ -1670,7 +1757,9 @@ pub fn hosvd3(
 ///
 /// # Errors
 /// Returns an error if factor dimensions are incompatible.
-pub fn hosvd3_reconstruct(result: &Hosvd3Result) -> Result<Array3<f64>, TensorError> {
+pub fn hosvd3_reconstruct<T: NabledReal>(
+    result: &Hosvd3Result<T>,
+) -> Result<Array3<T>, TensorError> {
     let mode0 = mode0_product(&result.core, &result.u0)?;
     let mode1 = mode1_product(&mode0, &result.u1)?;
     mode2_product(&mode1, &result.u2)
@@ -1686,10 +1775,14 @@ mod tests {
     #[test]
     fn cube_matvec_variants_match() {
         let cube = Array3::from_shape_vec((2, 2, 3), vec![
-            1.0, 2.0, 3.0, 0.0, 1.0, 1.0, 2.0, -1.0, 0.5, 3.0, 0.0, 2.0,
+            1.0_f64, 2.0_f64, 3.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, -1.0_f64, 0.5_f64,
+            3.0_f64, 0.0_f64, 2.0_f64,
         ])
         .unwrap();
-        let vectors = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 2.0, 0.5, -1.0, 1.0]).unwrap();
+        let vectors = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 0.0_f64, 2.0_f64, 0.5_f64, -1.0_f64, 1.0_f64,
+        ])
+        .unwrap();
 
         let allocating = cube_matvec(&cube, &vectors).unwrap();
         let viewed = cube_matvec_view(&cube.view(), &vectors.view()).unwrap();
@@ -1698,8 +1791,8 @@ mod tests {
 
         for b in 0..2 {
             for row in 0..2 {
-                assert!((allocating[[b, row]] - viewed[[b, row]]).abs() < 1e-12);
-                assert!((allocating[[b, row]] - into[[b, row]]).abs() < 1e-12);
+                assert!((allocating[[b, row]] - viewed[[b, row]]).abs() < 1e-12_f64);
+                assert!((allocating[[b, row]] - into[[b, row]]).abs() < 1e-12_f64);
             }
         }
     }
@@ -1707,11 +1800,13 @@ mod tests {
     #[test]
     fn cube_matmat_variants_match() {
         let left = Array3::from_shape_vec((2, 2, 3), vec![
-            1.0, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, 0.0_f64, 1.0_f64,
+            1.0_f64, 3.0_f64, 2.0_f64,
         ])
         .unwrap();
         let right = Array3::from_shape_vec((2, 3, 2), vec![
-            1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64, 2.0_f64, 1.0_f64,
+            1.0_f64, 3.0_f64, 0.0_f64,
         ])
         .unwrap();
 
@@ -1723,8 +1818,8 @@ mod tests {
         for b in 0..2 {
             for i in 0..2 {
                 for j in 0..2 {
-                    assert!((allocating[[b, i, j]] - viewed[[b, i, j]]).abs() < 1e-12);
-                    assert!((allocating[[b, i, j]] - into[[b, i, j]]).abs() < 1e-12);
+                    assert!((allocating[[b, i, j]] - viewed[[b, i, j]]).abs() < 1e-12_f64);
+                    assert!((allocating[[b, i, j]] - into[[b, i, j]]).abs() < 1e-12_f64);
                 }
             }
         }
@@ -1733,21 +1828,21 @@ mod tests {
     #[test]
     fn cube_matvec_complex_variants_match() {
         let cube = Array3::from_shape_vec((2, 2, 2), vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, 1.0),
-            Complex64::new(-1.0, 0.0),
-            Complex64::new(0.5, 0.5),
-            Complex64::new(3.0, -2.0),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(2.0_f64, -1.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(2.0_f64, 1.0_f64),
+            Complex64::new(-1.0_f64, 0.0_f64),
+            Complex64::new(0.5_f64, 0.5_f64),
+            Complex64::new(3.0_f64, -2.0_f64),
         ])
         .unwrap();
         let vectors = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.5, -0.5),
-            Complex64::new(-1.0, 1.0),
-            Complex64::new(2.0, 0.0),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(0.5_f64, -0.5_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, 0.0_f64),
         ])
         .unwrap();
 
@@ -1758,8 +1853,8 @@ mod tests {
 
         for b in 0..2 {
             for row in 0..2 {
-                assert!((allocating[[b, row]] - viewed[[b, row]]).norm() < 1e-12);
-                assert!((allocating[[b, row]] - into[[b, row]]).norm() < 1e-12);
+                assert!((allocating[[b, row]] - viewed[[b, row]]).norm() < 1e-12_f64);
+                assert!((allocating[[b, row]] - into[[b, row]]).norm() < 1e-12_f64);
             }
         }
     }
@@ -1767,17 +1862,17 @@ mod tests {
     #[test]
     fn cube_matmat_complex_variants_match() {
         let left = Array3::from_shape_vec((1, 2, 2), vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, 0.0),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(2.0_f64, -1.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
         ])
         .unwrap();
         let right = Array3::from_shape_vec((1, 2, 2), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0_f64, 1.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, 0.0_f64),
+            Complex64::new(1.0_f64, -1.0_f64),
         ])
         .unwrap();
 
@@ -1788,22 +1883,24 @@ mod tests {
 
         for i in 0..2 {
             for j in 0..2 {
-                assert!((allocating[[0, i, j]] - viewed[[0, i, j]]).norm() < 1e-12);
-                assert!((allocating[[0, i, j]] - into[[0, i, j]]).norm() < 1e-12);
+                assert!((allocating[[0, i, j]] - viewed[[0, i, j]]).norm() < 1e-12_f64);
+                assert!((allocating[[0, i, j]] - into[[0, i, j]]).norm() < 1e-12_f64);
             }
         }
     }
 
     #[test]
     fn flatten_cubes_is_shape_stable() {
-        let cube = Array3::from_shape_vec((2, 2, 2), vec![1.0, 2.0, 3.0, 4.0, 0.0, 1.0, -1.0, 2.0])
-            .unwrap();
+        let cube = Array3::from_shape_vec((2, 2, 2), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 1.0_f64, -1.0_f64, 2.0_f64,
+        ])
+        .unwrap();
         let flattened = flatten_cubes(&cube).unwrap();
         assert_eq!(flattened.dim(), (2, 4));
-        assert!((flattened[[0, 0]] - 1.0).abs() < 1e-12);
-        assert!((flattened[[0, 3]] - 4.0).abs() < 1e-12);
-        assert!((flattened[[1, 1]] - 1.0).abs() < 1e-12);
-        assert!((flattened[[1, 2]] + 1.0).abs() < 1e-12);
+        assert!((flattened[[0, 0]] - 1.0_f64).abs() < 1e-12_f64);
+        assert!((flattened[[0, 3]] - 4.0_f64).abs() < 1e-12_f64);
+        assert!((flattened[[1, 1]] - 1.0_f64).abs() < 1e-12_f64);
+        assert!((flattened[[1, 2]] + 1.0_f64).abs() < 1e-12_f64);
     }
 
     #[test]
@@ -1819,31 +1916,33 @@ mod tests {
     #[test]
     fn arrayd_last_axis_ops_match_expected() {
         let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
+            1.0_f64, 2.0_f64, 2.0_f64,
         ])
         .unwrap();
 
         let sum = sum_last_axis(&tensor).unwrap();
         assert_eq!(sum.shape(), &[2, 2]);
-        assert!((sum[[0, 0]] - 6.0).abs() < 1e-12);
-        assert!((sum[[0, 1]] - 4.0).abs() < 1e-12);
+        assert!((sum[[0, 0]] - 6.0_f64).abs() < 1e-12_f64);
+        assert!((sum[[0, 1]] - 4.0_f64).abs() < 1e-12_f64);
 
         let norms = l2_norm_last_axis(&tensor).unwrap();
         assert_eq!(norms.shape(), &[2, 2]);
-        assert!((norms[[0, 0]] - (14.0_f64).sqrt()).abs() < 1e-12);
-        assert!((norms[[0, 1]] - 4.0).abs() < 1e-12);
+        assert!((norms[[0, 0]] - (14.0_f64).sqrt()).abs() < 1e-12_f64);
+        assert!((norms[[0, 1]] - 4.0_f64).abs() < 1e-12_f64);
 
         let normalized = normalize_last_axis(&tensor).unwrap();
         let normalized_norms = l2_norm_last_axis(&normalized).unwrap();
         for value in &normalized_norms {
-            assert!((value - 1.0).abs() < 1e-10);
+            assert!((value - 1.0_f64).abs() < 1e-10_f64);
         }
     }
 
     #[test]
     fn sum_last_axis_view_and_into_match_allocating_path() {
         let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
+            1.0_f64, 2.0_f64, 2.0_f64,
         ])
         .unwrap();
 
@@ -1855,62 +1954,64 @@ mod tests {
         assert_eq!(allocating.shape(), viewed.shape());
         assert_eq!(allocating.shape(), output.shape());
         for ((lhs, rhs), into_value) in allocating.iter().zip(viewed.iter()).zip(output.iter()) {
-            assert!((lhs - rhs).abs() < 1e-12);
-            assert!((lhs - into_value).abs() < 1e-12);
+            assert!((lhs - rhs).abs() < 1e-12_f64);
+            assert!((lhs - into_value).abs() < 1e-12_f64);
         }
     }
 
     #[test]
     fn batched_dot_last_axis_matches_manual() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
+            1.0_f64, 2.0_f64, 2.0_f64,
         ])
         .unwrap();
         let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            0.5, 1.0, -1.0, 0.0, 2.0, 3.0, 1.0, 1.0, 1.0, 2.0, 0.0, 1.0,
+            0.5_f64, 1.0_f64, -1.0_f64, 0.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
+            2.0_f64, 0.0_f64, 1.0_f64,
         ])
         .unwrap();
 
         let dots = batched_dot_last_axis(&left, &right).unwrap();
         assert_eq!(dots.shape(), &[2, 2]);
-        assert!((dots[[0, 0]] - (0.5 + 2.0 - 3.0)).abs() < 1e-12);
-        assert!((dots[[0, 1]] - 0.0).abs() < 1e-12);
-        assert!((dots[[1, 0]] - 7.0).abs() < 1e-12);
-        assert!((dots[[1, 1]] - 4.0).abs() < 1e-12);
+        assert!((dots[[0, 0]] - (0.5_f64 + 2.0_f64 - 3.0_f64)).abs() < 1e-12_f64);
+        assert!((dots[[0, 1]] - 0.0_f64).abs() < 1e-12_f64);
+        assert!((dots[[1, 0]] - 7.0_f64).abs() < 1e-12_f64);
+        assert!((dots[[1, 1]] - 4.0_f64).abs() < 1e-12_f64);
     }
 
     #[test]
     fn arrayd_complex_last_axis_ops_match_expected() {
         let tensor = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, -1.0_f64),
         ])
         .unwrap();
 
         let sum = sum_last_axis_complex(&tensor).unwrap();
         assert_eq!(sum.shape(), &[1, 2]);
-        assert!((sum[[0, 0]] - Complex64::new(3.0, 1.0)).norm() < 1e-12);
+        assert!((sum[[0, 0]] - Complex64::new(3.0_f64, 1.0_f64)).norm() < 1e-12_f64);
 
         let norms = l2_norm_last_axis_complex(&tensor).unwrap();
         assert_eq!(norms.shape(), &[1, 2]);
-        assert!((norms[[0, 0]] - (6.0_f64).sqrt()).abs() < 1e-12);
+        assert!((norms[[0, 0]] - (6.0_f64).sqrt()).abs() < 1e-12_f64);
 
         let normalized = normalize_last_axis_complex(&tensor).unwrap();
         let normalized_norms = l2_norm_last_axis_complex(&normalized).unwrap();
         for value in &normalized_norms {
-            assert!((value - 1.0).abs() < 1e-10);
+            assert!((value - 1.0_f64).abs() < 1e-10_f64);
         }
     }
 
     #[test]
     fn sum_last_axis_complex_view_and_into_match_allocating_path() {
         let tensor = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, -1.0_f64),
         ])
         .unwrap();
 
@@ -1922,25 +2023,25 @@ mod tests {
         assert_eq!(allocating.shape(), viewed.shape());
         assert_eq!(allocating.shape(), output.shape());
         for ((lhs, rhs), into_value) in allocating.iter().zip(viewed.iter()).zip(output.iter()) {
-            assert!((*lhs - *rhs).norm() < 1e-12);
-            assert!((*lhs - *into_value).norm() < 1e-12);
+            assert!((*lhs - *rhs).norm() < 1e-12_f64);
+            assert!((*lhs - *into_value).norm() < 1e-12_f64);
         }
     }
 
     #[test]
     fn batched_dot_last_axis_complex_matches_manual() {
         let left = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, -1.0_f64),
         ])
         .unwrap();
         let right = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(0.5, 0.0),
-            Complex64::new(-1.0, 1.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(0.0, 1.0),
+            Complex64::new(0.5_f64, 0.0_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, -1.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
         ])
         .unwrap();
 
@@ -1951,8 +2052,8 @@ mod tests {
             left[[0, 0, 0]].conj() * right[[0, 0, 0]] + left[[0, 0, 1]].conj() * right[[0, 0, 1]];
         let expected_01 =
             left[[0, 1, 0]].conj() * right[[0, 1, 0]] + left[[0, 1, 1]].conj() * right[[0, 1, 1]];
-        assert!((dots[[0, 0]] - expected_00).norm() < 1e-12);
-        assert!((dots[[0, 1]] - expected_01).norm() < 1e-12);
+        assert!((dots[[0, 0]] - expected_00).norm() < 1e-12_f64);
+        assert!((dots[[0, 1]] - expected_01).norm() < 1e-12_f64);
     }
 
     #[test]
@@ -1961,29 +2062,29 @@ mod tests {
             ArrayD::from_shape_vec(IxDyn(&[2, 3, 4]), (0..24).map(f64::from).collect()).unwrap();
         let permuted = permute_axes(&tensor, &[1, 0, 2]).unwrap();
         assert_eq!(permuted.shape(), &[3, 2, 4]);
-        assert!((permuted[[2, 1, 3]] - tensor[[1, 2, 3]]).abs() < 1e-12);
+        assert!((permuted[[2, 1, 3]] - tensor[[1, 2, 3]]).abs() < 1e-12_f64);
     }
 
     #[test]
     fn contract_axes_matches_matrix_multiply() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 3]), vec![
-            1.0, 2.0, 3.0, //
-            4.0, 5.0, 6.0,
+            1.0_f64, 2.0_f64, 3.0_f64, //
+            4.0_f64, 5.0_f64, 6.0_f64,
         ])
         .unwrap();
         let right = ArrayD::from_shape_vec(IxDyn(&[3, 2]), vec![
-            7.0, 8.0, //
-            9.0, 10.0, //
-            11.0, 12.0,
+            7.0_f64, 8.0_f64, //
+            9.0_f64, 10.0_f64, //
+            11.0_f64, 12.0_f64,
         ])
         .unwrap();
 
         let contracted = contract_axes(&left, &right, &[1], &[0]).unwrap();
         assert_eq!(contracted.shape(), &[2, 2]);
-        assert!((contracted[[0, 0]] - 58.0).abs() < 1e-12);
-        assert!((contracted[[0, 1]] - 64.0).abs() < 1e-12);
-        assert!((contracted[[1, 0]] - 139.0).abs() < 1e-12);
-        assert!((contracted[[1, 1]] - 154.0).abs() < 1e-12);
+        assert!((contracted[[0, 0]] - 58.0_f64).abs() < 1e-12_f64);
+        assert!((contracted[[0, 1]] - 64.0_f64).abs() < 1e-12_f64);
+        assert!((contracted[[1, 0]] - 139.0_f64).abs() < 1e-12_f64);
+        assert!((contracted[[1, 1]] - 154.0_f64).abs() < 1e-12_f64);
     }
 
     #[test]
@@ -1992,7 +2093,7 @@ mod tests {
             ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), (0..12).map(f64::from).collect()).unwrap();
         let right = ArrayD::from_shape_vec(
             IxDyn(&[2, 3, 4]),
-            (0..24).map(|value| f64::from(value) * 0.5).collect(),
+            (0..24).map(|value| f64::from(value) * 0.5_f64).collect(),
         )
         .unwrap();
 
@@ -2002,7 +2103,7 @@ mod tests {
 
         assert_eq!(allocating.shape(), into.shape());
         for (lhs, rhs) in allocating.iter().zip(into.iter()) {
-            assert!((lhs - rhs).abs() < 1e-12);
+            assert!((lhs - rhs).abs() < 1e-12_f64);
         }
     }
 
@@ -2012,7 +2113,7 @@ mod tests {
             ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), (0..12).map(f64::from).collect()).unwrap();
         let right = ArrayD::from_shape_vec(
             IxDyn(&[2, 3, 4]),
-            (0..24).map(|value| f64::from(value) * 0.5).collect(),
+            (0..24).map(|value| f64::from(value) * 0.5_f64).collect(),
         )
         .unwrap();
 
@@ -2022,21 +2123,21 @@ mod tests {
         contract_axes_view_into(&left.view(), &right.view(), &[2], &[1], &mut into).unwrap();
 
         for ((lhs, rhs), into_value) in allocating.iter().zip(viewed.iter()).zip(into.iter()) {
-            assert!((lhs - rhs).abs() < 1e-12);
-            assert!((lhs - into_value).abs() < 1e-12);
+            assert!((lhs - rhs).abs() < 1e-12_f64);
+            assert!((lhs - into_value).abs() < 1e-12_f64);
         }
     }
 
     #[test]
     fn batched_matmul_last_two_matches_cube_matmat() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0, 2.0, 0.0, 0.0, 1.0, 1.0, //
-            2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, //
+            2.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 2.0_f64,
         ])
         .unwrap();
         let right = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0, 0.0, 2.0, 1.0, 1.0, 3.0, //
-            0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
+            0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64,
         ])
         .unwrap();
 
@@ -2049,7 +2150,7 @@ mod tests {
         .into_dyn();
 
         for (lhs, rhs) in nd_output.iter().zip(cube_output.iter()) {
-            assert!((lhs - rhs).abs() < 1e-12);
+            assert!((lhs - rhs).abs() < 1e-12_f64);
         }
     }
 
@@ -2059,7 +2160,7 @@ mod tests {
             ArrayD::from_shape_vec(IxDyn(&[2, 2, 2, 3]), (0..24).map(f64::from).collect()).unwrap();
         let right = ArrayD::from_shape_vec(
             IxDyn(&[2, 2, 3, 2]),
-            (0..24).map(|value| f64::from(value) * 0.25).collect(),
+            (0..24).map(|value| f64::from(value) * 0.25_f64).collect(),
         )
         .unwrap();
 
@@ -2068,7 +2169,7 @@ mod tests {
         batched_matmul_last_two_into(&left, &right, &mut into).unwrap();
 
         for (lhs, rhs) in allocating.iter().zip(into.iter()) {
-            assert!((lhs - rhs).abs() < 1e-12);
+            assert!((lhs - rhs).abs() < 1e-12_f64);
         }
     }
 
@@ -2078,7 +2179,7 @@ mod tests {
             ArrayD::from_shape_vec(IxDyn(&[2, 2, 2, 3]), (0..24).map(f64::from).collect()).unwrap();
         let right = ArrayD::from_shape_vec(
             IxDyn(&[2, 2, 3, 2]),
-            (0..24).map(|value| f64::from(value) * 0.25).collect(),
+            (0..24).map(|value| f64::from(value) * 0.25_f64).collect(),
         )
         .unwrap();
 
@@ -2088,25 +2189,25 @@ mod tests {
         batched_matmul_last_two_view_into(&left.view(), &right.view(), &mut into).unwrap();
 
         for ((lhs, rhs), into_value) in allocating.iter().zip(viewed.iter()).zip(into.iter()) {
-            assert!((lhs - rhs).abs() < 1e-12);
-            assert!((lhs - into_value).abs() < 1e-12);
+            assert!((lhs - rhs).abs() < 1e-12_f64);
+            assert!((lhs - into_value).abs() < 1e-12_f64);
         }
     }
 
     #[test]
     fn complex_contract_and_batched_matmul_paths_work() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, -1.0),
-            Complex64::new(1.0, 2.0),
+            Complex64::new(1.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, -1.0_f64),
+            Complex64::new(1.0_f64, 2.0_f64),
         ])
         .unwrap();
         let right = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(-1.0, 1.0),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(2.0_f64, -1.0_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
         ])
         .unwrap();
 
@@ -2121,24 +2222,24 @@ mod tests {
         let mut into = ArrayD::<Complex64>::zeros(IxDyn(&[1, 2, 2]));
         batched_matmul_last_two_complex_into(&left_batch, &right_batch, &mut into).unwrap();
         for (lhs, rhs) in matmul.iter().zip(into.iter()) {
-            assert!((*lhs - *rhs).norm() < 1e-12);
+            assert!((*lhs - *rhs).norm() < 1e-12_f64);
         }
     }
 
     #[test]
     fn complex_contract_and_batched_matmul_view_variants_match() {
         let left = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, -1.0),
-            Complex64::new(1.0, 2.0),
+            Complex64::new(1.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, -1.0_f64),
+            Complex64::new(1.0_f64, 2.0_f64),
         ])
         .unwrap();
         let right = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(-1.0, 1.0),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(2.0_f64, -1.0_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
         ])
         .unwrap();
 
@@ -2157,8 +2258,8 @@ mod tests {
         for ((lhs, rhs), into_value) in
             allocating_contract.iter().zip(viewed_contract.iter()).zip(contract_into.iter())
         {
-            assert!((*lhs - *rhs).norm() < 1e-12);
-            assert!((*lhs - *into_value).norm() < 1e-12);
+            assert!((*lhs - *rhs).norm() < 1e-12_f64);
+            assert!((*lhs - *into_value).norm() < 1e-12_f64);
         }
 
         let allocating_matmul = batched_matmul_last_two_complex(&left, &right).unwrap();
@@ -2170,93 +2271,93 @@ mod tests {
         for ((lhs, rhs), into_value) in
             allocating_matmul.iter().zip(viewed_matmul.iter()).zip(matmul_into.iter())
         {
-            assert!((*lhs - *rhs).norm() < 1e-12);
-            assert!((*lhs - *into_value).norm() < 1e-12);
+            assert!((*lhs - *rhs).norm() < 1e-12_f64);
+            assert!((*lhs - *into_value).norm() < 1e-12_f64);
         }
     }
 
     #[test]
     fn einsum_matches_matrix_multiply_and_batch_path() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 3]), vec![
-            1.0, 2.0, 3.0, //
-            4.0, 5.0, 6.0,
+            1.0_f64, 2.0_f64, 3.0_f64, //
+            4.0_f64, 5.0_f64, 6.0_f64,
         ])
         .unwrap();
         let right = ArrayD::from_shape_vec(IxDyn(&[3, 2]), vec![
-            7.0, 8.0, //
-            9.0, 10.0, //
-            11.0, 12.0,
+            7.0_f64, 8.0_f64, //
+            9.0_f64, 10.0_f64, //
+            11.0_f64, 12.0_f64,
         ])
         .unwrap();
         let product = einsum("ab,bc->ac", &left, &right).unwrap();
         assert_eq!(product.shape(), &[2, 2]);
-        assert!((product[[0, 0]] - 58.0).abs() < 1e-12);
-        assert!((product[[0, 1]] - 64.0).abs() < 1e-12);
-        assert!((product[[1, 0]] - 139.0).abs() < 1e-12);
-        assert!((product[[1, 1]] - 154.0).abs() < 1e-12);
+        assert!((product[[0, 0]] - 58.0_f64).abs() < 1e-12_f64);
+        assert!((product[[0, 1]] - 64.0_f64).abs() < 1e-12_f64);
+        assert!((product[[1, 0]] - 139.0_f64).abs() < 1e-12_f64);
+        assert!((product[[1, 1]] - 154.0_f64).abs() < 1e-12_f64);
 
         let left_batch = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0, 2.0, 0.0, 0.0, 1.0, 1.0, //
-            2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, //
+            2.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 2.0_f64,
         ])
         .unwrap();
         let right_batch = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0, 0.0, 2.0, 1.0, 1.0, 3.0, //
-            0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
+            0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64,
         ])
         .unwrap();
         let batch_product = einsum("bij,bjk->bik", &left_batch, &right_batch).unwrap();
         let nd_output = batched_matmul_last_two(&left_batch, &right_batch).unwrap();
         for (lhs, rhs) in batch_product.iter().zip(nd_output.iter()) {
-            assert!((lhs - rhs).abs() < 1e-12);
+            assert!((lhs - rhs).abs() < 1e-12_f64);
         }
     }
 
     #[test]
     fn complex_einsum_matches_manual() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, -1.0),
-            Complex64::new(1.0, 2.0),
+            Complex64::new(1.0_f64, 1.0_f64),
+            Complex64::new(2.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, -1.0_f64),
+            Complex64::new(1.0_f64, 2.0_f64),
         ])
         .unwrap();
         let right = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(-1.0, 1.0),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(2.0_f64, -1.0_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
         ])
         .unwrap();
         let product = einsum_complex("ab,bc->ac", &left, &right).unwrap();
         let reference = contract_axes_complex(&left, &right, &[1], &[0]).unwrap();
         for (lhs, rhs) in product.iter().zip(reference.iter()) {
-            assert!((*lhs - *rhs).norm() < 1e-12);
+            assert!((*lhs - *rhs).norm() < 1e-12_f64);
         }
     }
 
     #[test]
     fn hosvd3_roundtrip_is_consistent() {
         let cube = Array3::from_shape_vec((3, 3, 2), vec![
-            1.0, 0.5, 2.0, -1.0, 0.0, 1.0, 0.0, 2.0, 1.0, 1.5, 3.0, 0.0, -1.0, 1.0, 2.5, -0.5, 0.5,
-            2.0,
+            1.0_f64, 0.5_f64, 2.0_f64, -1.0_f64, 0.0_f64, 1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64,
+            1.5_f64, 3.0_f64, 0.0_f64, -1.0_f64, 1.0_f64, 2.5_f64, -0.5_f64, 0.5_f64, 2.0_f64,
         ])
         .unwrap();
         let decomposition = hosvd3(&cube, (3, 3, 2)).unwrap();
         let reconstructed = hosvd3_reconstruct(&decomposition).unwrap();
         assert_eq!(reconstructed.dim(), cube.dim());
         for (lhs, rhs) in reconstructed.iter().zip(cube.iter()) {
-            assert!((lhs - rhs).abs() < 1e-8);
+            assert!((lhs - rhs).abs() < 1e-8_f64);
         }
     }
 
     #[test]
     fn arrayd_ops_reject_invalid_dimensions() {
-        let scalar = ArrayD::from_shape_vec(IxDyn(&[]), vec![1.0]).unwrap();
+        let scalar = ArrayD::from_shape_vec(IxDyn(&[]), vec![1.0_f64]).unwrap();
         assert!(matches!(sum_last_axis(&scalar), Err(TensorError::DimensionMismatch)));
 
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![1.0; 12]).unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![1.0; 8]).unwrap();
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![1.0_f64; 12]).unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![1.0_f64; 8]).unwrap();
         assert!(matches!(
             batched_dot_last_axis(&left, &right),
             Err(TensorError::DimensionMismatch)

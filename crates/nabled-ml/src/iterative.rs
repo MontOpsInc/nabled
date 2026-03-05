@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use nabled_linalg::lu;
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
@@ -25,6 +26,16 @@ impl IterativeConfig<f64> {
 
 impl Default for IterativeConfig<f64> {
     fn default() -> Self { Self::default_f64() }
+}
+
+impl IterativeConfig<f32> {
+    /// Default configuration for `f32`.
+    #[must_use]
+    pub const fn default_f32() -> Self { Self { tolerance: 1e-6, max_iterations: 1000 } }
+}
+
+impl Default for IterativeConfig<f32> {
+    fn default() -> Self { Self::default_f32() }
 }
 
 /// Error type for iterative solvers.
@@ -56,23 +67,69 @@ impl fmt::Display for IterativeError {
 
 impl std::error::Error for IterativeError {}
 
-fn vector_norm(vector: &Array1<f64>) -> f64 {
-    vector.iter().map(|value| value * value).sum::<f64>().sqrt()
+fn default_tolerance<T: NabledReal>() -> T {
+    T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon)
+}
+
+fn vector_norm<T: NabledReal>(vector: &Array1<T>) -> T {
+    vector
+        .iter()
+        .map(|value| *value * *value)
+        .fold(T::zero(), |acc, value| acc + value)
+        .sqrt()
 }
 
 fn vector_norm_complex(vector: &Array1<Complex64>) -> f64 {
     vector.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
 }
 
+#[cfg(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+))]
+trait IterativeLinearScalar: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack {}
+
+#[cfg(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+))]
+impl<T> IterativeLinearScalar for T where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack
+{
+}
+
+#[cfg(not(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+)))]
+trait IterativeLinearScalar: NabledReal + std::ops::SubAssign {}
+
+#[cfg(not(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+)))]
+impl<T> IterativeLinearScalar for T where T: NabledReal + std::ops::SubAssign {}
+
 /// Conjugate Gradient for SPD systems `Ax=b`.
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-pub fn conjugate_gradient(
-    matrix_a: &Array2<f64>,
-    matrix_b: &Array1<f64>,
-    config: &IterativeConfig<f64>,
-) -> Result<Array1<f64>, IterativeError> {
+pub fn conjugate_gradient<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal,
+{
     if matrix_a.is_empty() || matrix_b.is_empty() {
         return Err(IterativeError::EmptyMatrix);
     }
@@ -81,33 +138,34 @@ pub fn conjugate_gradient(
     }
 
     let n = matrix_b.len();
-    let mut x = Array1::<f64>::zeros(n);
+    let mut x = Array1::<T>::zeros(n);
     let mut r = matrix_b.clone();
     let mut p = r.clone();
     let mut rs_old = r.dot(&r);
 
-    if rs_old.sqrt() <= config.tolerance.max(DEFAULT_TOLERANCE) {
+    let tolerance = config.tolerance.max(default_tolerance::<T>());
+    if rs_old.sqrt() <= tolerance {
         return Ok(x);
     }
 
     for _ in 0..config.max_iterations {
         let ap = matrix_a.dot(&p);
         let curvature = p.dot(&ap);
-        if curvature <= DEFAULT_TOLERANCE {
+        if curvature <= tolerance {
             return Err(IterativeError::NotPositiveDefinite);
         }
 
         let alpha = rs_old / curvature;
-        x = &x + &(alpha * &p);
-        r = &r - &(alpha * &ap);
+        x = &x + &p.mapv(|value| alpha * value);
+        r = &r - &ap.mapv(|value| alpha * value);
 
         let rs_new = r.dot(&r);
-        if rs_new.sqrt() <= config.tolerance.max(DEFAULT_TOLERANCE) {
+        if rs_new.sqrt() <= tolerance {
             return Ok(x);
         }
 
         let beta = rs_new / rs_old;
-        p = &r + &(beta * &p);
+        p = &r + &p.mapv(|value| beta * value);
         rs_old = rs_new;
     }
 
@@ -169,16 +227,66 @@ pub fn conjugate_gradient_complex(
     Err(IterativeError::MaxIterationsExceeded)
 }
 
+fn solve_linear<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, IterativeError>
+where
+    T: IterativeLinearScalar,
+{
+    lu::solve(matrix, rhs).map_err(|_| IterativeError::Breakdown)
+}
+
 /// GMRES for general systems `Ax=b`.
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
 #[allow(clippy::many_single_char_names)]
-pub fn gmres(
-    matrix_a: &Array2<f64>,
-    matrix_b: &Array1<f64>,
-    config: &IterativeConfig<f64>,
-) -> Result<Array1<f64>, IterativeError> {
+#[cfg(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+))]
+pub fn gmres<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack,
+{
+    gmres_impl(matrix_a, matrix_b, config)
+}
+
+/// GMRES for general systems `Ax=b`.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[allow(clippy::many_single_char_names)]
+#[cfg(not(any(
+    feature = "openblas-system",
+    feature = "openblas-static",
+    feature = "netlib-system",
+    feature = "netlib-static"
+)))]
+pub fn gmres<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign,
+{
+    gmres_impl(matrix_a, matrix_b, config)
+}
+
+#[allow(clippy::many_single_char_names)]
+fn gmres_impl<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: IterativeLinearScalar,
+{
     if matrix_a.is_empty() || matrix_b.is_empty() {
         return Err(IterativeError::EmptyMatrix);
     }
@@ -188,12 +296,13 @@ pub fn gmres(
 
     let n = matrix_b.len();
     let m = n.min(config.max_iterations.max(1));
-    let mut basis = Array2::<f64>::zeros((n, m + 1));
-    let mut hessenberg = Array2::<f64>::zeros((m + 1, m));
+    let mut basis = Array2::<T>::zeros((n, m + 1));
+    let mut hessenberg = Array2::<T>::zeros((m + 1, m));
 
     let beta = vector_norm(matrix_b);
-    if beta <= config.tolerance.max(DEFAULT_TOLERANCE) {
-        return Ok(Array1::<f64>::zeros(n));
+    let tolerance = config.tolerance.max(default_tolerance::<T>());
+    if beta <= tolerance {
+        return Ok(Array1::<T>::zeros(n));
     }
 
     for row in 0..n {
@@ -215,7 +324,7 @@ pub fn gmres(
 
         let norm_w = vector_norm(&w);
         hessenberg[[j + 1, j]] = norm_w;
-        if norm_w <= config.tolerance.max(DEFAULT_TOLERANCE) {
+        if norm_w <= tolerance {
             effective_m = j + 1;
             break;
         }
@@ -228,15 +337,15 @@ pub fn gmres(
     let ht = h.t();
     let normal_matrix = ht.dot(&h);
 
-    let mut rhs_ls = Array1::<f64>::zeros(effective_m + 1);
+    let mut rhs_ls = Array1::<T>::zeros(effective_m + 1);
     rhs_ls[0] = beta;
     let normal_rhs = ht.dot(&rhs_ls);
 
-    let y = lu::solve(&normal_matrix, &normal_rhs).map_err(|_| IterativeError::Breakdown)?;
+    let y = solve_linear(&normal_matrix, &normal_rhs)?;
     let x = basis.slice(ndarray::s![.., ..effective_m]).dot(&y);
 
     let residual = matrix_b - &matrix_a.dot(&x);
-    if vector_norm(&residual) <= config.tolerance.max(DEFAULT_TOLERANCE) {
+    if vector_norm(&residual) <= tolerance {
         Ok(x)
     } else {
         Err(IterativeError::MaxIterationsExceeded)
@@ -328,9 +437,10 @@ mod tests {
 
     #[test]
     fn cg_solves_spd_system() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 1.0, 1.0, 3.0]).unwrap();
-        let rhs = Array1::from_vec(vec![1.0, 2.0]);
-        let solution = conjugate_gradient(&matrix, &rhs, &IterativeConfig::default()).unwrap();
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0_f64, 1.0, 1.0, 3.0]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0]);
+        let solution =
+            conjugate_gradient(&matrix, &rhs, &IterativeConfig::<f64>::default()).unwrap();
         let reconstructed = matrix.dot(&solution);
         assert!((reconstructed[0] - rhs[0]).abs() < 1e-8);
         assert!((reconstructed[1] - rhs[1]).abs() < 1e-8);
@@ -338,19 +448,36 @@ mod tests {
 
     #[test]
     fn gmres_solves_small_system() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 1.0, 2.0]).unwrap();
-        let rhs = Array1::from_vec(vec![9.0, 8.0]);
-        let solution = gmres(&matrix, &rhs, &IterativeConfig::default()).unwrap();
+        let matrix = Array2::from_shape_vec((2, 2), vec![3.0_f64, 1.0, 1.0, 2.0]).unwrap();
+        let rhs = Array1::from_vec(vec![9.0_f64, 8.0]);
+        let solution = gmres(&matrix, &rhs, &IterativeConfig::<f64>::default()).unwrap();
         let reconstructed = matrix.dot(&solution);
         assert!((reconstructed[0] - rhs[0]).abs() < 1e-8);
         assert!((reconstructed[1] - rhs[1]).abs() < 1e-8);
     }
 
     #[test]
+    fn real_f32_solvers_work() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0_f32, 1.0, 1.0, 3.0]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f32, 2.0]);
+        let config = IterativeConfig::<f32>::default();
+
+        let cg = conjugate_gradient(&matrix, &rhs, &config).unwrap();
+        let gm = gmres(&matrix, &rhs, &config).unwrap();
+
+        let cg_reconstructed = matrix.dot(&cg);
+        let gm_reconstructed = matrix.dot(&gm);
+        for i in 0..rhs.len() {
+            assert!((cg_reconstructed[i] - rhs[i]).abs() < 1e-4);
+            assert!((gm_reconstructed[i] - rhs[i]).abs() < 1e-4);
+        }
+    }
+
+    #[test]
     fn cg_rejects_dimension_mismatch() {
-        let matrix = Array2::eye(2);
-        let rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
-        let result = conjugate_gradient(&matrix, &rhs, &IterativeConfig::default());
+        let matrix = Array2::<f64>::eye(2);
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0, 3.0]);
+        let result = conjugate_gradient(&matrix, &rhs, &IterativeConfig::<f64>::default());
         assert!(matches!(result, Err(IterativeError::DimensionMismatch)));
     }
 
@@ -358,16 +485,17 @@ mod tests {
     fn gmres_rejects_empty_input() {
         let matrix = Array2::<f64>::zeros((0, 0));
         let rhs = Array1::<f64>::zeros(0);
-        let result = gmres(&matrix, &rhs, &IterativeConfig::default());
+        let result = gmres(&matrix, &rhs, &IterativeConfig::<f64>::default());
         assert!(matches!(result, Err(IterativeError::EmptyMatrix)));
     }
 
     #[test]
     fn cg_returns_zero_for_zero_rhs() {
-        let matrix = Array2::eye(2);
-        let rhs = Array1::from_vec(vec![0.0, 0.0]);
-        let solution = conjugate_gradient(&matrix, &rhs, &IterativeConfig::default()).unwrap();
-        assert!(solution.iter().all(|value| value.abs() < 1e-12));
+        let matrix = Array2::<f64>::eye(2);
+        let rhs = Array1::from_vec(vec![0.0_f64, 0.0]);
+        let solution =
+            conjugate_gradient(&matrix, &rhs, &IterativeConfig::<f64>::default()).unwrap();
+        assert!(solution.iter().all(|value| value.abs() < 1e-12_f64));
     }
 
     #[test]

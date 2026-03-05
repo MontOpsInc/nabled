@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2};
 
 /// Error type for Jacobian-related computations.
@@ -51,16 +52,16 @@ impl Default for JacobianConfig<f64> {
     fn default() -> Self { Self { step_size: 1e-6, tolerance: 1e-8, max_iterations: 100 } }
 }
 
-impl JacobianConfig<f64> {
+impl Default for JacobianConfig<f32> {
+    fn default() -> Self { Self { step_size: 1e-4, tolerance: 1e-5, max_iterations: 100 } }
+}
+
+impl<T: NabledReal> JacobianConfig<T> {
     /// Create a validated config.
     ///
     /// # Errors
     /// Returns an error when any parameter is invalid.
-    pub fn new(
-        step_size: f64,
-        tolerance: f64,
-        max_iterations: usize,
-    ) -> Result<Self, JacobianError> {
+    pub fn new(step_size: T, tolerance: T, max_iterations: usize) -> Result<Self, JacobianError> {
         let config = Self { step_size, tolerance, max_iterations };
         config.validate()?;
         Ok(config)
@@ -71,10 +72,10 @@ impl JacobianConfig<f64> {
     /// # Errors
     /// Returns an error when parameters are invalid.
     pub fn validate(&self) -> Result<(), JacobianError> {
-        if !self.step_size.is_finite() || self.step_size <= 0.0 {
+        if !self.step_size.is_finite() || self.step_size <= T::zero() {
             return Err(JacobianError::InvalidStepSize);
         }
-        if !self.tolerance.is_finite() || self.tolerance <= 0.0 {
+        if !self.tolerance.is_finite() || self.tolerance <= T::zero() {
             return Err(JacobianError::InvalidDimensions("Tolerance must be positive".to_string()));
         }
         if self.max_iterations == 0 {
@@ -90,13 +91,14 @@ impl JacobianConfig<f64> {
 ///
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
-pub fn numerical_jacobian<F>(
+pub fn numerical_jacobian<T, F>(
     function: &F,
-    x: &Array1<f64>,
-    config: &JacobianConfig<f64>,
-) -> Result<Array2<f64>, JacobianError>
+    x: &Array1<T>,
+    config: &JacobianConfig<T>,
+) -> Result<Array2<T>, JacobianError>
 where
-    F: Fn(&Array1<f64>) -> Result<Array1<f64>, JacobianError>,
+    F: Fn(&Array1<T>) -> Result<Array1<T>, JacobianError>,
+    T: NabledReal,
 {
     config.validate()?;
     if x.is_empty() {
@@ -108,7 +110,7 @@ where
         return Err(JacobianError::EmptyInput);
     }
 
-    let mut jacobian = Array2::<f64>::zeros((fx.len(), x.len()));
+    let mut jacobian = Array2::<T>::zeros((fx.len(), x.len()));
     for j in 0..x.len() {
         let mut perturbed = x.clone();
         perturbed[j] += config.step_size;
@@ -128,13 +130,14 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
-pub fn numerical_jacobian_central<F>(
+pub fn numerical_jacobian_central<T, F>(
     function: &F,
-    x: &Array1<f64>,
-    config: &JacobianConfig<f64>,
-) -> Result<Array2<f64>, JacobianError>
+    x: &Array1<T>,
+    config: &JacobianConfig<T>,
+) -> Result<Array2<T>, JacobianError>
 where
-    F: Fn(&Array1<f64>) -> Result<Array1<f64>, JacobianError>,
+    F: Fn(&Array1<T>) -> Result<Array1<T>, JacobianError>,
+    T: NabledReal,
 {
     config.validate()?;
     if x.is_empty() {
@@ -146,7 +149,7 @@ where
         return Err(JacobianError::EmptyInput);
     }
 
-    let mut jacobian = Array2::<f64>::zeros((fx.len(), x.len()));
+    let mut jacobian = Array2::<T>::zeros((fx.len(), x.len()));
     let step = config.step_size;
 
     for j in 0..x.len() {
@@ -160,7 +163,8 @@ where
             return Err(JacobianError::DimensionMismatch);
         }
         for i in 0..fx.len() {
-            jacobian[[i, j]] = (f_plus[i] - f_minus[i]) / (2.0 * step);
+            jacobian[[i, j]] =
+                (f_plus[i] - f_minus[i]) / (T::from_f64(2.0).unwrap_or(T::one() + T::one()) * step);
         }
     }
 
@@ -171,13 +175,14 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
-pub fn numerical_gradient<F>(
+pub fn numerical_gradient<T, F>(
     function: &F,
-    x: &Array1<f64>,
-    config: &JacobianConfig<f64>,
-) -> Result<Array1<f64>, JacobianError>
+    x: &Array1<T>,
+    config: &JacobianConfig<T>,
+) -> Result<Array1<T>, JacobianError>
 where
-    F: Fn(&Array1<f64>) -> Result<f64, JacobianError>,
+    F: Fn(&Array1<T>) -> Result<T, JacobianError>,
+    T: NabledReal,
 {
     config.validate()?;
     if x.is_empty() {
@@ -185,7 +190,7 @@ where
     }
 
     let fx = function(x)?;
-    let mut gradient = Array1::<f64>::zeros(x.len());
+    let mut gradient = Array1::<T>::zeros(x.len());
     for j in 0..x.len() {
         let mut perturbed = x.clone();
         perturbed[j] += config.step_size;
@@ -201,13 +206,14 @@ where
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
 #[allow(clippy::similar_names)]
-pub fn numerical_hessian<F>(
+pub fn numerical_hessian<T, F>(
     function: &F,
-    x: &Array1<f64>,
-    config: &JacobianConfig<f64>,
-) -> Result<Array2<f64>, JacobianError>
+    x: &Array1<T>,
+    config: &JacobianConfig<T>,
+) -> Result<Array2<T>, JacobianError>
 where
-    F: Fn(&Array1<f64>) -> Result<f64, JacobianError>,
+    F: Fn(&Array1<T>) -> Result<T, JacobianError>,
+    T: NabledReal,
 {
     config.validate()?;
     if x.is_empty() {
@@ -215,7 +221,7 @@ where
     }
 
     let n = x.len();
-    let mut hessian = Array2::<f64>::zeros((n, n));
+    let mut hessian = Array2::<T>::zeros((n, n));
     let step = config.step_size;
 
     for i in 0..n {
@@ -242,7 +248,10 @@ where
             let f_mp = function(&x_mp)?;
             let f_mm = function(&x_mm)?;
 
-            hessian[[i, j]] = (f_pp - f_pm - f_mp + f_mm) / (4.0 * step * step);
+            hessian[[i, j]] = (f_pp - f_pm - f_mp + f_mm)
+                / (T::from_f64(4.0).unwrap_or(T::one() + T::one() + T::one() + T::one())
+                    * step
+                    * step);
         }
     }
 

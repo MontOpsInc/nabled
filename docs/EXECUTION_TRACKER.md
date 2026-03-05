@@ -153,12 +153,17 @@ Use this file to resume work quickly after context compaction without re-auditin
 111. `D-111`: Provider feature expansion landed for `openblas-system`, `openblas-static`, `netlib-system`, and `netlib-static`, with shared `lapack-provider` cfg gating in decomposition paths and quality-gate updates to avoid invalid `--all-features` provider mixing.
 112. `D-112`: Release-readiness docs/test/workflow alignment completed: restored `docs/PUBLISH_CHECKLIST.md`, normalized provider-gated integration tests to all provider features, and switched integration quality gates to run full `nabled` integration suite (`--tests`).
 113. `D-113`: Release-gate polish completed: local feature audit helpers now include all declared provider flags (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`) and `just check-provider-static` was added as an explicit optional static-provider validation gate.
+114. `D-114`: NI-001 real-scalar widening advanced in `nabled-linalg::matrix`: real dense matrix APIs (`matvec`, `matmat`, batched/broadcast families, and `*_view`/`*_into` variants) are now generic over `f32`/`f64`.
+115. `D-115`: NI-001 real-scalar widening advanced in `nabled-ml::iterative`: real CG/GMRES now accept `IterativeConfig<T>` over `f32`/`f64` with provider-safe compile-time bounds and added `f32` parity tests.
+116. `D-116`: NI-001 real-scalar widening advanced in `nabled-linalg::svd`: real SVD APIs/results/config (`NdarraySVD<T>`, `PseudoInverseConfig<T>`) are now generic `f32`/`f64` across internal/provider modes with `f32` parity tests.
+117. `D-117`: NI-001 real-scalar widening advanced in `nabled-ml::pca`: real PCA APIs/results (`NdarrayPCAResult<T>`, compute/transform/inverse families) are now generic `f32`/`f64` with provider-safe bounds and `f32` parity tests.
+118. `D-118`: NI-001 real-scalar widening advanced in `nabled-linalg::cholesky`: real Cholesky APIs/results (`NdarrayCholeskyResult<T>`, `decompose/solve/inverse` + view/into variants) are now generic `f32`/`f64` across internal/provider modes with `f32` parity tests.
+119. `D-119`: NI-001 is now complete: remaining real `f64`-locked domains (`eigen`, `matrix_functions`, `sparse`) are fully generic `f32`/`f64`, explicit per-domain `f32` parity tests were added, and full quality gates/coverage remain green.
 
 ## Next
 
-1. `R-001`: Execute `docs/PUBLISH_CHECKLIST.md` to clear publish blockers (internal dependency version requirements for packaging + publish policy flip when release is authorized).
-2. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
-3. `K-005`: Continue benchmark-driven optimization pass (outlier triage, allocation audit, SIMD/threading opportunities).
+1. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
+2. `K-005`: Execute outlier-ranked benchmark optimization plan and log outcomes in `docs/BENCHMARK_TRACKER.md`.
 
 ### K-008 Scope Clarification
 
@@ -173,9 +178,8 @@ It means:
 
 ## Needed
 
-1. `R-001`: Publish execution log with dry-run evidence for all crates (`nabled-core`, `nabled-linalg`, `nabled-ml`, `nabled`) and final publish order confirmation.
-2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
-3. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
+1. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+2. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
 
 ## Backlog (From Capability Matrix)
 

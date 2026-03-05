@@ -11,7 +11,8 @@
 //!
 //! 1. [`errors`]: shared error contracts used across workspace crates.
 //! 2. [`validation`]: reusable ndarray validation helpers.
-//! 3. [`prelude`]: common array and complex-number type exports.
+//! 3. [`prelude`]: common array/scalar and complex-number type exports.
+//! 4. [`scalar`]: shared real-scalar trait bounds (`f32`/`f64`).
 //!
 //! # Example
 //!
@@ -32,5 +33,8 @@ pub mod prelude {
         ArrayViewMut2, ArrayViewMut3,
     };
     pub use num_complex::{Complex32, Complex64};
+
+    pub use crate::scalar::NabledReal;
 }
+pub mod scalar;
 pub mod validation;

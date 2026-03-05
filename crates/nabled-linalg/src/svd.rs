@@ -4,6 +4,7 @@
 use std::cmp::Ordering;
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView2, s};
 use num_complex::Complex64;
 
@@ -13,13 +14,13 @@ use crate::schur;
 
 /// SVD result for ndarray matrices.
 #[derive(Debug, Clone)]
-pub struct NdarraySVD {
+pub struct NdarraySVD<T: NabledReal> {
     /// Left singular vectors (`m x k`).
-    pub u:               Array2<f64>,
+    pub u:               Array2<T>,
     /// Singular values (`k`).
-    pub singular_values: Array1<f64>,
+    pub singular_values: Array1<T>,
     /// Right singular vectors transposed (`k x n`).
-    pub vt:              Array2<f64>,
+    pub vt:              Array2<T>,
 }
 
 /// Complex SVD result for ndarray matrices.
@@ -61,13 +62,15 @@ impl std::error::Error for SVDError {}
 
 /// Configuration for pseudo-inverse computation.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct PseudoInverseConfig {
+pub struct PseudoInverseConfig<T: NabledReal> {
     /// Tolerance for truncating tiny singular values.
-    pub tolerance: Option<f64>,
+    pub tolerance: Option<T>,
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
+fn decompose_internal<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarraySVD<T>, SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
@@ -81,26 +84,27 @@ fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDErr
     let ata = matrix.t().dot(matrix);
     let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
         &ata,
-        DenseKernelPolicy::BASE_TOLERANCE,
+        T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
         DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
     )
     .map_err(|_| SVDError::ConvergenceFailed)?;
     let (sorted_values, sorted_vectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
 
-    let mut singular_values = Array1::<f64>::zeros(k);
-    let mut vt = Array2::<f64>::zeros((k, cols));
+    let mut singular_values = Array1::<T>::zeros(k);
+    let mut vt = Array2::<T>::zeros((k, cols));
     for i in 0..k {
-        let value = sorted_values[i].max(0.0).sqrt();
+        let value = sorted_values[i].max(T::zero()).sqrt();
         singular_values[i] = value;
         for j in 0..cols {
             vt[[i, j]] = sorted_vectors[[j, i]];
         }
     }
 
-    let mut u = Array2::<f64>::zeros((rows, k));
+    let mut u = Array2::<T>::zeros((rows, k));
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
     for i in 0..k {
         let sigma = singular_values[i];
-        if sigma > DenseKernelPolicy::BASE_TOLERANCE {
+        if sigma > tolerance {
             let av = matrix.dot(&sorted_vectors.column(i));
             for row in 0..rows {
                 u[[row, i]] = av[row] / sigma;
@@ -112,7 +116,10 @@ fn decompose_internal(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDErr
 }
 
 #[cfg(feature = "lapack-provider")]
-fn decompose_provider(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
+fn decompose_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarraySVD<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
     use ndarray_linalg::SVD as _;
 
     if matrix.is_empty() {
@@ -181,10 +188,23 @@ fn decompose_complex_internal(
     Ok(NdarrayComplexSVD { u, singular_values, vt })
 }
 
-fn null_space_internal(
-    matrix: &Array2<f64>,
-    tolerance: Option<f64>,
-) -> Result<Array2<f64>, SVDError> {
+fn svd_relative_tolerance<T: NabledReal>(max_sv: T, dimension: usize) -> T {
+    let dimension_fallback = T::from_u32(u32::MAX).unwrap_or(T::one());
+    let dimension_as_t = T::from_usize(dimension).unwrap_or(dimension_fallback);
+    let base_tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    max_sv * dimension_as_t * T::epsilon().max(base_tolerance)
+}
+
+fn rank_estimation_tolerance<T: NabledReal>(max_sv: T, dimension: usize) -> T {
+    let dimension_fallback = T::from_u32(u32::MAX).unwrap_or(T::one());
+    let dimension_as_t = T::from_usize(dimension).unwrap_or(dimension_fallback);
+    max_sv * dimension_as_t * T::epsilon()
+}
+
+fn null_space_internal<T: NabledReal>(
+    matrix: &Array2<T>,
+    tolerance: Option<T>,
+) -> Result<Array2<T>, SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
@@ -192,30 +212,32 @@ fn null_space_internal(
     let ata = matrix.t().dot(matrix);
     let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
         &ata,
-        DenseKernelPolicy::BASE_TOLERANCE,
+        T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
         DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
     )
     .map_err(|_| SVDError::ConvergenceFailed)?;
     let (sorted_values, sorted_vectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
 
-    let max_sv =
-        sorted_values.iter().copied().map(|value| value.max(0.0).sqrt()).fold(0.0_f64, f64::max);
-    let tol =
-        tolerance.unwrap_or(DenseKernelPolicy::svd_relative_tolerance(max_sv, matrix.ncols()));
+    let max_sv = sorted_values
+        .iter()
+        .copied()
+        .map(|value| value.max(T::zero()).sqrt())
+        .fold(T::zero(), T::max);
+    let tol = tolerance.unwrap_or(svd_relative_tolerance(max_sv, matrix.ncols()));
 
     let mut null_indices = Vec::new();
     for (index, value) in sorted_values.iter().copied().enumerate() {
-        let singular = value.max(0.0).sqrt();
+        let singular = value.max(T::zero()).sqrt();
         if singular <= tol {
             null_indices.push(index);
         }
     }
 
     if null_indices.is_empty() {
-        return Ok(Array2::<f64>::zeros((matrix.ncols(), 0)));
+        return Ok(Array2::<T>::zeros((matrix.ncols(), 0)));
     }
 
-    let mut basis = Array2::<f64>::zeros((matrix.ncols(), null_indices.len()));
+    let mut basis = Array2::<T>::zeros((matrix.ncols(), null_indices.len()));
     for (col_out, col_in) in null_indices.into_iter().enumerate() {
         for row in 0..matrix.ncols() {
             basis[[row, col_out]] = sorted_vectors[[row, col_in]];
@@ -229,26 +251,56 @@ fn null_space_internal(
 ///
 /// # Errors
 /// Returns an error if the matrix is empty, non-finite, or decomposition fails.
-pub fn decompose(matrix: &Array2<f64>) -> Result<NdarraySVD, SVDError> {
+#[cfg(feature = "lapack-provider")]
+pub fn decompose<T>(matrix: &Array2<T>) -> Result<NdarraySVD<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
     decompose_impl(&matrix.view())
 }
 
-fn decompose_impl(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
-    #[cfg(feature = "lapack-provider")]
-    {
-        decompose_provider(matrix)
-    }
-    #[cfg(not(feature = "lapack-provider"))]
-    {
-        decompose_internal(matrix)
-    }
+/// Compute the SVD of `matrix`.
+///
+/// # Errors
+/// Returns an error if the matrix is empty, non-finite, or decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose<T: NabledReal>(matrix: &Array2<T>) -> Result<NdarraySVD<T>, SVDError> {
+    decompose_impl(&matrix.view())
+}
+
+#[cfg(feature = "lapack-provider")]
+fn decompose_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarraySVD<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    decompose_provider(matrix)
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn decompose_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<NdarraySVD<T>, SVDError> {
+    decompose_internal(matrix)
 }
 
 /// Compute the SVD of `matrix` from a matrix view.
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarraySVD, SVDError> {
+#[cfg(feature = "lapack-provider")]
+pub fn decompose_view<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarraySVD<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    decompose_impl(matrix)
+}
+
+/// Compute the SVD of `matrix` from a matrix view.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarraySVD<T>, SVDError> {
     decompose_impl(matrix)
 }
 
@@ -296,14 +348,36 @@ pub fn decompose_complex_view(
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-pub fn decompose_with_tolerance(
-    matrix: &Array2<f64>,
-    tolerance: f64,
-) -> Result<NdarraySVD, SVDError> {
+#[cfg(feature = "lapack-provider")]
+pub fn decompose_with_tolerance<T>(
+    matrix: &Array2<T>,
+    tolerance: T,
+) -> Result<NdarraySVD<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     let mut svd = decompose(matrix)?;
     for value in &mut svd.singular_values {
         if *value < tolerance {
-            *value = 0.0;
+            *value = T::zero();
+        }
+    }
+    Ok(svd)
+}
+
+/// Compute SVD and zero out singular values below `tolerance`.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose_with_tolerance<T: NabledReal>(
+    matrix: &Array2<T>,
+    tolerance: T,
+) -> Result<NdarraySVD<T>, SVDError> {
+    let mut svd = decompose(matrix)?;
+    for value in &mut svd.singular_values {
+        if *value < tolerance {
+            *value = T::zero();
         }
     }
     Ok(svd)
@@ -313,7 +387,34 @@ pub fn decompose_with_tolerance(
 ///
 /// # Errors
 /// Returns an error if `k == 0` or decomposition fails.
-pub fn decompose_truncated(matrix: &Array2<f64>, k: usize) -> Result<NdarraySVD, SVDError> {
+#[cfg(feature = "lapack-provider")]
+pub fn decompose_truncated<T>(matrix: &Array2<T>, k: usize) -> Result<NdarraySVD<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    if k == 0 {
+        return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
+    }
+
+    let full_svd = decompose(matrix)?;
+    let keep = k.min(full_svd.singular_values.len());
+
+    Ok(NdarraySVD {
+        u:               full_svd.u.slice(s![.., ..keep]).to_owned(),
+        singular_values: full_svd.singular_values.slice(s![..keep]).to_owned(),
+        vt:              full_svd.vt.slice(s![..keep, ..]).to_owned(),
+    })
+}
+
+/// Compute truncated SVD by keeping only the `k` largest singular values.
+///
+/// # Errors
+/// Returns an error if `k == 0` or decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose_truncated<T: NabledReal>(
+    matrix: &Array2<T>,
+    k: usize,
+) -> Result<NdarraySVD<T>, SVDError> {
     if k == 0 {
         return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
     }
@@ -330,7 +431,7 @@ pub fn decompose_truncated(matrix: &Array2<f64>, k: usize) -> Result<NdarraySVD,
 
 /// Reconstruct the original matrix from SVD components.
 #[must_use]
-pub fn reconstruct_matrix(svd: &NdarraySVD) -> Array2<f64> {
+pub fn reconstruct_matrix<T: NabledReal>(svd: &NdarraySVD<T>) -> Array2<T> {
     let cols = svd.vt.ncols();
     let mut sigma_vt = svd.vt.clone();
     for i in 0..svd.singular_values.len().min(svd.u.ncols()) {
@@ -358,7 +459,10 @@ pub fn reconstruct_matrix_complex(svd: &NdarrayComplexSVD) -> Array2<Complex64> 
 ///
 /// # Errors
 /// Returns an error if `output` shape is incompatible with SVD factors.
-pub fn reconstruct_matrix_into(svd: &NdarraySVD, output: &mut Array2<f64>) -> Result<(), SVDError> {
+pub fn reconstruct_matrix_into<T: NabledReal>(
+    svd: &NdarraySVD<T>,
+    output: &mut Array2<T>,
+) -> Result<(), SVDError> {
     let rows = svd.u.nrows();
     let cols = svd.vt.ncols();
     let k = svd.u.ncols();
@@ -372,10 +476,10 @@ pub fn reconstruct_matrix_into(svd: &NdarraySVD, output: &mut Array2<f64>) -> Re
         return Err(SVDError::InvalidInput("inconsistent SVD factor dimensions".to_string()));
     }
 
-    output.fill(0.0);
+    output.fill(T::zero());
     for i in 0..rows {
         for j in 0..cols {
-            let mut sum = 0.0_f64;
+            let mut sum = T::zero();
             for p in 0..k {
                 sum += svd.u[[i, p]] * svd.singular_values[p] * svd.vt[[p, j]];
             }
@@ -388,28 +492,28 @@ pub fn reconstruct_matrix_into(svd: &NdarraySVD, output: &mut Array2<f64>) -> Re
 
 /// Compute condition number from singular values.
 #[must_use]
-pub fn condition_number(svd: &NdarraySVD) -> f64 {
+pub fn condition_number<T: NabledReal>(svd: &NdarraySVD<T>) -> T {
     if svd.singular_values.is_empty() {
-        return 0.0;
+        return T::zero();
     }
 
-    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+    let max_sv = svd.singular_values.iter().copied().fold(T::zero(), T::max);
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
     let min_sv = svd
         .singular_values
         .iter()
         .copied()
-        .filter(|value| *value > DenseKernelPolicy::BASE_TOLERANCE)
-        .fold(f64::INFINITY, f64::min);
+        .filter(|value| *value > tolerance)
+        .fold(T::infinity(), T::min);
 
-    if min_sv.is_finite() { max_sv / min_sv } else { f64::INFINITY }
+    if min_sv.is_finite() { max_sv / min_sv } else { T::infinity() }
 }
 
 /// Estimate numerical rank from singular values.
 #[must_use]
-pub fn rank(svd: &NdarraySVD, tolerance: Option<f64>) -> usize {
-    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
-    let tol = tolerance
-        .unwrap_or(DenseKernelPolicy::rank_estimation_tolerance(max_sv, svd.singular_values.len()));
+pub fn rank<T: NabledReal>(svd: &NdarraySVD<T>, tolerance: Option<T>) -> usize {
+    let max_sv = svd.singular_values.iter().copied().fold(T::zero(), T::max);
+    let tol = tolerance.unwrap_or(rank_estimation_tolerance(max_sv, svd.singular_values.len()));
     svd.singular_values.iter().filter(|value| **value > tol).count()
 }
 
@@ -417,15 +521,37 @@ pub fn rank(svd: &NdarraySVD, tolerance: Option<f64>) -> usize {
 ///
 /// # Errors
 /// Returns an error if input is invalid or decomposition fails.
-pub fn pseudo_inverse(
-    matrix: &Array2<f64>,
-    config: &PseudoInverseConfig,
-) -> Result<Array2<f64>, SVDError> {
+#[cfg(feature = "lapack-provider")]
+pub fn pseudo_inverse<T>(
+    matrix: &Array2<T>,
+    config: &PseudoInverseConfig<T>,
+) -> Result<Array2<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
 
-    let mut output = Array2::<f64>::zeros((matrix.ncols(), matrix.nrows()));
+    let mut output = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
+    pseudo_inverse_into(matrix, config, &mut output)?;
+    Ok(output)
+}
+
+/// Compute Moore-Penrose pseudo-inverse.
+///
+/// # Errors
+/// Returns an error if input is invalid or decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn pseudo_inverse<T: NabledReal>(
+    matrix: &Array2<T>,
+    config: &PseudoInverseConfig<T>,
+) -> Result<Array2<T>, SVDError> {
+    if matrix.is_empty() {
+        return Err(SVDError::EmptyMatrix);
+    }
+
+    let mut output = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
     pseudo_inverse_into(matrix, config, &mut output)?;
     Ok(output)
 }
@@ -434,10 +560,56 @@ pub fn pseudo_inverse(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or decomposition fails.
-pub fn pseudo_inverse_into(
-    matrix: &Array2<f64>,
-    config: &PseudoInverseConfig,
-    output: &mut Array2<f64>,
+#[cfg(feature = "lapack-provider")]
+pub fn pseudo_inverse_into<T>(
+    matrix: &Array2<T>,
+    config: &PseudoInverseConfig<T>,
+    output: &mut Array2<T>,
+) -> Result<(), SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    if matrix.is_empty() {
+        return Err(SVDError::EmptyMatrix);
+    }
+    if output.dim() != (matrix.ncols(), matrix.nrows()) {
+        return Err(SVDError::InvalidInput(
+            "output shape must be (matrix.ncols(), matrix.nrows())".to_string(),
+        ));
+    }
+
+    let svd = decompose(matrix)?;
+    let (rows, cols) = matrix.dim();
+    let max_sv = svd.singular_values.iter().copied().fold(T::zero(), T::max);
+    let tolerance = config.tolerance.unwrap_or(svd_relative_tolerance(max_sv, rows.max(cols)));
+
+    output.fill(T::zero());
+    let k = svd.singular_values.len();
+    for i in 0..k {
+        let sigma = svd.singular_values[i];
+        if sigma <= tolerance {
+            continue;
+        }
+        let inv_sigma = T::one() / sigma;
+        for row in 0..cols {
+            for col in 0..rows {
+                output[[row, col]] += svd.vt[[i, row]] * inv_sigma * svd.u[[col, i]];
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Compute Moore-Penrose pseudo-inverse into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid or decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn pseudo_inverse_into<T: NabledReal>(
+    matrix: &Array2<T>,
+    config: &PseudoInverseConfig<T>,
+    output: &mut Array2<T>,
 ) -> Result<(), SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
@@ -450,19 +622,17 @@ pub fn pseudo_inverse_into(
 
     let svd = decompose(matrix)?;
     let (rows, cols) = matrix.dim();
-    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
-    let tolerance = config
-        .tolerance
-        .unwrap_or(DenseKernelPolicy::svd_relative_tolerance(max_sv, rows.max(cols)));
+    let max_sv = svd.singular_values.iter().copied().fold(T::zero(), T::max);
+    let tolerance = config.tolerance.unwrap_or(svd_relative_tolerance(max_sv, rows.max(cols)));
 
-    output.fill(0.0);
+    output.fill(T::zero());
     let k = svd.singular_values.len();
     for i in 0..k {
         let sigma = svd.singular_values[i];
         if sigma <= tolerance {
             continue;
         }
-        let inv_sigma = 1.0 / sigma;
+        let inv_sigma = T::one() / sigma;
         for row in 0..cols {
             for col in 0..rows {
                 output[[row, col]] += svd.vt[[i, row]] * inv_sigma * svd.u[[col, i]];
@@ -477,7 +647,10 @@ pub fn pseudo_inverse_into(
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-pub fn null_space(matrix: &Array2<f64>, tolerance: Option<f64>) -> Result<Array2<f64>, SVDError> {
+pub fn null_space<T: NabledReal>(
+    matrix: &Array2<T>,
+    tolerance: Option<T>,
+) -> Result<Array2<T>, SVDError> {
     null_space_internal(matrix, tolerance)
 }
 
@@ -490,44 +663,52 @@ mod tests {
 
     #[test]
     fn svd_reconstructs_small_matrix() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64])
+                .unwrap();
         let svd = decompose(&matrix).unwrap();
         let reconstructed = reconstruct_matrix(&svd);
         for i in 0..2 {
             for j in 0..2 {
-                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8);
+                assert!((matrix[[i, j]] - reconstructed[[i, j]]).abs() < 1e-8_f64);
             }
         }
     }
 
     #[test]
     fn truncated_svd_requires_positive_rank() {
-        let matrix = Array2::eye(2);
+        let matrix = Array2::<f64>::eye(2);
         let result = decompose_truncated(&matrix, 0);
         assert!(matches!(result, Err(SVDError::InvalidInput(_))));
     }
 
     #[test]
     fn pseudo_inverse_matches_identity_for_diagonal() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 2.0]).unwrap();
-        let pinv = pseudo_inverse(&matrix, &PseudoInverseConfig::default()).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 2.0_f64])
+                .unwrap();
+        let pinv = pseudo_inverse(&matrix, &PseudoInverseConfig::<f64>::default()).unwrap();
         let product = matrix.dot(&pinv);
-        assert!((product[[0, 0]] - 1.0).abs() < 1e-8);
-        assert!((product[[1, 1]] - 1.0).abs() < 1e-8);
+        assert!((product[[0, 0]] - 1.0_f64).abs() < 1e-8_f64);
+        assert!((product[[1, 1]] - 1.0_f64).abs() < 1e-8_f64);
     }
 
     #[test]
     fn null_space_detects_rank_deficiency() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 1.0, 1.0, 1.0]).unwrap();
-        let basis = null_space(&matrix, Some(1e-10)).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64])
+                .unwrap();
+        let basis = null_space(&matrix, Some(1e-10_f64)).unwrap();
         assert_eq!(basis.ncols(), 1);
         let residual = matrix.dot(&basis.column(0).to_owned());
-        assert!(residual.iter().all(|value| value.abs() < 1e-6));
+        assert!(residual.iter().all(|value| value.abs() < 1e-6_f64));
     }
 
     #[test]
     fn decompose_view_matches_owned() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 1.0, 3.0]).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![3.0_f64, 1.0_f64, 1.0_f64, 3.0_f64])
+                .unwrap();
         let from_owned = decompose(&matrix).unwrap();
         let matrix_view = matrix.view();
         let from_view = decompose_view(&matrix_view).unwrap();
@@ -554,35 +735,39 @@ mod tests {
 
     #[test]
     fn tolerance_rank_and_condition_number_paths() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 0.0, 0.0, 1.0]).unwrap();
-        let svd = decompose_with_tolerance(&matrix, 2.0).unwrap();
-        assert!(svd.singular_values[1].abs() < 1e-12);
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![3.0_f64, 0.0_f64, 0.0_f64, 1.0_f64])
+                .unwrap();
+        let svd = decompose_with_tolerance(&matrix, 2.0_f64).unwrap();
+        assert!(svd.singular_values[1].abs() < 1e-12_f64);
         assert!(condition_number(&svd).is_finite());
-        assert_eq!(rank(&svd, Some(1e-8)), 1);
+        assert_eq!(rank(&svd, Some(1e-8_f64)), 1);
     }
 
     #[test]
     fn reconstruct_into_and_pseudo_inverse_into_paths() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, 4.0]).unwrap();
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![2.0_f64, 0.0_f64, 0.0_f64, 4.0_f64])
+                .unwrap();
         let svd = decompose(&matrix).unwrap();
         let mut reconstructed = Array2::<f64>::zeros((2, 2));
         reconstruct_matrix_into(&svd, &mut reconstructed).unwrap();
         for i in 0..2 {
             for j in 0..2 {
-                assert!((reconstructed[[i, j]] - matrix[[i, j]]).abs() < 1e-8);
+                assert!((reconstructed[[i, j]] - matrix[[i, j]]).abs() < 1e-8_f64);
             }
         }
 
         let mut pinv = Array2::<f64>::zeros((2, 2));
-        pseudo_inverse_into(&matrix, &PseudoInverseConfig::default(), &mut pinv).unwrap();
+        pseudo_inverse_into(&matrix, &PseudoInverseConfig::<f64>::default(), &mut pinv).unwrap();
         let identity = matrix.dot(&pinv);
-        assert!((identity[[0, 0]] - 1.0).abs() < 1e-8);
-        assert!((identity[[1, 1]] - 1.0).abs() < 1e-8);
+        assert!((identity[[0, 0]] - 1.0_f64).abs() < 1e-8_f64);
+        assert!((identity[[1, 1]] - 1.0_f64).abs() < 1e-8_f64);
     }
 
     #[test]
     fn reconstruct_into_rejects_bad_output_shape() {
-        let matrix = Array2::eye(2);
+        let matrix = Array2::<f64>::eye(2);
         let svd = decompose(&matrix).unwrap();
         let mut bad = Array2::<f64>::zeros((1, 1));
         let result = reconstruct_matrix_into(&svd, &mut bad);
@@ -607,23 +792,55 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
         let mut output = Array2::<f64>::zeros((0, 0));
         assert!(matches!(
-            pseudo_inverse_into(&empty, &PseudoInverseConfig::default(), &mut output),
+            pseudo_inverse_into(&empty, &PseudoInverseConfig::<f64>::default(), &mut output),
             Err(SVDError::EmptyMatrix)
         ));
 
-        let matrix = Array2::eye(2);
+        let matrix = Array2::<f64>::eye(2);
         let mut bad = Array2::<f64>::zeros((1, 2));
         assert!(matches!(
-            pseudo_inverse_into(&matrix, &PseudoInverseConfig::default(), &mut bad),
+            pseudo_inverse_into(&matrix, &PseudoInverseConfig::<f64>::default(), &mut bad),
             Err(SVDError::InvalidInput(_))
         ));
     }
 
     #[test]
     fn null_space_of_full_rank_matrix_is_empty() {
-        let matrix = Array2::eye(3);
+        let matrix = Array2::<f64>::eye(3);
         let basis = null_space(&matrix, None).unwrap();
         assert_eq!(basis.ncols(), 0);
         assert_eq!(basis.nrows(), 3);
+    }
+
+    #[test]
+    fn real_f32_paths_match_expected() {
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![3.0_f32, 1.0_f32, 1.0_f32, 3.0_f32]).unwrap();
+        let svd = decompose(&matrix).unwrap();
+        let reconstructed = reconstruct_matrix(&svd);
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((reconstructed[[i, j]] - matrix[[i, j]]).abs() < 1e-4_f32);
+            }
+        }
+
+        let truncated = decompose_truncated(&matrix, 1).unwrap();
+        assert_eq!(truncated.singular_values.len(), 1);
+
+        let tol = decompose_with_tolerance(&matrix, 2.1_f32).unwrap();
+        assert!(tol.singular_values[1].abs() < 1e-4_f32);
+        assert_eq!(rank(&tol, Some(1.0e-3_f32)), 1);
+        assert!(condition_number(&tol).is_finite());
+
+        let pinv = pseudo_inverse(&matrix, &PseudoInverseConfig::<f32>::default())
+            .expect("pseudo inverse");
+        let product = matrix.dot(&pinv);
+        assert!((product[[0, 0]] - 1.0_f32).abs() < 1e-3_f32);
+        assert!((product[[1, 1]] - 1.0_f32).abs() < 1e-3_f32);
+
+        let rank_deficient =
+            Array2::from_shape_vec((2, 2), vec![1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32]).unwrap();
+        let basis = null_space(&rank_deficient, Some(1.0e-5_f32)).unwrap();
+        assert_eq!(basis.ncols(), 1);
     }
 }

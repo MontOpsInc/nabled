@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
@@ -11,11 +12,11 @@ use crate::internal::{inverse_from_lu, lu_solve};
 
 /// Result of LU decomposition.
 #[derive(Debug, Clone)]
-pub struct NdarrayLUResult {
+pub struct NdarrayLUResult<T = f64> {
     /// Lower-triangular factor.
-    pub l: Array2<f64>,
+    pub l: Array2<T>,
     /// Upper-triangular factor.
-    pub u: Array2<f64>,
+    pub u: Array2<T>,
 }
 
 /// Sign and log-absolute value of determinant.
@@ -66,7 +67,7 @@ fn map_lu_error(error: &'static str) -> LUError {
     }
 }
 
-fn validate_square_finite_view(matrix: &ArrayView2<'_, f64>) -> Result<(), LUError> {
+fn validate_square_finite_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<(), LUError> {
     if matrix.is_empty() {
         return Err(LUError::EmptyMatrix);
     }
@@ -218,18 +219,21 @@ fn inverse_complex_internal(
     Ok(inverse)
 }
 
-fn decompose_internal(
-    matrix: &ArrayView2<'_, f64>,
-) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
+fn decompose_internal<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<(NdarrayLUResult<T>, Vec<usize>, i8), LUError> {
     let (l, u, pivots, sign) = lu_decompose(matrix).map_err(map_lu_error)?;
     Ok((NdarrayLUResult { l, u }, pivots, sign))
 }
 
 #[cfg(feature = "lapack-provider")]
-fn solve_provider(
-    matrix: &ArrayView2<'_, f64>,
-    rhs: &ArrayView1<'_, f64>,
-) -> Result<Array1<f64>, LUError> {
+fn solve_provider<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
     use ndarray_linalg::Solve as _;
 
     validate_square_finite_view(matrix)?;
@@ -237,7 +241,10 @@ fn solve_provider(
 }
 
 #[cfg(feature = "lapack-provider")]
-fn inverse_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError> {
+fn inverse_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
     use ndarray_linalg::Inverse as _;
 
     validate_square_finite_view(matrix)?;
@@ -245,7 +252,10 @@ fn inverse_provider(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError
 }
 
 #[cfg(feature = "lapack-provider")]
-fn determinant_provider(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
+fn determinant_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
     use ndarray_linalg::Determinant as _;
 
     validate_square_finite_view(matrix)?;
@@ -284,9 +294,9 @@ fn determinant_complex_provider(matrix: &ArrayView2<'_, Complex64>) -> Result<Co
     matrix.det().map_err(|_| LUError::SingularMatrix)
 }
 
-fn decompose_with_metadata(
-    matrix: &ArrayView2<'_, f64>,
-) -> Result<(NdarrayLUResult, Vec<usize>, i8), LUError> {
+fn decompose_with_metadata<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<(NdarrayLUResult<T>, Vec<usize>, i8), LUError> {
     decompose_internal(matrix)
 }
 
@@ -294,7 +304,7 @@ fn decompose_with_metadata(
 ///
 /// # Errors
 /// Returns an error if input is invalid or decomposition fails.
-pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayLUResult, LUError> {
+pub fn decompose<T: NabledReal>(matrix: &Array2<T>) -> Result<NdarrayLUResult<T>, LUError> {
     let (result, _, _) = decompose_with_metadata(&matrix.view())?;
     Ok(result)
 }
@@ -303,7 +313,9 @@ pub fn decompose(matrix: &Array2<f64>) -> Result<NdarrayLUResult, LUError> {
 ///
 /// # Errors
 /// Returns an error if input is invalid or decomposition fails.
-pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayLUResult, LUError> {
+pub fn decompose_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayLUResult<T>, LUError> {
     let (result, _, _) = decompose_with_metadata(matrix)?;
     Ok(result)
 }
@@ -312,28 +324,48 @@ pub fn decompose_view(matrix: &ArrayView2<'_, f64>) -> Result<NdarrayLUResult, L
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or matrix is singular.
-pub fn solve(matrix: &Array2<f64>, rhs: &Array1<f64>) -> Result<Array1<f64>, LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn solve<T: NabledReal + ndarray_linalg::Lapack>(
+    matrix: &Array2<T>,
+    rhs: &Array1<T>,
+) -> Result<Array1<T>, LUError> {
     solve_impl(&matrix.view(), &rhs.view())
 }
 
-fn solve_impl(
-    matrix: &ArrayView2<'_, f64>,
-    rhs: &ArrayView1<'_, f64>,
-) -> Result<Array1<f64>, LUError> {
+/// Solve `Ax=b` using LU decomposition.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or matrix is singular.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn solve<T: NabledReal>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, LUError> {
+    solve_impl(&matrix.view(), &rhs.view())
+}
+
+#[cfg(feature = "lapack-provider")]
+fn solve_impl<T>(matrix: &ArrayView2<'_, T>, rhs: &ArrayView1<'_, T>) -> Result<Array1<T>, LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
     validate_square_finite_view(matrix)?;
     if rhs.len() != matrix.nrows() {
         return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
     }
 
-    #[cfg(feature = "lapack-provider")]
-    {
-        solve_provider(matrix, rhs)
+    solve_provider(matrix, rhs)
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn solve_impl<T>(matrix: &ArrayView2<'_, T>, rhs: &ArrayView1<'_, T>) -> Result<Array1<T>, LUError>
+where
+    T: NabledReal,
+{
+    validate_square_finite_view(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
     }
-    #[cfg(not(feature = "lapack-provider"))]
-    {
-        let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
-        lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs).map_err(map_lu_error)
-    }
+
+    let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+    lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs).map_err(map_lu_error)
 }
 
 /// Solve complex-valued `Ax=b` using LU decomposition.
@@ -366,10 +398,23 @@ fn solve_complex_impl(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or matrix is singular.
-pub fn solve_view(
-    matrix: &ArrayView2<'_, f64>,
-    rhs: &ArrayView1<'_, f64>,
-) -> Result<Array1<f64>, LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn solve_view<T: NabledReal + ndarray_linalg::Lapack>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, LUError> {
+    solve_impl(matrix, rhs)
+}
+
+/// Solve `Ax=b` using LU decomposition from matrix/vector views.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or matrix is singular.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn solve_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, LUError> {
     solve_impl(matrix, rhs)
 }
 
@@ -388,20 +433,37 @@ pub fn solve_complex_view(
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-pub fn inverse(matrix: &Array2<f64>) -> Result<Array2<f64>, LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn inverse<T: NabledReal + ndarray_linalg::Lapack>(
+    matrix: &Array2<T>,
+) -> Result<Array2<T>, LUError> {
     inverse_impl(&matrix.view())
 }
 
-fn inverse_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError> {
-    #[cfg(feature = "lapack-provider")]
-    {
-        inverse_provider(matrix)
-    }
-    #[cfg(not(feature = "lapack-provider"))]
-    {
-        let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
-        inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error)
-    }
+/// Compute matrix inverse via LU decomposition.
+///
+/// # Errors
+/// Returns an error if matrix is singular.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn inverse<T: NabledReal>(matrix: &Array2<T>) -> Result<Array2<T>, LUError> {
+    inverse_impl(&matrix.view())
+}
+
+#[cfg(feature = "lapack-provider")]
+fn inverse_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
+    inverse_provider(matrix)
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn inverse_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError>
+where
+    T: NabledReal,
+{
+    let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+    inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error)
 }
 
 /// Compute complex matrix inverse via LU decomposition.
@@ -427,7 +489,19 @@ fn inverse_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Result<Array2<Com
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-pub fn inverse_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn inverse_view<T: NabledReal + ndarray_linalg::Lapack>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, LUError> {
+    inverse_impl(matrix)
+}
+
+/// Compute matrix inverse via LU decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if matrix is singular.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn inverse_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError> {
     inverse_impl(matrix)
 }
 
@@ -445,27 +519,44 @@ pub fn inverse_complex_view(
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-pub fn determinant(matrix: &Array2<f64>) -> Result<f64, LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn determinant<T: NabledReal + ndarray_linalg::Lapack>(
+    matrix: &Array2<T>,
+) -> Result<T, LUError> {
     determinant_impl(&matrix.view())
 }
 
-fn determinant_impl(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
-    #[cfg(feature = "lapack-provider")]
-    {
-        determinant_provider(matrix)
+/// Compute determinant via LU decomposition.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn determinant<T: NabledReal>(matrix: &Array2<T>) -> Result<T, LUError> {
+    determinant_impl(&matrix.view())
+}
+
+#[cfg(feature = "lapack-provider")]
+fn determinant_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
+    determinant_provider(matrix)
+}
+
+#[cfg(not(feature = "lapack-provider"))]
+fn determinant_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError>
+where
+    T: NabledReal,
+{
+    let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
+    let mut determinant = if sign >= 0 { T::one() } else { -T::one() };
+    for i in 0..decomposition.u.nrows() {
+        determinant *= decomposition.u[[i, i]];
     }
-    #[cfg(not(feature = "lapack-provider"))]
-    {
-        let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
-        let mut determinant = f64::from(sign);
-        for i in 0..decomposition.u.nrows() {
-            determinant *= decomposition.u[[i, i]];
-        }
-        if !determinant.is_finite() {
-            return Err(LUError::NumericalInstability);
-        }
-        Ok(determinant)
+    if !determinant.is_finite() {
+        return Err(LUError::NumericalInstability);
     }
+    Ok(determinant)
 }
 
 /// Compute complex determinant via LU decomposition.
@@ -499,7 +590,19 @@ fn determinant_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Result<Comple
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-pub fn determinant_view(matrix: &ArrayView2<'_, f64>) -> Result<f64, LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn determinant_view<T: NabledReal + ndarray_linalg::Lapack>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<T, LUError> {
+    determinant_impl(matrix)
+}
+
+/// Compute determinant via LU decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn determinant_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError> {
     determinant_impl(matrix)
 }
 
@@ -515,26 +618,70 @@ pub fn determinant_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Result<Co
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-pub fn log_determinant(matrix: &Array2<f64>) -> Result<LogDetResult<f64>, LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn log_determinant<T: NabledReal + ndarray_linalg::Lapack>(
+    matrix: &Array2<T>,
+) -> Result<LogDetResult<T>, LUError> {
     let determinant = determinant_impl(&matrix.view())?;
-    if determinant.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    let determinant_abs = num_traits::Float::abs(determinant);
+    if determinant_abs <= tolerance {
         return Err(LUError::SingularMatrix);
     }
     let sign = if determinant.is_sign_positive() { 1 } else { -1 };
-    Ok(LogDetResult { sign, ln_abs_det: determinant.abs().ln() })
+    Ok(LogDetResult { sign, ln_abs_det: num_traits::Float::ln(determinant_abs) })
+}
+
+/// Compute signed log-determinant via LU decomposition.
+///
+/// # Errors
+/// Returns an error if matrix is singular.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn log_determinant<T: NabledReal>(matrix: &Array2<T>) -> Result<LogDetResult<T>, LUError> {
+    let determinant = determinant_impl(&matrix.view())?;
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    let determinant_abs = num_traits::Float::abs(determinant);
+    if determinant_abs <= tolerance {
+        return Err(LUError::SingularMatrix);
+    }
+    let sign = if determinant.is_sign_positive() { 1 } else { -1 };
+    Ok(LogDetResult { sign, ln_abs_det: num_traits::Float::ln(determinant_abs) })
 }
 
 /// Compute signed log-determinant via LU decomposition from a matrix view.
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-pub fn log_determinant_view(matrix: &ArrayView2<'_, f64>) -> Result<LogDetResult<f64>, LUError> {
+#[cfg(feature = "lapack-provider")]
+pub fn log_determinant_view<T: NabledReal + ndarray_linalg::Lapack>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<LogDetResult<T>, LUError> {
     let determinant = determinant_impl(matrix)?;
-    if determinant.abs() <= DenseKernelPolicy::BASE_TOLERANCE {
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    let determinant_abs = num_traits::Float::abs(determinant);
+    if determinant_abs <= tolerance {
         return Err(LUError::SingularMatrix);
     }
     let sign = if determinant.is_sign_positive() { 1 } else { -1 };
-    Ok(LogDetResult { sign, ln_abs_det: determinant.abs().ln() })
+    Ok(LogDetResult { sign, ln_abs_det: num_traits::Float::ln(determinant_abs) })
+}
+
+/// Compute signed log-determinant via LU decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error if matrix is singular.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn log_determinant_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<LogDetResult<T>, LUError> {
+    let determinant = determinant_impl(matrix)?;
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    let determinant_abs = num_traits::Float::abs(determinant);
+    if determinant_abs <= tolerance {
+        return Err(LUError::SingularMatrix);
+    }
+    let sign = if determinant.is_sign_positive() { 1 } else { -1 };
+    Ok(LogDetResult { sign, ln_abs_det: num_traits::Float::ln(determinant_abs) })
 }
 
 #[cfg(test)]
@@ -546,8 +693,8 @@ mod tests {
 
     #[test]
     fn solve_reconstructs_rhs() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 3.0, 6.0, 3.0]).unwrap();
-        let rhs = Array1::from_vec(vec![10.0, 12.0]);
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0_f64, 3.0, 6.0, 3.0]).unwrap();
+        let rhs = Array1::from_vec(vec![10.0_f64, 12.0]);
         let solution = solve(&matrix, &rhs).unwrap();
         let reconstructed = matrix.dot(&solution);
         assert!((reconstructed[0] - rhs[0]).abs() < 1e-8);
@@ -556,21 +703,21 @@ mod tests {
 
     #[test]
     fn determinant_matches_expected() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0_f64, 2.0, 3.0, 4.0]).unwrap();
         let determinant = determinant(&matrix).unwrap();
         assert!((determinant + 2.0).abs() < 1e-12);
     }
 
     #[test]
     fn singular_matrix_is_rejected() {
-        let singular = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 2.0, 4.0]).unwrap();
-        let rhs = Array1::from_vec(vec![1.0, 2.0]);
+        let singular = Array2::from_shape_vec((2, 2), vec![1.0_f64, 2.0, 2.0, 4.0]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0]);
         assert!(matches!(solve(&singular, &rhs), Err(LUError::SingularMatrix)));
     }
 
     #[test]
     fn inverse_multiplied_by_matrix_is_identity() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 7.0, 2.0, 6.0]).unwrap();
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0_f64, 7.0, 2.0, 6.0]).unwrap();
         let inverse = inverse(&matrix).unwrap();
         let product = matrix.dot(&inverse);
         assert!((product[[0, 0]] - 1.0).abs() < 1e-8);
@@ -581,7 +728,7 @@ mod tests {
 
     #[test]
     fn log_determinant_has_expected_sign_and_value() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, -3.0]).unwrap();
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0_f64, 0.0, 0.0, -3.0]).unwrap();
         let result = log_determinant(&matrix).unwrap();
         assert_eq!(result.sign, -1);
         assert!((result.ln_abs_det - (6.0_f64).ln()).abs() < 1e-10);
@@ -590,14 +737,14 @@ mod tests {
     #[test]
     fn solve_rejects_bad_rhs_length() {
         let matrix = Array2::eye(2);
-        let rhs = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0, 3.0]);
         let result = solve(&matrix, &rhs);
         assert!(matches!(result, Err(LUError::InvalidInput(_))));
     }
 
     #[test]
     fn decompose_exposes_factors() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 4.0, 3.0]).unwrap();
+        let matrix = Array2::from_shape_vec((2, 2), vec![2.0_f64, 1.0, 4.0, 3.0]).unwrap();
         let lu = decompose(&matrix).unwrap();
         assert_eq!(lu.l.dim(), (2, 2));
         assert_eq!(lu.u.dim(), (2, 2));
@@ -605,8 +752,8 @@ mod tests {
 
     #[test]
     fn view_variants_match_owned() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![4.0, 7.0, 2.0, 6.0]).unwrap();
-        let rhs = Array1::from_vec(vec![5.0, 7.0]);
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0_f64, 7.0, 2.0, 6.0]).unwrap();
+        let rhs = Array1::from_vec(vec![5.0_f64, 7.0]);
 
         let owned = decompose(&matrix).unwrap();
         let viewed = decompose_view(&matrix.view()).unwrap();

@@ -9,7 +9,7 @@
 use std::time::{Duration, Instant};
 
 use nabled::linalg::accelerator::backends::{AcceleratorError, CpuBackend, GpuBackend};
-use nabled::linalg::accelerator::dispatch::matmat_with_backend_f32;
+use nabled::linalg::accelerator::dispatch::matmat_with_backend;
 use nabled::linalg::accelerator::gpu::matmat_gpu_f32;
 use ndarray::Array2;
 
@@ -46,7 +46,7 @@ fn run_cpu_timed(
     let start = Instant::now();
     let mut last = Array2::<f32>::zeros((left.nrows(), right.ncols()));
     for _ in 0..timed_iters {
-        last = matmat_with_backend_f32::<CpuBackend>(left, right)
+        last = matmat_with_backend::<CpuBackend, f32>(left, right)
             .expect("cpu backend matmat should succeed");
     }
     (last, start.elapsed())
@@ -80,7 +80,7 @@ fn gpu_vs_cpu_matmat_probe() {
 
     eprintln!("gpu perf probe starting: size={matrix_size}x{matrix_size}, iters={timed_iters}");
 
-    let cpu_baseline = matmat_with_backend_f32::<CpuBackend>(&left, &right)
+    let cpu_baseline = matmat_with_backend::<CpuBackend, f32>(&left, &right)
         .expect("cpu baseline matmat should succeed");
     let gpu_warmup = match matmat_gpu_f32(&left, &right) {
         Ok(output) => output,
@@ -100,7 +100,7 @@ fn gpu_vs_cpu_matmat_probe() {
     let (gpu_last, gpu_elapsed) = run_gpu_timed(&left, &right, timed_iters);
 
     let cpu_gpu_diff = max_abs_diff(&cpu_last, &gpu_last);
-    let gpu_dispatch = matmat_with_backend_f32::<GpuBackend>(&left, &right)
+    let gpu_dispatch = matmat_with_backend::<GpuBackend, f32>(&left, &right)
         .expect("gpu backend dispatch matmat should succeed");
     let gpu_dispatch_diff = max_abs_diff(&gpu_last, &gpu_dispatch);
 

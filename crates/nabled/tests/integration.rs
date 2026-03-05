@@ -418,7 +418,7 @@ fn assert_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
 
     let serial = accelerator::cpu::matmat_serial(dense, dense_rhs).unwrap();
     let backend_gpu =
-        accelerator::dispatch::matmat_with_backend::<GpuBackend>(dense, dense_rhs).unwrap();
+        accelerator::dispatch::matmat_with_backend::<GpuBackend, f64>(dense, dense_rhs).unwrap();
     for row in 0..serial.nrows() {
         for col in 0..serial.ncols() {
             assert_relative_eq!(serial[[row, col]], backend_gpu[[row, col]], epsilon = 1e-12);

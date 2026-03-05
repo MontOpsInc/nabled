@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView2, Axis};
 use num_complex::Complex64;
 
@@ -30,25 +31,31 @@ impl fmt::Display for StatsError {
 
 impl std::error::Error for StatsError {}
 
-fn usize_to_f64(value: usize) -> f64 { u32::try_from(value).map_or(f64::from(u32::MAX), f64::from) }
+fn usize_to_scalar<T: NabledReal>(value: usize) -> T {
+    T::from_usize(value).unwrap_or(T::max_value())
+}
 
 fn complex_is_finite(value: Complex64) -> bool { value.re.is_finite() && value.im.is_finite() }
 
-fn column_means_impl(matrix: &ArrayView2<'_, f64>) -> Array1<f64> {
+fn column_means_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Array1<T> {
     matrix.mean_axis(Axis(0)).unwrap_or_else(|| Array1::zeros(matrix.ncols()))
 }
 
 /// Compute column means.
 #[must_use]
-pub fn column_means(matrix: &Array2<f64>) -> Array1<f64> { column_means_impl(&matrix.view()) }
+pub fn column_means<T: NabledReal>(matrix: &Array2<T>) -> Array1<T> {
+    column_means_impl(&matrix.view())
+}
 
 /// Compute column means from a matrix view.
 #[must_use]
-pub fn column_means_view(matrix: &ArrayView2<'_, f64>) -> Array1<f64> { column_means_impl(matrix) }
+pub fn column_means_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Array1<T> {
+    column_means_impl(matrix)
+}
 
-fn center_columns_impl(matrix: &ArrayView2<'_, f64>) -> Array2<f64> {
+fn center_columns_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Array2<T> {
     let means = column_means_impl(matrix);
-    let mut centered = Array2::<f64>::zeros((matrix.nrows(), matrix.ncols()));
+    let mut centered = Array2::<T>::zeros((matrix.nrows(), matrix.ncols()));
     for row in 0..matrix.nrows() {
         for col in 0..matrix.ncols() {
             centered[[row, col]] = matrix[[row, col]] - means[col];
@@ -59,15 +66,19 @@ fn center_columns_impl(matrix: &ArrayView2<'_, f64>) -> Array2<f64> {
 
 /// Center columns by subtracting their means.
 #[must_use]
-pub fn center_columns(matrix: &Array2<f64>) -> Array2<f64> { center_columns_impl(&matrix.view()) }
+pub fn center_columns<T: NabledReal>(matrix: &Array2<T>) -> Array2<T> {
+    center_columns_impl(&matrix.view())
+}
 
 /// Center columns by subtracting their means from a matrix view.
 #[must_use]
-pub fn center_columns_view(matrix: &ArrayView2<'_, f64>) -> Array2<f64> {
+pub fn center_columns_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Array2<T> {
     center_columns_impl(matrix)
 }
 
-fn covariance_matrix_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
+fn covariance_matrix_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, StatsError> {
     if matrix.is_empty() {
         return Err(StatsError::EmptyMatrix);
     }
@@ -76,7 +87,8 @@ fn covariance_matrix_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, S
     }
 
     let centered = center_columns_impl(matrix);
-    let covariance = centered.t().dot(&centered) / usize_to_f64(matrix.nrows() - 1);
+    let covariance: Array2<T> =
+        centered.t().dot(&centered) / usize_to_scalar::<T>(matrix.nrows() - 1);
 
     if covariance.iter().any(|value| !value.is_finite()) {
         return Err(StatsError::NumericalInstability);
@@ -89,7 +101,7 @@ fn covariance_matrix_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, S
 ///
 /// # Errors
 /// Returns an error for empty input or fewer than two samples.
-pub fn covariance_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError> {
+pub fn covariance_matrix<T: NabledReal>(matrix: &Array2<T>) -> Result<Array2<T>, StatsError> {
     covariance_matrix_impl(&matrix.view())
 }
 
@@ -97,20 +109,24 @@ pub fn covariance_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError
 ///
 /// # Errors
 /// Returns an error for empty input or fewer than two samples.
-pub fn covariance_matrix_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
+pub fn covariance_matrix_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, StatsError> {
     covariance_matrix_impl(matrix)
 }
 
-fn correlation_matrix_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
+fn correlation_matrix_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, StatsError> {
     let covariance = covariance_matrix_impl(matrix)?;
     let n = covariance.nrows();
-    let mut correlation = Array2::<f64>::zeros((n, n));
+    let mut correlation = Array2::<T>::zeros((n, n));
 
     for i in 0..n {
         let sigma_i = covariance[[i, i]].sqrt();
         for j in 0..n {
             let sigma_j = covariance[[j, j]].sqrt();
-            let denom = (sigma_i * sigma_j).max(f64::EPSILON);
+            let denom = (sigma_i * sigma_j).max(T::epsilon());
             correlation[[i, j]] = covariance[[i, j]] / denom;
         }
     }
@@ -122,7 +138,7 @@ fn correlation_matrix_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, 
 ///
 /// # Errors
 /// Returns an error if covariance computation fails.
-pub fn correlation_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsError> {
+pub fn correlation_matrix<T: NabledReal>(matrix: &Array2<T>) -> Result<Array2<T>, StatsError> {
     correlation_matrix_impl(&matrix.view())
 }
 
@@ -130,7 +146,9 @@ pub fn correlation_matrix(matrix: &Array2<f64>) -> Result<Array2<f64>, StatsErro
 ///
 /// # Errors
 /// Returns an error if covariance computation fails.
-pub fn correlation_matrix_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, StatsError> {
+pub fn correlation_matrix_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, StatsError> {
     correlation_matrix_impl(matrix)
 }
 
@@ -145,7 +163,7 @@ fn column_means_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Array1<Compl
         for row in 0..matrix.nrows() {
             sum += matrix[[row, col]];
         }
-        means[col] = sum / usize_to_f64(matrix.nrows());
+        means[col] = sum / usize_to_scalar::<f64>(matrix.nrows());
     }
     means
 }
@@ -197,7 +215,8 @@ fn covariance_matrix_complex_impl(
 
     let centered = center_columns_complex_impl(matrix);
     let conjugate_transpose = centered.t().mapv(|value| value.conj());
-    let covariance = conjugate_transpose.dot(&centered) / usize_to_f64(matrix.nrows() - 1);
+    let covariance: Array2<Complex64> =
+        conjugate_transpose.dot(&centered) / usize_to_scalar::<f64>(matrix.nrows() - 1);
 
     if covariance.iter().any(|value| !complex_is_finite(*value)) {
         return Err(StatsError::NumericalInstability);
@@ -279,7 +298,8 @@ mod tests {
     #[test]
     fn covariance_and_correlation_are_well_formed() {
         let matrix =
-            Array2::from_shape_vec((4, 2), vec![1.0, 3.0, 2.0, 2.0, 3.0, 1.0, 4.0, 0.0]).unwrap();
+            Array2::from_shape_vec((4, 2), vec![1.0_f64, 3.0, 2.0, 2.0, 3.0, 1.0, 4.0, 0.0])
+                .unwrap();
         let covariance = covariance_matrix(&matrix).unwrap();
         let correlation = correlation_matrix(&matrix).unwrap();
         assert_eq!(covariance.dim(), (2, 2));
@@ -297,10 +317,11 @@ mod tests {
 
     #[test]
     fn center_columns_zeroes_means() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 2.0, 3.0, 3.0, 4.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((3, 2), vec![1.0_f64, 2.0, 2.0, 3.0, 3.0, 4.0]).unwrap();
         let centered = center_columns(&matrix);
         let means = column_means(&centered);
-        assert!(means.iter().all(|value| value.abs() < 1e-12));
+        assert!(means.iter().all(|value| num_traits::Float::abs(*value) < 1e-12));
     }
 
     #[test]
@@ -320,7 +341,8 @@ mod tests {
 
     #[test]
     fn correlation_handles_zero_variance_column() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![1.0, 10.0, 1.0, 20.0, 1.0, 30.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((3, 2), vec![1.0_f64, 10.0, 1.0, 20.0, 1.0, 30.0]).unwrap();
         let correlation = correlation_matrix(&matrix).unwrap();
         assert!(correlation[[0, 0]].is_finite());
         assert!(correlation[[0, 1]].is_finite());
@@ -331,7 +353,8 @@ mod tests {
     #[test]
     fn view_variants_match_owned() {
         let matrix =
-            Array2::from_shape_vec((4, 2), vec![1.0, 3.0, 2.0, 2.0, 3.0, 1.0, 4.0, 0.0]).unwrap();
+            Array2::from_shape_vec((4, 2), vec![1.0_f64, 3.0, 2.0, 2.0, 3.0, 1.0, 4.0, 0.0])
+                .unwrap();
         let means_owned = column_means(&matrix);
         let means_view = column_means_view(&matrix.view());
         let centered_owned = center_columns(&matrix);

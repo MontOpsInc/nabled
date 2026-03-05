@@ -1,5 +1,6 @@
 use std::ops::{AddAssign, Mul};
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, Array3, ArrayD};
 use num_traits::Float;
 
@@ -134,21 +135,27 @@ impl BatchedMatMatKernel<f32> for GpuBackend {
     }
 }
 
-impl SparseMatVecKernel for CpuBackend {
+impl<T> SparseMatVecKernel<T> for CpuBackend
+where
+    T: NabledReal,
+{
     fn sparse_matvec(
-        matrix: &CsrMatrix,
-        vector: &Array1<f64>,
-    ) -> Result<Array1<f64>, AcceleratorError> {
+        matrix: &CsrMatrix<T>,
+        vector: &Array1<T>,
+    ) -> Result<Array1<T>, AcceleratorError> {
         sparse_matvec_serial(matrix, vector)
     }
 }
 
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl SparseMatVecKernel for GpuBackend {
+impl<T> SparseMatVecKernel<T> for GpuBackend
+where
+    T: NabledReal,
+{
     fn sparse_matvec(
-        matrix: &CsrMatrix,
-        vector: &Array1<f64>,
-    ) -> Result<Array1<f64>, AcceleratorError> {
+        matrix: &CsrMatrix<T>,
+        vector: &Array1<T>,
+    ) -> Result<Array1<T>, AcceleratorError> {
         sparse_matvec_serial(matrix, vector)
     }
 }
@@ -172,40 +179,52 @@ impl BatchedRowMatVecKernel<f64> for GpuBackend {
     }
 }
 
-impl SparseMatMatDenseKernel for CpuBackend {
+impl<T> SparseMatMatDenseKernel<T> for CpuBackend
+where
+    T: NabledReal,
+{
     fn sparse_matmat_dense(
-        matrix: &CsrMatrix,
-        dense: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
+        matrix: &CsrMatrix<T>,
+        dense: &Array2<T>,
+    ) -> Result<Array2<T>, AcceleratorError> {
         sparse_matmat_dense_serial(matrix, dense)
     }
 }
 
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl SparseMatMatDenseKernel for GpuBackend {
+impl<T> SparseMatMatDenseKernel<T> for GpuBackend
+where
+    T: NabledReal,
+{
     fn sparse_matmat_dense(
-        matrix: &CsrMatrix,
-        dense: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
+        matrix: &CsrMatrix<T>,
+        dense: &Array2<T>,
+    ) -> Result<Array2<T>, AcceleratorError> {
         sparse_matmat_dense_serial(matrix, dense)
     }
 }
 
-impl SparseMatMatSparseKernel for CpuBackend {
+impl<T> SparseMatMatSparseKernel<T> for CpuBackend
+where
+    T: NabledReal,
+{
     fn sparse_matmat_sparse(
-        left: &CsrMatrix,
-        right: &CsrMatrix,
-    ) -> Result<CsrMatrix, AcceleratorError> {
+        left: &CsrMatrix<T>,
+        right: &CsrMatrix<T>,
+    ) -> Result<CsrMatrix<T>, AcceleratorError> {
         sparse_matmat_sparse_serial(left, right)
     }
 }
 
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl SparseMatMatSparseKernel for GpuBackend {
+impl<T> SparseMatMatSparseKernel<T> for GpuBackend
+where
+    T: NabledReal,
+{
     fn sparse_matmat_sparse(
-        left: &CsrMatrix,
-        right: &CsrMatrix,
-    ) -> Result<CsrMatrix, AcceleratorError> {
+        left: &CsrMatrix<T>,
+        right: &CsrMatrix<T>,
+    ) -> Result<CsrMatrix<T>, AcceleratorError> {
         sparse_matmat_sparse_serial(left, right)
     }
 }
@@ -268,53 +287,59 @@ where
     }
 }
 
-impl DotKernel<f64> for CpuBackend {
-    fn dot(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
+impl<T> DotKernel<T> for CpuBackend
+where
+    T: NabledReal,
+{
+    fn dot(left: &Array1<T>, right: &Array1<T>) -> Result<T, AcceleratorError> {
         dot_serial(left, right)
     }
 }
 
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl DotKernel<f64> for GpuBackend {
-    fn dot(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
+impl<T> DotKernel<T> for GpuBackend
+where
+    T: NabledReal,
+{
+    fn dot(left: &Array1<T>, right: &Array1<T>) -> Result<T, AcceleratorError> {
         dot_serial(left, right)
     }
 }
 
-impl PairwiseL2Kernel for CpuBackend {
-    fn pairwise_l2(
-        left: &Array2<f64>,
-        right: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
+impl<T> PairwiseL2Kernel<T> for CpuBackend
+where
+    T: NabledReal,
+{
+    fn pairwise_l2(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError> {
         pairwise_l2_serial(left, right)
     }
 }
 
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl PairwiseL2Kernel for GpuBackend {
-    fn pairwise_l2(
-        left: &Array2<f64>,
-        right: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
+impl<T> PairwiseL2Kernel<T> for GpuBackend
+where
+    T: NabledReal,
+{
+    fn pairwise_l2(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError> {
         pairwise_l2_serial(left, right)
     }
 }
 
-impl PairwiseCosineKernel for CpuBackend {
-    fn pairwise_cosine(
-        left: &Array2<f64>,
-        right: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
+impl<T> PairwiseCosineKernel<T> for CpuBackend
+where
+    T: NabledReal,
+{
+    fn pairwise_cosine(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError> {
         pairwise_cosine_serial(left, right)
     }
 }
 
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl PairwiseCosineKernel for GpuBackend {
-    fn pairwise_cosine(
-        left: &Array2<f64>,
-        right: &Array2<f64>,
-    ) -> Result<Array2<f64>, AcceleratorError> {
+impl<T> PairwiseCosineKernel<T> for GpuBackend
+where
+    T: NabledReal,
+{
+    fn pairwise_cosine(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError> {
         pairwise_cosine_serial(left, right)
     }
 }
@@ -415,26 +440,12 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn matmat_with_backend<B>(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError>
+pub fn matmat_with_backend<B, T>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
 where
-    B: MatMatKernel<f64>,
-{
-    B::matmat(left, right)
-}
-
-/// Compute matrix-matrix product using compile-time backend dispatch for `f32`.
-///
-/// # Errors
-/// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn matmat_with_backend_f32<B>(
-    left: &Array2<f32>,
-    right: &Array2<f32>,
-) -> Result<Array2<f32>, AcceleratorError>
-where
-    B: MatMatKernel<f32>,
+    B: MatMatKernel<T>,
 {
     B::matmat(left, right)
 }
@@ -443,26 +454,12 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn matvec_with_backend<B>(
-    matrix: &Array2<f64>,
-    vector: &Array1<f64>,
-) -> Result<Array1<f64>, AcceleratorError>
+pub fn matvec_with_backend<B, T>(
+    matrix: &Array2<T>,
+    vector: &Array1<T>,
+) -> Result<Array1<T>, AcceleratorError>
 where
-    B: MatVecKernel<f64>,
-{
-    B::matvec(matrix, vector)
-}
-
-/// Compute matrix-vector product using compile-time backend dispatch for `f32`.
-///
-/// # Errors
-/// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn matvec_with_backend_f32<B>(
-    matrix: &Array2<f32>,
-    vector: &Array1<f32>,
-) -> Result<Array1<f32>, AcceleratorError>
-where
-    B: MatVecKernel<f32>,
+    B: MatVecKernel<T>,
 {
     B::matvec(matrix, vector)
 }
@@ -471,26 +468,12 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn batched_matmat_with_backend<B>(
-    left_batches: &Array3<f64>,
-    right_batches: &Array3<f64>,
-) -> Result<Array3<f64>, AcceleratorError>
+pub fn batched_matmat_with_backend<B, T>(
+    left_batches: &Array3<T>,
+    right_batches: &Array3<T>,
+) -> Result<Array3<T>, AcceleratorError>
 where
-    B: BatchedMatMatKernel<f64>,
-{
-    B::batched_matmat(left_batches, right_batches)
-}
-
-/// Compute batched matrix-matrix products using compile-time backend dispatch for `f32`.
-///
-/// # Errors
-/// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn batched_matmat_with_backend_f32<B>(
-    left_batches: &Array3<f32>,
-    right_batches: &Array3<f32>,
-) -> Result<Array3<f32>, AcceleratorError>
-where
-    B: BatchedMatMatKernel<f32>,
+    B: BatchedMatMatKernel<T>,
 {
     B::batched_matmat(left_batches, right_batches)
 }
@@ -499,12 +482,13 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn sparse_matvec_with_backend<B>(
-    matrix: &CsrMatrix,
-    vector: &Array1<f64>,
-) -> Result<Array1<f64>, AcceleratorError>
+pub fn sparse_matvec_with_backend<B, T>(
+    matrix: &CsrMatrix<T>,
+    vector: &Array1<T>,
+) -> Result<Array1<T>, AcceleratorError>
 where
-    B: SparseMatVecKernel,
+    T: NabledReal,
+    B: SparseMatVecKernel<T>,
 {
     B::sparse_matvec(matrix, vector)
 }
@@ -513,12 +497,12 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn batched_row_matvec_with_backend<B>(
-    batch_vectors: &Array2<f64>,
-    matrix: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError>
+pub fn batched_row_matvec_with_backend<B, T>(
+    batch_vectors: &Array2<T>,
+    matrix: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
 where
-    B: BatchedRowMatVecKernel<f64>,
+    B: BatchedRowMatVecKernel<T>,
 {
     B::batched_row_matvec(batch_vectors, matrix)
 }
@@ -527,12 +511,13 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn sparse_matmat_dense_with_backend<B>(
-    matrix: &CsrMatrix,
-    dense: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError>
+pub fn sparse_matmat_dense_with_backend<B, T>(
+    matrix: &CsrMatrix<T>,
+    dense: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
 where
-    B: SparseMatMatDenseKernel,
+    T: NabledReal,
+    B: SparseMatMatDenseKernel<T>,
 {
     B::sparse_matmat_dense(matrix, dense)
 }
@@ -541,12 +526,13 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn sparse_matmat_sparse_with_backend<B>(
-    left: &CsrMatrix,
-    right: &CsrMatrix,
-) -> Result<CsrMatrix, AcceleratorError>
+pub fn sparse_matmat_sparse_with_backend<B, T>(
+    left: &CsrMatrix<T>,
+    right: &CsrMatrix<T>,
+) -> Result<CsrMatrix<T>, AcceleratorError>
 where
-    B: SparseMatMatSparseKernel,
+    T: NabledReal,
+    B: SparseMatMatSparseKernel<T>,
 {
     B::sparse_matmat_sparse(left, right)
 }
@@ -587,9 +573,9 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn dot_with_backend<B>(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError>
+pub fn dot_with_backend<B, T>(left: &Array1<T>, right: &Array1<T>) -> Result<T, AcceleratorError>
 where
-    B: DotKernel<f64>,
+    B: DotKernel<T>,
 {
     B::dot(left, right)
 }
@@ -598,12 +584,12 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn pairwise_l2_with_backend<B>(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError>
+pub fn pairwise_l2_with_backend<B, T>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
 where
-    B: PairwiseL2Kernel,
+    B: PairwiseL2Kernel<T>,
 {
     B::pairwise_l2(left, right)
 }
@@ -612,12 +598,12 @@ where
 ///
 /// # Errors
 /// Returns an error for unsupported backends, invalid dimensions, or kernel errors.
-pub fn pairwise_cosine_with_backend<B>(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError>
+pub fn pairwise_cosine_with_backend<B, T>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
 where
-    B: PairwiseCosineKernel,
+    B: PairwiseCosineKernel<T>,
 {
     B::pairwise_cosine(left, right)
 }
@@ -669,77 +655,95 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn matmat_cpu(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
-    matmat_with_backend::<CpuBackend>(left, right)
+pub fn matmat_cpu<T>(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError>
+where
+    CpuBackend: MatMatKernel<T>,
+{
+    matmat_with_backend::<CpuBackend, T>(left, right)
 }
 
 /// Compute matrix-vector product on the default CPU backend.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn matvec_cpu(
-    matrix: &Array2<f64>,
-    vector: &Array1<f64>,
-) -> Result<Array1<f64>, AcceleratorError> {
-    matvec_with_backend::<CpuBackend>(matrix, vector)
+pub fn matvec_cpu<T>(matrix: &Array2<T>, vector: &Array1<T>) -> Result<Array1<T>, AcceleratorError>
+where
+    CpuBackend: MatVecKernel<T>,
+{
+    matvec_with_backend::<CpuBackend, T>(matrix, vector)
 }
 
 /// Compute batched matrix-matrix products on the default CPU backend.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn batched_matmat_cpu(
-    left_batches: &Array3<f64>,
-    right_batches: &Array3<f64>,
-) -> Result<Array3<f64>, AcceleratorError> {
-    batched_matmat_with_backend::<CpuBackend>(left_batches, right_batches)
+pub fn batched_matmat_cpu<T>(
+    left_batches: &Array3<T>,
+    right_batches: &Array3<T>,
+) -> Result<Array3<T>, AcceleratorError>
+where
+    CpuBackend: BatchedMatMatKernel<T>,
+{
+    batched_matmat_with_backend::<CpuBackend, T>(left_batches, right_batches)
 }
 
 /// Compute row-batch by matrix products on the default CPU backend.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn batched_row_matvec_cpu(
-    batch_vectors: &Array2<f64>,
-    matrix: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
-    batched_row_matvec_with_backend::<CpuBackend>(batch_vectors, matrix)
+pub fn batched_row_matvec_cpu<T>(
+    batch_vectors: &Array2<T>,
+    matrix: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
+where
+    CpuBackend: BatchedRowMatVecKernel<T>,
+{
+    batched_row_matvec_with_backend::<CpuBackend, T>(batch_vectors, matrix)
 }
 
 /// Compute sparse matrix-vector product on the default CPU backend.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn sparse_matvec_cpu(
-    matrix: &CsrMatrix,
-    vector: &Array1<f64>,
-) -> Result<Array1<f64>, AcceleratorError> {
-    sparse_matvec_with_backend::<CpuBackend>(matrix, vector)
+pub fn sparse_matvec_cpu<T>(
+    matrix: &CsrMatrix<T>,
+    vector: &Array1<T>,
+) -> Result<Array1<T>, AcceleratorError>
+where
+    T: NabledReal,
+    CpuBackend: SparseMatVecKernel<T>,
+{
+    sparse_matvec_with_backend::<CpuBackend, T>(matrix, vector)
 }
 
 /// Compute sparse-dense matrix product on the default CPU backend.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn sparse_matmat_dense_cpu(
-    matrix: &CsrMatrix,
-    dense: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
-    sparse_matmat_dense_with_backend::<CpuBackend>(matrix, dense)
+pub fn sparse_matmat_dense_cpu<T>(
+    matrix: &CsrMatrix<T>,
+    dense: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
+where
+    T: NabledReal,
+    CpuBackend: SparseMatMatDenseKernel<T>,
+{
+    sparse_matmat_dense_with_backend::<CpuBackend, T>(matrix, dense)
 }
 
 /// Compute sparse-sparse matrix product on the default CPU backend.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn sparse_matmat_sparse_cpu(
-    left: &CsrMatrix,
-    right: &CsrMatrix,
-) -> Result<CsrMatrix, AcceleratorError> {
-    sparse_matmat_sparse_with_backend::<CpuBackend>(left, right)
+pub fn sparse_matmat_sparse_cpu<T>(
+    left: &CsrMatrix<T>,
+    right: &CsrMatrix<T>,
+) -> Result<CsrMatrix<T>, AcceleratorError>
+where
+    T: NabledReal,
+    CpuBackend: SparseMatMatSparseKernel<T>,
+{
+    sparse_matmat_sparse_with_backend::<CpuBackend, T>(left, right)
 }
 
 /// Solve a triangular system against a vector on the default CPU backend.
@@ -778,30 +782,39 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn dot_cpu(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
-    dot_with_backend::<CpuBackend>(left, right)
+pub fn dot_cpu<T>(left: &Array1<T>, right: &Array1<T>) -> Result<T, AcceleratorError>
+where
+    CpuBackend: DotKernel<T>,
+{
+    dot_with_backend::<CpuBackend, T>(left, right)
 }
 
 /// Compute pairwise L2 distances on the default CPU backend.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn pairwise_l2_cpu(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
-    pairwise_l2_with_backend::<CpuBackend>(left, right)
+pub fn pairwise_l2_cpu<T>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
+where
+    CpuBackend: PairwiseL2Kernel<T>,
+{
+    pairwise_l2_with_backend::<CpuBackend, T>(left, right)
 }
 
 /// Compute pairwise cosine similarity on the default CPU backend.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or kernel execution failures.
-pub fn pairwise_cosine_cpu(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
-    pairwise_cosine_with_backend::<CpuBackend>(left, right)
+pub fn pairwise_cosine_cpu<T>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError>
+where
+    CpuBackend: PairwiseCosineKernel<T>,
+{
+    pairwise_cosine_with_backend::<CpuBackend, T>(left, right)
 }
 
 /// Contract tensor axes on the default CPU backend.

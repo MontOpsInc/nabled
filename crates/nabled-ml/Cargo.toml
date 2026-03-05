@@ -26,6 +26,7 @@ netlib-static = ["blas", "nabled-linalg/netlib-static"]
 nabled-core.workspace = true
 nabled-linalg.workspace = true
 ndarray.workspace = true
+ndarray-linalg.workspace = true
 num-complex.workspace = true
 num-traits.workspace = true
 serde.workspace = true

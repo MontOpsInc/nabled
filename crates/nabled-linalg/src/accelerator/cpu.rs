@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::ops::{AddAssign, Mul};
 
+use nabled_core::scalar::NabledReal;
 use ndarray::linalg::general_mat_mul;
 use ndarray::{Array1, Array2, Array3, ArrayD, ArrayView2, IxDyn, s};
 use num_traits::Float;
@@ -12,6 +13,8 @@ use crate::sparse::CsrMatrix;
 use crate::tensor::{batched_matmul_last_two_view_into_impl, contract_view_into_impl};
 
 const SPARSE_TOLERANCE: f64 = 1.0e-12;
+
+fn sparse_tolerance<T: NabledReal>() -> T { T::from_f64(SPARSE_TOLERANCE).unwrap_or(T::epsilon()) }
 
 /// Apply a CPU closure over row chunks.
 ///
@@ -156,19 +159,19 @@ pub(crate) fn batched_matmat_serial_f32(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn sparse_matvec_serial(
-    matrix: &CsrMatrix,
-    vector: &Array1<f64>,
-) -> Result<Array1<f64>, AcceleratorError> {
+pub fn sparse_matvec_serial<T: NabledReal>(
+    matrix: &CsrMatrix<T>,
+    vector: &Array1<T>,
+) -> Result<Array1<T>, AcceleratorError> {
     if matrix.ncols != vector.len() {
         return Err(AcceleratorError::DimensionMismatch);
     }
 
-    let mut output = Array1::<f64>::zeros(matrix.nrows);
+    let mut output = Array1::<T>::zeros(matrix.nrows);
     for row in 0..matrix.nrows {
         let start = matrix.indptr[row];
         let end = matrix.indptr[row + 1];
-        let mut sum = 0.0_f64;
+        let mut sum = T::zero();
         for entry in start..end {
             sum += matrix.data[entry] * vector[matrix.indices[entry]];
         }
@@ -181,18 +184,18 @@ pub fn sparse_matvec_serial(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn batched_row_matvec_serial(
-    batch_vectors: &Array2<f64>,
-    matrix: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
+pub fn batched_row_matvec_serial<T: NabledReal>(
+    batch_vectors: &Array2<T>,
+    matrix: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError> {
     if batch_vectors.ncols() != matrix.ncols() {
         return Err(AcceleratorError::DimensionMismatch);
     }
 
-    let mut output = Array2::<f64>::zeros((batch_vectors.nrows(), matrix.nrows()));
+    let mut output = Array2::<T>::zeros((batch_vectors.nrows(), matrix.nrows()));
     for batch in 0..batch_vectors.nrows() {
         for row in 0..matrix.nrows() {
-            let mut sum = 0.0_f64;
+            let mut sum = T::zero();
             for col in 0..matrix.ncols() {
                 sum += batch_vectors[[batch, col]] * matrix[[row, col]];
             }
@@ -207,15 +210,15 @@ pub fn batched_row_matvec_serial(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn sparse_matmat_dense_serial(
-    matrix: &CsrMatrix,
-    dense: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
+pub fn sparse_matmat_dense_serial<T: NabledReal>(
+    matrix: &CsrMatrix<T>,
+    dense: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError> {
     if dense.nrows() != matrix.ncols {
         return Err(AcceleratorError::DimensionMismatch);
     }
 
-    let mut output = Array2::<f64>::zeros((matrix.nrows, dense.ncols()));
+    let mut output = Array2::<T>::zeros((matrix.nrows, dense.ncols()));
     for row in 0..matrix.nrows {
         for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
             let col = matrix.indices[entry];
@@ -233,21 +236,21 @@ pub fn sparse_matmat_dense_serial(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or sparse structure is invalid.
-pub fn sparse_matmat_sparse_serial(
-    left: &CsrMatrix,
-    right: &CsrMatrix,
-) -> Result<CsrMatrix, AcceleratorError> {
+pub fn sparse_matmat_sparse_serial<T: NabledReal>(
+    left: &CsrMatrix<T>,
+    right: &CsrMatrix<T>,
+) -> Result<CsrMatrix<T>, AcceleratorError> {
     if left.ncols != right.nrows {
         return Err(AcceleratorError::DimensionMismatch);
     }
 
     let mut indptr = Vec::<usize>::with_capacity(left.nrows + 1);
     let mut indices = Vec::<usize>::new();
-    let mut data = Vec::<f64>::new();
+    let mut data = Vec::<T>::new();
     indptr.push(0);
 
     for row in 0..left.nrows {
-        let mut row_accumulator = BTreeMap::<usize, f64>::new();
+        let mut row_accumulator = BTreeMap::<usize, T>::new();
         for left_entry in left.indptr[row]..left.indptr[row + 1] {
             let inner = left.indices[left_entry];
             let left_value = left.data[left_entry];
@@ -255,13 +258,13 @@ pub fn sparse_matmat_sparse_serial(
             for right_entry in right.indptr[inner]..right.indptr[inner + 1] {
                 let col = right.indices[right_entry];
                 let right_value = right.data[right_entry];
-                let accumulator = row_accumulator.entry(col).or_insert(0.0);
+                let accumulator = row_accumulator.entry(col).or_insert(T::zero());
                 *accumulator += left_value * right_value;
             }
         }
 
         for (col, value) in row_accumulator {
-            if value.abs() > SPARSE_TOLERANCE {
+            if value.abs() > sparse_tolerance::<T>() {
                 indices.push(col);
                 data.push(value);
             }
@@ -361,7 +364,10 @@ where
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn dot_serial(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
+pub fn dot_serial<T: NabledReal>(
+    left: &Array1<T>,
+    right: &Array1<T>,
+) -> Result<T, AcceleratorError> {
     if left.len() != right.len() {
         return Err(AcceleratorError::DimensionMismatch);
     }
@@ -372,18 +378,18 @@ pub fn dot_serial(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, Accele
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn pairwise_l2_serial(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
+pub fn pairwise_l2_serial<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError> {
     if left.ncols() != right.ncols() {
         return Err(AcceleratorError::DimensionMismatch);
     }
 
-    let mut output = Array2::<f64>::zeros((left.nrows(), right.nrows()));
+    let mut output = Array2::<T>::zeros((left.nrows(), right.nrows()));
     for i in 0..left.nrows() {
         for j in 0..right.nrows() {
-            let mut sum = 0.0_f64;
+            let mut sum = T::zero();
             for k in 0..left.ncols() {
                 let delta = left[[i, k]] - right[[j, k]];
                 sum += delta * delta;
@@ -399,47 +405,47 @@ pub fn pairwise_l2_serial(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or if any row has zero norm.
-pub fn pairwise_cosine_serial(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-) -> Result<Array2<f64>, AcceleratorError> {
+pub fn pairwise_cosine_serial<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array2<T>, AcceleratorError> {
     if left.ncols() != right.ncols() {
         return Err(AcceleratorError::DimensionMismatch);
     }
 
-    let mut left_norms = Array1::<f64>::zeros(left.nrows());
-    let mut right_norms = Array1::<f64>::zeros(right.nrows());
+    let mut left_norms = Array1::<T>::zeros(left.nrows());
+    let mut right_norms = Array1::<T>::zeros(right.nrows());
 
     for i in 0..left.nrows() {
-        let mut sq_sum = 0.0_f64;
+        let mut sq_sum = T::zero();
         for k in 0..left.ncols() {
             let value = left[[i, k]];
             sq_sum += value * value;
         }
         let norm = sq_sum.sqrt();
-        if norm <= f64::EPSILON {
+        if norm <= T::epsilon() {
             return Err(AcceleratorError::KernelExecutionFailed);
         }
         left_norms[i] = norm;
     }
 
     for j in 0..right.nrows() {
-        let mut sq_sum = 0.0_f64;
+        let mut sq_sum = T::zero();
         for k in 0..right.ncols() {
             let value = right[[j, k]];
             sq_sum += value * value;
         }
         let norm = sq_sum.sqrt();
-        if norm <= f64::EPSILON {
+        if norm <= T::epsilon() {
             return Err(AcceleratorError::KernelExecutionFailed);
         }
         right_norms[j] = norm;
     }
 
-    let mut output = Array2::<f64>::zeros((left.nrows(), right.nrows()));
+    let mut output = Array2::<T>::zeros((left.nrows(), right.nrows()));
     for i in 0..left.nrows() {
         for j in 0..right.nrows() {
-            let mut dot = 0.0_f64;
+            let mut dot = T::zero();
             for k in 0..left.ncols() {
                 dot += left[[i, k]] * right[[j, k]];
             }

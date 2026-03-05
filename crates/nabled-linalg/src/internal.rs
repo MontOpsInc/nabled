@@ -1,11 +1,12 @@
 //! Internal ndarray-native helpers used across domain modules.
 
+use nabled_core::scalar::NabledReal;
 #[cfg(not(feature = "lapack-provider"))]
 use ndarray::ArrayView1;
 use ndarray::{Array1, Array2, ArrayView2};
 
 pub(crate) const DEFAULT_TOLERANCE: f64 = 1.0e-12;
-pub(crate) type LuDecomposition = (Array2<f64>, Array2<f64>, Vec<usize>, i8);
+pub(crate) type LuDecomposition<T> = (Array2<T>, Array2<T>, Vec<usize>, i8);
 
 /// Shared tolerance/iteration policy for dense ndarray kernels.
 pub(crate) struct DenseKernelPolicy;
@@ -33,24 +34,9 @@ impl DenseKernelPolicy {
     #[cfg(not(feature = "lapack-provider"))]
     #[must_use]
     pub(crate) fn polar_convergence_tolerance() -> f64 { Self::BASE_TOLERANCE.sqrt() }
-
-    #[must_use]
-    pub(crate) fn svd_relative_tolerance(max_sv: f64, dimension: usize) -> f64 {
-        max_sv * usize_to_f64(dimension) * f64::EPSILON.max(Self::BASE_TOLERANCE)
-    }
-
-    #[must_use]
-    pub(crate) fn rank_estimation_tolerance(max_sv: f64, dimension: usize) -> f64 {
-        max_sv * usize_to_f64(dimension) * f64::EPSILON
-    }
 }
 
-#[must_use]
-pub(crate) fn usize_to_f64(value: usize) -> f64 {
-    u32::try_from(value).map_or(f64::from(u32::MAX), f64::from)
-}
-
-pub(crate) fn validate_square_non_empty(matrix: &Array2<f64>) -> Result<(), &'static str> {
+pub(crate) fn validate_square_non_empty<T>(matrix: &Array2<T>) -> Result<(), &'static str> {
     if matrix.is_empty() {
         return Err("empty");
     }
@@ -60,22 +46,22 @@ pub(crate) fn validate_square_non_empty(matrix: &Array2<f64>) -> Result<(), &'st
     Ok(())
 }
 
-pub(crate) fn validate_finite(matrix: &Array2<f64>) -> Result<(), &'static str> {
+pub(crate) fn validate_finite<T: NabledReal>(matrix: &Array2<T>) -> Result<(), &'static str> {
     if matrix.iter().any(|value| !value.is_finite()) {
         return Err("non_finite");
     }
     Ok(())
 }
 
-pub(crate) fn identity(n: usize) -> Array2<f64> {
-    let mut id = Array2::<f64>::zeros((n, n));
+pub(crate) fn identity<T: NabledReal>(n: usize) -> Array2<T> {
+    let mut id = Array2::<T>::zeros((n, n));
     for i in 0..n {
-        id[[i, i]] = 1.0;
+        id[[i, i]] = T::one();
     }
     id
 }
 
-pub(crate) fn is_symmetric(matrix: &ArrayView2<'_, f64>, tolerance: f64) -> bool {
+pub(crate) fn is_symmetric<T: NabledReal>(matrix: &ArrayView2<'_, T>, tolerance: T) -> bool {
     if matrix.nrows() != matrix.ncols() {
         return false;
     }
@@ -90,7 +76,9 @@ pub(crate) fn is_symmetric(matrix: &ArrayView2<'_, f64>, tolerance: f64) -> bool
     true
 }
 
-pub(crate) fn lu_decompose(matrix: &ArrayView2<'_, f64>) -> Result<LuDecomposition, &'static str> {
+pub(crate) fn lu_decompose<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<LuDecomposition<T>, &'static str> {
     if matrix.is_empty() {
         return Err("empty");
     }
@@ -102,13 +90,13 @@ pub(crate) fn lu_decompose(matrix: &ArrayView2<'_, f64>) -> Result<LuDecompositi
     }
 
     let n = matrix.nrows();
-    let mut l = Array2::<f64>::zeros((n, n));
+    let mut l = Array2::<T>::zeros((n, n));
     let mut u = matrix.to_owned();
     let mut pivots: Vec<usize> = (0..n).collect();
     let mut sign = 1_i8;
 
     for i in 0..n {
-        l[[i, i]] = 1.0;
+        l[[i, i]] = T::one();
     }
 
     for k in 0..n {
@@ -122,7 +110,7 @@ pub(crate) fn lu_decompose(matrix: &ArrayView2<'_, f64>) -> Result<LuDecompositi
             }
         }
 
-        if pivot_value <= DEFAULT_TOLERANCE {
+        if pivot_value <= T::from_f64(DEFAULT_TOLERANCE).unwrap_or(T::epsilon()) {
             return Err("singular");
         }
 
@@ -145,7 +133,7 @@ pub(crate) fn lu_decompose(matrix: &ArrayView2<'_, f64>) -> Result<LuDecompositi
             let factor = u[[row, k]] / u[[k, k]];
             l[[row, k]] = factor;
             for col in k..n {
-                u[[row, col]] -= factor * u[[k, col]];
+                u[[row, col]] = u[[row, col]] - factor * u[[k, col]];
             }
         }
     }
@@ -155,23 +143,23 @@ pub(crate) fn lu_decompose(matrix: &ArrayView2<'_, f64>) -> Result<LuDecompositi
 
 #[allow(clippy::many_single_char_names)]
 #[cfg(not(feature = "lapack-provider"))]
-pub(crate) fn lu_solve(
-    l: &Array2<f64>,
-    u: &Array2<f64>,
+pub(crate) fn lu_solve<T: NabledReal>(
+    l: &Array2<T>,
+    u: &Array2<T>,
     pivots: &[usize],
-    rhs: &ArrayView1<'_, f64>,
-) -> Result<Array1<f64>, &'static str> {
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, &'static str> {
     let n = l.nrows();
     if rhs.len() != n || u.nrows() != n || u.ncols() != n || l.ncols() != n || pivots.len() != n {
         return Err("bad_dimensions");
     }
 
-    let mut pb = Array1::<f64>::zeros(n);
+    let mut pb = Array1::<T>::zeros(n);
     for i in 0..n {
         pb[i] = rhs[pivots[i]];
     }
 
-    let mut y = Array1::<f64>::zeros(n);
+    let mut y = Array1::<T>::zeros(n);
     for i in 0..n {
         let mut sum = pb[i];
         for j in 0..i {
@@ -180,7 +168,7 @@ pub(crate) fn lu_solve(
         y[i] = sum;
     }
 
-    let mut x = Array1::<f64>::zeros(n);
+    let mut x = Array1::<T>::zeros(n);
     for i_rev in 0..n {
         let i = n - 1 - i_rev;
         let mut sum = y[i];
@@ -188,7 +176,7 @@ pub(crate) fn lu_solve(
             sum -= u[[i, j]] * x[j];
         }
         let diagonal = u[[i, i]];
-        if diagonal.abs() <= DEFAULT_TOLERANCE {
+        if diagonal.abs() <= T::from_f64(DEFAULT_TOLERANCE).unwrap_or(T::epsilon()) {
             return Err("singular");
         }
         x[i] = sum / diagonal;
@@ -199,16 +187,16 @@ pub(crate) fn lu_solve(
 
 #[allow(clippy::many_single_char_names)]
 #[cfg(not(feature = "lapack-provider"))]
-pub(crate) fn inverse_from_lu(
-    l: &Array2<f64>,
-    u: &Array2<f64>,
+pub(crate) fn inverse_from_lu<T: NabledReal>(
+    l: &Array2<T>,
+    u: &Array2<T>,
     pivots: &[usize],
-) -> Result<Array2<f64>, &'static str> {
+) -> Result<Array2<T>, &'static str> {
     let n = l.nrows();
-    let mut inverse = Array2::<f64>::zeros((n, n));
+    let mut inverse = Array2::<T>::zeros((n, n));
     for col in 0..n {
-        let mut e = Array1::<f64>::zeros(n);
-        e[col] = 1.0;
+        let mut e = Array1::<T>::zeros(n);
+        e[col] = T::one();
         let x = lu_solve(l, u, pivots, &e.view())?;
         for row in 0..n {
             inverse[[row, col]] = x[row];
@@ -217,17 +205,17 @@ pub(crate) fn inverse_from_lu(
     Ok(inverse)
 }
 
-pub(crate) fn qr_gram_schmidt(
-    matrix: &ArrayView2<'_, f64>,
-    tolerance: f64,
-) -> (Array2<f64>, Array2<f64>, usize) {
+pub(crate) fn qr_gram_schmidt<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    tolerance: T,
+) -> (Array2<T>, Array2<T>, usize) {
     let rows = matrix.nrows();
     let cols = matrix.ncols();
 
-    let mut q = Array2::<f64>::zeros((rows, cols));
-    let mut r = Array2::<f64>::zeros((cols, cols));
+    let mut q = Array2::<T>::zeros((rows, cols));
+    let mut r = Array2::<T>::zeros((cols, cols));
     let mut rank = 0_usize;
-    let mut v = Array1::<f64>::zeros(rows);
+    let mut v = Array1::<T>::zeros(rows);
 
     for j in 0..cols {
         for row in 0..rows {
@@ -235,7 +223,7 @@ pub(crate) fn qr_gram_schmidt(
         }
         for i in 0..j {
             let q_col = q.column(i);
-            let mut projection = 0.0_f64;
+            let mut projection = T::zero();
             for row in 0..rows {
                 projection += q_col[row] * v[row];
             }
@@ -245,7 +233,8 @@ pub(crate) fn qr_gram_schmidt(
             }
         }
 
-        let norm = v.iter().map(|value| value * value).sum::<f64>().sqrt();
+        let norm =
+            v.iter().map(|value| *value * *value).fold(T::zero(), |sum, value| sum + value).sqrt();
         r[[j, j]] = norm;
         if norm > tolerance {
             rank += 1;
@@ -259,25 +248,29 @@ pub(crate) fn qr_gram_schmidt(
 }
 
 #[allow(clippy::many_single_char_names)]
-pub(crate) fn jacobi_eigen_symmetric(
-    matrix: &Array2<f64>,
-    tolerance: f64,
+pub(crate) fn jacobi_eigen_symmetric<T: NabledReal>(
+    matrix: &Array2<T>,
+    tolerance: T,
     max_iterations: usize,
-) -> Result<(Array1<f64>, Array2<f64>), &'static str> {
+) -> Result<(Array1<T>, Array2<T>), &'static str> {
     validate_square_non_empty(matrix)?;
     validate_finite(matrix)?;
-    if !is_symmetric(&matrix.view(), tolerance.max(DEFAULT_TOLERANCE)) {
+    let base_tolerance = T::from_f64(DEFAULT_TOLERANCE).unwrap_or(T::epsilon());
+    if !is_symmetric(&matrix.view(), tolerance.max(base_tolerance)) {
         return Err("not_symmetric");
     }
 
     let n = matrix.nrows();
     let mut a = matrix.clone();
     let mut eigenvectors = identity(n);
+    let zero = T::zero();
+    let one = T::one();
+    let two = T::from_f64(2.0).unwrap_or(one + one);
 
     for _ in 0..max_iterations {
         let mut p = 0_usize;
         let mut q = 1_usize;
-        let mut max_off_diag = 0.0_f64;
+        let mut max_off_diag = zero;
 
         for i in 0..n {
             for j in (i + 1)..n {
@@ -291,7 +284,7 @@ pub(crate) fn jacobi_eigen_symmetric(
         }
 
         if max_off_diag <= tolerance {
-            let mut eigenvalues = Array1::<f64>::zeros(n);
+            let mut eigenvalues = Array1::<T>::zeros(n);
             for i in 0..n {
                 eigenvalues[i] = a[[i, i]];
             }
@@ -302,18 +295,18 @@ pub(crate) fn jacobi_eigen_symmetric(
         let aqq = a[[q, q]];
         let apq = a[[p, q]];
 
-        if apq.abs() <= tolerance.max(DEFAULT_TOLERANCE) {
+        if apq.abs() <= tolerance.max(base_tolerance) {
             continue;
         }
 
         // Stable Jacobi rotation parameters.
-        let tau = (aqq - app) / (2.0 * apq);
-        let t = if tau >= 0.0 {
-            1.0 / (tau + (1.0 + tau * tau).sqrt())
+        let tau = (aqq - app) / (two * apq);
+        let t = if tau >= zero {
+            one / (tau + (one + tau * tau).sqrt())
         } else {
-            -1.0 / (-tau + (1.0 + tau * tau).sqrt())
+            -one / (-tau + (one + tau * tau).sqrt())
         };
-        let c = 1.0 / (1.0 + t * t).sqrt();
+        let c = one / (one + t * t).sqrt();
         let s = t * c;
 
         for k in 0..n {
@@ -329,8 +322,8 @@ pub(crate) fn jacobi_eigen_symmetric(
 
         a[[p, p]] = app - t * apq;
         a[[q, q]] = aqq + t * apq;
-        a[[p, q]] = 0.0;
-        a[[q, p]] = 0.0;
+        a[[p, q]] = zero;
+        a[[q, p]] = zero;
 
         for k in 0..n {
             let vkp = eigenvectors[[k, p]];
@@ -343,18 +336,18 @@ pub(crate) fn jacobi_eigen_symmetric(
     Err("convergence")
 }
 
-pub(crate) fn sort_eigenpairs_desc(
-    eigenvalues: &Array1<f64>,
-    eigenvectors: &Array2<f64>,
-) -> (Array1<f64>, Array2<f64>) {
+pub(crate) fn sort_eigenpairs_desc<T: NabledReal>(
+    eigenvalues: &Array1<T>,
+    eigenvectors: &Array2<T>,
+) -> (Array1<T>, Array2<T>) {
     let n = eigenvalues.len();
     let mut indices: Vec<usize> = (0..n).collect();
     indices.sort_by(|&left, &right| {
         eigenvalues[right].partial_cmp(&eigenvalues[left]).unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    let mut sorted_values = Array1::<f64>::zeros(n);
-    let mut sorted_vectors = Array2::<f64>::zeros((n, n));
+    let mut sorted_values = Array1::<T>::zeros(n);
+    let mut sorted_vectors = Array2::<T>::zeros((n, n));
 
     for (new_col, &old_col) in indices.iter().enumerate() {
         sorted_values[new_col] = eigenvalues[old_col];

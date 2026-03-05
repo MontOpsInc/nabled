@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::linalg::general_mat_mul;
 use ndarray::{
     Array1, Array2, Array3, ArrayView1, ArrayView2, ArrayView3, ArrayViewMut1, ArrayViewMut2,
@@ -38,21 +39,21 @@ fn map_accelerator_error_to_matrix(_error: AcceleratorError) -> MatrixError {
     MatrixError::DimensionMismatch
 }
 
-fn validate_matrix_non_empty(matrix: &ArrayView2<'_, f64>) -> Result<(), MatrixError> {
+fn validate_matrix_non_empty<T>(matrix: &ArrayView2<'_, T>) -> Result<(), MatrixError> {
     if matrix.is_empty() {
         return Err(MatrixError::EmptyInput);
     }
     Ok(())
 }
 
-fn validate_vector_non_empty(vector: &ArrayView1<'_, f64>) -> Result<(), MatrixError> {
+fn validate_vector_non_empty<T>(vector: &ArrayView1<'_, T>) -> Result<(), MatrixError> {
     if vector.is_empty() {
         return Err(MatrixError::EmptyInput);
     }
     Ok(())
 }
 
-fn validate_tensor_non_empty(tensor: &ArrayView3<'_, f64>) -> Result<(), MatrixError> {
+fn validate_tensor_non_empty<T>(tensor: &ArrayView3<'_, T>) -> Result<(), MatrixError> {
     if tensor.is_empty() {
         return Err(MatrixError::EmptyInput);
     }
@@ -81,7 +82,11 @@ fn validate_vector_non_empty_complex(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn matvec(matrix: &Array2<f64>, vector: &Array1<f64>) -> Result<Array1<f64>, MatrixError> {
+pub fn matvec<T>(matrix: &Array2<T>, vector: &Array1<T>) -> Result<Array1<T>, MatrixError>
+where
+    T: NabledReal,
+    crate::accelerator::backends::CpuBackend: crate::accelerator::kernels::MatVecKernel<T>,
+{
     let matrix_view = matrix.view();
     let vector_view = vector.view();
     validate_matrix_non_empty(&matrix_view)?;
@@ -96,10 +101,13 @@ pub fn matvec(matrix: &Array2<f64>, vector: &Array1<f64>) -> Result<Array1<f64>,
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn matvec_view(
-    matrix: &ArrayView2<'_, f64>,
-    vector: &ArrayView1<'_, f64>,
-) -> Result<Array1<f64>, MatrixError> {
+pub fn matvec_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    vector: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, MatrixError>
+where
+    T: NabledReal,
+{
     validate_matrix_non_empty(matrix)?;
     validate_vector_non_empty(vector)?;
     if vector.len() != matrix.ncols() {
@@ -112,11 +120,14 @@ pub fn matvec_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn matvec_into(
-    matrix: &Array2<f64>,
-    vector: &Array1<f64>,
-    output: &mut Array1<f64>,
-) -> Result<(), MatrixError> {
+pub fn matvec_into<T>(
+    matrix: &Array2<T>,
+    vector: &Array1<T>,
+    output: &mut Array1<T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     let matrix_view = matrix.view();
     let vector_view = vector.view();
     matvec_view_into(&matrix_view, &vector_view, output.view_mut())
@@ -126,11 +137,14 @@ pub fn matvec_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn matvec_view_into(
-    matrix: &ArrayView2<'_, f64>,
-    vector: &ArrayView1<'_, f64>,
-    mut output: ArrayViewMut1<'_, f64>,
-) -> Result<(), MatrixError> {
+pub fn matvec_view_into<T>(
+    matrix: &ArrayView2<'_, T>,
+    vector: &ArrayView1<'_, T>,
+    mut output: ArrayViewMut1<'_, T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     validate_matrix_non_empty(matrix)?;
     validate_vector_non_empty(vector)?;
     if vector.len() != matrix.ncols() || output.len() != matrix.nrows() {
@@ -138,7 +152,7 @@ pub fn matvec_view_into(
     }
 
     for row in 0..matrix.nrows() {
-        let mut sum = 0.0_f64;
+        let mut sum = T::zero();
         for col in 0..matrix.ncols() {
             sum += matrix[[row, col]] * vector[col];
         }
@@ -222,7 +236,11 @@ pub fn matvec_complex_view_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, MatrixError> {
+pub fn matmat<T>(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, MatrixError>
+where
+    T: NabledReal,
+    crate::accelerator::backends::CpuBackend: crate::accelerator::kernels::MatMatKernel<T>,
+{
     let left_view = left.view();
     let right_view = right.view();
     validate_matrix_non_empty(&left_view)?;
@@ -237,10 +255,13 @@ pub fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, Ma
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn matmat_view(
-    left: &ArrayView2<'_, f64>,
-    right: &ArrayView2<'_, f64>,
-) -> Result<Array2<f64>, MatrixError> {
+pub fn matmat_view<T>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, MatrixError>
+where
+    T: NabledReal,
+{
     validate_matrix_non_empty(left)?;
     validate_matrix_non_empty(right)?;
     if left.ncols() != right.nrows() {
@@ -253,11 +274,14 @@ pub fn matmat_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn matmat_into(
-    left: &Array2<f64>,
-    right: &Array2<f64>,
-    output: &mut Array2<f64>,
-) -> Result<(), MatrixError> {
+pub fn matmat_into<T>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     let left_view = left.view();
     let right_view = right.view();
     matmat_view_into(&left_view, &right_view, output.view_mut())
@@ -267,18 +291,21 @@ pub fn matmat_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn matmat_view_into(
-    left: &ArrayView2<'_, f64>,
-    right: &ArrayView2<'_, f64>,
-    mut output: ArrayViewMut2<'_, f64>,
-) -> Result<(), MatrixError> {
+pub fn matmat_view_into<T>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+    mut output: ArrayViewMut2<'_, T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     validate_matrix_non_empty(left)?;
     validate_matrix_non_empty(right)?;
     if left.ncols() != right.nrows() || output.dim() != (left.nrows(), right.ncols()) {
         return Err(MatrixError::DimensionMismatch);
     }
 
-    general_mat_mul(1.0_f64, left, right, 0.0_f64, &mut output);
+    general_mat_mul(T::one(), left, right, T::zero(), &mut output);
     Ok(())
 }
 
@@ -353,10 +380,15 @@ pub fn matmat_complex_view_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_row_matvec(
-    batch_vectors: &Array2<f64>,
-    matrix: &Array2<f64>,
-) -> Result<Array2<f64>, MatrixError> {
+pub fn batched_row_matvec<T>(
+    batch_vectors: &Array2<T>,
+    matrix: &Array2<T>,
+) -> Result<Array2<T>, MatrixError>
+where
+    T: NabledReal,
+    crate::accelerator::backends::CpuBackend:
+        crate::accelerator::kernels::BatchedRowMatVecKernel<T>,
+{
     let batch_view = batch_vectors.view();
     let matrix_view = matrix.view();
     validate_matrix_non_empty(&batch_view)?;
@@ -374,11 +406,14 @@ pub fn batched_row_matvec(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_row_matvec_view(
-    batch_vectors: &ArrayView2<'_, f64>,
-    matrix: &ArrayView2<'_, f64>,
-) -> Result<Array2<f64>, MatrixError> {
-    let mut output = Array2::<f64>::zeros((batch_vectors.nrows(), matrix.nrows()));
+pub fn batched_row_matvec_view<T>(
+    batch_vectors: &ArrayView2<'_, T>,
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, MatrixError>
+where
+    T: NabledReal,
+{
+    let mut output = Array2::<T>::zeros((batch_vectors.nrows(), matrix.nrows()));
     batched_row_matvec_view_into(batch_vectors, matrix, output.view_mut())?;
     Ok(output)
 }
@@ -389,11 +424,14 @@ pub fn batched_row_matvec_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_row_matvec_into(
-    batch_vectors: &Array2<f64>,
-    matrix: &Array2<f64>,
-    output: &mut Array2<f64>,
-) -> Result<(), MatrixError> {
+pub fn batched_row_matvec_into<T>(
+    batch_vectors: &Array2<T>,
+    matrix: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     let batch_view = batch_vectors.view();
     let matrix_view = matrix.view();
     batched_row_matvec_view_into(&batch_view, &matrix_view, output.view_mut())
@@ -405,11 +443,14 @@ pub fn batched_row_matvec_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_row_matvec_view_into(
-    batch_vectors: &ArrayView2<'_, f64>,
-    matrix: &ArrayView2<'_, f64>,
-    mut output: ArrayViewMut2<'_, f64>,
-) -> Result<(), MatrixError> {
+pub fn batched_row_matvec_view_into<T>(
+    batch_vectors: &ArrayView2<'_, T>,
+    matrix: &ArrayView2<'_, T>,
+    mut output: ArrayViewMut2<'_, T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     validate_matrix_non_empty(batch_vectors)?;
     validate_matrix_non_empty(matrix)?;
     if batch_vectors.ncols() != matrix.ncols()
@@ -418,10 +459,10 @@ pub fn batched_row_matvec_view_into(
         return Err(MatrixError::DimensionMismatch);
     }
 
-    output.fill(0.0);
+    output.fill(T::zero());
     for batch in 0..batch_vectors.nrows() {
         for row in 0..matrix.nrows() {
-            let mut sum = 0.0_f64;
+            let mut sum = T::zero();
             for col in 0..matrix.ncols() {
                 sum += batch_vectors[[batch, col]] * matrix[[row, col]];
             }
@@ -437,10 +478,14 @@ pub fn batched_row_matvec_view_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat(
-    left_batches: &Array3<f64>,
-    right_batches: &Array3<f64>,
-) -> Result<Array3<f64>, MatrixError> {
+pub fn batched_matmat<T>(
+    left_batches: &Array3<T>,
+    right_batches: &Array3<T>,
+) -> Result<Array3<T>, MatrixError>
+where
+    T: NabledReal,
+    crate::accelerator::backends::CpuBackend: crate::accelerator::kernels::BatchedMatMatKernel<T>,
+{
     let left_view = left_batches.view();
     let right_view = right_batches.view();
     validate_tensor_non_empty(&left_view)?;
@@ -459,12 +504,15 @@ pub fn batched_matmat(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_view(
-    left_batches: &ArrayView3<'_, f64>,
-    right_batches: &ArrayView3<'_, f64>,
-) -> Result<Array3<f64>, MatrixError> {
+pub fn batched_matmat_view<T>(
+    left_batches: &ArrayView3<'_, T>,
+    right_batches: &ArrayView3<'_, T>,
+) -> Result<Array3<T>, MatrixError>
+where
+    T: NabledReal,
+{
     let mut output =
-        Array3::<f64>::zeros((left_batches.dim().0, left_batches.dim().1, right_batches.dim().2));
+        Array3::<T>::zeros((left_batches.dim().0, left_batches.dim().1, right_batches.dim().2));
     batched_matmat_view_into(left_batches, right_batches, output.view_mut())?;
     Ok(output)
 }
@@ -475,11 +523,14 @@ pub fn batched_matmat_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_into(
-    left_batches: &Array3<f64>,
-    right_batches: &Array3<f64>,
-    output: &mut Array3<f64>,
-) -> Result<(), MatrixError> {
+pub fn batched_matmat_into<T>(
+    left_batches: &Array3<T>,
+    right_batches: &Array3<T>,
+    output: &mut Array3<T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     batched_matmat_view_into(&left_batches.view(), &right_batches.view(), output.view_mut())
 }
 
@@ -489,11 +540,14 @@ pub fn batched_matmat_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_view_into(
-    left_batches: &ArrayView3<'_, f64>,
-    right_batches: &ArrayView3<'_, f64>,
-    mut output: ArrayViewMut3<'_, f64>,
-) -> Result<(), MatrixError> {
+pub fn batched_matmat_view_into<T>(
+    left_batches: &ArrayView3<'_, T>,
+    right_batches: &ArrayView3<'_, T>,
+    mut output: ArrayViewMut3<'_, T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     validate_tensor_non_empty(left_batches)?;
     validate_tensor_non_empty(right_batches)?;
     if left_batches.dim().0 != right_batches.dim().0
@@ -508,7 +562,7 @@ pub fn batched_matmat_view_into(
         let left_matrix = left_batches.slice(s![b, .., ..]);
         let right_matrix = right_batches.slice(s![b, .., ..]);
         let mut out_matrix = output.slice_mut(s![b, .., ..]);
-        general_mat_mul(1.0_f64, &left_matrix, &right_matrix, 0.0_f64, &mut out_matrix);
+        general_mat_mul(T::one(), &left_matrix, &right_matrix, T::zero(), &mut out_matrix);
     }
 
     Ok(())
@@ -520,12 +574,15 @@ pub fn batched_matmat_view_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_broadcast_right(
-    left_batches: &Array3<f64>,
-    right: &Array2<f64>,
-) -> Result<Array3<f64>, MatrixError> {
+pub fn batched_matmat_broadcast_right<T>(
+    left_batches: &Array3<T>,
+    right: &Array2<T>,
+) -> Result<Array3<T>, MatrixError>
+where
+    T: NabledReal,
+{
     let mut output =
-        Array3::<f64>::zeros((left_batches.dim().0, left_batches.dim().1, right.ncols()));
+        Array3::<T>::zeros((left_batches.dim().0, left_batches.dim().1, right.ncols()));
     batched_matmat_broadcast_right_view_into(
         &left_batches.view(),
         &right.view(),
@@ -540,12 +597,15 @@ pub fn batched_matmat_broadcast_right(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_broadcast_right_view(
-    left_batches: &ArrayView3<'_, f64>,
-    right: &ArrayView2<'_, f64>,
-) -> Result<Array3<f64>, MatrixError> {
+pub fn batched_matmat_broadcast_right_view<T>(
+    left_batches: &ArrayView3<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<Array3<T>, MatrixError>
+where
+    T: NabledReal,
+{
     let mut output =
-        Array3::<f64>::zeros((left_batches.dim().0, left_batches.dim().1, right.ncols()));
+        Array3::<T>::zeros((left_batches.dim().0, left_batches.dim().1, right.ncols()));
     batched_matmat_broadcast_right_view_into(left_batches, right, output.view_mut())?;
     Ok(output)
 }
@@ -556,11 +616,14 @@ pub fn batched_matmat_broadcast_right_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_broadcast_right_into(
-    left_batches: &Array3<f64>,
-    right: &Array2<f64>,
-    output: &mut Array3<f64>,
-) -> Result<(), MatrixError> {
+pub fn batched_matmat_broadcast_right_into<T>(
+    left_batches: &Array3<T>,
+    right: &Array2<T>,
+    output: &mut Array3<T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     batched_matmat_broadcast_right_view_into(&left_batches.view(), &right.view(), output.view_mut())
 }
 
@@ -571,11 +634,14 @@ pub fn batched_matmat_broadcast_right_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_broadcast_right_view_into(
-    left_batches: &ArrayView3<'_, f64>,
-    right: &ArrayView2<'_, f64>,
-    mut output: ArrayViewMut3<'_, f64>,
-) -> Result<(), MatrixError> {
+pub fn batched_matmat_broadcast_right_view_into<T>(
+    left_batches: &ArrayView3<'_, T>,
+    right: &ArrayView2<'_, T>,
+    mut output: ArrayViewMut3<'_, T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     validate_tensor_non_empty(left_batches)?;
     validate_matrix_non_empty(right)?;
     if left_batches.dim().2 != right.nrows()
@@ -588,7 +654,7 @@ pub fn batched_matmat_broadcast_right_view_into(
     for b in 0..batch {
         let left_matrix = left_batches.slice(s![b, .., ..]);
         let mut out_matrix = output.slice_mut(s![b, .., ..]);
-        general_mat_mul(1.0_f64, &left_matrix, right, 0.0_f64, &mut out_matrix);
+        general_mat_mul(T::one(), &left_matrix, right, T::zero(), &mut out_matrix);
     }
     Ok(())
 }
@@ -599,12 +665,15 @@ pub fn batched_matmat_broadcast_right_view_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_broadcast_left(
-    left: &Array2<f64>,
-    right_batches: &Array3<f64>,
-) -> Result<Array3<f64>, MatrixError> {
+pub fn batched_matmat_broadcast_left<T>(
+    left: &Array2<T>,
+    right_batches: &Array3<T>,
+) -> Result<Array3<T>, MatrixError>
+where
+    T: NabledReal,
+{
     let mut output =
-        Array3::<f64>::zeros((right_batches.dim().0, left.nrows(), right_batches.dim().2));
+        Array3::<T>::zeros((right_batches.dim().0, left.nrows(), right_batches.dim().2));
     batched_matmat_broadcast_left_view_into(
         &left.view(),
         &right_batches.view(),
@@ -619,12 +688,15 @@ pub fn batched_matmat_broadcast_left(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_broadcast_left_view(
-    left: &ArrayView2<'_, f64>,
-    right_batches: &ArrayView3<'_, f64>,
-) -> Result<Array3<f64>, MatrixError> {
+pub fn batched_matmat_broadcast_left_view<T>(
+    left: &ArrayView2<'_, T>,
+    right_batches: &ArrayView3<'_, T>,
+) -> Result<Array3<T>, MatrixError>
+where
+    T: NabledReal,
+{
     let mut output =
-        Array3::<f64>::zeros((right_batches.dim().0, left.nrows(), right_batches.dim().2));
+        Array3::<T>::zeros((right_batches.dim().0, left.nrows(), right_batches.dim().2));
     batched_matmat_broadcast_left_view_into(left, right_batches, output.view_mut())?;
     Ok(output)
 }
@@ -635,11 +707,14 @@ pub fn batched_matmat_broadcast_left_view(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_broadcast_left_into(
-    left: &Array2<f64>,
-    right_batches: &Array3<f64>,
-    output: &mut Array3<f64>,
-) -> Result<(), MatrixError> {
+pub fn batched_matmat_broadcast_left_into<T>(
+    left: &Array2<T>,
+    right_batches: &Array3<T>,
+    output: &mut Array3<T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     batched_matmat_broadcast_left_view_into(&left.view(), &right_batches.view(), output.view_mut())
 }
 
@@ -650,11 +725,14 @@ pub fn batched_matmat_broadcast_left_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty or dimensions are incompatible.
-pub fn batched_matmat_broadcast_left_view_into(
-    left: &ArrayView2<'_, f64>,
-    right_batches: &ArrayView3<'_, f64>,
-    mut output: ArrayViewMut3<'_, f64>,
-) -> Result<(), MatrixError> {
+pub fn batched_matmat_broadcast_left_view_into<T>(
+    left: &ArrayView2<'_, T>,
+    right_batches: &ArrayView3<'_, T>,
+    mut output: ArrayViewMut3<'_, T>,
+) -> Result<(), MatrixError>
+where
+    T: NabledReal,
+{
     validate_matrix_non_empty(left)?;
     validate_tensor_non_empty(right_batches)?;
     if left.ncols() != right_batches.dim().1
@@ -667,7 +745,7 @@ pub fn batched_matmat_broadcast_left_view_into(
     for b in 0..batch {
         let right_matrix = right_batches.slice(s![b, .., ..]);
         let mut out_matrix = output.slice_mut(s![b, .., ..]);
-        general_mat_mul(1.0_f64, left, &right_matrix, 0.0_f64, &mut out_matrix);
+        general_mat_mul(T::one(), left, &right_matrix, T::zero(), &mut out_matrix);
     }
     Ok(())
 }
@@ -695,6 +773,31 @@ mod tests {
         }
         assert!((allocating[0] - 7.0).abs() < 1e-12);
         assert!((allocating[1] - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn real_f32_variants_match() {
+        let matrix =
+            Array2::from_shape_vec((2, 3), vec![1.0_f32, 2.0, 3.0, 0.0, 1.0, 1.0]).unwrap();
+        let vector = Array1::from_vec(vec![1.0_f32, 0.0, 2.0]);
+
+        let matvec_alloc = matvec(&matrix, &vector).unwrap();
+        let mut matvec_into_out = Array1::<f32>::zeros(2);
+        matvec_into(&matrix, &vector, &mut matvec_into_out).unwrap();
+        for i in 0..2 {
+            assert!((matvec_alloc[i] - matvec_into_out[i]).abs() < 1e-6);
+        }
+
+        let left = Array2::from_shape_vec((2, 3), vec![1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
+        let right = Array2::from_shape_vec((3, 2), vec![1.0_f32, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
+        let matmat_alloc = matmat(&left, &right).unwrap();
+        let mut matmat_into_out = Array2::<f32>::zeros((2, 2));
+        matmat_into(&left, &right, &mut matmat_into_out).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((matmat_alloc[[i, j]] - matmat_into_out[[i, j]]).abs() < 1e-6);
+            }
+        }
     }
 
     #[test]
@@ -845,6 +948,29 @@ mod tests {
         assert!((allocating[[0, 0, 1]] - 2.0).abs() < 1e-12);
         assert!((allocating[[0, 1, 0]] - 3.0).abs() < 1e-12);
         assert!((allocating[[0, 1, 1]] - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn batched_f32_variants_match() {
+        let left_batches = Array3::from_shape_vec((2, 2, 3), vec![
+            1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+        ])
+        .unwrap();
+        let right_batches = Array3::from_shape_vec((2, 3, 2), vec![
+            1.0_f32, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+        ])
+        .unwrap();
+
+        let alloc = batched_matmat(&left_batches, &right_batches).unwrap();
+        let mut into = Array3::<f32>::zeros((2, 2, 2));
+        batched_matmat_into(&left_batches, &right_batches, &mut into).unwrap();
+        for b in 0..2 {
+            for i in 0..2 {
+                for j in 0..2 {
+                    assert!((alloc[[b, i, j]] - into[[b, i, j]]).abs() < 1e-5);
+                }
+            }
+        }
     }
 
     #[test]

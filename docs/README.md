@@ -23,6 +23,7 @@ This folder contains the current, authoritative direction for `nabled`.
 9. `docs/ROADMAP.md`: implementation sequencing and milestones.
 10. `docs/PUBLISH_CHECKLIST.md`: crates.io publish gate and release-day checklist.
 11. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+12. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
 
 ## Context Resume Protocol
 

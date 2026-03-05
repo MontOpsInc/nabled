@@ -2,10 +2,11 @@
 
 use std::fmt;
 
+use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::Complex64;
 
-use crate::internal::{DenseKernelPolicy, identity, is_symmetric, usize_to_f64};
+use crate::internal::{DenseKernelPolicy, identity, is_symmetric};
 #[cfg(not(feature = "lapack-provider"))]
 use crate::schur;
 use crate::{eigen, svd};
@@ -44,18 +45,42 @@ impl fmt::Display for MatrixFunctionError {
 
 impl std::error::Error for MatrixFunctionError {}
 
-/// Reusable workspace for matrix-function `_into` kernels.
-#[derive(Debug, Clone, Default)]
-pub struct MatrixFunctionWorkspace {
-    scratch: Array2<f64>,
+/// Real scalar contract for matrix-function real-valued APIs.
+#[cfg(feature = "lapack-provider")]
+pub trait MatrixFunctionScalar:
+    NabledReal + ndarray_linalg::Lapack<Real = Self> + std::ops::AddAssign
+{
 }
 
-impl MatrixFunctionWorkspace {
+#[cfg(feature = "lapack-provider")]
+impl<T> MatrixFunctionScalar for T where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign
+{
+}
+
+/// Real scalar contract for matrix-function real-valued APIs.
+#[cfg(not(feature = "lapack-provider"))]
+pub trait MatrixFunctionScalar: NabledReal {}
+
+#[cfg(not(feature = "lapack-provider"))]
+impl<T: NabledReal> MatrixFunctionScalar for T {}
+
+/// Reusable workspace for matrix-function `_into` kernels.
+#[derive(Debug, Clone)]
+pub struct MatrixFunctionWorkspace<T: NabledReal = f64> {
+    scratch: Array2<T>,
+}
+
+impl<T: NabledReal> MatrixFunctionWorkspace<T> {
     fn ensure_square(&mut self, n: usize) {
         if self.scratch.dim() != (n, n) {
-            self.scratch = Array2::<f64>::zeros((n, n));
+            self.scratch = Array2::<T>::zeros((n, n));
         }
     }
+}
+
+impl<T: NabledReal> Default for MatrixFunctionWorkspace<T> {
+    fn default() -> Self { Self { scratch: Array2::<T>::zeros((0, 0)) } }
 }
 
 /// Reusable workspace for complex matrix-function `_into` kernels.
@@ -72,7 +97,23 @@ impl MatrixFunctionComplexWorkspace {
     }
 }
 
-fn validate_square(matrix: &ArrayView2<'_, f64>) -> Result<(), MatrixFunctionError> {
+fn usize_to_real<T: NabledReal>(value: usize) -> T {
+    let fallback = T::from_u32(u32::MAX).unwrap_or(T::one());
+    T::from_usize(value).unwrap_or(fallback)
+}
+
+fn normalized_taylor_tolerance<T: NabledReal>(requested: T) -> T {
+    let requested_f64 = requested.to_f64().unwrap_or(DenseKernelPolicy::taylor_tolerance(0.0));
+    let normalized = DenseKernelPolicy::taylor_tolerance(requested_f64);
+    T::from_f64(normalized).unwrap_or(requested)
+}
+
+fn base_tolerance<T: NabledReal>() -> T {
+    T::from_f64(DenseKernelPolicy::BASE_TOLERANCE)
+        .unwrap_or_else(|| num_traits::Float::sqrt(T::epsilon()).max(T::epsilon()))
+}
+
+fn validate_square<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<(), MatrixFunctionError> {
     if matrix.is_empty() {
         return Err(MatrixFunctionError::EmptyMatrix);
     }
@@ -98,9 +139,9 @@ fn validate_square_complex(matrix: &ArrayView2<'_, Complex64>) -> Result<(), Mat
     Ok(())
 }
 
-fn diagonal_from(values: &Array1<f64>) -> Array2<f64> {
+fn diagonal_from<T: NabledReal>(values: &Array1<T>) -> Array2<T> {
     let n = values.len();
-    let mut diagonal = Array2::<f64>::zeros((n, n));
+    let mut diagonal = Array2::<T>::zeros((n, n));
     for i in 0..n {
         diagonal[[i, i]] = values[i];
     }
@@ -116,21 +157,25 @@ fn diagonal_from_real_complex(values: &Array1<f64>) -> Array2<Complex64> {
     diagonal
 }
 
-fn taylor_matrix_exp(
-    matrix: &ArrayView2<'_, f64>,
+fn taylor_matrix_exp<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
     max_terms: usize,
-    tolerance: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+    tolerance: T,
+) -> Result<Array2<T>, MatrixFunctionError> {
     validate_square(matrix)?;
     let n = matrix.nrows();
-    let mut result = identity(n);
-    let mut term = identity(n);
+    let mut result = identity::<T>(n);
+    let mut term = identity::<T>(n);
 
     for k in 1..=max_terms.max(1) {
-        term = term.dot(matrix) / usize_to_f64(k);
+        term = term.dot(matrix) / usize_to_real::<T>(k);
         result = &result + &term;
-        let delta = term.iter().map(|value| value.abs()).fold(0.0_f64, f64::max);
-        if delta <= DenseKernelPolicy::taylor_tolerance(tolerance) {
+        let delta = term
+            .iter()
+            .copied()
+            .map(num_traits::Float::abs)
+            .fold(T::zero(), num_traits::Float::max);
+        if delta <= normalized_taylor_tolerance(tolerance) {
             return Ok(result);
         }
     }
@@ -153,7 +198,7 @@ fn taylor_matrix_exp_complex(
     }
 
     for k in 1..=max_terms.max(1) {
-        term = term.dot(matrix) / usize_to_f64(k);
+        term = term.dot(matrix) / usize_to_real::<f64>(k);
         result = &result + &term;
         let delta = term.iter().map(|value| value.norm()).fold(0.0_f64, f64::max);
         if delta <= DenseKernelPolicy::taylor_tolerance(tolerance) {
@@ -164,9 +209,9 @@ fn taylor_matrix_exp_complex(
     Ok(result)
 }
 
-fn validate_output_shape(
-    matrix: &Array2<f64>,
-    output: &Array2<f64>,
+fn validate_output_shape<T: NabledReal>(
+    matrix: &Array2<T>,
+    output: &Array2<T>,
 ) -> Result<(), MatrixFunctionError> {
     if output.dim() != matrix.dim() {
         return Err(MatrixFunctionError::InvalidInput(
@@ -250,11 +295,14 @@ fn hermitian_eigen_dispatch(
 ///
 /// # Errors
 /// Returns an error for invalid input.
-pub fn matrix_exp(
-    matrix: &Array2<f64>,
+pub fn matrix_exp<T>(
+    matrix: &Array2<T>,
     max_terms: usize,
-    tolerance: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+    tolerance: T,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_exp_impl(&matrix.view(), max_terms, tolerance)
 }
 
@@ -270,11 +318,11 @@ pub fn matrix_exp_complex(
     matrix_exp_complex_impl(&matrix.view(), max_terms, tolerance)
 }
 
-fn matrix_exp_impl(
-    matrix: &ArrayView2<'_, f64>,
+fn matrix_exp_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
     max_terms: usize,
-    tolerance: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+    tolerance: T,
+) -> Result<Array2<T>, MatrixFunctionError> {
     taylor_matrix_exp(matrix, max_terms, tolerance)
 }
 
@@ -290,11 +338,14 @@ fn matrix_exp_complex_impl(
 ///
 /// # Errors
 /// Returns an error for invalid input.
-pub fn matrix_exp_view(
-    matrix: &ArrayView2<'_, f64>,
+pub fn matrix_exp_view<T>(
+    matrix: &ArrayView2<'_, T>,
     max_terms: usize,
-    tolerance: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+    tolerance: T,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_exp_impl(matrix, max_terms, tolerance)
 }
 
@@ -314,13 +365,16 @@ pub fn matrix_exp_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_exp_into(
-    matrix: &Array2<f64>,
+pub fn matrix_exp_into<T>(
+    matrix: &Array2<T>,
     max_terms: usize,
-    tolerance: f64,
-    output: &mut Array2<f64>,
-) -> Result<(), MatrixFunctionError> {
-    let mut workspace = MatrixFunctionWorkspace::default();
+    tolerance: T,
+    output: &mut Array2<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
     matrix_exp_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
 }
 
@@ -342,13 +396,16 @@ pub fn matrix_exp_complex_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_exp_with_workspace_into(
-    matrix: &Array2<f64>,
+pub fn matrix_exp_with_workspace_into<T>(
+    matrix: &Array2<T>,
     max_terms: usize,
-    tolerance: f64,
-    output: &mut Array2<f64>,
-    workspace: &mut MatrixFunctionWorkspace,
-) -> Result<(), MatrixFunctionError> {
+    tolerance: T,
+    output: &mut Array2<T>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_exp_impl(&matrix.view(), max_terms, tolerance)?;
@@ -382,23 +439,26 @@ pub fn matrix_exp_complex_with_workspace_into(
 ///
 /// # Errors
 /// Returns an error for invalid input.
-pub fn matrix_exp_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_exp_eigen<T>(matrix: &Array2<T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_exp_eigen_impl(&matrix.view())
 }
 
-fn matrix_exp_eigen_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+fn matrix_exp_eigen_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_square(matrix)?;
-    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
-        return matrix_exp_impl(
-            matrix,
-            DenseKernelPolicy::MATRIX_FUNCTION_SERIES_TERMS,
-            DenseKernelPolicy::BASE_TOLERANCE,
-        );
+    let tolerance = base_tolerance::<T>();
+    if !is_symmetric(matrix, tolerance) {
+        return matrix_exp_impl(matrix, DenseKernelPolicy::MATRIX_FUNCTION_SERIES_TERMS, tolerance);
     }
 
     let eigen =
         eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    let exp_values = eigen.eigenvalues.map(|value| value.exp());
+    let exp_values = eigen.eigenvalues.mapv(num_traits::Float::exp);
     let diagonal = diagonal_from(&exp_values);
     Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
 }
@@ -409,9 +469,12 @@ fn matrix_exp_eigen_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Ma
 ///
 /// # Errors
 /// Returns an error for invalid input.
-pub fn matrix_exp_eigen_view(
-    matrix: &ArrayView2<'_, f64>,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_exp_eigen_view<T>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_exp_eigen_impl(matrix)
 }
 
@@ -440,7 +503,7 @@ fn matrix_exp_eigen_complex_impl(
     }
 
     let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
-    let exp_values = eigenvalues.map(|value| value.exp());
+    let exp_values = eigenvalues.mapv(num_traits::Float::exp);
     let diagonal = diagonal_from_real_complex(&exp_values);
     let qh = eigenvectors.t().mapv(|value| value.conj());
     Ok(eigenvectors.dot(&diagonal).dot(&qh))
@@ -462,34 +525,44 @@ pub fn matrix_exp_eigen_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid input.
-pub fn matrix_log_taylor(
-    matrix: &Array2<f64>,
+pub fn matrix_log_taylor<T>(
+    matrix: &Array2<T>,
     max_terms: usize,
-    tolerance: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+    tolerance: T,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_log_taylor_impl(&matrix.view(), max_terms, tolerance)
 }
 
-fn matrix_log_taylor_impl(
-    matrix: &ArrayView2<'_, f64>,
+fn matrix_log_taylor_impl<T>(
+    matrix: &ArrayView2<'_, T>,
     max_terms: usize,
-    tolerance: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+    tolerance: T,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_square(matrix)?;
     let n = matrix.nrows();
-    let identity = identity(n);
+    let identity = identity::<T>(n);
     let x = matrix - &identity;
 
-    let mut result = Array2::<f64>::zeros((n, n));
+    let mut result = Array2::<T>::zeros((n, n));
     let mut term = x.clone();
 
     for k in 1..=max_terms.max(1) {
-        let scale = if k % 2 == 0 { -1.0 } else { 1.0 } / usize_to_f64(k);
+        let scale = if k % 2 == 0 { -T::one() } else { T::one() } / usize_to_real::<T>(k);
         result = &result + &(term.mapv(|value| scale * value));
         term = term.dot(&x);
 
-        let delta = term.iter().map(|value| value.abs()).fold(0.0_f64, f64::max);
-        if delta <= DenseKernelPolicy::taylor_tolerance(tolerance) {
+        let delta = term
+            .iter()
+            .copied()
+            .map(num_traits::Float::abs)
+            .fold(T::zero(), num_traits::Float::max);
+        if delta <= normalized_taylor_tolerance(tolerance) {
             break;
         }
     }
@@ -501,11 +574,14 @@ fn matrix_log_taylor_impl(
 ///
 /// # Errors
 /// Returns an error for invalid input.
-pub fn matrix_log_taylor_view(
-    matrix: &ArrayView2<'_, f64>,
+pub fn matrix_log_taylor_view<T>(
+    matrix: &ArrayView2<'_, T>,
     max_terms: usize,
-    tolerance: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+    tolerance: T,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_log_taylor_impl(matrix, max_terms, tolerance)
 }
 
@@ -513,13 +589,16 @@ pub fn matrix_log_taylor_view(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_log_taylor_into(
-    matrix: &Array2<f64>,
+pub fn matrix_log_taylor_into<T>(
+    matrix: &Array2<T>,
     max_terms: usize,
-    tolerance: f64,
-    output: &mut Array2<f64>,
-) -> Result<(), MatrixFunctionError> {
-    let mut workspace = MatrixFunctionWorkspace::default();
+    tolerance: T,
+    output: &mut Array2<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
     matrix_log_taylor_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
 }
 
@@ -527,13 +606,16 @@ pub fn matrix_log_taylor_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_log_taylor_with_workspace_into(
-    matrix: &Array2<f64>,
+pub fn matrix_log_taylor_with_workspace_into<T>(
+    matrix: &Array2<T>,
     max_terms: usize,
-    tolerance: f64,
-    output: &mut Array2<f64>,
-    workspace: &mut MatrixFunctionWorkspace,
-) -> Result<(), MatrixFunctionError> {
+    tolerance: T,
+    output: &mut Array2<T>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_log_taylor_impl(&matrix.view(), max_terms, tolerance)?;
@@ -546,23 +628,30 @@ pub fn matrix_log_taylor_with_workspace_into(
 ///
 /// # Errors
 /// Returns an error if eigenvalues are non-positive.
-pub fn matrix_log_eigen(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_log_eigen<T>(matrix: &Array2<T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_log_eigen_impl(&matrix.view())
 }
 
-fn matrix_log_eigen_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+fn matrix_log_eigen_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_square(matrix)?;
-    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
+    let tolerance = base_tolerance::<T>();
+    if !is_symmetric(matrix, tolerance) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
     let eigen =
         eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    if eigen.eigenvalues.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
+    if eigen.eigenvalues.iter().any(|value| *value <= tolerance) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
 
-    let log_values = eigen.eigenvalues.map(|value| value.ln());
+    let log_values = eigen.eigenvalues.mapv(num_traits::Float::ln);
     let diagonal = diagonal_from(&log_values);
     Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
 }
@@ -571,9 +660,12 @@ fn matrix_log_eigen_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Ma
 ///
 /// # Errors
 /// Returns an error if eigenvalues are non-positive.
-pub fn matrix_log_eigen_view(
-    matrix: &ArrayView2<'_, f64>,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_log_eigen_view<T>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_log_eigen_impl(matrix)
 }
 
@@ -581,11 +673,14 @@ pub fn matrix_log_eigen_view(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_log_eigen_into(
-    matrix: &Array2<f64>,
-    output: &mut Array2<f64>,
-) -> Result<(), MatrixFunctionError> {
-    let mut workspace = MatrixFunctionWorkspace::default();
+pub fn matrix_log_eigen_into<T>(
+    matrix: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
     matrix_log_eigen_with_workspace_into(matrix, output, &mut workspace)
 }
 
@@ -593,11 +688,14 @@ pub fn matrix_log_eigen_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_log_eigen_with_workspace_into(
-    matrix: &Array2<f64>,
-    output: &mut Array2<f64>,
-    workspace: &mut MatrixFunctionWorkspace,
-) -> Result<(), MatrixFunctionError> {
+pub fn matrix_log_eigen_with_workspace_into<T>(
+    matrix: &Array2<T>,
+    output: &mut Array2<T>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_log_eigen_impl(&matrix.view())?;
@@ -628,7 +726,7 @@ fn matrix_log_eigen_complex_impl(
     if eigenvalues.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
-    let log_values = eigenvalues.map(|value| value.ln());
+    let log_values = eigenvalues.mapv(num_traits::Float::ln);
     let diagonal = diagonal_from_real_complex(&log_values);
     let qh = eigenvectors.t().mapv(|value| value.conj());
     Ok(eigenvectors.dot(&diagonal).dot(&qh))
@@ -679,18 +777,25 @@ pub fn matrix_log_eigen_complex_with_workspace_into(
 ///
 /// # Errors
 /// Returns an error if SVD fails.
-pub fn matrix_log_svd(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_log_svd<T>(matrix: &Array2<T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_log_svd_impl(&matrix.view())
 }
 
-fn matrix_log_svd_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+fn matrix_log_svd_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_square(matrix)?;
     let svd = svd::decompose_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    if svd.singular_values.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
+    let tolerance = base_tolerance::<T>();
+    if svd.singular_values.iter().any(|value| *value <= tolerance) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
 
-    let log_sigma = diagonal_from(&svd.singular_values.map(|value| value.ln()));
+    let log_sigma = diagonal_from(&svd.singular_values.mapv(num_traits::Float::ln));
     Ok(svd.u.dot(&log_sigma).dot(&svd.vt))
 }
 
@@ -718,7 +823,7 @@ fn matrix_log_svd_complex_impl(
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
 
-    let log_sigma = diagonal_from_real_complex(&svd.singular_values.map(|value| value.ln()));
+    let log_sigma = diagonal_from_real_complex(&svd.singular_values.mapv(num_traits::Float::ln));
     Ok(svd.u.dot(&log_sigma).dot(&svd.vt))
 }
 
@@ -726,9 +831,10 @@ fn matrix_log_svd_complex_impl(
 ///
 /// # Errors
 /// Returns an error if SVD fails.
-pub fn matrix_log_svd_view(
-    matrix: &ArrayView2<'_, f64>,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_log_svd_view<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_log_svd_impl(matrix)
 }
 
@@ -746,11 +852,14 @@ pub fn matrix_log_svd_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_log_svd_into(
-    matrix: &Array2<f64>,
-    output: &mut Array2<f64>,
-) -> Result<(), MatrixFunctionError> {
-    let mut workspace = MatrixFunctionWorkspace::default();
+pub fn matrix_log_svd_into<T>(
+    matrix: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
     matrix_log_svd_with_workspace_into(matrix, output, &mut workspace)
 }
 
@@ -771,11 +880,14 @@ pub fn matrix_log_svd_complex_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_log_svd_with_workspace_into(
-    matrix: &Array2<f64>,
-    output: &mut Array2<f64>,
-    workspace: &mut MatrixFunctionWorkspace,
-) -> Result<(), MatrixFunctionError> {
+pub fn matrix_log_svd_with_workspace_into<T>(
+    matrix: &Array2<T>,
+    output: &mut Array2<T>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_log_svd_impl(&matrix.view())?;
@@ -806,22 +918,29 @@ pub fn matrix_log_svd_complex_with_workspace_into(
 ///
 /// # Errors
 /// Returns an error for non-symmetric inputs.
-pub fn matrix_power(matrix: &Array2<f64>, power: f64) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_power<T>(matrix: &Array2<T>, power: T) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_power_impl(&matrix.view(), power)
 }
 
-fn matrix_power_impl(
-    matrix: &ArrayView2<'_, f64>,
-    power: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+fn matrix_power_impl<T>(
+    matrix: &ArrayView2<'_, T>,
+    power: T,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_square(matrix)?;
-    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
+    let tolerance = base_tolerance::<T>();
+    if !is_symmetric(matrix, tolerance) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
     let eigen =
         eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    let powered_values = eigen.eigenvalues.map(|value| value.powf(power));
+    let powered_values = eigen.eigenvalues.mapv(|value| num_traits::Float::powf(value, power));
     let diagonal = diagonal_from(&powered_values);
     Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
 }
@@ -830,10 +949,13 @@ fn matrix_power_impl(
 ///
 /// # Errors
 /// Returns an error for non-symmetric inputs.
-pub fn matrix_power_view(
-    matrix: &ArrayView2<'_, f64>,
-    power: f64,
-) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_power_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    power: T,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_power_impl(matrix, power)
 }
 
@@ -841,12 +963,15 @@ pub fn matrix_power_view(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_power_into(
-    matrix: &Array2<f64>,
-    power: f64,
-    output: &mut Array2<f64>,
-) -> Result<(), MatrixFunctionError> {
-    let mut workspace = MatrixFunctionWorkspace::default();
+pub fn matrix_power_into<T>(
+    matrix: &Array2<T>,
+    power: T,
+    output: &mut Array2<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
     matrix_power_with_workspace_into(matrix, power, output, &mut workspace)
 }
 
@@ -854,12 +979,15 @@ pub fn matrix_power_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_power_with_workspace_into(
-    matrix: &Array2<f64>,
-    power: f64,
-    output: &mut Array2<f64>,
-    workspace: &mut MatrixFunctionWorkspace,
-) -> Result<(), MatrixFunctionError> {
+pub fn matrix_power_with_workspace_into<T>(
+    matrix: &Array2<T>,
+    power: T,
+    output: &mut Array2<T>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_power_impl(&matrix.view(), power)?;
@@ -889,7 +1017,7 @@ fn matrix_power_complex_impl(
     }
 
     let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
-    let powered_values = eigenvalues.map(|value| value.powf(power));
+    let powered_values = eigenvalues.mapv(|value| num_traits::Float::powf(value, power));
     let diagonal = diagonal_from_real_complex(&powered_values);
     let qh = eigenvectors.t().mapv(|value| value.conj());
     Ok(eigenvectors.dot(&diagonal).dot(&qh))
@@ -943,25 +1071,32 @@ pub fn matrix_power_complex_with_workspace_into(
 ///
 /// # Errors
 /// Returns an error for non-symmetric inputs.
-pub fn matrix_sign(matrix: &Array2<f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_sign<T>(matrix: &Array2<T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_sign_impl(&matrix.view())
 }
 
-fn matrix_sign_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+fn matrix_sign_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_square(matrix)?;
-    if !is_symmetric(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
+    let tolerance = base_tolerance::<T>();
+    if !is_symmetric(matrix, tolerance) {
         return Err(MatrixFunctionError::NotSymmetric);
     }
 
     let eigen =
         eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
     let sign_values = eigen.eigenvalues.map(|value| {
-        if *value > DenseKernelPolicy::BASE_TOLERANCE {
-            1.0
-        } else if *value < -DenseKernelPolicy::BASE_TOLERANCE {
-            -1.0
+        if *value > tolerance {
+            T::one()
+        } else if *value < -tolerance {
+            -T::one()
         } else {
-            0.0
+            T::zero()
         }
     });
     let diagonal = diagonal_from(&sign_values);
@@ -972,7 +1107,10 @@ fn matrix_sign_impl(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixF
 ///
 /// # Errors
 /// Returns an error for non-symmetric inputs.
-pub fn matrix_sign_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, MatrixFunctionError> {
+pub fn matrix_sign_view<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     matrix_sign_impl(matrix)
 }
 
@@ -980,11 +1118,14 @@ pub fn matrix_sign_view(matrix: &ArrayView2<'_, f64>) -> Result<Array2<f64>, Mat
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_sign_into(
-    matrix: &Array2<f64>,
-    output: &mut Array2<f64>,
-) -> Result<(), MatrixFunctionError> {
-    let mut workspace = MatrixFunctionWorkspace::default();
+pub fn matrix_sign_into<T>(
+    matrix: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
     matrix_sign_with_workspace_into(matrix, output, &mut workspace)
 }
 
@@ -992,11 +1133,14 @@ pub fn matrix_sign_into(
 ///
 /// # Errors
 /// Returns an error for invalid inputs or output shape mismatch.
-pub fn matrix_sign_with_workspace_into(
-    matrix: &Array2<f64>,
-    output: &mut Array2<f64>,
-    workspace: &mut MatrixFunctionWorkspace,
-) -> Result<(), MatrixFunctionError> {
+pub fn matrix_sign_with_workspace_into<T>(
+    matrix: &Array2<T>,
+    output: &mut Array2<T>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_sign_impl(&matrix.view())?;
@@ -1088,63 +1232,68 @@ mod tests {
 
     #[test]
     fn exp_and_log_roundtrip_for_spd() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 1.0, 2.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![2.0_f64, 1.0_f64, 1.0_f64, 2.0_f64]).unwrap();
         let log_matrix = matrix_log_eigen(&matrix).unwrap();
         let roundtrip = matrix_exp_eigen(&log_matrix).unwrap();
         for i in 0..2 {
             for j in 0..2 {
-                assert!((roundtrip[[i, j]] - matrix[[i, j]]).abs() < 1e-4);
+                assert!((roundtrip[[i, j]] - matrix[[i, j]]).abs() < 1e-4_f64);
             }
         }
     }
 
     #[test]
     fn non_symmetric_log_is_rejected() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 0.0, 1.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![1.0_f64, 2.0_f64, 0.0_f64, 1.0_f64]).unwrap();
         let result = matrix_log_eigen(&matrix);
         assert!(matches!(result, Err(MatrixFunctionError::NotSymmetric)));
     }
 
     #[test]
     fn matrix_power_into_matches_allocating_path() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![3.0, 1.0, 1.0, 3.0]).unwrap();
-        let expected = matrix_power(&matrix, 0.5).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![3.0_f64, 1.0_f64, 1.0_f64, 3.0_f64]).unwrap();
+        let expected = matrix_power(&matrix, 0.5_f64).unwrap();
 
         let mut output = Array2::<f64>::zeros((2, 2));
         let mut workspace = MatrixFunctionWorkspace::default();
-        matrix_power_with_workspace_into(&matrix, 0.5, &mut output, &mut workspace).unwrap();
+        matrix_power_with_workspace_into(&matrix, 0.5_f64, &mut output, &mut workspace).unwrap();
 
         for i in 0..2 {
             for j in 0..2 {
-                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8);
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8_f64);
             }
         }
     }
 
     #[test]
     fn exp_into_and_workspace_match_allocating_path() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![0.2, 0.1, 0.0, 0.3]).unwrap();
-        let expected = matrix_exp(&matrix, 64, 1e-12).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![0.2_f64, 0.1_f64, 0.0_f64, 0.3_f64]).unwrap();
+        let expected = matrix_exp(&matrix, 64, 1e-12_f64).unwrap();
 
         let mut output = Array2::<f64>::zeros((2, 2));
-        matrix_exp_into(&matrix, 64, 1e-12, &mut output).unwrap();
+        matrix_exp_into(&matrix, 64, 1e-12_f64, &mut output).unwrap();
         for i in 0..2 {
             for j in 0..2 {
-                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8);
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8_f64);
             }
         }
     }
 
     #[test]
     fn log_taylor_into_matches_allocating_path() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.1, 0.0, 0.0, 0.9]).unwrap();
-        let expected = matrix_log_taylor(&matrix, 128, 1e-12).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![1.1_f64, 0.0_f64, 0.0_f64, 0.9_f64]).unwrap();
+        let expected = matrix_log_taylor(&matrix, 128, 1e-12_f64).unwrap();
 
         let mut output = Array2::<f64>::zeros((2, 2));
-        matrix_log_taylor_into(&matrix, 128, 1e-12, &mut output).unwrap();
+        matrix_log_taylor_into(&matrix, 128, 1e-12_f64, &mut output).unwrap();
         for i in 0..2 {
             for j in 0..2 {
-                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8);
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-8_f64);
             }
         }
     }
@@ -1159,48 +1308,53 @@ mod tests {
 
     #[test]
     fn log_svd_rejects_singular_input() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 0.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 0.0_f64]).unwrap();
         let result = matrix_log_svd(&matrix);
         assert!(matches!(result, Err(MatrixFunctionError::NotPositiveDefinite)));
     }
 
     #[test]
     fn power_and_sign_reject_non_symmetric_input() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 0.0, 1.0]).unwrap();
-        assert!(matches!(matrix_power(&matrix, 2.0), Err(MatrixFunctionError::NotSymmetric)));
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![1.0_f64, 2.0_f64, 0.0_f64, 1.0_f64]).unwrap();
+        assert!(matches!(matrix_power(&matrix, 2.0_f64), Err(MatrixFunctionError::NotSymmetric)));
         assert!(matches!(matrix_sign(&matrix), Err(MatrixFunctionError::NotSymmetric)));
     }
 
     #[test]
     fn sign_into_matches_allocating_path() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![2.0, 0.0, 0.0, -3.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![2.0_f64, 0.0_f64, 0.0_f64, -3.0_f64]).unwrap();
         let expected = matrix_sign(&matrix).unwrap();
 
         let mut output = Array2::<f64>::zeros((2, 2));
         matrix_sign_into(&matrix, &mut output).unwrap();
         for i in 0..2 {
             for j in 0..2 {
-                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-10);
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-10_f64);
             }
         }
     }
 
     #[test]
     fn exp_eigen_falls_back_for_non_symmetric_input() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![0.0, 1.0, 0.0, 0.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![0.0_f64, 1.0_f64, 0.0_f64, 0.0_f64]).unwrap();
         let eigen_path = matrix_exp_eigen(&matrix).unwrap();
-        let taylor_path = matrix_exp(&matrix, 128, 1e-12).unwrap();
+        let taylor_path = matrix_exp(&matrix, 128, 1e-12_f64).unwrap();
         for i in 0..2 {
             for j in 0..2 {
-                assert!((eigen_path[[i, j]] - taylor_path[[i, j]]).abs() < 1e-8);
+                assert!((eigen_path[[i, j]] - taylor_path[[i, j]]).abs() < 1e-8_f64);
             }
         }
     }
 
     #[test]
     fn matrix_functions_reject_non_finite_input() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, f64::NAN, 0.0, 1.0]).unwrap();
-        let result = matrix_exp(&matrix, 32, 1e-8);
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![1.0_f64, f64::NAN, 0.0_f64, 1.0_f64]).unwrap();
+        let result = matrix_exp(&matrix, 32, 1e-8_f64);
         assert!(matches!(result, Err(MatrixFunctionError::InvalidInput(_))));
     }
 
@@ -1209,7 +1363,7 @@ mod tests {
         let matrix = Array2::eye(2);
         let mut bad = Array2::<f64>::zeros((1, 1));
         assert!(matches!(
-            matrix_exp_into(&matrix, 32, 1e-8, &mut bad),
+            matrix_exp_into(&matrix, 32, 1e-8_f64, &mut bad),
             Err(MatrixFunctionError::InvalidInput(_))
         ));
         assert!(matches!(
@@ -1217,7 +1371,7 @@ mod tests {
             Err(MatrixFunctionError::InvalidInput(_))
         ));
         assert!(matches!(
-            matrix_power_into(&matrix, 0.5, &mut bad),
+            matrix_power_into(&matrix, 0.5_f64, &mut bad),
             Err(MatrixFunctionError::InvalidInput(_))
         ));
         assert!(matches!(
@@ -1228,65 +1382,106 @@ mod tests {
 
     #[test]
     fn matrix_log_eigen_rejects_non_positive_eigenvalues() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 0.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 0.0_f64]).unwrap();
         let result = matrix_log_eigen(&matrix);
         assert!(matches!(result, Err(MatrixFunctionError::NotPositiveDefinite)));
     }
 
     #[test]
     fn matrix_sign_handles_negative_positive_and_zero_spectrum() {
-        let matrix =
-            Array2::from_shape_vec((3, 3), vec![2.0, 0.0, 0.0, 0.0, -4.0, 0.0, 0.0, 0.0, 0.0])
-                .unwrap();
+        let matrix = Array2::from_shape_vec((3, 3), vec![
+            2.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, -4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64,
+        ])
+        .unwrap();
         let sign = matrix_sign(&matrix).unwrap();
-        assert!((sign[[0, 0]] - 1.0).abs() < 1e-10);
-        assert!((sign[[1, 1]] + 1.0).abs() < 1e-10);
-        assert!(sign[[2, 2]].abs() < 1e-10);
+        assert!((sign[[0, 0]] - 1.0_f64).abs() < 1e-10_f64);
+        assert!((sign[[1, 1]] + 1.0_f64).abs() < 1e-10_f64);
+        assert!(sign[[2, 2]].abs() < 1e-10_f64);
     }
 
     #[test]
     fn zero_max_terms_is_clamped_to_single_iteration() {
         let matrix = Array2::eye(2);
-        let exp = matrix_exp(&matrix, 0, 1e-12).unwrap();
+        let exp = matrix_exp(&matrix, 0, 1e-12_f64).unwrap();
         assert!(exp[[0, 0]].is_finite());
         assert!(exp[[1, 1]].is_finite());
 
-        let log = matrix_log_taylor(&matrix, 0, 1e-12).unwrap();
-        assert!(log[[0, 0]].abs() < 1e-12);
-        assert!(log[[1, 1]].abs() < 1e-12);
+        let log = matrix_log_taylor(&matrix, 0, 1e-12_f64).unwrap();
+        assert!(log[[0, 0]].abs() < 1e-12_f64);
+        assert!(log[[1, 1]].abs() < 1e-12_f64);
     }
 
     #[test]
     fn view_variants_match_owned() {
-        let symmetric = Array2::from_shape_vec((2, 2), vec![2.0, 0.2, 0.2, 3.0]).unwrap();
-        let non_symmetric = Array2::from_shape_vec((2, 2), vec![0.0, 1.0, 0.0, 0.0]).unwrap();
+        let symmetric =
+            Array2::from_shape_vec((2, 2), vec![2.0_f64, 0.2_f64, 0.2_f64, 3.0_f64]).unwrap();
+        let non_symmetric =
+            Array2::from_shape_vec((2, 2), vec![0.0_f64, 1.0_f64, 0.0_f64, 0.0_f64]).unwrap();
 
-        let exp_owned = matrix_exp(&symmetric, 64, 1e-12).unwrap();
-        let exp_view = matrix_exp_view(&symmetric.view(), 64, 1e-12).unwrap();
+        let exp_owned = matrix_exp(&symmetric, 64, 1e-12_f64).unwrap();
+        let exp_view = matrix_exp_view(&symmetric.view(), 64, 1e-12_f64).unwrap();
         let exp_eigen_owned = matrix_exp_eigen(&non_symmetric).unwrap();
         let exp_eigen_view = matrix_exp_eigen_view(&non_symmetric.view()).unwrap();
 
-        let log_taylor_owned = matrix_log_taylor(&symmetric, 64, 1e-12).unwrap();
-        let log_taylor_view = matrix_log_taylor_view(&symmetric.view(), 64, 1e-12).unwrap();
+        let log_taylor_owned = matrix_log_taylor(&symmetric, 64, 1e-12_f64).unwrap();
+        let log_taylor_view = matrix_log_taylor_view(&symmetric.view(), 64, 1e-12_f64).unwrap();
         let log_eigen_owned = matrix_log_eigen(&symmetric).unwrap();
         let log_eigen_view = matrix_log_eigen_view(&symmetric.view()).unwrap();
         let log_svd_owned = matrix_log_svd(&symmetric).unwrap();
         let log_svd_view = matrix_log_svd_view(&symmetric.view()).unwrap();
 
-        let power_owned = matrix_power(&symmetric, 0.5).unwrap();
-        let power_view = matrix_power_view(&symmetric.view(), 0.5).unwrap();
+        let power_owned = matrix_power(&symmetric, 0.5_f64).unwrap();
+        let power_view = matrix_power_view(&symmetric.view(), 0.5_f64).unwrap();
         let sign_owned = matrix_sign(&symmetric).unwrap();
         let sign_view = matrix_sign_view(&symmetric.view()).unwrap();
 
         for i in 0..2 {
             for j in 0..2 {
-                assert!((exp_owned[[i, j]] - exp_view[[i, j]]).abs() < 1e-12);
-                assert!((exp_eigen_owned[[i, j]] - exp_eigen_view[[i, j]]).abs() < 1e-12);
-                assert!((log_taylor_owned[[i, j]] - log_taylor_view[[i, j]]).abs() < 1e-12);
-                assert!((log_eigen_owned[[i, j]] - log_eigen_view[[i, j]]).abs() < 1e-12);
-                assert!((log_svd_owned[[i, j]] - log_svd_view[[i, j]]).abs() < 1e-12);
-                assert!((power_owned[[i, j]] - power_view[[i, j]]).abs() < 1e-12);
-                assert!((sign_owned[[i, j]] - sign_view[[i, j]]).abs() < 1e-12);
+                assert!((exp_owned[[i, j]] - exp_view[[i, j]]).abs() < 1e-12_f64);
+                assert!((exp_eigen_owned[[i, j]] - exp_eigen_view[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_taylor_owned[[i, j]] - log_taylor_view[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_eigen_owned[[i, j]] - log_eigen_view[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_svd_owned[[i, j]] - log_svd_view[[i, j]]).abs() < 1e-12_f64);
+                assert!((power_owned[[i, j]] - power_view[[i, j]]).abs() < 1e-12_f64);
+                assert!((sign_owned[[i, j]] - sign_view[[i, j]]).abs() < 1e-12_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn real_f32_paths_match_expected() {
+        let symmetric =
+            Array2::from_shape_vec((2, 2), vec![2.0_f32, 0.2_f32, 0.2_f32, 3.0_f32]).unwrap();
+        let near_identity =
+            Array2::from_shape_vec((2, 2), vec![1.1_f32, 0.0_f32, 0.0_f32, 0.9_f32]).unwrap();
+        let non_symmetric =
+            Array2::from_shape_vec((2, 2), vec![0.0_f32, 1.0_f32, 0.0_f32, 0.0_f32]).unwrap();
+
+        let exp_owned = matrix_exp(&symmetric, 64, 1e-6_f32).unwrap();
+        let exp_view = matrix_exp_view(&symmetric.view(), 64, 1e-6_f32).unwrap();
+        let exp_eigen = matrix_exp_eigen(&non_symmetric).unwrap();
+        let exp_taylor = matrix_exp(&non_symmetric, 128, 1e-6_f32).unwrap();
+
+        let log_taylor = matrix_log_taylor(&near_identity, 128, 1e-6_f32).unwrap();
+        let log_eigen = matrix_log_eigen(&symmetric).unwrap();
+        let log_svd = matrix_log_svd(&symmetric).unwrap();
+
+        let power_owned = matrix_power(&symmetric, 0.5_f32).unwrap();
+        let power_view = matrix_power_view(&symmetric.view(), 0.5_f32).unwrap();
+        let sign_owned = matrix_sign(&symmetric).unwrap();
+        let mut sign_into = Array2::<f32>::zeros((2, 2));
+        matrix_sign_into(&symmetric, &mut sign_into).unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((exp_owned[[i, j]] - exp_view[[i, j]]).abs() < 1e-5_f32);
+                assert!((exp_eigen[[i, j]] - exp_taylor[[i, j]]).abs() < 1e-4_f32);
+                assert!((power_owned[[i, j]] - power_view[[i, j]]).abs() < 1e-5_f32);
+                assert!((sign_owned[[i, j]] - sign_into[[i, j]]).abs() < 1e-5_f32);
+                assert!(log_taylor[[i, j]].is_finite());
+                assert!(log_eigen[[i, j]].is_finite());
+                assert!(log_svd[[i, j]].is_finite());
             }
         }
     }
@@ -1294,44 +1489,44 @@ mod tests {
     #[test]
     fn complex_exp_variants_match_and_into_paths_work() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
         ])
         .unwrap();
 
-        let owned = matrix_exp_complex(&matrix, 32, 1e-12).unwrap();
-        let viewed = matrix_exp_complex_view(&matrix.view(), 32, 1e-12).unwrap();
+        let owned = matrix_exp_complex(&matrix, 32, 1e-12_f64).unwrap();
+        let viewed = matrix_exp_complex_view(&matrix.view(), 32, 1e-12_f64).unwrap();
 
         let mut output = Array2::<Complex64>::zeros((2, 2));
-        matrix_exp_complex_into(&matrix, 32, 1e-12, &mut output).unwrap();
+        matrix_exp_complex_into(&matrix, 32, 1e-12_f64, &mut output).unwrap();
 
         let mut workspace = MatrixFunctionComplexWorkspace::default();
         let mut workspace_output = Array2::<Complex64>::zeros((2, 2));
         matrix_exp_complex_with_workspace_into(
             &matrix,
             32,
-            1e-12,
+            1e-12_f64,
             &mut workspace_output,
             &mut workspace,
         )
         .unwrap();
 
         let expected = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(1.0, 0.0),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
         ])
         .unwrap();
 
         for i in 0..2 {
             for j in 0..2 {
-                assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-12);
-                assert!((owned[[i, j]] - output[[i, j]]).norm() < 1e-12);
-                assert!((owned[[i, j]] - workspace_output[[i, j]]).norm() < 1e-12);
-                assert!((owned[[i, j]] - expected[[i, j]]).norm() < 1e-10);
+                assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-12_f64);
+                assert!((owned[[i, j]] - output[[i, j]]).norm() < 1e-12_f64);
+                assert!((owned[[i, j]] - workspace_output[[i, j]]).norm() < 1e-12_f64);
+                assert!((owned[[i, j]] - expected[[i, j]]).norm() < 1e-10_f64);
             }
         }
     }
@@ -1339,15 +1534,15 @@ mod tests {
     #[test]
     fn complex_into_rejects_bad_output_shape() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(1.0, 0.0),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
         ])
         .unwrap();
         let mut bad = Array2::<Complex64>::zeros((1, 1));
         assert!(matches!(
-            matrix_exp_complex_into(&matrix, 16, 1e-10, &mut bad),
+            matrix_exp_complex_into(&matrix, 16, 1e-10_f64, &mut bad),
             Err(MatrixFunctionError::InvalidInput(_))
         ));
         assert!(matches!(
@@ -1359,7 +1554,7 @@ mod tests {
             Err(MatrixFunctionError::InvalidInput(_))
         ));
         assert!(matches!(
-            matrix_power_complex_into(&matrix, 0.5, &mut bad),
+            matrix_power_complex_into(&matrix, 0.5_f64, &mut bad),
             Err(MatrixFunctionError::InvalidInput(_))
         ));
         assert!(matches!(
@@ -1371,10 +1566,10 @@ mod tests {
     #[test]
     fn complex_log_svd_paths_work() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(3.0, 0.0),
+            Complex64::new(2.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(3.0_f64, 0.0_f64),
         ])
         .unwrap();
 
@@ -1387,18 +1582,18 @@ mod tests {
         matrix_log_svd_complex_with_workspace_into(&matrix, &mut workspace_output, &mut workspace)
             .unwrap();
 
-        assert!((owned[[0, 0]].re - 2.0_f64.ln()).abs() < 1e-10);
-        assert!(owned[[0, 0]].im.abs() < 1e-10);
-        assert!((owned[[1, 1]].re - 3.0_f64.ln()).abs() < 1e-10);
-        assert!(owned[[1, 1]].im.abs() < 1e-10);
-        assert!(owned[[0, 1]].norm() < 1e-10);
-        assert!(owned[[1, 0]].norm() < 1e-10);
+        assert!((owned[[0, 0]].re - 2.0_f64.ln()).abs() < 1e-10_f64);
+        assert!(owned[[0, 0]].im.abs() < 1e-10_f64);
+        assert!((owned[[1, 1]].re - 3.0_f64.ln()).abs() < 1e-10_f64);
+        assert!(owned[[1, 1]].im.abs() < 1e-10_f64);
+        assert!(owned[[0, 1]].norm() < 1e-10_f64);
+        assert!(owned[[1, 0]].norm() < 1e-10_f64);
 
         for i in 0..2 {
             for j in 0..2 {
-                assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-12);
-                assert!((owned[[i, j]] - output[[i, j]]).norm() < 1e-12);
-                assert!((owned[[i, j]] - workspace_output[[i, j]]).norm() < 1e-12);
+                assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-12_f64);
+                assert!((owned[[i, j]] - output[[i, j]]).norm() < 1e-12_f64);
+                assert!((owned[[i, j]] - workspace_output[[i, j]]).norm() < 1e-12_f64);
             }
         }
     }
@@ -1406,17 +1601,17 @@ mod tests {
     #[test]
     fn complex_eigen_power_sign_paths_work() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(4.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(9.0, 0.0),
+            Complex64::new(4.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(9.0_f64, 0.0_f64),
         ])
         .unwrap();
         let signed_matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(-4.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(9.0, 0.0),
+            Complex64::new(-4.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(9.0_f64, 0.0_f64),
         ])
         .unwrap();
 
@@ -1424,7 +1619,7 @@ mod tests {
         let exp_eigen_view = matrix_exp_eigen_complex_view(&matrix.view()).unwrap();
         for i in 0..2 {
             for j in 0..2 {
-                assert!((exp_eigen_owned[[i, j]] - exp_eigen_view[[i, j]]).norm() < 1e-12);
+                assert!((exp_eigen_owned[[i, j]] - exp_eigen_view[[i, j]]).norm() < 1e-12_f64);
             }
         }
 
@@ -1437,36 +1632,36 @@ mod tests {
         matrix_log_eigen_complex_with_workspace_into(&matrix, &mut log_ws, &mut complex_workspace)
             .unwrap();
 
-        assert!((log_owned[[0, 0]].re - 4.0_f64.ln()).abs() < 1e-10);
-        assert!((log_owned[[1, 1]].re - 9.0_f64.ln()).abs() < 1e-10);
+        assert!((log_owned[[0, 0]].re - 4.0_f64.ln()).abs() < 1e-10_f64);
+        assert!((log_owned[[1, 1]].re - 9.0_f64.ln()).abs() < 1e-10_f64);
 
         for i in 0..2 {
             for j in 0..2 {
-                assert!((log_owned[[i, j]] - log_view[[i, j]]).norm() < 1e-12);
-                assert!((log_owned[[i, j]] - log_into[[i, j]]).norm() < 1e-12);
-                assert!((log_owned[[i, j]] - log_ws[[i, j]]).norm() < 1e-12);
+                assert!((log_owned[[i, j]] - log_view[[i, j]]).norm() < 1e-12_f64);
+                assert!((log_owned[[i, j]] - log_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((log_owned[[i, j]] - log_ws[[i, j]]).norm() < 1e-12_f64);
             }
         }
 
-        let power_owned = matrix_power_complex(&matrix, 0.5).unwrap();
-        let power_view = matrix_power_complex_view(&matrix.view(), 0.5).unwrap();
+        let power_owned = matrix_power_complex(&matrix, 0.5_f64).unwrap();
+        let power_view = matrix_power_complex_view(&matrix.view(), 0.5_f64).unwrap();
         let mut power_into = Array2::<Complex64>::zeros((2, 2));
-        matrix_power_complex_into(&matrix, 0.5, &mut power_into).unwrap();
+        matrix_power_complex_into(&matrix, 0.5_f64, &mut power_into).unwrap();
         let mut power_ws = Array2::<Complex64>::zeros((2, 2));
         matrix_power_complex_with_workspace_into(
             &matrix,
-            0.5,
+            0.5_f64,
             &mut power_ws,
             &mut complex_workspace,
         )
         .unwrap();
-        assert!((power_owned[[0, 0]].re - 2.0).abs() < 1e-10);
-        assert!((power_owned[[1, 1]].re - 3.0).abs() < 1e-10);
+        assert!((power_owned[[0, 0]].re - 2.0_f64).abs() < 1e-10_f64);
+        assert!((power_owned[[1, 1]].re - 3.0_f64).abs() < 1e-10_f64);
         for i in 0..2 {
             for j in 0..2 {
-                assert!((power_owned[[i, j]] - power_view[[i, j]]).norm() < 1e-12);
-                assert!((power_owned[[i, j]] - power_into[[i, j]]).norm() < 1e-12);
-                assert!((power_owned[[i, j]] - power_ws[[i, j]]).norm() < 1e-12);
+                assert!((power_owned[[i, j]] - power_view[[i, j]]).norm() < 1e-12_f64);
+                assert!((power_owned[[i, j]] - power_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((power_owned[[i, j]] - power_ws[[i, j]]).norm() < 1e-12_f64);
             }
         }
 
@@ -1481,13 +1676,13 @@ mod tests {
             &mut complex_workspace,
         )
         .unwrap();
-        assert!((sign_owned[[0, 0]] - Complex64::new(-1.0, 0.0)).norm() < 1e-10);
-        assert!((sign_owned[[1, 1]] - Complex64::new(1.0, 0.0)).norm() < 1e-10);
+        assert!((sign_owned[[0, 0]] - Complex64::new(-1.0_f64, 0.0_f64)).norm() < 1e-10_f64);
+        assert!((sign_owned[[1, 1]] - Complex64::new(1.0_f64, 0.0_f64)).norm() < 1e-10_f64);
         for i in 0..2 {
             for j in 0..2 {
-                assert!((sign_owned[[i, j]] - sign_view[[i, j]]).norm() < 1e-12);
-                assert!((sign_owned[[i, j]] - sign_into[[i, j]]).norm() < 1e-12);
-                assert!((sign_owned[[i, j]] - sign_ws[[i, j]]).norm() < 1e-12);
+                assert!((sign_owned[[i, j]] - sign_view[[i, j]]).norm() < 1e-12_f64);
+                assert!((sign_owned[[i, j]] - sign_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((sign_owned[[i, j]] - sign_ws[[i, j]]).norm() < 1e-12_f64);
             }
         }
     }
