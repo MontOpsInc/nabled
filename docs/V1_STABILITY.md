@@ -53,6 +53,14 @@ GPU scope is intentionally explicit and bounded for v1.
 8. `tensor_batched_matmul_last_two_with_backend::<GpuBackend, f32>`
 9. `tensor_contract_axes_with_backend::<GpuBackend, f32>` (single-axis kernel path)
 10. `tensor_sum_last_axis_with_backend::<GpuBackend, f32>`
+11. `sparse_matvec_with_backend_f32::<GpuBackend>` (CSR)
+12. `sparse_matmat_dense_with_backend_f32::<GpuBackend>` (CSR × dense)
+13. `sparse_matmat_sparse_with_backend::<GpuBackend, f32>`
+14. `triangular_solve_vec_with_backend::<GpuBackend, f32>`
+15. `triangular_solve_mat_with_backend::<GpuBackend, f32>`
+16. `tensor_batched_matmul_last_two_with_backend::<GpuBackend, Complex64>`
+17. `tensor_contract_axes_with_backend::<GpuBackend, Complex64>` (single-axis kernel path)
+18. `tensor_sum_last_axis_with_backend::<GpuBackend, Complex64>`
 
 Runtime note:
 1. Backend-dispatched GPU paths above preserve capability via explicit CPU fallback when a usable GPU is unavailable.
@@ -72,13 +80,18 @@ With `accelerator-wgpu`, `GpuBackend<f64>` now attempts native GPU execution for
 8. `tensor_batched_matmul_last_two_with_backend::<GpuBackend, f64>`
 9. `tensor_contract_axes_with_backend::<GpuBackend, f64>`
 10. `tensor_sum_last_axis_with_backend::<GpuBackend, f64>`
+11. `sparse_matvec_with_backend::<GpuBackend, f64>` (CSR)
+12. `sparse_matmat_dense_with_backend::<GpuBackend, f64>` (CSR × dense)
+13. `sparse_matmat_sparse_with_backend::<GpuBackend, f64>`
+14. `triangular_solve_vec_with_backend::<GpuBackend, f64>`
+15. `triangular_solve_mat_with_backend::<GpuBackend, f64>`
 
 Runtime note:
 1. Native `f64` GPU execution depends on device/driver support for `wgpu::Features::SHADER_F64`.
 2. When unavailable, backend-dispatched calls keep capability stable via explicit CPU fallback.
 3. Direct low-level `accelerator::gpu::*_f64` entrypoints may return `AcceleratorError::UnsupportedBackend(BackendKind::Gpu)` when `SHADER_F64` is unavailable.
 
-Complex GPU-backend kernels remain out-of-scope for native GPU execution and use explicit CPU fallback paths.
+Complex tensor GPU kernels now attempt native execution through complex decomposition over `f64` GPU kernels and preserve explicit CPU fallback when GPU execution is unavailable.
 
 ## Mixed Execution Determinism Contract
 

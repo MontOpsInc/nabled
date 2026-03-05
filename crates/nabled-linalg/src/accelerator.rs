@@ -9,6 +9,8 @@ pub mod kernels;
 #[cfg(test)]
 mod tests {
     use ndarray::{Array1, Array2, Array3, ArrayD, IxDyn};
+    #[cfg(feature = "accelerator-wgpu")]
+    use num_complex::Complex64;
 
     use crate::accelerator::backends::{
         AcceleratorError, BackendKind, CpuBackend, GpuBackend, execute,
@@ -419,6 +421,36 @@ mod tests {
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
+    fn gpu_sparse_kernels_match_cpu() {
+        let sparse = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f32, 1.0_f32, 1.0_f32, 3.0_f32, 1.0_f32, 1.0_f32, 2.0_f32,
+        ])
+        .unwrap();
+        let vector = Array1::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32]);
+        let dense = Array2::from_shape_vec((3, 2), vec![
+            1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 2.0_f32, 1.0_f32,
+        ])
+        .unwrap();
+
+        let cpu_vec = sparse_matvec_with_backend::<CpuBackend, f32>(&sparse, &vector).unwrap();
+        let gpu_vec = sparse_matvec_with_backend::<GpuBackend, f32>(&sparse, &vector).unwrap();
+        for i in 0..cpu_vec.len() {
+            assert!((cpu_vec[i] - gpu_vec[i]).abs() < 1e-4_f32);
+        }
+
+        let cpu_dense =
+            sparse_matmat_dense_with_backend::<CpuBackend, f32>(&sparse, &dense).unwrap();
+        let gpu_dense =
+            sparse_matmat_dense_with_backend::<GpuBackend, f32>(&sparse, &dense).unwrap();
+        for row in 0..cpu_dense.nrows() {
+            for col in 0..cpu_dense.ncols() {
+                assert!((cpu_dense[[row, col]] - gpu_dense[[row, col]]).abs() < 1e-4_f32);
+            }
+        }
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
     fn gpu_vector_kernels_match_cpu() {
         let left = Array1::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32]);
         let right = Array1::from_vec(vec![4.0_f32, 5.0_f32, 6.0_f32]);
@@ -499,6 +531,63 @@ mod tests {
         let cpu_reduced = tensor_sum_last_axis_with_backend::<CpuBackend, f32>(&tensor).unwrap();
         assert_eq!(contract.unwrap(), cpu_contract);
         assert_eq!(reduced.unwrap(), cpu_reduced);
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
+    fn gpu_complex_tensor_kernels_match_cpu() {
+        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
+            Complex64::new(1.0, 0.5),
+            Complex64::new(2.0, -0.25),
+            Complex64::new(-1.5, 0.75),
+            Complex64::new(0.25, -1.0),
+            Complex64::new(0.5, 1.5),
+            Complex64::new(-0.75, -0.5),
+            Complex64::new(1.25, 0.0),
+            Complex64::new(2.0, -1.0),
+        ])
+        .unwrap();
+        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
+            Complex64::new(0.5, -1.0),
+            Complex64::new(1.5, 0.25),
+            Complex64::new(-0.5, 0.75),
+            Complex64::new(2.0, -0.25),
+            Complex64::new(1.25, 0.5),
+            Complex64::new(0.5, -1.25),
+            Complex64::new(-1.0, 0.0),
+            Complex64::new(0.75, 1.0),
+        ])
+        .unwrap();
+
+        let tolerance = 1.0e-8_f64;
+        let cpu_batched =
+            tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(&left, &right)
+                .unwrap();
+        let gpu_batched =
+            tensor_batched_matmul_last_two_with_backend::<GpuBackend, Complex64>(&left, &right)
+                .unwrap();
+        assert_eq!(cpu_batched.shape(), gpu_batched.shape());
+        for (lhs, rhs) in cpu_batched.iter().zip(gpu_batched.iter()) {
+            assert!((*lhs - *rhs).norm() < tolerance);
+        }
+
+        let cpu_contract =
+            tensor_contract_axes_with_backend::<CpuBackend, Complex64>(&left, &right, 2, 1)
+                .unwrap();
+        let gpu_contract =
+            tensor_contract_axes_with_backend::<GpuBackend, Complex64>(&left, &right, 2, 1)
+                .unwrap();
+        assert_eq!(cpu_contract.shape(), gpu_contract.shape());
+        for (lhs, rhs) in cpu_contract.iter().zip(gpu_contract.iter()) {
+            assert!((*lhs - *rhs).norm() < tolerance);
+        }
+
+        let cpu_sum = tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(&left).unwrap();
+        let gpu_sum = tensor_sum_last_axis_with_backend::<GpuBackend, Complex64>(&left).unwrap();
+        assert_eq!(cpu_sum.shape(), gpu_sum.shape());
+        for (lhs, rhs) in cpu_sum.iter().zip(gpu_sum.iter()) {
+            assert!((*lhs - *rhs).norm() < tolerance);
+        }
     }
 
     #[cfg(feature = "accelerator-rayon")]

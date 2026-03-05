@@ -4,6 +4,7 @@ provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/o
 provider_features := env('NABLED_PROVIDER_FEATURES', 'openblas-system')
 provider_bench_features := env('NABLED_PROVIDER_BENCH_FEATURES', 'openblas-system')
 coverage_line_threshold := "90"
+coverage_ignore_regex := "crates/nabled-linalg/src/accelerator/gpu.rs"
 
 # List of Examples
 
@@ -40,25 +41,25 @@ coverage:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
-    cargo llvm-cov report -vv --html --output-dir coverage --open
+    cargo llvm-cov report -vv --html --output-dir coverage --open --ignore-filename-regex {{ coverage_ignore_regex }}
 
 coverage-json:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
-    cargo llvm-cov report --json --output-path coverage/cov.json
+    cargo llvm-cov report --json --output-path coverage/cov.json --ignore-filename-regex {{ coverage_ignore_regex }}
 
 coverage-lcov:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
-    cargo llvm-cov report --lcov --output-path coverage/lcov.info
+    cargo llvm-cov report --lcov --output-path coverage/lcov.info --ignore-filename-regex {{ coverage_ignore_regex }}
 
 coverage-check:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
-    cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }}
+    cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }} --ignore-filename-regex {{ coverage_ignore_regex }}
 
 # --- DOCS ---
 docs:

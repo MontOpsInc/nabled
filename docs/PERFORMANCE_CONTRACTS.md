@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-03-02
+Last updated: 2026-03-05
 
 ## Purpose
 
@@ -24,12 +24,14 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 4. `nabled-linalg::qr::decompose_complex_internal` now reuses a scratch complex vector instead of allocating per-column temporaries.
 5. `nabled-linalg::svd::decompose_internal` and `decompose_complex_internal` now avoid temporary owned right-singular column materializations where view math suffices.
 6. Kernel-routing regression fixes restored no-hidden-allocation behavior for `*_into` paths in `vector`, `sparse`, `triangular`, and `tensor` domains.
+7. Sparse GPU phase-1 composition (`sparse_matmat_dense_gpu_*`) now reuses a per-column output buffer and writes directly into the final dense output matrix, eliminating per-column temporary result allocations in wrapper code.
 
 ### Unavoidable internal materializations
 
 1. In-place decomposition kernels (for example LU/Schur/Polar and some Eigen paths) require one owned working matrix when input is provided as an immutable view.
 2. Provider-backed calls through `ndarray-linalg` can require owned arrays due provider trait/method signatures (not wrapper-level conversion policy).
 3. Shape-changing outputs (for example reduced/truncated decomposition outputs) allocate result arrays by API contract.
+4. Current `wgpu` kernels stage host input buffers to device and read output buffers back to host memory per invocation; this host↔device transfer is expected for the current ndarray-owned public API contract.
 
 ## V1 No-Surprises Audit Status
 

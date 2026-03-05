@@ -18,6 +18,14 @@ enum ProviderPath {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[derive(Debug, Serialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+enum GpuKernelPath {
+    NativeOrFallback,
+    FallbackOnly,
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[derive(Debug, Serialize)]
 struct DomainCapability {
     tier:             &'static str,
@@ -25,6 +33,18 @@ struct DomainCapability {
     baseline_kernels: bool,
     provider_path:    ProviderPath,
     notes:            &'static str,
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[derive(Debug, Serialize)]
+struct KernelCapability {
+    family:              &'static str,
+    operation:           &'static str,
+    dtype:               &'static str,
+    gpu_path:            GpuKernelPath,
+    gpu_native_possible: bool,
+    gpu_fallback:        bool,
+    notes:               &'static str,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -40,7 +60,10 @@ struct CapabilityReport {
     provider_build_active:     bool,
     native_provider_domains:   usize,
     fallback_provider_domains: usize,
+    gpu_native_or_fallback:    usize,
+    gpu_fallback_only:         usize,
     domains:                   Vec<DomainCapability>,
+    kernels:                   Vec<KernelCapability>,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -88,6 +111,7 @@ fn parse_output_dir() -> io::Result<PathBuf> {
 fn build_report() -> CapabilityReport {
     let mut domains = tier_a_domains();
     domains.extend(tier_b_domains());
+    let kernels = kernel_capabilities();
 
     let native_provider_domains = domains
         .iter()
@@ -96,6 +120,14 @@ fn build_report() -> CapabilityReport {
     let fallback_provider_domains = domains
         .iter()
         .filter(|domain| matches!(domain.provider_path, ProviderPath::Fallback))
+        .count();
+    let gpu_native_or_fallback = kernels
+        .iter()
+        .filter(|kernel| matches!(kernel.gpu_path, GpuKernelPath::NativeOrFallback))
+        .count();
+    let gpu_fallback_only = kernels
+        .iter()
+        .filter(|kernel| matches!(kernel.gpu_path, GpuKernelPath::FallbackOnly))
         .count();
 
     CapabilityReport {
@@ -109,7 +141,10 @@ fn build_report() -> CapabilityReport {
         provider_build_active: provider_feature_enabled(),
         native_provider_domains,
         fallback_provider_domains,
+        gpu_native_or_fallback,
+        gpu_fallback_only,
         domains,
+        kernels,
     }
 }
 
@@ -271,6 +306,315 @@ fn tier_b_domains() -> Vec<DomainCapability> {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
+fn gpu_path(native_when_wgpu: bool) -> GpuKernelPath {
+    if native_when_wgpu && cfg!(feature = "accelerator-wgpu") {
+        GpuKernelPath::NativeOrFallback
+    } else {
+        GpuKernelPath::FallbackOnly
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn kernel_capabilities() -> Vec<KernelCapability> {
+    let mut kernels = Vec::new();
+    kernels.extend(dense_kernel_capabilities());
+    kernels.extend(sparse_kernel_capabilities());
+    kernels.extend(vector_kernel_capabilities());
+    kernels.extend(tensor_kernel_capabilities());
+    kernels.extend(triangular_kernel_capabilities());
+    kernels.extend(complex_kernel_capabilities());
+    kernels
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn kernel_capability(
+    family: &'static str,
+    operation: &'static str,
+    dtype: &'static str,
+    native_when_wgpu: bool,
+    notes: &'static str,
+) -> KernelCapability {
+    let wgpu_enabled = cfg!(feature = "accelerator-wgpu");
+    KernelCapability {
+        family,
+        operation,
+        dtype,
+        gpu_path: gpu_path(native_when_wgpu),
+        gpu_native_possible: wgpu_enabled && native_when_wgpu,
+        gpu_fallback: true,
+        notes,
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn dense_kernel_capabilities() -> Vec<KernelCapability> {
+    vec![
+        kernel_capability(
+            "dense",
+            "matmat",
+            "f32",
+            true,
+            "compile-time backend dispatch; native wgpu path when enabled, CPU fallback otherwise",
+        ),
+        kernel_capability(
+            "dense",
+            "matmat",
+            "f64",
+            true,
+            "native wgpu path requires SHADER_F64 at runtime; CPU fallback retained",
+        ),
+        kernel_capability(
+            "dense",
+            "matvec",
+            "f32",
+            true,
+            "native via gpu matmat composition with CPU fallback",
+        ),
+        kernel_capability(
+            "dense",
+            "matvec",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "dense",
+            "batched_matmat",
+            "f32",
+            true,
+            "per-batch native wgpu matmat composition with CPU fallback",
+        ),
+        kernel_capability(
+            "dense",
+            "batched_matmat",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "dense",
+            "batched_row_matvec",
+            "f32",
+            true,
+            "native via gpu matmat composition with CPU fallback",
+        ),
+        kernel_capability(
+            "dense",
+            "batched_row_matvec",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+    ]
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn sparse_kernel_capabilities() -> Vec<KernelCapability> {
+    vec![
+        kernel_capability(
+            "sparse",
+            "matvec_csr",
+            "f32",
+            true,
+            "phase-1 native CSR matvec compute shader with CPU fallback",
+        ),
+        kernel_capability(
+            "sparse",
+            "matvec_csr",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "sparse",
+            "matmat_dense",
+            "f32",
+            true,
+            "phase-1 native via repeated CSR matvec kernels with reusable output buffers; CPU \
+             fallback retained",
+        ),
+        kernel_capability(
+            "sparse",
+            "matmat_dense",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "sparse",
+            "matmat_sparse",
+            "f32",
+            true,
+            "native via sparse-dense GPU composition and CSR rebuild with CPU fallback",
+        ),
+        kernel_capability(
+            "sparse",
+            "matmat_sparse",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+    ]
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn vector_kernel_capabilities() -> Vec<KernelCapability> {
+    vec![
+        kernel_capability(
+            "vector",
+            "dot",
+            "f32",
+            true,
+            "native via gpu matmat composition with CPU fallback",
+        ),
+        kernel_capability(
+            "vector",
+            "dot",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "vector",
+            "pairwise_l2",
+            "f32",
+            true,
+            "native via gpu matmat cross term with CPU fallback",
+        ),
+        kernel_capability(
+            "vector",
+            "pairwise_l2",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "vector",
+            "pairwise_cosine",
+            "f32",
+            true,
+            "native via gpu matmat cross term with CPU fallback",
+        ),
+        kernel_capability(
+            "vector",
+            "pairwise_cosine",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+    ]
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn tensor_kernel_capabilities() -> Vec<KernelCapability> {
+    vec![
+        kernel_capability(
+            "tensor",
+            "batched_matmul_last_two",
+            "f32",
+            true,
+            "native per-batch gpu matmat composition with CPU fallback",
+        ),
+        kernel_capability(
+            "tensor",
+            "batched_matmul_last_two",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "tensor",
+            "contract_axes_single_axis",
+            "f32",
+            true,
+            "native via 2D reshape + gpu matmat with CPU fallback",
+        ),
+        kernel_capability(
+            "tensor",
+            "contract_axes_single_axis",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "tensor",
+            "sum_last_axis",
+            "f32",
+            true,
+            "native via matmul reduction kernel with CPU fallback",
+        ),
+        kernel_capability(
+            "tensor",
+            "sum_last_axis",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+    ]
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn triangular_kernel_capabilities() -> Vec<KernelCapability> {
+    vec![
+        kernel_capability(
+            "triangular",
+            "solve_vec",
+            "f32",
+            true,
+            "native triangular compute kernel with CPU fallback",
+        ),
+        kernel_capability(
+            "triangular",
+            "solve_vec",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+        kernel_capability(
+            "triangular",
+            "solve_mat",
+            "f32",
+            true,
+            "native triangular compute kernel with CPU fallback",
+        ),
+        kernel_capability(
+            "triangular",
+            "solve_mat",
+            "f64",
+            true,
+            "native path is SHADER_F64-dependent; CPU fallback retained",
+        ),
+    ]
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn complex_kernel_capabilities() -> Vec<KernelCapability> {
+    vec![
+        kernel_capability(
+            "complex",
+            "tensor_batched_matmul_last_two",
+            "complex64",
+            true,
+            "native via complex decomposition over f64 GPU kernels with CPU fallback",
+        ),
+        kernel_capability(
+            "complex",
+            "tensor_contract_axes_single_axis",
+            "complex64",
+            true,
+            "native via complex decomposition over f64 GPU kernels with CPU fallback",
+        ),
+        kernel_capability(
+            "complex",
+            "tensor_sum_last_axis",
+            "complex64",
+            true,
+            "native via split real/imag reductions over f64 GPU kernels with CPU fallback",
+        ),
+    ]
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn now_unix_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_secs())
 }
@@ -302,6 +646,9 @@ fn write_summary_markdown(output_dir: &Path, report: &CapabilityReport) -> io::R
     let _ = writeln!(markdown, "- native_provider_domains: `{}`", report.native_provider_domains);
     let _ =
         writeln!(markdown, "- fallback_provider_domains: `{}`", report.fallback_provider_domains);
+    let _ =
+        writeln!(markdown, "- gpu_native_or_fallback_rows: `{}`", report.gpu_native_or_fallback);
+    let _ = writeln!(markdown, "- gpu_fallback_only_rows: `{}`", report.gpu_fallback_only);
     markdown.push('\n');
     markdown.push_str("| Tier | Domain | Baseline Kernels | Provider Path | Notes |\n");
     markdown.push_str("|---|---|---|---|---|\n");
@@ -316,6 +663,31 @@ fn write_summary_markdown(output_dir: &Path, report: &CapabilityReport) -> io::R
             markdown,
             "| {} | {} | {} | {} | {} |",
             domain.tier, domain.domain, baseline, provider, domain.notes
+        );
+    }
+
+    markdown.push('\n');
+    markdown.push_str(
+        "| Family | Operation | DType | GPU Path | Native Possible | CPU Fallback | Notes |\n",
+    );
+    markdown.push_str("|---|---|---|---|---|---|---|\n");
+    for kernel in &report.kernels {
+        let gpu_path = match kernel.gpu_path {
+            GpuKernelPath::NativeOrFallback => "native_or_fallback",
+            GpuKernelPath::FallbackOnly => "fallback_only",
+        };
+        let native_possible = if kernel.gpu_native_possible { "yes" } else { "no" };
+        let fallback = if kernel.gpu_fallback { "yes" } else { "no" };
+        let _ = writeln!(
+            markdown,
+            "| {} | {} | {} | {} | {} | {} | {} |",
+            kernel.family,
+            kernel.operation,
+            kernel.dtype,
+            gpu_path,
+            native_possible,
+            fallback,
+            kernel.notes
         );
     }
 

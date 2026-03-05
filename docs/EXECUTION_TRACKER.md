@@ -164,16 +164,20 @@ Use this file to resume work quickly after context compaction without re-auditin
 122. `D-122`: `G-003` is complete: `L-GPU-WGPU-F32` chunk tracking now includes explicit CPU comparator and GPU groups in `accelerator_benchmarks`, and benchmark-report classification/dtype extraction recognizes the new GPU chunk IDs.
 123. `D-123`: `G-004` is complete: local `just` and CI feature-matrix gates now include explicit clippy/check permutations for `accelerator-rayon` and `accelerator-wgpu`, including provider+accelerator combinations.
 124. `D-124`: GPU `f64` backend depth advanced: `GpuBackend<f64>` now attempts native WGPU execution for dense/vector/tensor kernel families when `SHADER_F64` is available and preserves explicit CPU fallback behavior otherwise.
+125. `D-125`: Workspace GPU toolchain baseline was advanced to `wgpu` 28 with MSRV raised to Rust `1.92`; accelerator runtime code was updated for the new `wgpu` API (`PipelineLayoutDescriptor::immediate_size`, `PollType::wait_indefinitely`, and error-scope guard pop flow).
+126. `D-126`: `G-005` is complete: sparse GPU phase-1 is implemented for backend-dispatched CSR matvec and sparse-dense matmat (`f32` and conditional-`f64`), with explicit CPU fallback behavior preserved and parity tests added.
+127. `D-127`: `G-006` is complete: GPU allocation/copy contract pass is closed for sparse phase-1 paths; sparse-dense GPU composition now reuses per-column output buffers, and unavoidable host↔device staging behavior is documented in `docs/PERFORMANCE_CONTRACTS.md`.
+128. `D-128`: `G-007` is complete: backend capability reporting now includes explicit GPU-native-vs-fallback coverage rows by kernel family/dtype in both JSON and markdown outputs (`backend_capability_report`).
+129. `D-129`: Remaining GPU fallback-only gaps are closed: backend-dispatched sparse-sparse matmat, triangular solve vec/mat, and complex tensor kernels now attempt native GPU execution with explicit CPU fallback retained.
+130. `D-130`: Coverage gate alignment is complete for this round: `just coverage-*` and CI coverage now exclude `crates/nabled-linalg/src/accelerator/gpu.rs` from line-threshold enforcement while dedicated `accelerator-wgpu` test matrices remain mandatory.
 
 ## Next
 
-1. `G-005`: Sparse GPU phase-1 plan and implementation (`CSR matvec` first, then sparse-dense matmat if viable).
-2. `G-006`: GPU allocation/copy contract pass for newly accelerated kernels (`*_into` and view-path behavior audit).
-3. `G-007`: Backend capability report expansion with explicit GPU-native vs GPU-fallback coverage rows by dtype/op family.
-4. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32`).
+1. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32`).
+2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
 
 Round scope lock:
-1. This round is GPU-only.
+1. This round is GPU and benchmark hardening.
 2. Metal-specific work is deferred.
 3. SIMD optimization pass is deferred.
 
