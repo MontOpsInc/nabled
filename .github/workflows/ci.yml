@@ -75,6 +75,9 @@ jobs:
     - name: Run clippy (no default features)
       run: cargo +stable clippy --workspace --profile ci --no-default-features --all-targets -- -D warnings
 
+    - name: Run clippy (lapack-provider wiring only)
+      run: cargo +stable clippy --workspace --profile ci --no-default-features --features lapack-provider --all-targets -- -D warnings
+
     - name: Run clippy (provider + accelerators baseline)
       run: cargo +stable clippy --workspace --profile ci --no-default-features --features "openblas-system accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
 
@@ -83,6 +86,9 @@ jobs:
 
     - name: Verify provider kernel path compiles
       run: cargo +stable check --workspace --profile ci --features openblas-system --all-targets
+
+    - name: Verify lapack-provider feature wiring compiles
+      run: cargo +stable check --workspace --profile ci --no-default-features --features lapack-provider --all-targets
 
     - name: Verify additional provider path compiles
       run: cargo +stable check --workspace --profile ci --no-default-features --features netlib-system --all-targets

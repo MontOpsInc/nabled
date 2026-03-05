@@ -831,8 +831,8 @@ fn nonsymmetric_bi_view_impl<T: NabledReal>(
     let (balanced_matrix, balancing_diagonal) = balance_nonsymmetric_matrix(matrix, config);
     let right = nonsymmetric_view(&balanced_matrix.view())?;
 
-    let balanced_transpose = balanced_matrix.t().to_owned();
-    let left_seed = nonsymmetric_view(&balanced_transpose.view())?;
+    let balanced_transpose = balanced_matrix.t();
+    let left_seed = nonsymmetric_view(&balanced_transpose)?;
     let mut left_eigenvectors = match_left_eigenvectors(
         &right.eigenvalues,
         &left_seed.eigenvalues,
@@ -872,8 +872,8 @@ where
     let (balanced_matrix, balancing_diagonal) = balance_nonsymmetric_matrix(matrix, config);
     let right = nonsymmetric_view(&balanced_matrix.view())?;
 
-    let balanced_transpose = balanced_matrix.t().to_owned();
-    let left_seed = nonsymmetric_view(&balanced_transpose.view())?;
+    let balanced_transpose = balanced_matrix.t();
+    let left_seed = nonsymmetric_view(&balanced_transpose)?;
     let mut left_eigenvectors = match_left_eigenvectors(
         &right.eigenvalues,
         &left_seed.eigenvalues,

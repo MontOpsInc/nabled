@@ -15,10 +15,11 @@
 //! # Feature Flags
 //!
 //! 1. `blas`: enables BLAS acceleration via `nabled-linalg/blas`.
-//! 2. `openblas-system`: enables provider-backed `LAPACK` paths via system `OpenBLAS`.
-//! 3. `openblas-static`: enables provider-backed `LAPACK` paths via statically linked `OpenBLAS`.
-//! 4. `netlib-system`: enables provider-backed `LAPACK` paths via system `Netlib` `LAPACK`.
-//! 5. `netlib-static`: enables provider-backed `LAPACK` paths via statically linked `Netlib`
+//! 2. `lapack-provider`: enables provider-dispatched decomposition paths.
+//! 3. `openblas-system`: enables provider-backed `LAPACK` paths via system `OpenBLAS`.
+//! 4. `openblas-static`: enables provider-backed `LAPACK` paths via statically linked `OpenBLAS`.
+//! 5. `netlib-system`: enables provider-backed `LAPACK` paths via system `Netlib` `LAPACK`.
+//! 6. `netlib-static`: enables provider-backed `LAPACK` paths via statically linked `Netlib`
 //!    `LAPACK`.
 //!
 //! # Example

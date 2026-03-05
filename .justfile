@@ -1,5 +1,5 @@
 LOG := env('RUST_LOG', '')
-features := 'blas openblas-system openblas-static netlib-system netlib-static accelerator-rayon accelerator-wgpu'
+features := 'blas lapack-provider openblas-system openblas-static netlib-system netlib-static accelerator-rayon accelerator-wgpu'
 provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
 provider_features := env('NABLED_PROVIDER_FEATURES', 'openblas-system')
 provider_bench_features := env('NABLED_PROVIDER_BENCH_FEATURES', 'openblas-system')
@@ -253,8 +253,10 @@ fix:
 checks:
     cargo +nightly fmt --all -- --check --config-path ./rustfmt.toml
     cargo +nightly clippy --workspace --no-default-features --all-targets -- -D warnings
+    cargo +nightly clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +nightly clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --all-targets -- -D warnings
+    cargo +stable clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     just -f {{ justfile() }} check-provider-clippy
     just -f {{ justfile() }} check-provider-netlib

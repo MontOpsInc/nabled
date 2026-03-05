@@ -24,8 +24,8 @@ fn dot<T: NabledReal>(left: &Array1<T>, right: &Array1<T>) -> Result<T, SparseEr
 }
 
 fn solve_dense_system<T: NabledReal>(
-    matrix: &Array2<T>,
-    rhs: &Array1<T>,
+    matrix: Array2<T>,
+    rhs: Array1<T>,
 ) -> Result<Array1<T>, SparseError> {
     let (nrows, ncols) = matrix.dim();
     if nrows == 0 || ncols == 0 || rhs.is_empty() {
@@ -35,8 +35,8 @@ fn solve_dense_system<T: NabledReal>(
         return Err(SparseError::DimensionMismatch);
     }
 
-    let mut a = matrix.to_owned();
-    let mut b = rhs.to_owned();
+    let mut a = matrix;
+    let mut b = rhs;
     let tolerance = default_tolerance::<T>();
 
     for pivot in 0..nrows {
@@ -2852,7 +2852,7 @@ pub fn gmres_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: C
     rhs_ls[0] = beta;
     let normal_rhs = ht.dot(&rhs_ls);
 
-    let y = solve_dense_system(&normal_matrix, &normal_rhs)?;
+    let y = solve_dense_system(normal_matrix, normal_rhs)?;
 
     let mut solution = Array1::<T>::zeros(n);
     for row in 0..n {
@@ -3024,7 +3024,7 @@ pub fn gmres_ilut_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: C
     rhs_ls[0] = beta;
     let normal_rhs = ht.dot(&rhs_ls);
 
-    let y = solve_dense_system(&normal_matrix, &normal_rhs)?;
+    let y = solve_dense_system(normal_matrix, normal_rhs)?;
 
     let mut solution = Array1::<T>::zeros(n);
     for row in 0..n {
@@ -3220,7 +3220,7 @@ pub fn gmres_iluk_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: C
     rhs_ls[0] = beta;
     let normal_rhs = ht.dot(&rhs_ls);
 
-    let y = solve_dense_system(&normal_matrix, &normal_rhs)?;
+    let y = solve_dense_system(normal_matrix, normal_rhs)?;
 
     let mut solution = Array1::<T>::zeros(n);
     for row in 0..n {
@@ -3420,7 +3420,7 @@ pub fn gmres_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: 
     rhs_ls[0] = beta;
     let normal_rhs = ht.dot(&rhs_ls);
 
-    let y = solve_dense_system(&normal_matrix, &normal_rhs)?;
+    let y = solve_dense_system(normal_matrix, normal_rhs)?;
 
     let mut solution = Array1::<T>::zeros(n);
     for row in 0..n {

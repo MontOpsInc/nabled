@@ -83,39 +83,19 @@ fn vector_norm_complex(vector: &Array1<Complex64>) -> f64 {
     vector.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
 }
 
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 trait IterativeLinearScalar: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack {}
 
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 impl<T> IterativeLinearScalar for T where
     T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack
 {
 }
 
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 trait IterativeLinearScalar: NabledReal + std::ops::SubAssign {}
 
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 impl<T> IterativeLinearScalar for T where T: NabledReal + std::ops::SubAssign {}
 
 /// Conjugate Gradient for SPD systems `Ax=b`.
@@ -239,12 +219,7 @@ where
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
 #[allow(clippy::many_single_char_names)]
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
     matrix_b: &Array1<T>,
@@ -261,12 +236,7 @@ where
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
     matrix_b: &Array1<T>,

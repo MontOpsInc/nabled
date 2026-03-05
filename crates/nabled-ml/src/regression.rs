@@ -72,12 +72,7 @@ fn map_lu_error(error: LUError) -> RegressionError {
     }
 }
 
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 fn linear_regression_impl<T>(
     x: &ArrayView2<'_, T>,
     y: &ArrayView1<'_, T>,
@@ -138,12 +133,7 @@ where
     Ok(NdarrayRegressionResult { coefficients, fitted_values, residuals, r_squared })
 }
 
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 fn linear_regression_impl<T>(
     x: &ArrayView2<'_, T>,
     y: &ArrayView1<'_, T>,
@@ -208,12 +198,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 pub fn linear_regression<T>(
     x: &Array2<T>,
     y: &Array1<T>,
@@ -229,12 +214,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 pub fn linear_regression<T>(
     x: &Array2<T>,
     y: &Array1<T>,
@@ -250,12 +230,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 pub fn linear_regression_view<T>(
     x: &ArrayView2<'_, T>,
     y: &ArrayView1<'_, T>,
@@ -271,12 +246,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 pub fn linear_regression_view<T>(
     x: &ArrayView2<'_, T>,
     y: &ArrayView1<'_, T>,

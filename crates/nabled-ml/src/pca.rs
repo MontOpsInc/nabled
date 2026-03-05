@@ -165,12 +165,7 @@ fn inverse_transform_complex_impl(
 ///
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 pub fn compute_pca<T>(
     matrix: &Array2<T>,
     n_components: Option<usize>,
@@ -185,12 +180,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 pub fn compute_pca<T: NabledReal>(
     matrix: &Array2<T>,
     n_components: Option<usize>,
@@ -198,12 +188,7 @@ pub fn compute_pca<T: NabledReal>(
     compute_pca_impl(&matrix.view(), n_components)
 }
 
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 fn compute_pca_impl<T>(
     matrix: &ArrayView2<'_, T>,
     n_components: Option<usize>,
@@ -240,12 +225,7 @@ where
     Ok(NdarrayPCAResult { components, explained_variance, explained_variance_ratio, mean, scores })
 }
 
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 fn compute_pca_impl<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
     n_components: Option<usize>,
@@ -283,12 +263,7 @@ fn compute_pca_impl<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
-#[cfg(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-))]
+#[cfg(feature = "lapack-provider")]
 pub fn compute_pca_view<T>(
     matrix: &ArrayView2<'_, T>,
     n_components: Option<usize>,
@@ -303,12 +278,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
-#[cfg(not(any(
-    feature = "openblas-system",
-    feature = "openblas-static",
-    feature = "netlib-system",
-    feature = "netlib-static"
-)))]
+#[cfg(not(feature = "lapack-provider"))]
 pub fn compute_pca_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
     n_components: Option<usize>,
