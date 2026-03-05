@@ -24,7 +24,7 @@ mod tests {
         triangular_solve_vec_with_backend,
     };
     #[cfg(not(feature = "accelerator-wgpu"))]
-    use crate::accelerator::gpu::matmat_gpu_f32;
+    use crate::accelerator::gpu::{matmat_gpu_f32, matmat_gpu_f64};
     use crate::sparse::CsrMatrix;
 
     #[test]
@@ -329,6 +329,15 @@ mod tests {
         assert!(matches!(result, Err(AcceleratorError::FeatureNotEnabled)));
     }
 
+    #[cfg(not(feature = "accelerator-wgpu"))]
+    #[test]
+    fn gpu_matmat_f64_requires_feature() {
+        let left = Array2::<f64>::eye(2);
+        let right = Array2::<f64>::eye(2);
+        let result = matmat_gpu_f64(&left, &right);
+        assert!(matches!(result, Err(AcceleratorError::FeatureNotEnabled)));
+    }
+
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
     fn gpu_matmat_matches_cpu() {
@@ -463,7 +472,7 @@ mod tests {
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
-    fn gpu_tensor_batched_matmul_f64_falls_back_to_cpu() {
+    fn gpu_tensor_batched_matmul_f64_matches_cpu() {
         let left =
             ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64])
                 .unwrap();

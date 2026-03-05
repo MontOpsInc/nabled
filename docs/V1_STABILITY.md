@@ -58,14 +58,27 @@ Runtime note:
 1. Backend-dispatched GPU paths above preserve capability via explicit CPU fallback when a usable GPU is unavailable.
 2. Direct low-level GPU entrypoints in `accelerator::gpu` may still return `AcceleratorError::DeviceUnavailable`.
 
-### GPU backend `f64`/complex and tensor-op fallback behavior
+### GPU backend `f64` conditional support and fallback behavior
 
-For GPU-backend-dispatched kernels outside the bounded `f32` GPU-native surface:
+With `accelerator-wgpu`, `GpuBackend<f64>` now attempts native GPU execution for:
 
-1. The backend keeps capability stable and executes explicit CPU fallback paths.
-2. Only true input/shape/runtime execution errors are returned.
+1. `matmat_with_backend::<GpuBackend, f64>`
+2. `matvec_with_backend::<GpuBackend, f64>`
+3. `batched_matmat_with_backend::<GpuBackend, f64>`
+4. `batched_row_matvec_with_backend::<GpuBackend, f64>`
+5. `dot_with_backend::<GpuBackend, f64>`
+6. `pairwise_l2_with_backend::<GpuBackend, f64>`
+7. `pairwise_cosine_with_backend::<GpuBackend, f64>`
+8. `tensor_batched_matmul_last_two_with_backend::<GpuBackend, f64>`
+9. `tensor_contract_axes_with_backend::<GpuBackend, f64>`
+10. `tensor_sum_last_axis_with_backend::<GpuBackend, f64>`
 
-This unified behavior is deliberate and tested.
+Runtime note:
+1. Native `f64` GPU execution depends on device/driver support for `wgpu::Features::SHADER_F64`.
+2. When unavailable, backend-dispatched calls keep capability stable via explicit CPU fallback.
+3. Direct low-level `accelerator::gpu::*_f64` entrypoints may return `AcceleratorError::UnsupportedBackend(BackendKind::Gpu)` when `SHADER_F64` is unavailable.
+
+Complex GPU-backend kernels remain out-of-scope for native GPU execution and use explicit CPU fallback paths.
 
 ## Mixed Execution Determinism Contract
 

@@ -70,6 +70,7 @@ Kernel wiring status and GPU support breadth are distinct.
 For v1:
 
 1. Kernel families are fully wired (`Wired` above).
-2. GPU backend support is intentionally bounded and explicit; current native `f32` GPU paths include dense/vector/tensor families (`matmat`, `matvec`, `batched_matmat`, `batched_row_matvec`, `dot`, `pairwise_l2`, `pairwise_cosine`, tensor batched matmul, tensor single-axis contract, tensor last-axis reduction).
-3. Out-of-scope GPU-backend kernels retain explicit fallback behavior to preserve public API capability.
-4. The normative support matrix is defined in `docs/V1_STABILITY.md`.
+2. GPU backend support is intentionally bounded and explicit; native `f32` GPU paths include dense/vector/tensor families (`matmat`, `matvec`, `batched_matmat`, `batched_row_matvec`, `dot`, `pairwise_l2`, `pairwise_cosine`, tensor batched matmul, tensor single-axis contract, tensor last-axis reduction).
+3. The same operation families attempt native `f64` GPU execution when `SHADER_F64` is available; otherwise backend-dispatched calls use explicit CPU fallback.
+4. Out-of-scope GPU-backend kernels retain explicit fallback behavior to preserve public API capability.
+5. The normative support matrix is defined in `docs/V1_STABILITY.md`.

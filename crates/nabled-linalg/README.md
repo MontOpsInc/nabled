@@ -20,7 +20,7 @@ nabled-linalg = "0.0.4"
 4. `netlib-system`: enables provider-backed LAPACK paths via system Netlib LAPACK.
 5. `netlib-static`: enables provider-backed LAPACK paths via statically linked Netlib LAPACK.
 6. `accelerator-rayon`: enables selected parallel CPU kernels.
-7. `accelerator-wgpu`: enables bounded WGPU-backed `f32` kernel paths across dense/vector/tensor families.
+7. `accelerator-wgpu`: enables bounded WGPU-backed dense/vector/tensor kernel paths (`f32` native, `f64` native when `SHADER_F64` is available).
 
 Note: provider requirements depend on backend choice. Static features (`openblas-static`,
 `netlib-static`) require native build toolchains such as `gcc`, `gfortran`, and `make`, and

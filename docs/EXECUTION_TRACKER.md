@@ -163,6 +163,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 121. `D-121`: `G-002` is complete for dense/vector/tensor `f32` v1 GPU breadth: `GpuBackend` now attempts native `wgpu` execution for `batched_row_matvec`, `dot`, `pairwise_l2`, `pairwise_cosine`, `tensor_contract_axes`, and `tensor_sum_last_axis`, with explicit CPU fallback on unavailable/failed GPU execution.
 122. `D-122`: `G-003` is complete: `L-GPU-WGPU-F32` chunk tracking now includes explicit CPU comparator and GPU groups in `accelerator_benchmarks`, and benchmark-report classification/dtype extraction recognizes the new GPU chunk IDs.
 123. `D-123`: `G-004` is complete: local `just` and CI feature-matrix gates now include explicit clippy/check permutations for `accelerator-rayon` and `accelerator-wgpu`, including provider+accelerator combinations.
+124. `D-124`: GPU `f64` backend depth advanced: `GpuBackend<f64>` now attempts native WGPU execution for dense/vector/tensor kernel families when `SHADER_F64` is available and preserves explicit CPU fallback behavior otherwise.
 
 ## Next
 

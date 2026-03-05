@@ -98,6 +98,7 @@ Workspace migration for library domains is complete.
 90. GPU `f32` backend coverage is expanded across dense/vector/tensor kernels (`batched_row_matvec`, `dot`, `pairwise_l2`, `pairwise_cosine`, `tensor_contract_axes`, `tensor_sum_last_axis`) with explicit CPU fallback behavior when GPU execution is unavailable.
 91. GPU benchmark chunk tracking now includes explicit CPU comparator and GPU groups (`accelerator_nabled_gpu_cpu_f32`, `accelerator_nabled_gpu_wgpu_f32`) and benchmark-report dtype classification for `f32`.
 92. Local/CI feature-matrix gates now explicitly clippy/check accelerator-only permutations (`accelerator-rayon`, `accelerator-wgpu`) plus provider+accelerator combinations.
+93. GPU backend `f64` execution is now conditionally native: `GpuBackend<f64>` attempts WGPU `f64` kernels when `wgpu::Features::SHADER_F64` is available and otherwise follows explicit CPU fallback behavior in backend-dispatched paths.
 
 ## Current Code Ownership
 
