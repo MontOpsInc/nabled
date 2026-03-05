@@ -44,7 +44,7 @@ fn main() -> Result<(), nabled::linalg::svd::SVDError> {
 }
 ```
 
-Review more examples in [nabled](crates/nabled/examples).
+Review more examples in `crates/nabled/examples`.
 
 ## Namespaced API
 
