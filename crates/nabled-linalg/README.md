@@ -9,7 +9,7 @@ primitives, and matrix-function algorithms.
 
 ```toml
 [dependencies]
-nabled-linalg = "0.0.3"
+nabled-linalg = "0.0.4"
 ```
 
 ## Optional Features
@@ -28,7 +28,7 @@ Note: provider requirements depend on backend choice. Static features (`openblas
 
 ```toml
 [dependencies]
-nabled-linalg = { version = "0.0.3", features = ["openblas-system"] }
+nabled-linalg = { version = "0.0.4", features = ["openblas-system"] }
 ```
 
 ## Docs
