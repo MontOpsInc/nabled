@@ -42,7 +42,7 @@ Operational sequencing (`Done / Next / Needed`) lives in `docs/EXECUTION_TRACKER
 | Sparse kernels | CSR/CSC/COO primitives, sparse matvec/matmat, Jacobi/Gauss-Seidel/CG/PCG/BiCGSTAB/GMRES, ILU(0)/ILU(k)/IC(0)/ILUT/ILDL(0) preconditioning workflows + direct sparse LU solve/reuse paths | `nabled-linalg::sparse` | Implemented | Yes | Includes CSR↔CSC conversion, sparse-sparse multiplication, factorization-reuse solve APIs, ILU0/ILUK/ILUT/ILDL0-preconditioned GMRES/BiCGSTAB paths, and direct sparse LU solve/reuse workflows; stable allocating sparse matvec/matmat entrypoints now use compile-time backend kernel dispatch. Bench exists (`sparse_benchmarks`) with dense ndarray baseline. |
 | Optimization | line search, gradient descent, Adam, momentum, RMSProp, projected GD, stochastic GD, BFGS | `nabled-ml::optimization` | Implemented | Yes | Bench exists (`optimization_benchmarks`) with manual baseline loops. |
 | Tensor/cube primitives | batched cube kernels + higher-rank `ArrayD` ops (last-axis reductions, axis permutation, explicit-axis contraction, N-D batched last-two matmul) + rank-3 HOSVD + einsum-style binary contractions | `nabled-linalg::tensor` | Implemented | Yes | Required v1 tensor surface is explicit and complete across allocating/view/into forms for required operation families (real/complex where applicable); see `docs/V1_STABILITY.md` for scope lock and contracts. |
-| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + feature-gated accelerated matmat + feature-gated GPU kernels (`wgpu`) + explicit CPU fallback behavior for out-of-scope v1 GPU kernels | `nabled-linalg::accelerator` | Implemented | Yes | Required v1 kernel families are wired through compile-time backend dispatch over `CpuBackend`/`GpuBackend`, with bounded GPU `f32` support and explicit fallback contracts outside v1 GPU scope; see `docs/V1_STABILITY.md` for the locked support matrix. |
+| Accelerator contracts | compile-time backend trait + per-operation kernel trait dispatch + CPU execution/chunking + feature-gated accelerated matmat + feature-gated GPU kernels (`wgpu`) + explicit CPU fallback behavior for out-of-scope v1 GPU kernels | `nabled-linalg::accelerator` | Implemented | Yes | Required v1 kernel families are wired through compile-time backend dispatch over `CpuBackend`/`GpuBackend`, with expanded GPU-native `f32` coverage across dense/vector/tensor families and explicit fallback contracts outside the declared GPU scope; see `docs/V1_STABILITY.md` for the support matrix. |
 | Jacobian tools | numerical Jacobian/gradient/Hessian | `nabled-ml::jacobian` | Implemented | No | Finite-difference based. |
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
@@ -94,7 +94,7 @@ Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATA
 | Capability Group | Current Status | Gap |
 |---|---|---|
 | Tensor/cube-focused higher-rank APIs | Implemented | Required v1 tensor surface is complete; future expansion targets broader tensor algebra depth (for example higher-order decompositions/networks). |
-| GPU and future multi-node kernels | Implemented | Required v1 bounded GPU surface is complete; future expansion targets deeper GPU dtype/op coverage and explicit multi-node orchestration. |
+| GPU and future multi-node kernels | Implemented | Required v1 GPU surface is complete with expanded `f32` dense/vector/tensor coverage; future expansion targets sparse GPU depth, broader dtype/op coverage, and explicit multi-node orchestration. |
 | Arrow-aware API surface in `nabled` | Intentionally omitted | Per project decision, Arrow interop belongs to downstream crates. |
 
 ## Sufficiency Verdict
@@ -114,6 +114,11 @@ Primary remaining work:
 3. Expand tensor algebra depth beyond the locked v1 surface.
 4. Expand GPU and multi-node breadth beyond the locked v1 surface.
 
+Current maintainer-directed execution override:
+1. GPU breadth expansion is the active round focus.
+2. Metal-specific backend work is deferred.
+3. SIMD-focused CPU optimization is deferred.
+
 ## Definition of Done for This Document
 
 When updating this matrix:
@@ -129,3 +134,4 @@ These are intentionally tracked as post-capability polish passes once P0/P1 suff
 2. Allocation audit to ensure heap allocations occur only where contractually necessary.
 3. SIMD opportunity pass for hand-rolled kernels that dominate wall-clock time.
 4. Threading policy pass for internal parallelism, including `accelerator-rayon` interactions with BLAS/LAPACK provider threading to avoid oversubscription.
+5. Metal-specific backend investigation beyond `wgpu` once GPU `wgpu` kernel breadth is complete.

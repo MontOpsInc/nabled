@@ -13,7 +13,10 @@ use super::cpu::{
     tensor_sum_last_axis_serial, triangular_solve_mat_serial, triangular_solve_vec_serial,
 };
 use super::gpu::{
-    batched_matmat_gpu_f32, matmat_gpu_f32, matvec_gpu_f32, tensor_batched_matmul_last_two_gpu_f32,
+    batched_matmat_gpu_f32, batched_row_matvec_gpu_f32, dot_gpu_f32, matmat_gpu_f32,
+    matvec_gpu_f32, pairwise_cosine_gpu_f32, pairwise_l2_gpu_f32,
+    tensor_batched_matmul_last_two_gpu_f32, tensor_contract_axes_gpu_f32,
+    tensor_sum_last_axis_gpu_f32,
 };
 use super::kernels::{
     BatchedMatMatKernel, BatchedRowMatVecKernel, DotKernel, MatMatKernel, MatVecKernel,
@@ -179,6 +182,27 @@ impl BatchedRowMatVecKernel<f64> for GpuBackend {
     }
 }
 
+impl BatchedRowMatVecKernel<f32> for CpuBackend {
+    fn batched_row_matvec(
+        batch_vectors: &Array2<f32>,
+        matrix: &Array2<f32>,
+    ) -> Result<Array2<f32>, AcceleratorError> {
+        batched_row_matvec_serial(batch_vectors, matrix)
+    }
+}
+
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl BatchedRowMatVecKernel<f32> for GpuBackend {
+    fn batched_row_matvec(
+        batch_vectors: &Array2<f32>,
+        matrix: &Array2<f32>,
+    ) -> Result<Array2<f32>, AcceleratorError> {
+        fallback_or_cpu_gpu(batched_row_matvec_gpu_f32(batch_vectors, matrix), || {
+            batched_row_matvec_serial(batch_vectors, matrix)
+        })
+    }
+}
+
 impl<T> SparseMatMatDenseKernel<T> for CpuBackend
 where
     T: NabledReal,
@@ -296,12 +320,16 @@ where
     }
 }
 
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl DotKernel<f32> for GpuBackend {
+    fn dot(left: &Array1<f32>, right: &Array1<f32>) -> Result<f32, AcceleratorError> {
+        fallback_or_cpu_gpu(dot_gpu_f32(left, right), || dot_serial(left, right))
+    }
+}
+
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl<T> DotKernel<T> for GpuBackend
-where
-    T: NabledReal,
-{
-    fn dot(left: &Array1<T>, right: &Array1<T>) -> Result<T, AcceleratorError> {
+impl DotKernel<f64> for GpuBackend {
+    fn dot(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
         dot_serial(left, right)
     }
 }
@@ -315,12 +343,22 @@ where
     }
 }
 
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl PairwiseL2Kernel<f32> for GpuBackend {
+    fn pairwise_l2(
+        left: &Array2<f32>,
+        right: &Array2<f32>,
+    ) -> Result<Array2<f32>, AcceleratorError> {
+        fallback_or_cpu_gpu(pairwise_l2_gpu_f32(left, right), || pairwise_l2_serial(left, right))
+    }
+}
+
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl<T> PairwiseL2Kernel<T> for GpuBackend
-where
-    T: NabledReal,
-{
-    fn pairwise_l2(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError> {
+impl PairwiseL2Kernel<f64> for GpuBackend {
+    fn pairwise_l2(
+        left: &Array2<f64>,
+        right: &Array2<f64>,
+    ) -> Result<Array2<f64>, AcceleratorError> {
         pairwise_l2_serial(left, right)
     }
 }
@@ -334,12 +372,24 @@ where
     }
 }
 
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl PairwiseCosineKernel<f32> for GpuBackend {
+    fn pairwise_cosine(
+        left: &Array2<f32>,
+        right: &Array2<f32>,
+    ) -> Result<Array2<f32>, AcceleratorError> {
+        fallback_or_cpu_gpu(pairwise_cosine_gpu_f32(left, right), || {
+            pairwise_cosine_serial(left, right)
+        })
+    }
+}
+
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl<T> PairwiseCosineKernel<T> for GpuBackend
-where
-    T: NabledReal,
-{
-    fn pairwise_cosine(left: &Array2<T>, right: &Array2<T>) -> Result<Array2<T>, AcceleratorError> {
+impl PairwiseCosineKernel<f64> for GpuBackend {
+    fn pairwise_cosine(
+        left: &Array2<f64>,
+        right: &Array2<f64>,
+    ) -> Result<Array2<f64>, AcceleratorError> {
         pairwise_cosine_serial(left, right)
     }
 }
@@ -358,17 +408,41 @@ where
     }
 }
 
-/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl<T> TensorContractKernel<T> for GpuBackend
-where
-    T: Copy + Default + AddAssign + Mul<Output = T>,
-{
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl TensorContractKernel<f32> for GpuBackend {
     fn contract_axes(
-        left: &ArrayD<T>,
-        right: &ArrayD<T>,
+        left: &ArrayD<f32>,
+        right: &ArrayD<f32>,
         left_axis: usize,
         right_axis: usize,
-    ) -> Result<ArrayD<T>, AcceleratorError> {
+    ) -> Result<ArrayD<f32>, AcceleratorError> {
+        fallback_or_cpu_gpu(
+            tensor_contract_axes_gpu_f32(left, right, left_axis, right_axis),
+            || tensor_contract_axes_serial(left, right, left_axis, right_axis),
+        )
+    }
+}
+
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl TensorContractKernel<f64> for GpuBackend {
+    fn contract_axes(
+        left: &ArrayD<f64>,
+        right: &ArrayD<f64>,
+        left_axis: usize,
+        right_axis: usize,
+    ) -> Result<ArrayD<f64>, AcceleratorError> {
+        tensor_contract_axes_serial(left, right, left_axis, right_axis)
+    }
+}
+
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl TensorContractKernel<num_complex::Complex64> for GpuBackend {
+    fn contract_axes(
+        left: &ArrayD<num_complex::Complex64>,
+        right: &ArrayD<num_complex::Complex64>,
+        left_axis: usize,
+        right_axis: usize,
+    ) -> Result<ArrayD<num_complex::Complex64>, AcceleratorError> {
         tensor_contract_axes_serial(left, right, left_axis, right_axis)
     }
 }
@@ -426,12 +500,27 @@ where
     }
 }
 
+/// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
+impl TensorLastAxisReductionKernel<f32> for GpuBackend {
+    fn sum_last_axis(input: &ArrayD<f32>) -> Result<ArrayD<f32>, AcceleratorError> {
+        fallback_or_cpu_gpu(tensor_sum_last_axis_gpu_f32(input), || {
+            tensor_sum_last_axis_serial(input)
+        })
+    }
+}
+
 /// Note: current GPU backend path falls back to CPU serial execution for this kernel.
-impl<T> TensorLastAxisReductionKernel<T> for GpuBackend
-where
-    T: Copy + Default + AddAssign,
-{
-    fn sum_last_axis(input: &ArrayD<T>) -> Result<ArrayD<T>, AcceleratorError> {
+impl TensorLastAxisReductionKernel<f64> for GpuBackend {
+    fn sum_last_axis(input: &ArrayD<f64>) -> Result<ArrayD<f64>, AcceleratorError> {
+        tensor_sum_last_axis_serial(input)
+    }
+}
+
+/// Note: current GPU backend path falls back to CPU serial execution for this kernel.
+impl TensorLastAxisReductionKernel<num_complex::Complex64> for GpuBackend {
+    fn sum_last_axis(
+        input: &ArrayD<num_complex::Complex64>,
+    ) -> Result<ArrayD<num_complex::Complex64>, AcceleratorError> {
         tensor_sum_last_axis_serial(input)
     }
 }

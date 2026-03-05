@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-04
+Last updated: 2026-03-05
 
 ## Purpose
 
@@ -159,11 +159,22 @@ Use this file to resume work quickly after context compaction without re-auditin
 117. `D-117`: NI-001 real-scalar widening advanced in `nabled-ml::pca`: real PCA APIs/results (`NdarrayPCAResult<T>`, compute/transform/inverse families) are now generic `f32`/`f64` with provider-safe bounds and `f32` parity tests.
 118. `D-118`: NI-001 real-scalar widening advanced in `nabled-linalg::cholesky`: real Cholesky APIs/results (`NdarrayCholeskyResult<T>`, `decompose/solve/inverse` + view/into variants) are now generic `f32`/`f64` across internal/provider modes with `f32` parity tests.
 119. `D-119`: NI-001 is now complete: remaining real `f64`-locked domains (`eigen`, `matrix_functions`, `sparse`) are fully generic `f32`/`f64`, explicit per-domain `f32` parity tests were added, and full quality gates/coverage remain green.
+120. `D-120`: `G-001` is complete: GPU runtime orchestration now reuses cached `wgpu` runtime context (device/queue/pipeline/layout) via one-time initialization in `accelerator::gpu`.
+121. `D-121`: `G-002` is complete for dense/vector/tensor `f32` v1 GPU breadth: `GpuBackend` now attempts native `wgpu` execution for `batched_row_matvec`, `dot`, `pairwise_l2`, `pairwise_cosine`, `tensor_contract_axes`, and `tensor_sum_last_axis`, with explicit CPU fallback on unavailable/failed GPU execution.
+122. `D-122`: `G-003` is complete: `L-GPU-WGPU-F32` chunk tracking now includes explicit CPU comparator and GPU groups in `accelerator_benchmarks`, and benchmark-report classification/dtype extraction recognizes the new GPU chunk IDs.
+123. `D-123`: `G-004` is complete: local `just` and CI feature-matrix gates now include explicit clippy/check permutations for `accelerator-rayon` and `accelerator-wgpu`, including provider+accelerator combinations.
 
 ## Next
 
-1. `K-006`: Lock module-level normalization plan for `Provider / Backend / Kernel` naming and ownership boundaries.
-2. `K-005`: Execute outlier-ranked benchmark optimization plan and log outcomes in `docs/BENCHMARK_TRACKER.md`.
+1. `G-005`: Sparse GPU phase-1 plan and implementation (`CSR matvec` first, then sparse-dense matmat if viable).
+2. `G-006`: GPU allocation/copy contract pass for newly accelerated kernels (`*_into` and view-path behavior audit).
+3. `G-007`: Backend capability report expansion with explicit GPU-native vs GPU-fallback coverage rows by dtype/op family.
+4. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32`).
+
+Round scope lock:
+1. This round is GPU-only.
+2. Metal-specific work is deferred.
+3. SIMD optimization pass is deferred.
 
 ### K-008 Scope Clarification
 
@@ -178,13 +189,17 @@ It means:
 
 ## Needed
 
-1. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
-2. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
+1. Advanced tensor algebra depth beyond the v1 baseline.
+2. Metal-specific backend exploration beyond `wgpu`.
+3. SIMD opportunity pass for hand-rolled CPU kernels.
 
 ## Backlog (From Capability Matrix)
 
-1. Advanced tensor algebra depth beyond the v1 baseline.
-2. Broader GPU dtype/op coverage and future multi-node backend breadth.
+1. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+2. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
+3. Advanced tensor algebra depth beyond the v1 baseline.
+4. Metal-specific backend exploration beyond `wgpu`.
+5. SIMD opportunity pass for hand-rolled CPU kernels.
 
 ## Resume Protocol (Compaction-Friendly)
 

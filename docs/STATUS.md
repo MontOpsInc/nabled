@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-04
+Last updated: 2026-03-05
 
 ## Summary
 
@@ -94,6 +94,10 @@ Workspace migration for library domains is complete.
 86. NI-001 real-scalar widening advanced in `nabled-ml::pca`: real PCA APIs/results are now generic (`NdarrayPCAResult<T>`, compute/transform/inverse families) with provider-safe bounds and new `f32` parity tests in provider/no-provider builds.
 87. NI-001 real-scalar widening advanced in `nabled-linalg::cholesky`: real Cholesky APIs/results are now generic (`NdarrayCholeskyResult<T>`, `decompose/solve/inverse` and view/into variants) across internal/provider paths, with new `f32` parity coverage and workspace gates green in both modes.
 88. NI-001 is now complete: remaining real domains (`eigen`, `matrix_functions`, `sparse`) are fully generic `f32`/`f64`, explicit `f32` parity tests were added in each domain, and full quality gates (including provider-enabled permutations and coverage threshold) remain green.
+89. GPU runtime orchestration now reuses cached `wgpu` context state (device/queue/pipeline/layout), reducing repeated setup overhead in accelerator GPU kernels.
+90. GPU `f32` backend coverage is expanded across dense/vector/tensor kernels (`batched_row_matvec`, `dot`, `pairwise_l2`, `pairwise_cosine`, `tensor_contract_axes`, `tensor_sum_last_axis`) with explicit CPU fallback behavior when GPU execution is unavailable.
+91. GPU benchmark chunk tracking now includes explicit CPU comparator and GPU groups (`accelerator_nabled_gpu_cpu_f32`, `accelerator_nabled_gpu_wgpu_f32`) and benchmark-report dtype classification for `f32`.
+92. Local/CI feature-matrix gates now explicitly clippy/check accelerator-only permutations (`accelerator-rayon`, `accelerator-wgpu`) plus provider+accelerator combinations.
 
 ## Current Code Ownership
 
@@ -128,11 +132,12 @@ Workspace migration for library domains is complete.
 
 ## Next Required Milestone
 
-Harden workspace contracts and release readiness:
+GPU phase-2 hardening:
 
-1. Resolve remaining `K-*` architecture decisions (`K-006`, then `K-004`).
-2. Run benchmark/regression optimization passes (outlier triage, allocation audit, SIMD/threading opportunities).
-3. Keep execution updates current in `docs/EXECUTION_TRACKER.md`.
+1. Start sparse GPU phase-1 (`CSR matvec`, then sparse-dense matmat if viable).
+2. Run allocation/copy contract audit for newly accelerated kernels (`*_into` and view-path behavior).
+3. Expand backend capability reporting with explicit GPU-native vs GPU-fallback rows by kernel family.
+4. Continue `L-GPU-WGPU-F32` chunk optimization now that benchmark coverage is locked.
 
 ## Completion Criteria For Migration
 

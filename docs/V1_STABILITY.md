@@ -1,6 +1,6 @@
 # V1 Stability Contract
 
-Last updated: 2026-03-04
+Last updated: 2026-03-05
 
 ## Purpose
 
@@ -46,9 +46,17 @@ GPU scope is intentionally explicit and bounded for v1.
 1. `matmat_with_backend_f32::<GpuBackend>`
 2. `matvec_with_backend_f32::<GpuBackend>`
 3. `batched_matmat_with_backend_f32::<GpuBackend>`
-4. `tensor_batched_matmul_last_two_with_backend::<GpuBackend, f32>`
+4. `batched_row_matvec_with_backend_f32::<GpuBackend>`
+5. `dot_with_backend_f32::<GpuBackend>`
+6. `pairwise_l2_with_backend_f32::<GpuBackend>`
+7. `pairwise_cosine_with_backend_f32::<GpuBackend>`
+8. `tensor_batched_matmul_last_two_with_backend::<GpuBackend, f32>`
+9. `tensor_contract_axes_with_backend::<GpuBackend, f32>` (single-axis kernel path)
+10. `tensor_sum_last_axis_with_backend::<GpuBackend, f32>`
 
-Runtime note: on systems without a usable GPU device, these return `AcceleratorError::DeviceUnavailable`.
+Runtime note:
+1. Backend-dispatched GPU paths above preserve capability via explicit CPU fallback when a usable GPU is unavailable.
+2. Direct low-level GPU entrypoints in `accelerator::gpu` may still return `AcceleratorError::DeviceUnavailable`.
 
 ### GPU backend `f64`/complex and tensor-op fallback behavior
 

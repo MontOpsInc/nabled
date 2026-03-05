@@ -104,6 +104,7 @@ fn main() -> io::Result<()> {
         let (shape, rows, cols) = parse_shape_dims(&benchmark.value_str);
         let (domain, backend, competitor, operation) =
             classify_benchmark(&benchmark.group_id, &benchmark.function_id);
+        let dtype = infer_dtype(&benchmark.group_id, &benchmark.function_id);
 
         entries.push(BenchmarkEntry {
             domain,
@@ -117,7 +118,7 @@ fn main() -> io::Result<()> {
             rows,
             cols,
             size: rows.min(cols),
-            dtype: "f64".to_string(),
+            dtype,
             mean_ns: estimates.mean.point_estimate,
             median_ns: estimates.median.point_estimate,
             std_dev_ns: estimates.std_dev.point_estimate,
@@ -312,6 +313,8 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
         | "optimization_nabled_ndarray"
         | "polar_nabled_ndarray"
         | "orthogonalization_nabled_ndarray" => ("ndarray", "none"),
+        "accelerator_nabled_gpu_cpu_f32" => ("cpu_f32", "none"),
+        "accelerator_nabled_gpu_wgpu_f32" => ("wgpu_f32", "none"),
         "svd_competitor_faer_direct"
         | "qr_competitor_faer_direct"
         | "lu_competitor_faer_direct"
@@ -333,6 +336,16 @@ fn classify_benchmark(group_id: &str, function_id: &str) -> (String, String, Str
     };
 
     (domain.to_string(), backend.to_string(), competitor.to_string(), function_id.to_string())
+}
+
+fn infer_dtype(group_id: &str, function_id: &str) -> String {
+    if function_id.contains("f32") || group_id.contains("f32") {
+        return "f32".to_string();
+    }
+    if function_id.contains("complex") || group_id.contains("complex") {
+        return "complex64".to_string();
+    }
+    "f64".to_string()
 }
 
 fn is_protected_nabled_case(entry: &BenchmarkEntry) -> bool { entry.competitor == "none" }

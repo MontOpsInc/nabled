@@ -78,6 +78,12 @@ jobs:
     - name: Run clippy (lapack-provider wiring only)
       run: cargo +stable clippy --workspace --profile ci --no-default-features --features lapack-provider --all-targets -- -D warnings
 
+    - name: Run clippy (accelerator-rayon only)
+      run: cargo +stable clippy --workspace --profile ci --no-default-features --features accelerator-rayon --all-targets -- -D warnings
+
+    - name: Run clippy (accelerator-wgpu only)
+      run: cargo +stable clippy --workspace --profile ci --no-default-features --features accelerator-wgpu --all-targets -- -D warnings
+
     - name: Run clippy (provider + accelerators baseline)
       run: cargo +stable clippy --workspace --profile ci --no-default-features --features "openblas-system accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
 
@@ -97,8 +103,10 @@ jobs:
       run: |
         cargo +stable check --workspace --profile ci --no-default-features --features accelerator-rayon --all-targets
         cargo +stable check --workspace --profile ci --no-default-features --features accelerator-wgpu --all-targets
+        cargo +stable check --workspace --profile ci --no-default-features --features "accelerator-rayon accelerator-wgpu" --all-targets
         cargo +stable check --workspace --profile ci --no-default-features --features "openblas-system accelerator-rayon" --all-targets
         cargo +stable check --workspace --profile ci --no-default-features --features "openblas-system accelerator-wgpu" --all-targets
+        cargo +stable check --workspace --profile ci --no-default-features --features "openblas-system accelerator-rayon accelerator-wgpu" --all-targets
 
     - name: Generate backend capability reports
       run: |

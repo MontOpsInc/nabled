@@ -88,6 +88,7 @@ bench-one-lto bench:
      open target/criterion/report/index.html
 
 bench-smoke:
+    rm -rf target/criterion crates/nabled/target/criterion
     cargo bench -p nabled --bench svd_benchmarks -- --quick
     cargo bench -p nabled --bench qr_benchmarks -- --quick
     cargo bench -p nabled --bench triangular_benchmarks -- --quick
@@ -100,6 +101,7 @@ bench-smoke:
     cargo bench -p nabled --bench sparse_benchmarks -- --quick
     cargo bench -p nabled --bench tensor_benchmarks -- --quick
     cargo bench -p nabled --bench accelerator_benchmarks -- --quick
+    cargo bench -p nabled --no-default-features --features accelerator-wgpu --bench accelerator_benchmarks -- --quick
     cargo bench -p nabled --bench schur_benchmarks -- --quick
     cargo bench -p nabled --bench sylvester_benchmarks -- --quick
     cargo bench -p nabled --bench optimization_benchmarks -- --quick
@@ -107,6 +109,7 @@ bench-smoke:
     cargo bench -p nabled --bench orthogonalization_benchmarks -- --quick
 
 bench-smoke-provider:
+    rm -rf target/criterion crates/nabled/target/criterion
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench svd_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench qr_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench triangular_benchmarks -- --quick
@@ -257,6 +260,8 @@ checks:
     {{ provider_env_prefix }} cargo +nightly clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
+    cargo +stable clippy --workspace --no-default-features --features accelerator-rayon --all-targets -- -D warnings
+    cargo +stable clippy --workspace --no-default-features --features accelerator-wgpu --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     just -f {{ justfile() }} check-provider-clippy
     just -f {{ justfile() }} check-provider-netlib
@@ -289,8 +294,12 @@ check-provider-static:
 
 # Verify accelerator feature permutations compile under stable.
 check-accelerator:
+    cargo +stable clippy --workspace --no-default-features --features accelerator-rayon --all-targets -- -D warnings
+    cargo +stable clippy --workspace --no-default-features --features accelerator-wgpu --all-targets -- -D warnings
     cargo +stable check --workspace --no-default-features --features accelerator-rayon --all-targets
     cargo +stable check --workspace --no-default-features --features accelerator-wgpu --all-targets
+    {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon" --all-targets -- -D warnings
+    {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-wgpu" --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon" --all-targets
     {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "{{ provider_features }} accelerator-wgpu" --all-targets
 

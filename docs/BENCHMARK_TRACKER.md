@@ -1,6 +1,6 @@
 # Benchmark Tracker
 
-Last updated: 2026-03-03
+Last updated: 2026-03-05
 
 ## Purpose
 
@@ -45,7 +45,13 @@ A chunk is defined by:
 | `L-CPU-NATIVE-TENSOR` | Tensor/cube kernels | internal provider, CPU backend, `f64` (+ complex where exposed) | `tensor` | partial (manual baseline subset) | Planned |
 | `L-CPU-NATIVE-ACCEL` | Accelerator CPU paths | internal provider, CPU backend | `accelerator` | partial (manual baseline) | Planned |
 | `L-CPU-PROVIDER-DECOMP` | Provider-backed decompositions | `openblas-system` provider, CPU backend | same as `L-CPU-NATIVE-DECOMP` | same comparator gaps as native unless expanded | Planned |
-| `L-GPU-WGPU-F32` | GPU kernel paths | internal/provider orthogonal, `accelerator-wgpu`, `f32` scope | `accelerator`, tensor GPU-covered paths | limited | Planned |
+| `L-GPU-WGPU-F32` | GPU kernel paths | internal/provider orthogonal, `accelerator-wgpu`, `f32` scope | `accelerator` (`accelerator_nabled_gpu_cpu_f32`, `accelerator_nabled_gpu_wgpu_f32`) + tensor GPU-covered paths | expanded (`f32` CPU comparator + GPU groups) | In progress (measured + optimization active) |
+
+## Active Round Scope
+
+1. Active optimization/expansion round is GPU-only.
+2. Metal-specific backend work is explicitly deferred.
+3. SIMD-focused CPU optimization is explicitly deferred.
 
 ## Current Harness Audit (Linalg)
 
@@ -306,18 +312,19 @@ Interpretation:
 
 ## Next Benchmarking Actions
 
-1. Optimize decomposition hotspots in this order:
-   - `qr` (`decompose` / `least_squares`),
-   - `lu` (`decompose` / `solve` / `determinant`),
-   - `eigen::symmetric`,
-   - residual `cholesky` gap (`decompose`/`solve`/`inverse`).
-2. Expand comparator coverage for `orthogonalization`, `matrix_functions`, and `polar`.
-3. Replace coarse sparse baselines with higher-fidelity sparse comparators where practical.
-4. Define and lock a clean run protocol for chunk runs (artifact hygiene + deterministic extraction).
-5. After each chunk:
-   - rank top regressions by absolute ns and percent vs comparator,
-   - apply targeted optimization pass,
-   - rerun chunk and record delta.
+1. Drive `L-GPU-WGPU-F32` as the primary optimization chunk:
+   - keep CPU comparator (`accelerator_nabled_gpu_cpu_f32`) and GPU group (`accelerator_nabled_gpu_wgpu_f32`) locked for regression tracking.
+2. Continue GPU result split by operation family:
+   - `dense` (`matmat`, `matvec`, batched variants),
+   - `vector` (`dot`, pairwise kernels),
+   - `tensor` (contract/reduction/batched matmul),
+   - `sparse` (when phase-1 sparse GPU kernels land).
+3. For each GPU-native op, track:
+   - correctness parity vs CPU baseline,
+   - median/percentile timing ratio,
+   - fallback incidence (should trend to zero for in-scope GPU-native ops).
+4. Keep CPU decomposition hotspot optimization deferred for this round.
+5. Keep SIMD-driven optimization deferred for this round.
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

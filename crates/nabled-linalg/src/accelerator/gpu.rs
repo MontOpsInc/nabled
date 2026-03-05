@@ -1,4 +1,7 @@
-use ndarray::{Array1, Array2, Array3, ArrayD, IxDyn, s};
+#[cfg(feature = "accelerator-wgpu")]
+use std::sync::OnceLock;
+
+use ndarray::{Array1, Array2, Array3, ArrayD, ArrayView2, Axis, IxDyn, s};
 #[cfg(feature = "accelerator-wgpu")]
 use wgpu::util::DeviceExt;
 
@@ -45,6 +48,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     out[row * params.cols + col] = acc;
 }
 ";
+
+#[cfg(feature = "accelerator-wgpu")]
+struct WgpuRuntime {
+    device:            wgpu::Device,
+    queue:             wgpu::Queue,
+    pipeline:          wgpu::ComputePipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+}
 
 #[cfg(feature = "accelerator-wgpu")]
 struct GpuBuffers {
@@ -147,11 +158,33 @@ fn create_pipeline_and_layout(
 }
 
 #[cfg(feature = "accelerator-wgpu")]
+fn init_wgpu_runtime() -> Result<WgpuRuntime, AcceleratorError> {
+    let (device, queue) = request_wgpu_device()?;
+    let (pipeline, bind_group_layout) = create_pipeline_and_layout(&device);
+    Ok(WgpuRuntime { device, queue, pipeline, bind_group_layout })
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn wgpu_runtime() -> Result<&'static WgpuRuntime, AcceleratorError> {
+    static RUNTIME: OnceLock<Result<WgpuRuntime, AcceleratorError>> = OnceLock::new();
+    match RUNTIME.get_or_init(init_wgpu_runtime) {
+        Ok(runtime) => Ok(runtime),
+        Err(error) => Err(*error),
+    }
+}
+
+#[cfg(feature = "accelerator-wgpu")]
+fn matrix_data(matrix: &ArrayView2<'_, f32>) -> Vec<f32> {
+    matrix
+        .as_slice_memory_order()
+        .map_or_else(|| matrix.iter().copied().collect::<Vec<_>>(), <[f32]>::to_vec)
+}
+
+#[cfg(feature = "accelerator-wgpu")]
 fn create_buffers_and_bind_group(
-    device: &wgpu::Device,
-    bind_group_layout: &wgpu::BindGroupLayout,
-    left: &Array2<f32>,
-    right: &Array2<f32>,
+    runtime: &WgpuRuntime,
+    left: &ArrayView2<'_, f32>,
+    right: &ArrayView2<'_, f32>,
 ) -> Result<GpuBuffers, AcceleratorError> {
     let rows = left.nrows();
     let cols = right.ncols();
@@ -160,41 +193,40 @@ fn create_buffers_and_bind_group(
     let rows_u32 = u32::try_from(rows).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
     let cols_u32 = u32::try_from(cols).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
     let inner_u32 = u32::try_from(inner).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
-
-    let left_data = left.iter().copied().collect::<Vec<_>>();
-    let right_data = right.iter().copied().collect::<Vec<_>>();
     let params = GpuMatMulParams { rows: rows_u32, cols: cols_u32, inner: inner_u32, _pad: 0 };
+    let left_data = matrix_data(left);
+    let right_data = matrix_data(right);
 
-    let left_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let left_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label:    Some("nabled.gpu.left"),
         contents: bytemuck::cast_slice(&left_data),
         usage:    wgpu::BufferUsages::STORAGE,
     });
-    let right_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let right_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label:    Some("nabled.gpu.right"),
         contents: bytemuck::cast_slice(&right_data),
         usage:    wgpu::BufferUsages::STORAGE,
     });
-    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+    let output_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
         label:              Some("nabled.gpu.output"),
         size:               output_size,
         usage:              wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
-    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let params_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label:    Some("nabled.gpu.params"),
         contents: bytemuck::bytes_of(&params),
         usage:    wgpu::BufferUsages::UNIFORM,
     });
-    let readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+    let readback_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
         label:              Some("nabled.gpu.readback"),
         size:               output_size,
         usage:              wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+    let bind_group = runtime.device.create_bind_group(&wgpu::BindGroupDescriptor {
         label:   Some("nabled.gpu.bind_group"),
-        layout:  bind_group_layout,
+        layout:  &runtime.bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: left_buffer.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: right_buffer.as_entire_binding() },
@@ -215,9 +247,7 @@ fn create_buffers_and_bind_group(
 
 #[cfg(feature = "accelerator-wgpu")]
 fn dispatch_gpu_kernel(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    pipeline: &wgpu::ComputePipeline,
+    runtime: &WgpuRuntime,
     buffers: &GpuBuffers,
 ) -> Result<(), AcceleratorError> {
     let rows =
@@ -225,12 +255,12 @@ fn dispatch_gpu_kernel(
     let cols =
         usize::try_from(buffers.cols_u32).map_err(|_| AcceleratorError::KernelExecutionFailed)?;
     let output_size = output_size_bytes(rows, cols)?;
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+    let mut encoder = runtime.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("nabled.gpu.encoder"),
     });
     {
         let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        compute.set_pipeline(pipeline);
+        compute.set_pipeline(&runtime.pipeline);
         compute.set_bind_group(0, &buffers.bind_group, &[]);
         let workgroups_x = buffers.cols_u32.div_ceil(16);
         let workgroups_y = buffers.rows_u32.div_ceil(16);
@@ -243,14 +273,14 @@ fn dispatch_gpu_kernel(
         0,
         output_size,
     );
-    let _submission_index = queue.submit(Some(encoder.finish()));
+    let _submission_index = runtime.queue.submit(Some(encoder.finish()));
 
     let readback_slice = buffers.readback_buffer.slice(..);
     let (sender, receiver) = std::sync::mpsc::channel();
     readback_slice.map_async(wgpu::MapMode::Read, move |result| {
         let _ = sender.send(result);
     });
-    let _poll_status = device.poll(wgpu::PollType::wait());
+    let _poll_status = runtime.device.poll(wgpu::PollType::wait());
     match receiver.recv() {
         Ok(Ok(())) => Ok(()),
         _ => Err(AcceleratorError::KernelExecutionFailed),
@@ -273,24 +303,18 @@ fn read_gpu_output(
 
 #[cfg(feature = "accelerator-wgpu")]
 fn matmat_gpu_f32_wgpu(
-    left: &Array2<f32>,
-    right: &Array2<f32>,
+    left: &ArrayView2<'_, f32>,
+    right: &ArrayView2<'_, f32>,
 ) -> Result<Array2<f32>, AcceleratorError> {
-    let (device, queue) = request_wgpu_device()?;
-    let (pipeline, bind_group_layout) = create_pipeline_and_layout(&device);
-    let buffers = create_buffers_and_bind_group(&device, &bind_group_layout, left, right)?;
-    dispatch_gpu_kernel(&device, &queue, &pipeline, &buffers)?;
+    let runtime = wgpu_runtime()?;
+    let buffers = create_buffers_and_bind_group(runtime, left, right)?;
+    dispatch_gpu_kernel(runtime, &buffers)?;
     read_gpu_output(&buffers.readback_buffer, left.nrows(), right.ncols())
 }
 
-/// Compute matrix-matrix product on GPU for `f32` inputs using `wgpu`.
-///
-/// # Errors
-/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
-/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
-pub fn matmat_gpu_f32(
-    left: &Array2<f32>,
-    right: &Array2<f32>,
+fn matmat_gpu_f32_impl(
+    left: &ArrayView2<'_, f32>,
+    right: &ArrayView2<'_, f32>,
 ) -> Result<Array2<f32>, AcceleratorError> {
     if left.ncols() != right.nrows() {
         return Err(AcceleratorError::DimensionMismatch);
@@ -309,6 +333,40 @@ pub fn matmat_gpu_f32(
     }
 }
 
+fn shape_product(dims: &[usize]) -> usize { dims.iter().copied().product::<usize>().max(1) }
+
+fn uncontracted_axes(ndim: usize, contracted_axis: usize) -> Result<Vec<usize>, AcceleratorError> {
+    if contracted_axis >= ndim {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+    Ok((0..ndim).filter(|axis| *axis != contracted_axis).collect())
+}
+
+fn row_norms_squared(matrix: &Array2<f32>) -> Array1<f32> {
+    let mut norms = Array1::<f32>::zeros(matrix.nrows());
+    for row in 0..matrix.nrows() {
+        let mut sq_sum = 0.0_f32;
+        for col in 0..matrix.ncols() {
+            let value = matrix[[row, col]];
+            sq_sum += value * value;
+        }
+        norms[row] = sq_sum;
+    }
+    norms
+}
+
+/// Compute matrix-matrix product on GPU for `f32` inputs using `wgpu`.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
+pub fn matmat_gpu_f32(
+    left: &Array2<f32>,
+    right: &Array2<f32>,
+) -> Result<Array2<f32>, AcceleratorError> {
+    matmat_gpu_f32_impl(&left.view(), &right.view())
+}
+
 /// Compute matrix-vector product on GPU for `f32` inputs using `wgpu`.
 ///
 /// # Errors
@@ -322,9 +380,8 @@ pub fn matvec_gpu_f32(
         return Err(AcceleratorError::DimensionMismatch);
     }
 
-    let right = Array2::from_shape_vec((vector.len(), 1), vector.to_vec())
-        .map_err(|_| AcceleratorError::KernelExecutionFailed)?;
-    let product = matmat_gpu_f32(matrix, &right)?;
+    let right = vector.view().insert_axis(Axis(1)).to_owned();
+    let product = matmat_gpu_f32_impl(&matrix.view(), &right.view())?;
     Ok(product.column(0).to_owned())
 }
 
@@ -343,17 +400,110 @@ pub fn batched_matmat_gpu_f32(
         return Err(AcceleratorError::DimensionMismatch);
     }
 
-    let (batch, rows, _) = left_batches.dim();
+    let (batch_count, rows, _) = left_batches.dim();
     let cols = right_batches.dim().2;
-    let mut output = Array3::<f32>::zeros((batch, rows, cols));
+    let mut output = Array3::<f32>::zeros((batch_count, rows, cols));
 
-    for b in 0..batch {
-        let left = left_batches.slice(s![b, .., ..]).to_owned();
-        let right = right_batches.slice(s![b, .., ..]).to_owned();
-        let product = matmat_gpu_f32(&left, &right)?;
-        output.slice_mut(s![b, .., ..]).assign(&product);
+    for batch in 0..batch_count {
+        let left = left_batches.slice(s![batch, .., ..]);
+        let right = right_batches.slice(s![batch, .., ..]);
+        let product = matmat_gpu_f32_impl(&left, &right)?;
+        output.slice_mut(s![batch, .., ..]).assign(&product);
     }
 
+    Ok(output)
+}
+
+/// Compute row-batch by matrix products on GPU for `f32` inputs.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
+pub fn batched_row_matvec_gpu_f32(
+    batch_vectors: &Array2<f32>,
+    matrix: &Array2<f32>,
+) -> Result<Array2<f32>, AcceleratorError> {
+    if batch_vectors.ncols() != matrix.ncols() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+    let matrix_t = matrix.t().to_owned();
+    matmat_gpu_f32_impl(&batch_vectors.view(), &matrix_t.view())
+}
+
+/// Compute vector dot product on GPU for `f32` inputs.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
+pub fn dot_gpu_f32(left: &Array1<f32>, right: &Array1<f32>) -> Result<f32, AcceleratorError> {
+    if left.len() != right.len() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+    let left_row = left.view().insert_axis(Axis(0)).to_owned();
+    let right_col = right.view().insert_axis(Axis(1)).to_owned();
+    let product = matmat_gpu_f32_impl(&left_row.view(), &right_col.view())?;
+    Ok(product[[0, 0]])
+}
+
+/// Compute pairwise L2 distance matrix on GPU for `f32` inputs.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
+pub fn pairwise_l2_gpu_f32(
+    left: &Array2<f32>,
+    right: &Array2<f32>,
+) -> Result<Array2<f32>, AcceleratorError> {
+    if left.ncols() != right.ncols() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let cross = matmat_gpu_f32_impl(&left.view(), &right.t())?;
+    let left_norms = row_norms_squared(left);
+    let right_norms = row_norms_squared(right);
+    let mut output = Array2::<f32>::zeros((left.nrows(), right.nrows()));
+
+    for left_row in 0..left.nrows() {
+        for right_row in 0..right.nrows() {
+            let sq_distance = (left_norms[left_row] + right_norms[right_row]
+                - 2.0_f32 * cross[[left_row, right_row]])
+            .max(0.0_f32);
+            output[[left_row, right_row]] = sq_distance.sqrt();
+        }
+    }
+    Ok(output)
+}
+
+/// Compute pairwise cosine similarity matrix on GPU for `f32` inputs.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, zero-norm
+/// rows, or `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
+pub fn pairwise_cosine_gpu_f32(
+    left: &Array2<f32>,
+    right: &Array2<f32>,
+) -> Result<Array2<f32>, AcceleratorError> {
+    if left.ncols() != right.ncols() {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let cross = matmat_gpu_f32_impl(&left.view(), &right.t())?;
+    let left_norms = row_norms_squared(left).mapv(f32::sqrt);
+    let right_norms = row_norms_squared(right).mapv(f32::sqrt);
+
+    if left_norms.iter().any(|norm| *norm <= f32::EPSILON)
+        || right_norms.iter().any(|norm| *norm <= f32::EPSILON)
+    {
+        return Err(AcceleratorError::KernelExecutionFailed);
+    }
+
+    let mut output = Array2::<f32>::zeros((left.nrows(), right.nrows()));
+    for left_row in 0..left.nrows() {
+        for right_row in 0..right.nrows() {
+            output[[left_row, right_row]] =
+                cross[[left_row, right_row]] / (left_norms[left_row] * right_norms[right_row]);
+        }
+    }
     Ok(output)
 }
 
@@ -382,17 +532,16 @@ pub fn tensor_batched_matmul_last_two_gpu_f32(
     let rows = left.shape()[left.ndim() - 2];
     let inner = left.shape()[left.ndim() - 1];
     let cols = right.shape()[right.ndim() - 1];
-    let batches = left.shape()[..batch_ndim].iter().copied().product::<usize>().max(1);
-
+    let batch_count = shape_product(&left.shape()[..batch_ndim]);
     let left_standard = left.as_standard_layout().to_owned();
     let right_standard = right.as_standard_layout().to_owned();
     let left_3d = left_standard
         .view()
-        .into_shape_with_order((batches, rows, inner))
+        .into_shape_with_order((batch_count, rows, inner))
         .map_err(|_| AcceleratorError::DimensionMismatch)?;
     let right_3d = right_standard
         .view()
-        .into_shape_with_order((batches, inner, cols))
+        .into_shape_with_order((batch_count, inner, cols))
         .map_err(|_| AcceleratorError::DimensionMismatch)?;
 
     let mut output_shape = left.shape()[..batch_ndim].to_vec();
@@ -401,15 +550,100 @@ pub fn tensor_batched_matmul_last_two_gpu_f32(
     let mut output = ArrayD::<f32>::zeros(IxDyn(&output_shape));
     let mut output_3d = output
         .view_mut()
-        .into_shape_with_order((batches, rows, cols))
+        .into_shape_with_order((batch_count, rows, cols))
         .map_err(|_| AcceleratorError::DimensionMismatch)?;
 
-    for batch in 0..batches {
-        let left_batch = left_3d.slice(s![batch, .., ..]).to_owned();
-        let right_batch = right_3d.slice(s![batch, .., ..]).to_owned();
-        let product = matmat_gpu_f32(&left_batch, &right_batch)?;
+    for batch in 0..batch_count {
+        let left_batch = left_3d.slice(s![batch, .., ..]);
+        let right_batch = right_3d.slice(s![batch, .., ..]);
+        let product = matmat_gpu_f32_impl(&left_batch, &right_batch)?;
         output_3d.slice_mut(s![batch, .., ..]).assign(&product);
     }
 
     Ok(output)
+}
+
+/// Compute tensor contraction over one axis on GPU for `f32` inputs.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
+pub fn tensor_contract_axes_gpu_f32(
+    left: &ArrayD<f32>,
+    right: &ArrayD<f32>,
+    left_axis: usize,
+    right_axis: usize,
+) -> Result<ArrayD<f32>, AcceleratorError> {
+    if left.ndim() == 0 || right.ndim() == 0 {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+    if left.shape()[left_axis] != right.shape()[right_axis] {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let left_free_axes = uncontracted_axes(left.ndim(), left_axis)?;
+    let right_free_axes = uncontracted_axes(right.ndim(), right_axis)?;
+    let contract_size = left.shape()[left_axis];
+    let left_outer =
+        shape_product(&left_free_axes.iter().map(|axis| left.shape()[*axis]).collect::<Vec<_>>());
+    let right_outer =
+        shape_product(&right_free_axes.iter().map(|axis| right.shape()[*axis]).collect::<Vec<_>>());
+
+    let mut left_order = left_free_axes.clone();
+    left_order.push(left_axis);
+    let mut right_order = vec![right_axis];
+    right_order.extend(right_free_axes.iter().copied());
+
+    let left_2d = left
+        .view()
+        .permuted_axes(left_order)
+        .to_owned()
+        .into_shape_with_order((left_outer, contract_size))
+        .map_err(|_| AcceleratorError::DimensionMismatch)?;
+    let right_2d = right
+        .view()
+        .permuted_axes(right_order)
+        .to_owned()
+        .into_shape_with_order((contract_size, right_outer))
+        .map_err(|_| AcceleratorError::DimensionMismatch)?;
+    let output_2d = matmat_gpu_f32_impl(&left_2d.view(), &right_2d.view())?;
+
+    let mut output_shape =
+        left_free_axes.iter().map(|axis| left.shape()[*axis]).collect::<Vec<_>>();
+    output_shape.extend(right_free_axes.iter().map(|axis| right.shape()[*axis]));
+    output_2d
+        .into_shape_with_order(IxDyn(&output_shape))
+        .map_err(|_| AcceleratorError::DimensionMismatch)
+}
+
+/// Compute tensor reduction over the last axis on GPU for `f32` inputs.
+///
+/// # Errors
+/// Returns an error for incompatible dimensions, unavailable device, kernel failures, or
+/// `AcceleratorError::FeatureNotEnabled` when `accelerator-wgpu` is disabled.
+pub fn tensor_sum_last_axis_gpu_f32(input: &ArrayD<f32>) -> Result<ArrayD<f32>, AcceleratorError> {
+    if input.ndim() == 0 {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+    let Some(last_axis) = input.shape().last().copied() else {
+        return Err(AcceleratorError::DimensionMismatch);
+    };
+    if last_axis == 0 {
+        return Err(AcceleratorError::DimensionMismatch);
+    }
+
+    let outer = input.len() / last_axis;
+    let matrix = input
+        .as_standard_layout()
+        .to_owned()
+        .into_shape_with_order((outer, last_axis))
+        .map_err(|_| AcceleratorError::DimensionMismatch)?;
+    let ones = Array2::<f32>::from_elem((last_axis, 1), 1.0_f32);
+    let reduced = matmat_gpu_f32_impl(&matrix.view(), &ones.view())?;
+
+    let mut output_shape = input.shape().to_vec();
+    let _ = output_shape.pop();
+    reduced
+        .into_shape_with_order(IxDyn(&output_shape))
+        .map_err(|_| AcceleratorError::DimensionMismatch)
 }

@@ -390,6 +390,57 @@ mod tests {
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
+    fn gpu_batched_row_matvec_matches_cpu() {
+        let vectors = Array2::from_shape_vec((2, 3), vec![
+            1.0_f32, 0.0_f32, 2.0_f32, 0.5_f32, -1.0_f32, 1.0_f32,
+        ])
+        .unwrap();
+        let matrix = Array2::from_shape_vec((2, 3), vec![
+            1.0_f32, 2.0_f32, 3.0_f32, 0.0_f32, 1.0_f32, 1.0_f32,
+        ])
+        .unwrap();
+        let cpu = batched_row_matvec_with_backend::<CpuBackend, f32>(&vectors, &matrix).unwrap();
+        let gpu = batched_row_matvec_with_backend::<GpuBackend, f32>(&vectors, &matrix).unwrap();
+        for row in 0..cpu.nrows() {
+            for col in 0..cpu.ncols() {
+                assert!((cpu[[row, col]] - gpu[[row, col]]).abs() < 1e-4_f32);
+            }
+        }
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
+    fn gpu_vector_kernels_match_cpu() {
+        let left = Array1::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32]);
+        let right = Array1::from_vec(vec![4.0_f32, 5.0_f32, 6.0_f32]);
+        let baseline_dot = dot_with_backend::<CpuBackend, f32>(&left, &right).unwrap();
+        let backend_dot = dot_with_backend::<GpuBackend, f32>(&left, &right).unwrap();
+        assert!((baseline_dot - backend_dot).abs() < 1e-4_f32);
+
+        let left_rows =
+            Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap();
+        let right_rows =
+            Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap();
+        let baseline_l2 =
+            pairwise_l2_with_backend::<CpuBackend, f32>(&left_rows, &right_rows).unwrap();
+        let backend_l2 =
+            pairwise_l2_with_backend::<GpuBackend, f32>(&left_rows, &right_rows).unwrap();
+        let baseline_cosine =
+            pairwise_cosine_with_backend::<CpuBackend, f32>(&left_rows, &right_rows).unwrap();
+        let backend_cosine =
+            pairwise_cosine_with_backend::<GpuBackend, f32>(&left_rows, &right_rows).unwrap();
+        for row in 0..baseline_l2.nrows() {
+            for col in 0..baseline_l2.ncols() {
+                assert!((baseline_l2[[row, col]] - backend_l2[[row, col]]).abs() < 1e-4_f32);
+                assert!(
+                    (baseline_cosine[[row, col]] - backend_cosine[[row, col]]).abs() < 1e-4_f32
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "accelerator-wgpu")]
+    #[test]
     fn gpu_tensor_batched_matmul_matches_cpu() {
         let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
             1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, //
@@ -428,7 +479,7 @@ mod tests {
 
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
-    fn gpu_tensor_contract_and_reduction_fall_back_to_cpu() {
+    fn gpu_tensor_contract_and_reduction_match_cpu() {
         let tensor =
             ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32])
                 .unwrap();

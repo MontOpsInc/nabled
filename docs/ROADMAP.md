@@ -74,6 +74,9 @@ Current status:
 4. Higher-level ML/stat complex parity blocker (`B-P1-006`) is complete; the next focus is K-series cleanup and benchmark/performance hardening.
 
 Next phase:
-1. Execute K-series cleanup/normalization passes.
-2. Benchmark-driven optimization and regression-outlier remediation.
-3. Post-v1 expansion on advanced tensor algebra and broader GPU and multi-node coverage.
+1. GPU phase-2 hardening:
+   - sparse GPU phase-1 (`CSR matvec`, then sparse-dense matmat if viable),
+   - allocation/copy contract pass for newly accelerated kernels,
+   - backend capability-report expansion (GPU-native vs GPU-fallback rows by kernel family).
+2. Continue optimization loops on the now-locked `L-GPU-WGPU-F32` benchmark chunk.
+3. Defer Metal-specific backend work and SIMD-focused CPU optimization until after GPU phase-2 hardening.

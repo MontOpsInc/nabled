@@ -60,7 +60,7 @@ Review more examples in `crates/nabled/examples`.
 4. `netlib-system`: enables provider-backed LAPACK paths via system Netlib LAPACK.
 5. `netlib-static`: enables provider-backed LAPACK paths via statically linked Netlib LAPACK.
 6. `accelerator-rayon`: enables selected parallel CPU kernels.
-7. `accelerator-wgpu`: enables selected WGPU-backed kernels.
+7. `accelerator-wgpu`: enables WGPU-backed `f32` kernel paths across dense/vector/tensor families.
 
 ```toml
 [dependencies]
@@ -72,7 +72,8 @@ Feature behavior:
 1. `openblas-system` implies `blas`.
 2. Provider feature selection (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`) is compile-time and internal to decomposition paths.
 3. Backend acceleration is compile-time and kernel-family-specific.
-4. Provider/toolchain requirements depend on backend choice; `openblas-static` and
+4. GPU-backend-dispatched `f32` kernels use explicit CPU fallback when no usable GPU is available.
+5. Provider/toolchain requirements depend on backend choice; `openblas-static` and
    `netlib-static` require native build toolchains (`gcc`/`gfortran`/`make`), and `netlib-system`
    requires a system `LAPACK`/Fortran runtime available to the linker.
 
