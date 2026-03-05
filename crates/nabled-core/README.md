@@ -12,7 +12,7 @@ Core shared types and utilities for the `nabled` workspace.
 
 ```toml
 [dependencies]
-nabled-core = "0.0.3"
+nabled-core = "0.0.4"
 ```
 
 ## Docs

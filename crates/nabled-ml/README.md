@@ -14,7 +14,7 @@ ML-oriented numerical algorithms built on ndarray-native `nabled` primitives.
 
 ```toml
 [dependencies]
-nabled-ml = "0.0.3"
+nabled-ml = "0.0.4"
 ```
 
 ## Optional Features
@@ -31,7 +31,7 @@ Note: provider requirements depend on backend choice. Static features (`openblas
 
 ```toml
 [dependencies]
-nabled-ml = { version = "0.0.3", features = ["openblas-system"] }
+nabled-ml = { version = "0.0.4", features = ["openblas-system"] }
 ```
 
 ## Docs
