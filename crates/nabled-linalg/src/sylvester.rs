@@ -153,14 +153,14 @@ fn validate_sylvester_complex_dims(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_sylvester<T>(
     matrix_a: &Array2<T>,
     matrix_b: &Array2<T>,
     matrix_c: &Array2<T>,
 ) -> Result<Array2<T>, SylvesterError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: NabledReal + lu::LuProviderScalar,
 {
     let (n, m) = validate_sylvester_dims(&matrix_a.view(), &matrix_b.view(), &matrix_c.view())?;
     let mut workspace = SylvesterWorkspace::default();
@@ -179,7 +179,7 @@ where
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_sylvester<T: NabledReal>(
     matrix_a: &Array2<T>,
     matrix_b: &Array2<T>,
@@ -202,14 +202,14 @@ pub fn solve_sylvester<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_sylvester_view<T>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
     matrix_c: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, SylvesterError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: NabledReal + lu::LuProviderScalar,
 {
     let (n, m) = validate_sylvester_dims(matrix_a, matrix_b, matrix_c)?;
     let mut workspace = SylvesterWorkspace::default();
@@ -228,7 +228,7 @@ where
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_sylvester_view<T: NabledReal>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
@@ -251,7 +251,7 @@ pub fn solve_sylvester_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_sylvester_into<T>(
     matrix_a: &Array2<T>,
     matrix_b: &Array2<T>,
@@ -259,7 +259,7 @@ pub fn solve_sylvester_into<T>(
     output: &mut Array2<T>,
 ) -> Result<(), SylvesterError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: NabledReal + lu::LuProviderScalar,
 {
     let mut workspace = SylvesterWorkspace::default();
     solve_sylvester_with_workspace_into_impl(
@@ -275,7 +275,7 @@ where
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_sylvester_into<T: NabledReal>(
     matrix_a: &Array2<T>,
     matrix_b: &Array2<T>,
@@ -296,7 +296,7 @@ pub fn solve_sylvester_into<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid, output shape mismatches, or system is singular.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_sylvester_with_workspace_into<T>(
     matrix_a: &Array2<T>,
     matrix_b: &Array2<T>,
@@ -305,7 +305,7 @@ pub fn solve_sylvester_with_workspace_into<T>(
     workspace: &mut SylvesterWorkspace<T>,
 ) -> Result<(), SylvesterError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: NabledReal + lu::LuProviderScalar,
 {
     solve_sylvester_with_workspace_into_impl(
         &matrix_a.view(),
@@ -320,7 +320,7 @@ where
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid, output shape mismatches, or system is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_sylvester_with_workspace_into<T: NabledReal>(
     matrix_a: &Array2<T>,
     matrix_b: &Array2<T>,
@@ -337,7 +337,7 @@ pub fn solve_sylvester_with_workspace_into<T: NabledReal>(
     )
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn solve_sylvester_with_workspace_into_impl<T>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
@@ -346,7 +346,7 @@ fn solve_sylvester_with_workspace_into_impl<T>(
     workspace: &mut SylvesterWorkspace<T>,
 ) -> Result<(), SylvesterError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: NabledReal + lu::LuProviderScalar,
 {
     let (n, m) = validate_sylvester_dims(matrix_a, matrix_b, matrix_c)?;
     if output.dim() != (n, m) {
@@ -382,7 +382,7 @@ where
     Ok(())
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn solve_sylvester_with_workspace_into_impl<T: NabledReal>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
@@ -555,10 +555,10 @@ pub fn solve_sylvester_complex_with_workspace_into(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_lyapunov<T>(a: &Array2<T>, q: &Array2<T>) -> Result<Array2<T>, SylvesterError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: NabledReal + lu::LuProviderScalar,
 {
     if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
         return Err(SylvesterError::DimensionMismatch);
@@ -571,7 +571,7 @@ where
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_lyapunov<T: NabledReal>(
     a: &Array2<T>,
     q: &Array2<T>,
@@ -603,13 +603,13 @@ pub fn solve_lyapunov_complex(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_lyapunov_view<T>(
     a: &ArrayView2<'_, T>,
     q: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, SylvesterError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: NabledReal + lu::LuProviderScalar,
 {
     if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
         return Err(SylvesterError::DimensionMismatch);
@@ -622,7 +622,7 @@ where
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid or system is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_lyapunov_view<T: NabledReal>(
     a: &ArrayView2<'_, T>,
     q: &ArrayView2<'_, T>,
@@ -654,14 +654,14 @@ pub fn solve_lyapunov_complex_view(
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid, output shape mismatches, or system is singular.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_lyapunov_into<T>(
     a: &Array2<T>,
     q: &Array2<T>,
     output: &mut Array2<T>,
 ) -> Result<(), SylvesterError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: NabledReal + lu::LuProviderScalar,
 {
     if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
         return Err(SylvesterError::DimensionMismatch);
@@ -681,7 +681,7 @@ where
 ///
 /// # Errors
 /// Returns an error if dimensions are invalid, output shape mismatches, or system is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_lyapunov_into<T: NabledReal>(
     a: &Array2<T>,
     q: &Array2<T>,

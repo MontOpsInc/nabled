@@ -9,6 +9,22 @@ use ndarray::{Array1, Array2, ArrayView2, s};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, jacobi_eigen_symmetric, sort_eigenpairs_desc};
+#[cfg(feature = "magma-system")]
+use crate::provider::magma;
+
+#[cfg(feature = "magma-system")]
+#[doc(hidden)]
+pub trait SvdInternalScalar: NabledReal + magma::MagmaReal {}
+
+#[cfg(feature = "magma-system")]
+impl<T> SvdInternalScalar for T where T: NabledReal + magma::MagmaReal {}
+
+#[cfg(not(feature = "magma-system"))]
+#[doc(hidden)]
+pub trait SvdInternalScalar: NabledReal {}
+
+#[cfg(not(feature = "magma-system"))]
+impl<T> SvdInternalScalar for T where T: NabledReal {}
 #[cfg(not(feature = "lapack-provider"))]
 use crate::schur;
 
@@ -60,6 +76,16 @@ impl fmt::Display for SVDError {
 
 impl std::error::Error for SVDError {}
 
+#[cfg(feature = "magma-system")]
+fn map_svd_provider_error(error: &'static str) -> SVDError {
+    match error {
+        "empty" => SVDError::EmptyMatrix,
+        "convergence_failed" => SVDError::ConvergenceFailed,
+        "non_finite" => SVDError::InvalidInput("matrix must be finite".to_string()),
+        _ => SVDError::InvalidInput(error.to_string()),
+    }
+}
+
 /// Configuration for pseudo-inverse computation.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PseudoInverseConfig<T: NabledReal> {
@@ -67,7 +93,21 @@ pub struct PseudoInverseConfig<T: NabledReal> {
     pub tolerance: Option<T>,
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+fn decompose_internal<T: NabledReal + magma::MagmaReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarraySVD<T>, SVDError> {
+    if matrix.is_empty() {
+        return Err(SVDError::EmptyMatrix);
+    }
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(SVDError::InvalidInput("matrix must be finite".into()));
+    }
+    let (u, singular_values, vt) = magma::svd_decompose(matrix).map_err(map_svd_provider_error)?;
+    Ok(NdarraySVD { u, singular_values, vt })
+}
+
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn decompose_internal<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySVD<T>, SVDError> {
@@ -77,7 +117,6 @@ fn decompose_internal<T: NabledReal>(
     if matrix.iter().any(|value| !value.is_finite()) {
         return Err(SVDError::InvalidInput("matrix must be finite".into()));
     }
-
     let (rows, cols) = matrix.dim();
     let k = rows.min(cols);
 
@@ -264,7 +303,7 @@ where
 /// # Errors
 /// Returns an error if the matrix is empty, non-finite, or decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn decompose<T: NabledReal>(matrix: &Array2<T>) -> Result<NdarraySVD<T>, SVDError> {
+pub fn decompose<T: SvdInternalScalar>(matrix: &Array2<T>) -> Result<NdarraySVD<T>, SVDError> {
     decompose_impl(&matrix.view())
 }
 
@@ -277,7 +316,9 @@ where
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn decompose_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<NdarraySVD<T>, SVDError> {
+fn decompose_impl<T: SvdInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarraySVD<T>, SVDError> {
     decompose_internal(matrix)
 }
 
@@ -298,7 +339,7 @@ where
 /// # Errors
 /// Returns an error if decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn decompose_view<T: NabledReal>(
+pub fn decompose_view<T: SvdInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySVD<T>, SVDError> {
     decompose_impl(matrix)
@@ -370,7 +411,7 @@ where
 /// # Errors
 /// Returns an error if decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn decompose_with_tolerance<T: NabledReal>(
+pub fn decompose_with_tolerance<T: SvdInternalScalar>(
     matrix: &Array2<T>,
     tolerance: T,
 ) -> Result<NdarraySVD<T>, SVDError> {
@@ -411,7 +452,7 @@ where
 /// # Errors
 /// Returns an error if `k == 0` or decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn decompose_truncated<T: NabledReal>(
+pub fn decompose_truncated<T: SvdInternalScalar>(
     matrix: &Array2<T>,
     k: usize,
 ) -> Result<NdarraySVD<T>, SVDError> {
@@ -543,7 +584,7 @@ where
 /// # Errors
 /// Returns an error if input is invalid or decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn pseudo_inverse<T: NabledReal>(
+pub fn pseudo_inverse<T: SvdInternalScalar>(
     matrix: &Array2<T>,
     config: &PseudoInverseConfig<T>,
 ) -> Result<Array2<T>, SVDError> {
@@ -606,7 +647,7 @@ where
 /// # Errors
 /// Returns an error if dimensions are invalid or decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn pseudo_inverse_into<T: NabledReal>(
+pub fn pseudo_inverse_into<T: SvdInternalScalar>(
     matrix: &Array2<T>,
     config: &PseudoInverseConfig<T>,
     output: &mut Array2<T>,

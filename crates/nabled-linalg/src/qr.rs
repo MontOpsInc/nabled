@@ -9,7 +9,23 @@ use num_complex::Complex64;
 use crate::internal::DenseKernelPolicy;
 #[cfg(not(feature = "lapack-provider"))]
 use crate::internal::qr_gram_schmidt;
+#[cfg(feature = "magma-system")]
+use crate::provider::magma;
 use crate::svd::{self, PseudoInverseConfig};
+
+#[cfg(feature = "magma-system")]
+#[doc(hidden)]
+pub trait QrInternalScalar: NabledReal + magma::MagmaReal {}
+
+#[cfg(feature = "magma-system")]
+impl<T> QrInternalScalar for T where T: NabledReal + magma::MagmaReal {}
+
+#[cfg(not(feature = "magma-system"))]
+#[doc(hidden)]
+pub trait QrInternalScalar: NabledReal {}
+
+#[cfg(not(feature = "magma-system"))]
+impl<T> QrInternalScalar for T where T: NabledReal {}
 
 /// Error types for QR decomposition.
 #[derive(Debug, Clone, PartialEq)]
@@ -113,6 +129,19 @@ fn validate_qr_complex_input(matrix: &ArrayView2<'_, Complex64>) -> Result<(), Q
         return Err(QRError::NumericalInstability);
     }
     Ok(())
+}
+
+#[cfg(feature = "magma-system")]
+fn map_qr_provider_error(error: &'static str) -> QRError {
+    match error {
+        "empty" => QRError::EmptyMatrix,
+        "non_finite" => QRError::NumericalInstability,
+        "invalid_dimensions" | "unsupported_shape" => QRError::InvalidDimensions(
+            "unsupported matrix dimensions for provider path".to_string(),
+        ),
+        "convergence_failed" => QRError::ConvergenceFailed,
+        _ => QRError::InvalidInput(error.to_string()),
+    }
 }
 
 fn decompose_pivoted_internal<T: NabledReal>(
@@ -277,7 +306,36 @@ fn decompose_complex_pivoted_internal(
     Ok(QRResult { q, r, p: Some(complex_permutation_matrix_from_order(&order)), rank })
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+fn decompose_internal<T: NabledReal + magma::MagmaReal>(
+    matrix: &ArrayView2<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<QRResult<T>, QRError> {
+    if config.use_pivoting {
+        return decompose_pivoted_internal(matrix, config);
+    }
+    validate_qr_input(matrix)?;
+
+    // MAGMA's QR provider path is used for overdetermined/square real
+    // matrices; underdetermined shapes remain on the internal path.
+    if matrix.nrows() >= matrix.ncols() {
+        let tolerance = config
+            .rank_tolerance
+            .max(T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()));
+        let (q, r, rank) = magma::qr_decompose(matrix, tolerance).map_err(map_qr_provider_error)?;
+        return Ok(QRResult { q, r, p: None, rank });
+    }
+
+    let (q, r, rank) = qr_gram_schmidt(
+        matrix,
+        config
+            .rank_tolerance
+            .max(T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon())),
+    );
+    Ok(QRResult { q, r, p: None, rank })
+}
+
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn decompose_internal<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
     config: &QRConfig<T>,
@@ -427,7 +485,7 @@ where
 /// # Errors
 /// Returns an error if the matrix is empty or non-finite.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn decompose<T: NabledReal>(
+pub fn decompose<T: QrInternalScalar>(
     matrix: &Array2<T>,
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError> {
@@ -454,7 +512,7 @@ where
 /// # Errors
 /// Returns an error if decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn decompose_view<T: NabledReal>(
+pub fn decompose_view<T: QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError> {
@@ -524,7 +582,7 @@ where
 /// # Errors
 /// Returns an error if the matrix is empty or non-finite.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn decompose_reduced<T: NabledReal>(
+pub fn decompose_reduced<T: QrInternalScalar>(
     matrix: &Array2<T>,
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError> {
@@ -560,7 +618,7 @@ where
 /// # Errors
 /// Returns an error if decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn decompose_with_pivoting<T: NabledReal>(
+pub fn decompose_with_pivoting<T: QrInternalScalar>(
     matrix: &Array2<T>,
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError> {
@@ -594,7 +652,7 @@ where
 /// # Errors
 /// Returns an error for invalid dimensions or rank-deficient systems.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn solve_least_squares<T: NabledReal>(
+pub fn solve_least_squares<T: QrInternalScalar>(
     matrix: &Array2<T>,
     rhs: &Array1<T>,
     config: &QRConfig<T>,
@@ -701,7 +759,7 @@ where
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn solve_least_squares_impl<T: NabledReal>(
+fn solve_least_squares_impl<T: QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
     config: &QRConfig<T>,
@@ -812,7 +870,7 @@ where
 /// # Errors
 /// Returns an error for invalid dimensions or rank-deficient systems.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn solve_least_squares_view<T: NabledReal>(
+pub fn solve_least_squares_view<T: QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
     config: &QRConfig<T>,

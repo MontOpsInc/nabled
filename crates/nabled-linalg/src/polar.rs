@@ -163,7 +163,7 @@ where
 /// # Errors
 /// Returns an error if matrix is invalid or SVD fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_polar<T: NabledReal>(
+pub fn compute_polar<T: svd::SvdInternalScalar>(
     matrix: &Array2<T>,
 ) -> Result<NdarrayPolarResult<T>, PolarError> {
     compute_polar_impl(&matrix.view())
@@ -195,7 +195,7 @@ where
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn compute_polar_impl<T: NabledReal>(
+fn compute_polar_impl<T: svd::SvdInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayPolarResult<T>, PolarError> {
     validate_square_non_empty_view(matrix)?;
@@ -237,7 +237,7 @@ where
 /// # Errors
 /// Returns an error if matrix is invalid or SVD fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_polar_view<T: NabledReal>(
+pub fn compute_polar_view<T: svd::SvdInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayPolarResult<T>, PolarError> {
     compute_polar_impl(matrix)

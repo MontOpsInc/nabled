@@ -6,10 +6,28 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::{Complex, Complex64};
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 use crate::internal::jacobi_eigen_symmetric;
 use crate::internal::{DenseKernelPolicy, sort_eigenpairs_desc};
+#[cfg(feature = "magma-system")]
+use crate::provider::magma;
+#[cfg(not(feature = "lapack-provider"))]
+use crate::qr;
 use crate::{cholesky, schur};
+
+#[cfg(feature = "magma-system")]
+#[doc(hidden)]
+pub trait EigenInternalScalar: NabledReal + magma::MagmaReal {}
+
+#[cfg(feature = "magma-system")]
+impl<T> EigenInternalScalar for T where T: NabledReal + magma::MagmaReal {}
+
+#[cfg(not(feature = "magma-system"))]
+#[doc(hidden)]
+pub trait EigenInternalScalar: NabledReal {}
+
+#[cfg(not(feature = "magma-system"))]
+impl<T> EigenInternalScalar for T where T: NabledReal {}
 
 /// Result of symmetric eigen decomposition.
 #[derive(Debug, Clone)]
@@ -324,11 +342,28 @@ fn match_left_eigenvectors<T: NabledReal>(
     matched
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+fn symmetric_internal<T: NabledReal + magma::MagmaReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayEigenResult<T>, EigenError> {
+    validate_symmetric_input(matrix)?;
+    let (eigenvalues, eigenvectors) =
+        magma::symmetric_eigen(matrix).map_err(|error| match error {
+            "empty" => EigenError::EmptyMatrix,
+            "not_square" => EigenError::NotSquare,
+            "convergence_failed" => EigenError::ConvergenceFailed,
+            _ => EigenError::NumericalInstability,
+        })?;
+    let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
+    Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
+}
+
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn symmetric_internal<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayEigenResult<T>, EigenError> {
     validate_symmetric_input(matrix)?;
+
     let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
         &matrix.to_owned(),
         T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
@@ -353,7 +388,33 @@ where
     Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(feature = "magma-system")]
+fn generalized_internal<T: cholesky::CholeskyProviderScalar>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView2<'_, T>,
+) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError> {
+    validate_symmetric_input(matrix_a)?;
+    validate_symmetric_input(matrix_b)?;
+    if matrix_a.dim() != matrix_b.dim() {
+        return Err(EigenError::InvalidDimensions);
+    }
+
+    let b_inverse = cholesky::inverse_view(matrix_b).map_err(|error| match error {
+        cholesky::CholeskyError::NotPositiveDefinite => EigenError::NotPositiveDefinite,
+        cholesky::CholeskyError::EmptyMatrix => EigenError::EmptyMatrix,
+        cholesky::CholeskyError::NotSquare => EigenError::NotSquare,
+        _ => EigenError::NumericalInstability,
+    })?;
+
+    let c = b_inverse.dot(matrix_a);
+    let symmetric_c = (&c + &c.t()) * T::from_f64(0.5).unwrap_or(T::one() / (T::one() + T::one()));
+
+    let NdarrayEigenResult { eigenvalues, eigenvectors } = symmetric_internal(&symmetric_c.view())?;
+
+    Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
+}
+
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn generalized_internal<T: NabledReal>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
@@ -466,7 +527,7 @@ fn nonsymmetric_complex_internal(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn nonsymmetric_internal<T: NabledReal>(
+fn nonsymmetric_internal<T: qr::QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayNonsymmetricEigenResult<T>, EigenError> {
     validate_nonsymmetric_input(matrix)?;
@@ -577,7 +638,9 @@ where
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn symmetric<T: NabledReal>(matrix: &Array2<T>) -> Result<NdarrayEigenResult<T>, EigenError> {
+pub fn symmetric<T: EigenInternalScalar>(
+    matrix: &Array2<T>,
+) -> Result<NdarrayEigenResult<T>, EigenError> {
     symmetric_internal(&matrix.view())
 }
 
@@ -598,10 +661,25 @@ where
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn symmetric_view<T: NabledReal>(
+pub fn symmetric_view<T: EigenInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayEigenResult<T>, EigenError> {
     symmetric_internal(matrix)
+}
+
+/// Compute generalized symmetric eigen decomposition `(A, B)`.
+///
+/// # Errors
+/// Returns an error when dimensions are incompatible or `B` is not SPD.
+#[cfg(feature = "magma-system")]
+pub fn generalized<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array2<T>,
+) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError>
+where
+    T: cholesky::CholeskyProviderScalar,
+{
+    generalized_internal(&matrix_a.view(), &matrix_b.view())
 }
 
 /// Compute generalized symmetric eigen decomposition `(A, B)`.
@@ -623,12 +701,27 @@ where
 ///
 /// # Errors
 /// Returns an error when dimensions are incompatible or `B` is not SPD.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn generalized<T: NabledReal>(
     matrix_a: &Array2<T>,
     matrix_b: &Array2<T>,
 ) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError> {
     generalized_internal(&matrix_a.view(), &matrix_b.view())
+}
+
+/// Compute generalized symmetric eigen decomposition `(A, B)` from matrix views.
+///
+/// # Errors
+/// Returns an error when dimensions are incompatible or `B` is not SPD.
+#[cfg(feature = "magma-system")]
+pub fn generalized_view<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView2<'_, T>,
+) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError>
+where
+    T: cholesky::CholeskyProviderScalar,
+{
+    generalized_internal(matrix_a, matrix_b)
 }
 
 /// Compute generalized symmetric eigen decomposition `(A, B)` from matrix views.
@@ -650,7 +743,7 @@ where
 ///
 /// # Errors
 /// Returns an error when dimensions are incompatible or `B` is not SPD.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn generalized_view<T: NabledReal>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
@@ -675,7 +768,7 @@ where
 /// # Errors
 /// Returns an error for non-square, non-finite, or non-convergent inputs.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn nonsymmetric<T: NabledReal>(
+pub fn nonsymmetric<T: qr::QrInternalScalar>(
     matrix: &Array2<T>,
 ) -> Result<NdarrayNonsymmetricEigenResult<T>, EigenError> {
     nonsymmetric_internal(&matrix.view())
@@ -700,7 +793,7 @@ where
 /// # Errors
 /// Returns an error for non-square, non-finite, or non-convergent inputs.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn nonsymmetric_view<T: NabledReal>(
+pub fn nonsymmetric_view<T: qr::QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayNonsymmetricEigenResult<T>, EigenError> {
     nonsymmetric_internal(matrix)
@@ -788,7 +881,7 @@ where
 /// # Errors
 /// Returns an error for non-square, non-finite, or non-convergent inputs.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn nonsymmetric_bi<T: NabledReal>(
+pub fn nonsymmetric_bi<T: qr::QrInternalScalar>(
     matrix: &Array2<T>,
     config: &NonsymmetricEigenConfig<T>,
 ) -> Result<NdarrayNonsymmetricBiEigenResult<T>, EigenError> {
@@ -815,7 +908,7 @@ where
 /// # Errors
 /// Returns an error for non-square, non-finite, or non-convergent inputs.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn nonsymmetric_bi_view<T: NabledReal>(
+pub fn nonsymmetric_bi_view<T: qr::QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
     config: &NonsymmetricEigenConfig<T>,
 ) -> Result<NdarrayNonsymmetricBiEigenResult<T>, EigenError> {
@@ -823,7 +916,7 @@ pub fn nonsymmetric_bi_view<T: NabledReal>(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn nonsymmetric_bi_view_impl<T: NabledReal>(
+fn nonsymmetric_bi_view_impl<T: qr::QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
     config: &NonsymmetricEigenConfig<T>,
 ) -> Result<NdarrayNonsymmetricBiEigenResult<T>, EigenError> {

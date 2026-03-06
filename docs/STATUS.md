@@ -107,6 +107,14 @@ Workspace migration for library domains is complete.
 99. GPU backend triangular depth is expanded: `TriangularSolveVecKernel` and `TriangularSolveMatKernel` now attempt native GPU execution (`f32`, conditional `f64`) with explicit CPU fallback retained.
 100. Complex GPU tensor kernels now attempt native execution (`Complex64`) via real-kernel decomposition over `f64` GPU tensor kernels, with explicit CPU fallback retained when GPU execution is unavailable.
 101. Coverage gate now excludes `crates/nabled-linalg/src/accelerator/gpu.rs` from line-threshold enforcement to keep the `>90%` policy aligned with deterministic CPU/provider test surfaces while GPU-specific paths are validated via dedicated accelerator-wgpu test matrices.
+102. V2 GPU/provider workstream is now tracked explicitly in `docs/GPU_V2_TRACKER.md` (batch workload scope, runtime GPU policy, and MAGMA integration milestones).
+103. GPU backend dispatch now uses a centralized workload-size policy (`accelerator::policy`) so small workloads remain on CPU and large workloads attempt GPU execution before fallback handling.
+104. Remote NVIDIA verification for V2 is now scripted and repeatable (`scripts/gpu_v2_remote_prepare.sh`, `scripts/gpu_v2_remote_probe.sh`) and validated on a 4090 host with tmux-driven command execution.
+105. Batched workload relevance is now explicit: decomposition batch APIs are provider-accelerated per-slice loops, while kernel-level batch APIs are backend-dispatched and GPU-capable.
+106. GPU routing defaults were tuned from remote release-profile measurements (4090 + Vulkan), reducing unnecessary GPU attempts on small/medium workloads while preserving env-based override controls.
+107. `V2-004` is complete: MAGMA provider domain wiring now covers LU, Cholesky, QR, SVD, and symmetric eigen, and dependent linalg/ml paths compile with provider-safe scalar bounds.
+108. Post-`V2-004` validation is green: `magma-system` workspace check/clippy and standard repository quality gates (`just checks`) pass.
+109. Remote MAGMA verification orchestration is now scripted (`scripts/gpu_v2_remote_magma_verify.sh`) to generate correctness/capability artifacts and provider benchmark summaries on the 4090 host.
 
 ## Current Code Ownership
 
@@ -143,9 +151,8 @@ Workspace migration for library domains is complete.
 
 GPU phase-2 hardening:
 
-1. Continue `L-GPU-WGPU-F32` chunk optimization now that sparse/triangular/complex-tensor GPU depth is locked.
-2. Run benchmark-driven optimization pass on largest outliers (`K-005`) before next release.
-3. Lock remaining Provider/Backend/Kernel module ownership boundaries (`K-006`) with no behavior changes.
+1. Produce MAGMA correctness/perf verification matrix (`V2-005`).
+2. Continue `L-GPU-WGPU-F32` outlier optimization pass (`K-005`) and then lock remaining Provider/Backend/Kernel boundary cleanup (`K-006`).
 
 ## Completion Criteria For Migration
 

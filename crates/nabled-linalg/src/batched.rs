@@ -29,7 +29,7 @@ where
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn qr<T: NabledReal>(
+pub fn qr<T: qr::QrInternalScalar>(
     matrices: &Array3<T>,
     config: &qr::QRConfig<T>,
 ) -> Result<Vec<qr::QRResult<T>>, qr::QRError> {
@@ -67,7 +67,7 @@ where
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn qr_view<T: NabledReal>(
+pub fn qr_view<T: qr::QrInternalScalar>(
     matrices: &ArrayView3<'_, T>,
     config: &qr::QRConfig<T>,
 ) -> Result<Vec<qr::QRResult<T>>, qr::QRError> {
@@ -102,7 +102,9 @@ where
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn svd<T: NabledReal>(matrices: &Array3<T>) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
+pub fn svd<T: svd::SvdInternalScalar>(
+    matrices: &Array3<T>,
+) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
     svd_view(&matrices.view())
 }
 
@@ -134,7 +136,7 @@ where
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn svd_view<T: NabledReal>(
+pub fn svd_view<T: svd::SvdInternalScalar>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
     if matrices.is_empty() || matrices.dim().0 == 0 {
@@ -219,12 +221,12 @@ pub fn lu_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn cholesky<T>(
     matrices: &Array3<T>,
 ) -> Result<Vec<cholesky::NdarrayCholeskyResult<T>>, cholesky::CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: cholesky::CholeskyProviderScalar,
 {
     cholesky_view(&matrices.view())
 }
@@ -235,7 +237,7 @@ where
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn cholesky<T: NabledReal>(
     matrices: &Array3<T>,
 ) -> Result<Vec<cholesky::NdarrayCholeskyResult<T>>, cholesky::CholeskyError> {
@@ -248,12 +250,12 @@ pub fn cholesky<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn cholesky_view<T>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<cholesky::NdarrayCholeskyResult<T>>, cholesky::CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: cholesky::CholeskyProviderScalar,
 {
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(cholesky::CholeskyError::EmptyMatrix);
@@ -271,7 +273,7 @@ where
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn cholesky_view<T: NabledReal>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<cholesky::NdarrayCholeskyResult<T>>, cholesky::CholeskyError> {
@@ -308,7 +310,7 @@ where
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn symmetric_eigen<T: NabledReal>(
+pub fn symmetric_eigen<T: eigen::EigenInternalScalar>(
     matrices: &Array3<T>,
 ) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError> {
     symmetric_eigen_view(&matrices.view())
@@ -344,7 +346,7 @@ where
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn symmetric_eigen_view<T: NabledReal>(
+pub fn symmetric_eigen_view<T: eigen::EigenInternalScalar>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError> {
     if matrices.is_empty() || matrices.dim().0 == 0 {

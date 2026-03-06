@@ -5,6 +5,7 @@ pub mod cpu;
 pub mod dispatch;
 pub mod gpu;
 pub mod kernels;
+pub(crate) mod policy;
 
 #[cfg(test)]
 mod tests {

@@ -31,6 +31,15 @@ use super::kernels::{
     SparseMatVecKernel, TensorBatchedMatMulKernel, TensorContractKernel,
     TensorLastAxisReductionKernel, TriangularSolveMatKernel, TriangularSolveVecKernel,
 };
+use super::policy::{
+    should_attempt_gpu_batched_matmat, should_attempt_gpu_batched_row_matvec,
+    should_attempt_gpu_dot, should_attempt_gpu_matmat, should_attempt_gpu_matvec,
+    should_attempt_gpu_pairwise, should_attempt_gpu_sparse_matmat_dense,
+    should_attempt_gpu_sparse_matmat_sparse, should_attempt_gpu_sparse_matvec,
+    should_attempt_gpu_tensor_batched_matmul, should_attempt_gpu_tensor_contract,
+    should_attempt_gpu_tensor_sum, should_attempt_gpu_triangular_solve_mat,
+    should_attempt_gpu_triangular_solve_vec,
+};
 use crate::sparse::CsrMatrix;
 
 #[inline]
@@ -63,6 +72,9 @@ impl MatMatKernel<f64> for CpuBackend {
 /// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
 impl MatMatKernel<f64> for GpuBackend {
     fn matmat(left: &Array2<f64>, right: &Array2<f64>) -> Result<Array2<f64>, AcceleratorError> {
+        if !should_attempt_gpu_matmat(left.nrows(), left.ncols(), right.ncols()) {
+            return matmat_serial(left, right);
+        }
         fallback_or_cpu_gpu(matmat_gpu_f64(left, right), || matmat_serial(left, right))
     }
 }
@@ -76,6 +88,9 @@ impl MatMatKernel<f32> for CpuBackend {
 /// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
 impl MatMatKernel<f32> for GpuBackend {
     fn matmat(left: &Array2<f32>, right: &Array2<f32>) -> Result<Array2<f32>, AcceleratorError> {
+        if !should_attempt_gpu_matmat(left.nrows(), left.ncols(), right.ncols()) {
+            return matmat_serial_f32(left, right);
+        }
         fallback_or_cpu_gpu(matmat_gpu_f32(left, right), || matmat_serial_f32(left, right))
     }
 }
@@ -89,6 +104,9 @@ impl MatVecKernel<f64> for CpuBackend {
 /// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
 impl MatVecKernel<f64> for GpuBackend {
     fn matvec(matrix: &Array2<f64>, vector: &Array1<f64>) -> Result<Array1<f64>, AcceleratorError> {
+        if !should_attempt_gpu_matvec(matrix.nrows(), matrix.ncols()) {
+            return matvec_serial(matrix, vector);
+        }
         fallback_or_cpu_gpu(matvec_gpu_f64(matrix, vector), || matvec_serial(matrix, vector))
     }
 }
@@ -102,6 +120,9 @@ impl MatVecKernel<f32> for CpuBackend {
 /// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
 impl MatVecKernel<f32> for GpuBackend {
     fn matvec(matrix: &Array2<f32>, vector: &Array1<f32>) -> Result<Array1<f32>, AcceleratorError> {
+        if !should_attempt_gpu_matvec(matrix.nrows(), matrix.ncols()) {
+            return matvec_serial_f32(matrix, vector);
+        }
         fallback_or_cpu_gpu(matvec_gpu_f32(matrix, vector), || matvec_serial_f32(matrix, vector))
     }
 }
@@ -121,6 +142,14 @@ impl BatchedMatMatKernel<f64> for GpuBackend {
         left_batches: &Array3<f64>,
         right_batches: &Array3<f64>,
     ) -> Result<Array3<f64>, AcceleratorError> {
+        if !should_attempt_gpu_batched_matmat(
+            left_batches.dim().0,
+            left_batches.dim().1,
+            left_batches.dim().2,
+            right_batches.dim().2,
+        ) {
+            return batched_matmat_serial(left_batches, right_batches);
+        }
         fallback_or_cpu_gpu(batched_matmat_gpu_f64(left_batches, right_batches), || {
             batched_matmat_serial(left_batches, right_batches)
         })
@@ -142,6 +171,14 @@ impl BatchedMatMatKernel<f32> for GpuBackend {
         left_batches: &Array3<f32>,
         right_batches: &Array3<f32>,
     ) -> Result<Array3<f32>, AcceleratorError> {
+        if !should_attempt_gpu_batched_matmat(
+            left_batches.dim().0,
+            left_batches.dim().1,
+            left_batches.dim().2,
+            right_batches.dim().2,
+        ) {
+            return batched_matmat_serial_f32(left_batches, right_batches);
+        }
         fallback_or_cpu_gpu(batched_matmat_gpu_f32(left_batches, right_batches), || {
             batched_matmat_serial_f32(left_batches, right_batches)
         })
@@ -166,6 +203,9 @@ impl SparseMatVecKernel<f32> for GpuBackend {
         matrix: &CsrMatrix<f32>,
         vector: &Array1<f32>,
     ) -> Result<Array1<f32>, AcceleratorError> {
+        if !should_attempt_gpu_sparse_matvec(matrix.data.len()) {
+            return sparse_matvec_serial(matrix, vector);
+        }
         fallback_or_cpu_gpu(sparse_matvec_gpu_f32(matrix, vector), || {
             sparse_matvec_serial(matrix, vector)
         })
@@ -178,6 +218,9 @@ impl SparseMatVecKernel<f64> for GpuBackend {
         matrix: &CsrMatrix<f64>,
         vector: &Array1<f64>,
     ) -> Result<Array1<f64>, AcceleratorError> {
+        if !should_attempt_gpu_sparse_matvec(matrix.data.len()) {
+            return sparse_matvec_serial(matrix, vector);
+        }
         fallback_or_cpu_gpu(sparse_matvec_gpu_f64(matrix, vector), || {
             sparse_matvec_serial(matrix, vector)
         })
@@ -199,6 +242,13 @@ impl BatchedRowMatVecKernel<f64> for GpuBackend {
         batch_vectors: &Array2<f64>,
         matrix: &Array2<f64>,
     ) -> Result<Array2<f64>, AcceleratorError> {
+        if !should_attempt_gpu_batched_row_matvec(
+            batch_vectors.nrows(),
+            batch_vectors.ncols(),
+            matrix.ncols(),
+        ) {
+            return batched_row_matvec_serial(batch_vectors, matrix);
+        }
         fallback_or_cpu_gpu(batched_row_matvec_gpu_f64(batch_vectors, matrix), || {
             batched_row_matvec_serial(batch_vectors, matrix)
         })
@@ -220,6 +270,13 @@ impl BatchedRowMatVecKernel<f32> for GpuBackend {
         batch_vectors: &Array2<f32>,
         matrix: &Array2<f32>,
     ) -> Result<Array2<f32>, AcceleratorError> {
+        if !should_attempt_gpu_batched_row_matvec(
+            batch_vectors.nrows(),
+            batch_vectors.ncols(),
+            matrix.ncols(),
+        ) {
+            return batched_row_matvec_serial(batch_vectors, matrix);
+        }
         fallback_or_cpu_gpu(batched_row_matvec_gpu_f32(batch_vectors, matrix), || {
             batched_row_matvec_serial(batch_vectors, matrix)
         })
@@ -244,6 +301,9 @@ impl SparseMatMatDenseKernel<f32> for GpuBackend {
         matrix: &CsrMatrix<f32>,
         dense: &Array2<f32>,
     ) -> Result<Array2<f32>, AcceleratorError> {
+        if !should_attempt_gpu_sparse_matmat_dense(matrix.data.len(), dense.ncols()) {
+            return sparse_matmat_dense_serial(matrix, dense);
+        }
         fallback_or_cpu_gpu(sparse_matmat_dense_gpu_f32(matrix, dense), || {
             sparse_matmat_dense_serial(matrix, dense)
         })
@@ -256,6 +316,9 @@ impl SparseMatMatDenseKernel<f64> for GpuBackend {
         matrix: &CsrMatrix<f64>,
         dense: &Array2<f64>,
     ) -> Result<Array2<f64>, AcceleratorError> {
+        if !should_attempt_gpu_sparse_matmat_dense(matrix.data.len(), dense.ncols()) {
+            return sparse_matmat_dense_serial(matrix, dense);
+        }
         fallback_or_cpu_gpu(sparse_matmat_dense_gpu_f64(matrix, dense), || {
             sparse_matmat_dense_serial(matrix, dense)
         })
@@ -280,6 +343,9 @@ impl SparseMatMatSparseKernel<f32> for GpuBackend {
         left: &CsrMatrix<f32>,
         right: &CsrMatrix<f32>,
     ) -> Result<CsrMatrix<f32>, AcceleratorError> {
+        if !should_attempt_gpu_sparse_matmat_sparse(left.data.len(), right.data.len()) {
+            return sparse_matmat_sparse_serial(left, right);
+        }
         fallback_or_cpu_gpu(sparse_matmat_sparse_gpu_f32(left, right), || {
             sparse_matmat_sparse_serial(left, right)
         })
@@ -292,6 +358,9 @@ impl SparseMatMatSparseKernel<f64> for GpuBackend {
         left: &CsrMatrix<f64>,
         right: &CsrMatrix<f64>,
     ) -> Result<CsrMatrix<f64>, AcceleratorError> {
+        if !should_attempt_gpu_sparse_matmat_sparse(left.data.len(), right.data.len()) {
+            return sparse_matmat_sparse_serial(left, right);
+        }
         fallback_or_cpu_gpu(sparse_matmat_sparse_gpu_f64(left, right), || {
             sparse_matmat_sparse_serial(left, right)
         })
@@ -320,6 +389,9 @@ impl TriangularSolveVecKernel<f32> for GpuBackend {
         lower: bool,
         unit_diagonal: bool,
     ) -> Result<Array1<f32>, AcceleratorError> {
+        if !should_attempt_gpu_triangular_solve_vec(matrix.nrows()) {
+            return triangular_solve_vec_serial(matrix, rhs, lower, unit_diagonal);
+        }
         fallback_or_cpu_gpu(triangular_solve_vec_gpu_f32(matrix, rhs, lower, unit_diagonal), || {
             triangular_solve_vec_serial(matrix, rhs, lower, unit_diagonal)
         })
@@ -334,6 +406,9 @@ impl TriangularSolveVecKernel<f64> for GpuBackend {
         lower: bool,
         unit_diagonal: bool,
     ) -> Result<Array1<f64>, AcceleratorError> {
+        if !should_attempt_gpu_triangular_solve_vec(matrix.nrows()) {
+            return triangular_solve_vec_serial(matrix, rhs, lower, unit_diagonal);
+        }
         fallback_or_cpu_gpu(triangular_solve_vec_gpu_f64(matrix, rhs, lower, unit_diagonal), || {
             triangular_solve_vec_serial(matrix, rhs, lower, unit_diagonal)
         })
@@ -362,6 +437,9 @@ impl TriangularSolveMatKernel<f32> for GpuBackend {
         lower: bool,
         unit_diagonal: bool,
     ) -> Result<Array2<f32>, AcceleratorError> {
+        if !should_attempt_gpu_triangular_solve_mat(matrix.nrows(), rhs.ncols()) {
+            return triangular_solve_mat_serial(matrix, rhs, lower, unit_diagonal);
+        }
         fallback_or_cpu_gpu(triangular_solve_mat_gpu_f32(matrix, rhs, lower, unit_diagonal), || {
             triangular_solve_mat_serial(matrix, rhs, lower, unit_diagonal)
         })
@@ -376,6 +454,9 @@ impl TriangularSolveMatKernel<f64> for GpuBackend {
         lower: bool,
         unit_diagonal: bool,
     ) -> Result<Array2<f64>, AcceleratorError> {
+        if !should_attempt_gpu_triangular_solve_mat(matrix.nrows(), rhs.ncols()) {
+            return triangular_solve_mat_serial(matrix, rhs, lower, unit_diagonal);
+        }
         fallback_or_cpu_gpu(triangular_solve_mat_gpu_f64(matrix, rhs, lower, unit_diagonal), || {
             triangular_solve_mat_serial(matrix, rhs, lower, unit_diagonal)
         })
@@ -394,6 +475,9 @@ where
 /// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
 impl DotKernel<f32> for GpuBackend {
     fn dot(left: &Array1<f32>, right: &Array1<f32>) -> Result<f32, AcceleratorError> {
+        if !should_attempt_gpu_dot(left.len()) {
+            return dot_serial(left, right);
+        }
         fallback_or_cpu_gpu(dot_gpu_f32(left, right), || dot_serial(left, right))
     }
 }
@@ -401,6 +485,9 @@ impl DotKernel<f32> for GpuBackend {
 /// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
 impl DotKernel<f64> for GpuBackend {
     fn dot(left: &Array1<f64>, right: &Array1<f64>) -> Result<f64, AcceleratorError> {
+        if !should_attempt_gpu_dot(left.len()) {
+            return dot_serial(left, right);
+        }
         fallback_or_cpu_gpu(dot_gpu_f64(left, right), || dot_serial(left, right))
     }
 }
@@ -420,6 +507,9 @@ impl PairwiseL2Kernel<f32> for GpuBackend {
         left: &Array2<f32>,
         right: &Array2<f32>,
     ) -> Result<Array2<f32>, AcceleratorError> {
+        if !should_attempt_gpu_pairwise(left.nrows(), right.nrows(), left.ncols()) {
+            return pairwise_l2_serial(left, right);
+        }
         fallback_or_cpu_gpu(pairwise_l2_gpu_f32(left, right), || pairwise_l2_serial(left, right))
     }
 }
@@ -430,6 +520,9 @@ impl PairwiseL2Kernel<f64> for GpuBackend {
         left: &Array2<f64>,
         right: &Array2<f64>,
     ) -> Result<Array2<f64>, AcceleratorError> {
+        if !should_attempt_gpu_pairwise(left.nrows(), right.nrows(), left.ncols()) {
+            return pairwise_l2_serial(left, right);
+        }
         fallback_or_cpu_gpu(pairwise_l2_gpu_f64(left, right), || pairwise_l2_serial(left, right))
     }
 }
@@ -449,6 +542,9 @@ impl PairwiseCosineKernel<f32> for GpuBackend {
         left: &Array2<f32>,
         right: &Array2<f32>,
     ) -> Result<Array2<f32>, AcceleratorError> {
+        if !should_attempt_gpu_pairwise(left.nrows(), right.nrows(), left.ncols()) {
+            return pairwise_cosine_serial(left, right);
+        }
         fallback_or_cpu_gpu(pairwise_cosine_gpu_f32(left, right), || {
             pairwise_cosine_serial(left, right)
         })
@@ -461,6 +557,9 @@ impl PairwiseCosineKernel<f64> for GpuBackend {
         left: &Array2<f64>,
         right: &Array2<f64>,
     ) -> Result<Array2<f64>, AcceleratorError> {
+        if !should_attempt_gpu_pairwise(left.nrows(), right.nrows(), left.ncols()) {
+            return pairwise_cosine_serial(left, right);
+        }
         fallback_or_cpu_gpu(pairwise_cosine_gpu_f64(left, right), || {
             pairwise_cosine_serial(left, right)
         })
@@ -489,6 +588,9 @@ impl TensorContractKernel<f32> for GpuBackend {
         left_axis: usize,
         right_axis: usize,
     ) -> Result<ArrayD<f32>, AcceleratorError> {
+        if !should_attempt_gpu_tensor_contract(left.len(), right.len()) {
+            return tensor_contract_axes_serial(left, right, left_axis, right_axis);
+        }
         fallback_or_cpu_gpu(
             tensor_contract_axes_gpu_f32(left, right, left_axis, right_axis),
             || tensor_contract_axes_serial(left, right, left_axis, right_axis),
@@ -504,6 +606,9 @@ impl TensorContractKernel<f64> for GpuBackend {
         left_axis: usize,
         right_axis: usize,
     ) -> Result<ArrayD<f64>, AcceleratorError> {
+        if !should_attempt_gpu_tensor_contract(left.len(), right.len()) {
+            return tensor_contract_axes_serial(left, right, left_axis, right_axis);
+        }
         fallback_or_cpu_gpu(
             tensor_contract_axes_gpu_f64(left, right, left_axis, right_axis),
             || tensor_contract_axes_serial(left, right, left_axis, right_axis),
@@ -519,6 +624,9 @@ impl TensorContractKernel<num_complex::Complex64> for GpuBackend {
         left_axis: usize,
         right_axis: usize,
     ) -> Result<ArrayD<num_complex::Complex64>, AcceleratorError> {
+        if !should_attempt_gpu_tensor_contract(left.len(), right.len()) {
+            return tensor_contract_axes_serial(left, right, left_axis, right_axis);
+        }
         fallback_or_cpu_gpu(
             tensor_contract_axes_gpu_complex64(left, right, left_axis, right_axis),
             || tensor_contract_axes_serial(left, right, left_axis, right_axis),
@@ -544,6 +652,17 @@ impl TensorBatchedMatMulKernel<f32> for GpuBackend {
         left: &ArrayD<f32>,
         right: &ArrayD<f32>,
     ) -> Result<ArrayD<f32>, AcceleratorError> {
+        if left.ndim() >= 2 && right.ndim() >= 2 {
+            let left_shape = left.shape();
+            let right_shape = right.shape();
+            let batch = left_shape[..left.ndim() - 2].iter().copied().product::<usize>().max(1);
+            let rows = left_shape[left.ndim() - 2];
+            let inner = left_shape[left.ndim() - 1];
+            let cols = right_shape[right.ndim() - 1];
+            if !should_attempt_gpu_tensor_batched_matmul(batch, rows, inner, cols) {
+                return tensor_batched_matmul_last_two_serial(left, right);
+            }
+        }
         fallback_or_cpu_gpu(tensor_batched_matmul_last_two_gpu_f32(left, right), || {
             tensor_batched_matmul_last_two_serial(left, right)
         })
@@ -556,6 +675,17 @@ impl TensorBatchedMatMulKernel<f64> for GpuBackend {
         left: &ArrayD<f64>,
         right: &ArrayD<f64>,
     ) -> Result<ArrayD<f64>, AcceleratorError> {
+        if left.ndim() >= 2 && right.ndim() >= 2 {
+            let left_shape = left.shape();
+            let right_shape = right.shape();
+            let batch = left_shape[..left.ndim() - 2].iter().copied().product::<usize>().max(1);
+            let rows = left_shape[left.ndim() - 2];
+            let inner = left_shape[left.ndim() - 1];
+            let cols = right_shape[right.ndim() - 1];
+            if !should_attempt_gpu_tensor_batched_matmul(batch, rows, inner, cols) {
+                return tensor_batched_matmul_last_two_serial(left, right);
+            }
+        }
         fallback_or_cpu_gpu(tensor_batched_matmul_last_two_gpu_f64(left, right), || {
             tensor_batched_matmul_last_two_serial(left, right)
         })
@@ -568,6 +698,17 @@ impl TensorBatchedMatMulKernel<num_complex::Complex64> for GpuBackend {
         left: &ArrayD<num_complex::Complex64>,
         right: &ArrayD<num_complex::Complex64>,
     ) -> Result<ArrayD<num_complex::Complex64>, AcceleratorError> {
+        if left.ndim() >= 2 && right.ndim() >= 2 {
+            let left_shape = left.shape();
+            let right_shape = right.shape();
+            let batch = left_shape[..left.ndim() - 2].iter().copied().product::<usize>().max(1);
+            let rows = left_shape[left.ndim() - 2];
+            let inner = left_shape[left.ndim() - 1];
+            let cols = right_shape[right.ndim() - 1];
+            if !should_attempt_gpu_tensor_batched_matmul(batch, rows, inner, cols) {
+                return tensor_batched_matmul_last_two_serial(left, right);
+            }
+        }
         fallback_or_cpu_gpu(tensor_batched_matmul_last_two_gpu_complex64(left, right), || {
             tensor_batched_matmul_last_two_serial(left, right)
         })
@@ -586,6 +727,9 @@ where
 /// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
 impl TensorLastAxisReductionKernel<f32> for GpuBackend {
     fn sum_last_axis(input: &ArrayD<f32>) -> Result<ArrayD<f32>, AcceleratorError> {
+        if !should_attempt_gpu_tensor_sum(input.len()) {
+            return tensor_sum_last_axis_serial(input);
+        }
         fallback_or_cpu_gpu(tensor_sum_last_axis_gpu_f32(input), || {
             tensor_sum_last_axis_serial(input)
         })
@@ -595,6 +739,9 @@ impl TensorLastAxisReductionKernel<f32> for GpuBackend {
 /// Note: current GPU backend path attempts GPU execution and falls back to CPU serial execution.
 impl TensorLastAxisReductionKernel<f64> for GpuBackend {
     fn sum_last_axis(input: &ArrayD<f64>) -> Result<ArrayD<f64>, AcceleratorError> {
+        if !should_attempt_gpu_tensor_sum(input.len()) {
+            return tensor_sum_last_axis_serial(input);
+        }
         fallback_or_cpu_gpu(tensor_sum_last_axis_gpu_f64(input), || {
             tensor_sum_last_axis_serial(input)
         })
@@ -606,6 +753,9 @@ impl TensorLastAxisReductionKernel<num_complex::Complex64> for GpuBackend {
     fn sum_last_axis(
         input: &ArrayD<num_complex::Complex64>,
     ) -> Result<ArrayD<num_complex::Complex64>, AcceleratorError> {
+        if !should_attempt_gpu_tensor_sum(input.len()) {
+            return tensor_sum_last_axis_serial(input);
+        }
         fallback_or_cpu_gpu(tensor_sum_last_axis_gpu_complex64(input), || {
             tensor_sum_last_axis_serial(input)
         })

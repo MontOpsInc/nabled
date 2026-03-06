@@ -7,6 +7,8 @@ use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, identity, is_symmetric};
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+use crate::provider::magma;
 #[cfg(not(feature = "lapack-provider"))]
 use crate::schur;
 use crate::{eigen, svd};
@@ -59,10 +61,19 @@ impl<T> MatrixFunctionScalar for T where
 }
 
 /// Real scalar contract for matrix-function real-valued APIs.
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+pub trait MatrixFunctionScalar: NabledReal + magma::MagmaReal {}
+
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+impl<T> MatrixFunctionScalar for T where T: NabledReal + magma::MagmaReal {}
+
+/// Real scalar contract for matrix-function real-valued APIs.
 #[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(feature = "magma-system"))]
 pub trait MatrixFunctionScalar: NabledReal {}
 
 #[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(feature = "magma-system"))]
 impl<T: NabledReal> MatrixFunctionScalar for T {}
 
 /// Reusable workspace for matrix-function `_into` kernels.

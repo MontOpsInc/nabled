@@ -140,7 +140,7 @@ fn linear_regression_impl<T>(
     add_intercept: bool,
 ) -> Result<NdarrayRegressionResult<T>, RegressionError>
 where
-    T: NabledReal,
+    T: lu::LuProviderScalar,
 {
     if x.is_empty() || y.is_empty() {
         return Err(RegressionError::EmptyInput);
@@ -205,7 +205,7 @@ pub fn linear_regression<T>(
     add_intercept: bool,
 ) -> Result<NdarrayRegressionResult<T>, RegressionError>
 where
-    T: NabledReal,
+    T: lu::LuProviderScalar,
 {
     linear_regression_impl(&x.view(), &y.view(), add_intercept)
 }
@@ -237,7 +237,7 @@ pub fn linear_regression_view<T>(
     add_intercept: bool,
 ) -> Result<NdarrayRegressionResult<T>, RegressionError>
 where
-    T: NabledReal,
+    T: lu::LuProviderScalar,
 {
     linear_regression_impl(x, y, add_intercept)
 }

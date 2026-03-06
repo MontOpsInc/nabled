@@ -8,6 +8,8 @@ use num_complex::Complex64;
 
 #[cfg(not(feature = "lapack-provider"))]
 use crate::internal::DenseKernelPolicy;
+#[cfg(feature = "magma-system")]
+use crate::provider::magma;
 
 /// Result of Cholesky decomposition.
 #[derive(Debug, Clone)]
@@ -54,6 +56,20 @@ impl fmt::Display for CholeskyError {
 
 impl std::error::Error for CholeskyError {}
 
+#[cfg(feature = "magma-system")]
+#[doc(hidden)]
+pub trait CholeskyProviderScalar: NabledReal + magma::MagmaReal {}
+
+#[cfg(feature = "magma-system")]
+impl<T> CholeskyProviderScalar for T where T: NabledReal + magma::MagmaReal {}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+#[doc(hidden)]
+pub trait CholeskyProviderScalar: NabledReal + ndarray_linalg::Lapack<Real = Self> {}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+impl<T> CholeskyProviderScalar for T where T: NabledReal + ndarray_linalg::Lapack<Real = T> {}
+
 fn validate_square_finite_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<(), CholeskyError> {
@@ -82,6 +98,20 @@ fn validate_complex_square_finite_view(
         return Err(CholeskyError::NumericalInstability);
     }
     Ok(())
+}
+
+#[cfg(feature = "magma-system")]
+fn map_cholesky_provider_error(error: &'static str) -> CholeskyError {
+    match error {
+        "empty" => CholeskyError::EmptyMatrix,
+        "not_square" => CholeskyError::NotSquare,
+        "non_finite" => CholeskyError::NumericalInstability,
+        "bad_dimensions" => {
+            CholeskyError::InvalidInput("RHS length must match matrix dimensions".to_string())
+        }
+        "not_positive_definite" => CholeskyError::NotPositiveDefinite,
+        _ => CholeskyError::InvalidInput(error.to_string()),
+    }
 }
 
 #[cfg(not(feature = "lapack-provider"))]
@@ -122,6 +152,7 @@ fn decompose_complex_internal(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn decompose_internal<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, CholeskyError> {
@@ -156,10 +187,40 @@ fn decompose_internal<T: NabledReal>(
     Ok(lower)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
 fn decompose_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
+{
+    validate_square_finite_view(matrix)?;
+    magma::cholesky_decompose(matrix).map_err(map_cholesky_provider_error)
+}
+
+#[cfg(feature = "magma-system")]
+fn solve_provider<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, CholeskyError>
+where
+    T: CholeskyProviderScalar,
+{
+    validate_square_finite_view(matrix)?;
+    magma::cholesky_solve(matrix, rhs).map_err(map_cholesky_provider_error)
+}
+
+#[cfg(feature = "magma-system")]
+fn inverse_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
+where
+    T: CholeskyProviderScalar,
+{
+    validate_square_finite_view(matrix)?;
+    magma::cholesky_inverse(matrix).map_err(map_cholesky_provider_error)
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+fn decompose_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
+where
+    T: CholeskyProviderScalar,
 {
     use ndarray_linalg::{Cholesky as _, UPLO};
 
@@ -168,13 +229,13 @@ where
     matrix.cholesky(UPLO::Lower).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn solve_provider<T>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     use ndarray_linalg::SolveC as _;
 
@@ -182,10 +243,10 @@ where
     matrix.solvec(rhs).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn inverse_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     use ndarray_linalg::InverseC as _;
 
@@ -272,22 +333,22 @@ fn solve_complex_from_factor(
     Ok(x)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn decompose_dispatch<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     decompose_provider(matrix)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn decompose_dispatch<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, CholeskyError> {
     decompose_internal(matrix)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 #[allow(clippy::many_single_char_names)]
 fn solve_from_factor<T: NabledReal>(
     lower_factor: &Array2<T>,
@@ -331,7 +392,7 @@ fn solve_from_factor<T: NabledReal>(
     Ok(())
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 #[allow(clippy::many_single_char_names)]
 fn inverse_from_factor<T: NabledReal>(
     lower_factor: &Array2<T>,
@@ -354,10 +415,10 @@ fn inverse_from_factor<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn decompose<T>(matrix: &Array2<T>) -> Result<NdarrayCholeskyResult<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     let l = decompose_dispatch(&matrix.view())?;
     Ok(NdarrayCholeskyResult { l })
@@ -367,7 +428,7 @@ where
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn decompose<T: NabledReal>(
     matrix: &Array2<T>,
 ) -> Result<NdarrayCholeskyResult<T>, CholeskyError> {
@@ -404,12 +465,12 @@ fn decompose_complex_impl(
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn decompose_view<T>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayCholeskyResult<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     let l = decompose_dispatch(matrix)?;
     Ok(NdarrayCholeskyResult { l })
@@ -419,7 +480,7 @@ where
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn decompose_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayCholeskyResult<T>, CholeskyError> {
@@ -442,10 +503,10 @@ pub fn decompose_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     solve_impl(&matrix.view(), &rhs.view())
 }
@@ -454,7 +515,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve<T: NabledReal>(
     matrix: &Array2<T>,
     rhs: &Array1<T>,
@@ -462,18 +523,18 @@ pub fn solve<T: NabledReal>(
     solve_impl(&matrix.view(), &rhs.view())
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn solve_impl<T>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     solve_provider(matrix, rhs)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn solve_impl<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
@@ -513,13 +574,13 @@ fn solve_complex_impl(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_view<T>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     solve_impl(matrix, rhs)
 }
@@ -528,7 +589,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
@@ -552,14 +613,14 @@ pub fn solve_complex_view(
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
 #[allow(clippy::many_single_char_names)]
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_into<T>(
     matrix: &Array2<T>,
     rhs: &Array1<T>,
     output: &mut Array1<T>,
 ) -> Result<(), CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     solve_into_impl(&matrix.view(), &rhs.view(), output)
 }
@@ -569,7 +630,7 @@ where
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_into<T: NabledReal>(
     matrix: &Array2<T>,
     rhs: &Array1<T>,
@@ -579,14 +640,14 @@ pub fn solve_into<T: NabledReal>(
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn solve_into_impl<T>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
     output: &mut Array1<T>,
 ) -> Result<(), CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     if rhs.len() != matrix.nrows() {
         return Err(CholeskyError::InvalidInput(
@@ -603,7 +664,7 @@ where
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn solve_into_impl<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
@@ -626,10 +687,10 @@ fn solve_into_impl<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn inverse<T>(matrix: &Array2<T>) -> Result<Array2<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     inverse_impl(&matrix.view())
 }
@@ -638,20 +699,20 @@ where
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn inverse<T: NabledReal>(matrix: &Array2<T>) -> Result<Array2<T>, CholeskyError> {
     inverse_impl(&matrix.view())
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn inverse_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     inverse_provider(matrix)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn inverse_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError> {
     let lower_factor = decompose_dispatch(matrix)?;
     inverse_from_factor(&lower_factor)
@@ -695,10 +756,10 @@ fn inverse_complex_impl(
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn inverse_view<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: CholeskyProviderScalar,
 {
     inverse_impl(matrix)
 }
@@ -707,7 +768,7 @@ where
 ///
 /// # Errors
 /// Returns an error if matrix is not SPD.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn inverse_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError> {
     inverse_impl(matrix)
 }

@@ -52,6 +52,7 @@ A chunk is defined by:
 1. Active optimization/expansion round is GPU-only.
 2. Metal-specific backend work is explicitly deferred.
 3. SIMD-focused CPU optimization is explicitly deferred.
+4. V2 execution sequencing for GPU/provider expansion is tracked in `docs/GPU_V2_TRACKER.md`.
 
 ## Current Harness Audit (Linalg)
 
@@ -325,6 +326,12 @@ Interpretation:
    - fallback incidence (should trend to zero for in-scope GPU-native ops).
 4. Keep CPU decomposition hotspot optimization deferred for this round.
 5. Keep SIMD-driven optimization deferred for this round.
+
+### Remote V2 Baseline (RTX 4090, release profile)
+
+1. Remote sweep run via `scripts/gpu_v2_remote_probe.sh` with `accelerator-wgpu` and Vulkan.
+2. Dense square `matmat` crossover (CPU vs direct GPU path) on this setup is approximately near `N ~= 900`.
+3. This baseline informed `accelerator::policy` default thresholds so GPU dispatch avoids small/medium workload regressions by default.
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

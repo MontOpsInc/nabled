@@ -11,8 +11,9 @@
 //! 4. `netlib-system`: enables provider-backed `LAPACK` paths via system `Netlib` `LAPACK`.
 //! 5. `netlib-static`: enables provider-backed `LAPACK` paths via statically linked `Netlib`
 //!    `LAPACK`.
-//! 6. `accelerator-rayon`: enables selected parallel CPU kernels.
-//! 7. `accelerator-wgpu`: enables bounded GPU (`f32`) kernel paths.
+//! 6. `magma-system`: enables CUDA-backed MAGMA provider paths for supported decomposition domains.
+//! 7. `accelerator-rayon`: enables selected parallel CPU kernels.
+//! 8. `accelerator-wgpu`: enables bounded GPU (`f32`/`f64`) kernel paths.
 //!
 //! # Execution Model
 //!
@@ -57,6 +58,7 @@ use crate::vector::VectorError;
 pub mod accelerator;
 pub mod batched;
 mod internal;
+mod provider;
 
 pub mod cholesky;
 pub mod eigen;

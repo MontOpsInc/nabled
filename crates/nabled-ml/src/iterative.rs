@@ -92,10 +92,16 @@ impl<T> IterativeLinearScalar for T where
 {
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+trait IterativeLinearScalar: NabledReal + std::ops::SubAssign + lu::LuProviderScalar {}
+
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+impl<T> IterativeLinearScalar for T where T: NabledReal + std::ops::SubAssign + lu::LuProviderScalar {}
+
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 trait IterativeLinearScalar: NabledReal + std::ops::SubAssign {}
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 impl<T> IterativeLinearScalar for T where T: NabledReal + std::ops::SubAssign {}
 
 /// Conjugate Gradient for SPD systems `Ax=b`.
@@ -236,7 +242,24 @@ where
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+pub fn gmres<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + lu::LuProviderScalar,
+{
+    gmres_impl(matrix_a, matrix_b, config)
+}
+
+/// GMRES for general systems `Ax=b`.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[allow(clippy::many_single_char_names)]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
     matrix_b: &Array1<T>,

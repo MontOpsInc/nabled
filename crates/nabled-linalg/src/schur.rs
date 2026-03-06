@@ -171,7 +171,7 @@ fn validate_output_shapes<T: NabledReal>(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn compute_schur_impl<T: NabledReal>(
+fn compute_schur_impl<T: qr::QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySchurResult<T>, SchurError> {
     if matrix.is_empty() {
@@ -297,7 +297,7 @@ where
 /// # Errors
 /// Returns an error for invalid input or convergence failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_schur<T: NabledReal>(
+pub fn compute_schur<T: qr::QrInternalScalar>(
     matrix: &Array2<T>,
 ) -> Result<NdarraySchurResult<T>, SchurError> {
     compute_schur_impl(&matrix.view())
@@ -332,7 +332,7 @@ where
 /// # Errors
 /// Returns an error for invalid input or convergence failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_schur_view<T: NabledReal>(
+pub fn compute_schur_view<T: qr::QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySchurResult<T>, SchurError> {
     compute_schur_impl(matrix)
@@ -370,7 +370,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs, output shapes, or convergence failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_schur_into<T: NabledReal>(
+pub fn compute_schur_into<T: qr::QrInternalScalar>(
     matrix: &Array2<T>,
     output_q: &mut Array2<T>,
     output_t: &mut Array2<T>,
@@ -417,7 +417,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs, output shapes, or convergence failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_schur_into_view<T: NabledReal>(
+pub fn compute_schur_into_view<T: qr::QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
     output_q: &mut Array2<T>,
     output_t: &mut Array2<T>,
@@ -475,7 +475,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs, output shapes, or convergence failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_schur_with_workspace_into<T: NabledReal>(
+pub fn compute_schur_with_workspace_into<T: qr::QrInternalScalar>(
     matrix: &Array2<T>,
     output_q: &mut Array2<T>,
     output_t: &mut Array2<T>,

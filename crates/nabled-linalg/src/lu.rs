@@ -7,8 +7,10 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, lu_decompose};
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 use crate::internal::{inverse_from_lu, lu_solve};
+#[cfg(feature = "magma-system")]
+use crate::provider::magma;
 
 /// Result of LU decomposition.
 #[derive(Debug, Clone)]
@@ -63,9 +65,36 @@ fn map_lu_error(error: &'static str) -> LUError {
         "not_square" => LUError::NotSquare,
         "singular" => LUError::SingularMatrix,
         "non_finite" => LUError::NumericalInstability,
+        "bad_dimensions" => {
+            LUError::InvalidInput("RHS length must match matrix dimensions".to_string())
+        }
+        "provider_init_failed" | "invalid_dimensions" | "invalid_input" => {
+            LUError::InvalidInput("provider failure".to_string())
+        }
         _ => LUError::InvalidInput(error.to_string()),
     }
 }
+
+#[cfg(feature = "magma-system")]
+#[doc(hidden)]
+pub trait LuProviderScalar: NabledReal + magma::MagmaReal {}
+
+#[cfg(feature = "magma-system")]
+impl<T> LuProviderScalar for T where T: NabledReal + magma::MagmaReal {}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+#[doc(hidden)]
+pub trait LuProviderScalar: NabledReal + ndarray_linalg::Lapack {}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+impl<T> LuProviderScalar for T where T: NabledReal + ndarray_linalg::Lapack {}
+
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[doc(hidden)]
+pub trait LuProviderScalar: NabledReal {}
+
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+impl<T> LuProviderScalar for T where T: NabledReal {}
 
 fn validate_square_finite_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<(), LUError> {
     if matrix.is_empty() {
@@ -226,13 +255,43 @@ fn decompose_internal<T: NabledReal>(
     Ok((NdarrayLUResult { l, u }, pivots, sign))
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
 fn solve_provider<T>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, LUError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: LuProviderScalar,
+{
+    validate_square_finite_view(matrix)?;
+    magma::lu_solve(matrix, rhs).map_err(map_lu_error)
+}
+
+#[cfg(feature = "magma-system")]
+fn inverse_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError>
+where
+    T: LuProviderScalar,
+{
+    validate_square_finite_view(matrix)?;
+    magma::lu_inverse(matrix).map_err(map_lu_error)
+}
+
+#[cfg(feature = "magma-system")]
+fn determinant_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError>
+where
+    T: LuProviderScalar,
+{
+    validate_square_finite_view(matrix)?;
+    magma::lu_determinant(matrix).map_err(map_lu_error)
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+fn solve_provider<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, LUError>
+where
+    T: LuProviderScalar,
 {
     use ndarray_linalg::Solve as _;
 
@@ -240,10 +299,10 @@ where
     matrix.solve(rhs).map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn inverse_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: LuProviderScalar,
 {
     use ndarray_linalg::Inverse as _;
 
@@ -251,10 +310,10 @@ where
     matrix.inv().map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn determinant_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: LuProviderScalar,
 {
     use ndarray_linalg::Determinant as _;
 
@@ -324,8 +383,8 @@ pub fn decompose_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or matrix is singular.
-#[cfg(feature = "lapack-provider")]
-pub fn solve<T: NabledReal + ndarray_linalg::Lapack>(
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn solve<T: LuProviderScalar>(
     matrix: &Array2<T>,
     rhs: &Array1<T>,
 ) -> Result<Array1<T>, LUError> {
@@ -336,15 +395,15 @@ pub fn solve<T: NabledReal + ndarray_linalg::Lapack>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or matrix is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve<T: NabledReal>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, LUError> {
     solve_impl(&matrix.view(), &rhs.view())
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn solve_impl<T>(matrix: &ArrayView2<'_, T>, rhs: &ArrayView1<'_, T>) -> Result<Array1<T>, LUError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: LuProviderScalar,
 {
     validate_square_finite_view(matrix)?;
     if rhs.len() != matrix.nrows() {
@@ -354,7 +413,7 @@ where
     solve_provider(matrix, rhs)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn solve_impl<T>(matrix: &ArrayView2<'_, T>, rhs: &ArrayView1<'_, T>) -> Result<Array1<T>, LUError>
 where
     T: NabledReal,
@@ -398,8 +457,8 @@ fn solve_complex_impl(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or matrix is singular.
-#[cfg(feature = "lapack-provider")]
-pub fn solve_view<T: NabledReal + ndarray_linalg::Lapack>(
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn solve_view<T: LuProviderScalar>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, LUError> {
@@ -410,7 +469,7 @@ pub fn solve_view<T: NabledReal + ndarray_linalg::Lapack>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or matrix is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
@@ -433,10 +492,8 @@ pub fn solve_complex_view(
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-#[cfg(feature = "lapack-provider")]
-pub fn inverse<T: NabledReal + ndarray_linalg::Lapack>(
-    matrix: &Array2<T>,
-) -> Result<Array2<T>, LUError> {
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn inverse<T: LuProviderScalar>(matrix: &Array2<T>) -> Result<Array2<T>, LUError> {
     inverse_impl(&matrix.view())
 }
 
@@ -444,20 +501,20 @@ pub fn inverse<T: NabledReal + ndarray_linalg::Lapack>(
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn inverse<T: NabledReal>(matrix: &Array2<T>) -> Result<Array2<T>, LUError> {
     inverse_impl(&matrix.view())
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn inverse_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: LuProviderScalar,
 {
     inverse_provider(matrix)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn inverse_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError>
 where
     T: NabledReal,
@@ -489,10 +546,8 @@ fn inverse_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Result<Array2<Com
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-#[cfg(feature = "lapack-provider")]
-pub fn inverse_view<T: NabledReal + ndarray_linalg::Lapack>(
-    matrix: &ArrayView2<'_, T>,
-) -> Result<Array2<T>, LUError> {
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn inverse_view<T: LuProviderScalar>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError> {
     inverse_impl(matrix)
 }
 
@@ -500,7 +555,7 @@ pub fn inverse_view<T: NabledReal + ndarray_linalg::Lapack>(
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn inverse_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError> {
     inverse_impl(matrix)
 }
@@ -519,10 +574,8 @@ pub fn inverse_complex_view(
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-#[cfg(feature = "lapack-provider")]
-pub fn determinant<T: NabledReal + ndarray_linalg::Lapack>(
-    matrix: &Array2<T>,
-) -> Result<T, LUError> {
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn determinant<T: LuProviderScalar>(matrix: &Array2<T>) -> Result<T, LUError> {
     determinant_impl(&matrix.view())
 }
 
@@ -530,20 +583,20 @@ pub fn determinant<T: NabledReal + ndarray_linalg::Lapack>(
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn determinant<T: NabledReal>(matrix: &Array2<T>) -> Result<T, LUError> {
     determinant_impl(&matrix.view())
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn determinant_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError>
 where
-    T: NabledReal + ndarray_linalg::Lapack,
+    T: LuProviderScalar,
 {
     determinant_provider(matrix)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn determinant_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError>
 where
     T: NabledReal,
@@ -590,10 +643,8 @@ fn determinant_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Result<Comple
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-#[cfg(feature = "lapack-provider")]
-pub fn determinant_view<T: NabledReal + ndarray_linalg::Lapack>(
-    matrix: &ArrayView2<'_, T>,
-) -> Result<T, LUError> {
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn determinant_view<T: LuProviderScalar>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError> {
     determinant_impl(matrix)
 }
 
@@ -601,7 +652,7 @@ pub fn determinant_view<T: NabledReal + ndarray_linalg::Lapack>(
 ///
 /// # Errors
 /// Returns an error if decomposition fails.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn determinant_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError> {
     determinant_impl(matrix)
 }
@@ -618,8 +669,8 @@ pub fn determinant_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Result<Co
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-#[cfg(feature = "lapack-provider")]
-pub fn log_determinant<T: NabledReal + ndarray_linalg::Lapack>(
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn log_determinant<T: LuProviderScalar>(
     matrix: &Array2<T>,
 ) -> Result<LogDetResult<T>, LUError> {
     let determinant = determinant_impl(&matrix.view())?;
@@ -636,7 +687,7 @@ pub fn log_determinant<T: NabledReal + ndarray_linalg::Lapack>(
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn log_determinant<T: NabledReal>(matrix: &Array2<T>) -> Result<LogDetResult<T>, LUError> {
     let determinant = determinant_impl(&matrix.view())?;
     let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
@@ -652,8 +703,8 @@ pub fn log_determinant<T: NabledReal>(matrix: &Array2<T>) -> Result<LogDetResult
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-#[cfg(feature = "lapack-provider")]
-pub fn log_determinant_view<T: NabledReal + ndarray_linalg::Lapack>(
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn log_determinant_view<T: LuProviderScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<LogDetResult<T>, LUError> {
     let determinant = determinant_impl(matrix)?;
@@ -670,7 +721,7 @@ pub fn log_determinant_view<T: NabledReal + ndarray_linalg::Lapack>(
 ///
 /// # Errors
 /// Returns an error if matrix is singular.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn log_determinant_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<LogDetResult<T>, LUError> {

@@ -181,7 +181,7 @@ where
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_pca<T: NabledReal>(
+pub fn compute_pca<T: svd::SvdInternalScalar>(
     matrix: &Array2<T>,
     n_components: Option<usize>,
 ) -> Result<NdarrayPCAResult<T>, PCAError> {
@@ -226,7 +226,7 @@ where
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn compute_pca_impl<T: NabledReal>(
+fn compute_pca_impl<T: svd::SvdInternalScalar>(
     matrix: &ArrayView2<'_, T>,
     n_components: Option<usize>,
 ) -> Result<NdarrayPCAResult<T>, PCAError> {
@@ -279,7 +279,7 @@ where
 /// # Errors
 /// Returns an error for invalid input or decomposition failure.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn compute_pca_view<T: NabledReal>(
+pub fn compute_pca_view<T: svd::SvdInternalScalar>(
     matrix: &ArrayView2<'_, T>,
     n_components: Option<usize>,
 ) -> Result<NdarrayPCAResult<T>, PCAError> {

@@ -1683,7 +1683,7 @@ where
 /// # Errors
 /// Returns an error if input is empty, ranks are invalid, or factorization fails.
 #[cfg(not(feature = "lapack-provider"))]
-pub fn hosvd3<T: NabledReal>(
+pub fn hosvd3<T: svd::SvdInternalScalar>(
     cube: &Array3<T>,
     ranks: (usize, usize, usize),
 ) -> Result<Hosvd3Result<T>, TensorError> {
@@ -1691,7 +1691,7 @@ pub fn hosvd3<T: NabledReal>(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-fn hosvd3_impl<T: NabledReal>(
+fn hosvd3_impl<T: svd::SvdInternalScalar>(
     cube: &Array3<T>,
     ranks: (usize, usize, usize),
 ) -> Result<Hosvd3Result<T>, TensorError> {

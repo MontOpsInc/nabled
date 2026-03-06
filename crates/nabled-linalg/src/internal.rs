@@ -1,7 +1,7 @@
 //! Internal ndarray-native helpers used across domain modules.
 
 use nabled_core::scalar::NabledReal;
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 use ndarray::ArrayView1;
 use ndarray::{Array1, Array2, ArrayView2};
 
@@ -142,7 +142,7 @@ pub(crate) fn lu_decompose<T: NabledReal>(
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub(crate) fn lu_solve<T: NabledReal>(
     l: &Array2<T>,
     u: &Array2<T>,
@@ -186,7 +186,7 @@ pub(crate) fn lu_solve<T: NabledReal>(
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub(crate) fn inverse_from_lu<T: NabledReal>(
     l: &Array2<T>,
     u: &Array2<T>,
