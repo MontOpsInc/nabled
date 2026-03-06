@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-06 (V2-006 MAGMA provider breadth expansion complete)
+Last updated: 2026-03-06 (V2-009 MAGMA sparse/mixed-precision assessment complete)
 
 ## Purpose
 
@@ -31,19 +31,20 @@ This tracker is focused on:
 | `V2-004` | MAGMA CUDA provider integration (scaffold + domain wiring) | Completed | MAGMA provider paths are wired for LU/Cholesky/QR/SVD/symmetric eigen, with provider-safe scalar bounds propagated across dependent domains. |
 | `V2-005` | MAGMA verification matrix + benchmark parity report | Completed | Remote RTX 4090 run completed with correctness/capability artifacts and provider benchmark summaries captured locally. |
 | `V2-006` | MAGMA provider breadth expansion (complex + additional decomposition domains) | Completed | Complex MAGMA provider paths now cover LU, Cholesky, QR, SVD, and non-symmetric eigen decomposition, with compile-time dispatch preference (`magma-system` > `lapack-provider` > internal) and explicit shape/error contracts. |
-| `V2-007` | MAGMA-native batched decomposition kernels | Planned | Move from per-slice provider loops to MAGMA batched kernels where available and beneficial. |
-| `V2-008` | MAGMA sparse path assessment and integration plan | Planned | Evaluate MAGMA sparse APIs vs current sparse backend/provider model and integrate high-value paths. |
-| `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Planned | Identify workflows where mixed precision improves throughput while preserving accuracy contracts. |
+| `V2-007` | MAGMA-native batched decomposition kernels | Completed | `nabled-linalg::batched` now uses MAGMA-native batched LU/Cholesky/QR for real-valued provider paths under `magma-system`; SVD/symmetric-eigen remain per-slice provider loops due no equivalent MAGMA batched kernels for current API contracts. |
+| `V2-008` | MAGMA sparse path assessment and integration plan | Completed | MAGMA sparse API fit was assessed on RTX 4090 host (`magmasparse_*` headers + exported symbols); integration plan is locked around an explicit `magma_sparse` FFI layer and opt-in sparse solve acceleration phases. |
+| `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Completed | MAGMA mixed-precision kernels were verified available (`magma_dsgesv_gpu`, `magma_dsgesv_iteref_gpu`, `magma_zcgesv_gpu`); integration plan is locked around opt-in mixed-precision solve APIs with explicit convergence/error contracts. |
 
 ## Batched Surface Snapshot (Current)
 
 ### Decomposition-level batched APIs (`nabled-linalg::batched`)
 
 1. `qr`, `svd`, `lu`, `cholesky`, `symmetric_eigen`.
-2. Current implementation strategy: iterate over `Axis(0)` and call per-matrix decomposition API.
-3. Acceleration model today:
-   - `Provider` may accelerate each per-matrix decomposition.
-   - No dedicated batched decomposition GPU kernels today.
+2. Current implementation strategy:
+   - MAGMA-native batched kernels are used where available (`lu`, `cholesky`, `qr` under `magma-system`).
+   - Remaining domains use per-slice provider loops (`svd`, `symmetric_eigen`).
+3. Acceleration model:
+   - `Provider` accelerates either batched decomposition kernels directly or each per-slice decomposition.
 
 ### Kernel-level batched APIs (dispatch-backed)
 
@@ -56,10 +57,11 @@ This tracker is focused on:
    - `matrix::batched_matmat*`
    - `matrix::batched_row_matvec*`
    - tensor N-D batched last-two matmul kernels (dispatch-backed)
-2. **Provider-only batch paths (current):**
-   - `batched::{qr, svd, lu, cholesky, symmetric_eigen}` (slice loop + per-slice decomposition call)
+2. **Provider-backed decomposition batch paths (current):**
+   - Native MAGMA batched kernels: `batched::{lu, cholesky, qr}` (real-valued, `magma-system`)
+   - Per-slice provider loops: `batched::{svd, symmetric_eigen}`
 3. **Implication for V2:**
-   - `V2-004` MAGMA work targets decomposition domains and will improve provider-backed batch APIs transitively (per-slice acceleration) before any dedicated batched decomposition GPU kernels are introduced.
+   - `V2-007` is complete for decomposition kernels currently available in MAGMA while preserving explicit contracts for non-batched domains.
 
 ## Runtime Size Policy (Current V2 Pass)
 
@@ -84,11 +86,13 @@ Policy is centralized in `accelerator::policy` and used by `GpuBackend` dispatch
    - `scripts/gpu_remote.sh one <host> gpu-probe`
 3. Run MAGMA correctness/perf verification bundle:
    - `scripts/gpu_remote.sh one <host> magma-verify`
-4. For headless Vulkan in containerized environments:
+4. Run MAGMA capability scan (sparse + mixed precision symbols/headers):
+   - `scripts/gpu_remote.sh one <host> magma-capability`
+5. For headless Vulkan in containerized environments:
    - use EGL ICD (`libEGL_nvidia.so.0`) via `VK_ICD_FILENAMES` and set `XDG_RUNTIME_DIR`.
-5. Pre-baked image optimization:
+6. Pre-baked image optimization:
    - if host image has `/etc/nabled/nvidia-image`, `gpu_remote_prepare.sh` skips redundant apt/rust bootstrap.
-6. Root/pre-baked execution reliability:
+7. Root/pre-baked execution reliability:
    - tmux job runners export a stable toolchain PATH including both `/home/agent/.cargo/bin` and `/root/.cargo/bin`.
 
 ## V2-005 Result Snapshot (RTX 4090 Remote)
@@ -125,9 +129,41 @@ High-level outcomes:
    - `magma-system` strict clippy/check is green
    - repository quality gates (`just checks`) remain green after integration
 
+## V2-008 Result Snapshot
+
+Remote assessment outcomes (RTX 4090 host):
+
+1. `magmasparse_*` headers and sparse symbols are present (`libmagma_sparse.so` + `magmasparse_{s,d,c,z}.h`).
+2. Sparse entrypoints use MAGMA sparse domain types (`magma_[sdcz]_matrix`, `magma_[sdcz]_solver_par`, `magma_[sdcz]_preconditioner`) rather than raw CSR slices.
+3. This is not a drop-in match for nabled sparse APIs (`CsrMatrix` / `CsrMatrixView`) and requires an explicit interop layer.
+
+Integration plan (locked):
+
+1. Add a dedicated `provider::magma_sparse` FFI boundary that owns MAGMA sparse struct lifecycle and queue management.
+2. Phase 1 target: opt-in sparse matvec / sparse-dense matmat acceleration paths where contracts are clear and outputs remain deterministic.
+3. Phase 2 target: iterative sparse solves/preconditioners (`cg/gmres/bicgstab`-family) with explicit tolerance/iteration contracts and typed convergence errors.
+4. Keep provider/backend orthogonality: no hidden runtime provider switching and no hidden dense conversions.
+
+## V2-009 Result Snapshot
+
+Remote assessment outcomes (RTX 4090 host):
+
+1. Mixed-precision dense solve kernels are available in MAGMA:
+   - `magma_dsgesv_gpu`
+   - `magma_dsgesv_iteref_gpu`
+   - `magma_zcgesv_gpu`
+2. Header-level contracts expose explicit refinement iteration/error outputs (`iter`, `info`) and dedicated mixed work buffers.
+
+Integration plan (locked):
+
+1. Introduce opt-in mixed-precision solve APIs first (do not silently replace existing `f64`/`Complex64` solve behavior).
+2. Surface refinement metadata explicitly (`iterations`, `converged`, `fallback-used`) so callers can choose policy.
+3. Map MAGMA `info`/iteration outcomes into typed domain errors; do not hide non-convergence.
+4. Benchmark against current MAGMA double-precision solve baselines before enabling in default provider flows.
+
 ## MAGMA Expansion Scope (Post V2-005)
 
-This is the explicit capture of remaining MAGMA-oriented work:
+This is the explicit capture of MAGMA-oriented scope closed in v2:
 
 1. Introduce MAGMA-native batched decomposition paths to reduce per-slice overhead in `nabled-linalg::batched`.
 2. Assess MAGMA sparse APIs for fit with nabled sparse domain contracts (`CSR/CSC/COO`, preconditioners, solve reuse).

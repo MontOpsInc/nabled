@@ -2,10 +2,12 @@
 //!
 //! These kernels are compiled only when `magma-system` is enabled.
 
+use std::ffi::{c_char, c_void};
+use std::mem::size_of;
 use std::sync::OnceLock;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, ArrayView3, Axis};
 use num_complex::Complex64;
 
 use crate::internal::DenseKernelPolicy;
@@ -16,12 +18,66 @@ const MAGMA_NO_VEC: i32 = 301;
 const MAGMA_VEC: i32 = 302;
 const MAGMA_ALL_VEC: i32 = 304;
 
+const CALLSITE_FUNC: &[u8] = b"nabled\0";
+const CALLSITE_FILE: &[u8] = b"provider/magma.rs\0";
+
 static MAGMA_INIT_STATUS: OnceLock<i32> = OnceLock::new();
+
+type MagmaQueue = *mut c_void;
 
 #[link(name = "magma")]
 unsafe extern "C" {
     fn magma_init() -> i32;
+    fn magma_getdevice(dev: *mut i32);
+    fn magma_queue_create_internal(
+        device: i32,
+        queue_ptr: *mut MagmaQueue,
+        func: *const c_char,
+        file: *const c_char,
+        line: i32,
+    );
+    fn magma_queue_destroy_internal(
+        queue: MagmaQueue,
+        func: *const c_char,
+        file: *const c_char,
+        line: i32,
+    );
+    fn magma_queue_sync_internal(
+        queue: MagmaQueue,
+        func: *const c_char,
+        file: *const c_char,
+        line: i32,
+    );
 
+    fn magma_malloc(ptr_ptr: *mut *mut c_void, bytes: usize) -> i32;
+    fn magma_free_internal(ptr: *mut c_void, func: *const c_char, file: *const c_char, line: i32);
+
+    fn magma_setmatrix_internal(
+        m: i32,
+        n: i32,
+        elem_size: i32,
+        h_src: *const c_void,
+        lda: i32,
+        d_dst: *mut c_void,
+        ldd: i32,
+        queue: MagmaQueue,
+        func: *const c_char,
+        file: *const c_char,
+        line: i32,
+    );
+    fn magma_getmatrix_internal(
+        m: i32,
+        n: i32,
+        elem_size: i32,
+        d_src: *const c_void,
+        ldd: i32,
+        h_dst: *mut c_void,
+        ldh: i32,
+        queue: MagmaQueue,
+        func: *const c_char,
+        file: *const c_char,
+        line: i32,
+    );
     fn magma_sgesv(
         n: i32,
         nrhs: i32,
@@ -196,6 +252,98 @@ unsafe extern "C" {
         rwork: *mut f64,
         info: *mut i32,
     );
+
+    fn magma_sset_pointer(
+        output_array: *mut *mut f32,
+        input: *mut f32,
+        lda: i32,
+        row: i32,
+        column: i32,
+        batch_offset: i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    );
+    fn magma_dset_pointer(
+        output_array: *mut *mut f64,
+        input: *mut f64,
+        lda: i32,
+        row: i32,
+        column: i32,
+        batch_offset: i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    );
+    fn magma_iset_pointer(
+        output_array: *mut *mut i32,
+        input: *mut i32,
+        lda: i32,
+        row: i32,
+        column: i32,
+        batch_size: i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    );
+
+    fn magma_sgetrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut f32,
+        lda: i32,
+        ipiv_array: *mut *mut i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
+    fn magma_dgetrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut f64,
+        lda: i32,
+        ipiv_array: *mut *mut i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
+
+    fn magma_spotrf_batched(
+        uplo: i32,
+        n: i32,
+        d_a_array: *mut *mut f32,
+        lda: i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
+    fn magma_dpotrf_batched(
+        uplo: i32,
+        n: i32,
+        d_a_array: *mut *mut f64,
+        lda: i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
+
+    fn magma_sgeqrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut f32,
+        lda: i32,
+        dtau_array: *mut *mut f32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
+    fn magma_dgeqrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut f64,
+        lda: i32,
+        dtau_array: *mut *mut f64,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
 }
 
 #[allow(unnameable_types)]
@@ -256,6 +404,51 @@ pub trait MagmaReal: NabledReal + Copy + 'static {
         liwork: i32,
         info: *mut i32,
     );
+}
+
+#[allow(unnameable_types)]
+#[doc(hidden)]
+#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+pub trait MagmaRealBatched: MagmaReal {
+    fn magma_set_pointer(
+        output_array: *mut *mut Self,
+        input: *mut Self,
+        lda: i32,
+        row: i32,
+        column: i32,
+        batch_offset: i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    );
+    fn magma_getrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        ipiv_array: *mut *mut i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
+    fn magma_potrf_batched(
+        uplo: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
+    fn magma_geqrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        dtau_array: *mut *mut Self,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32;
 }
 
 type LuDecomposition<T> = (Array2<T>, Array2<T>, Vec<usize>, i8);
@@ -352,6 +545,79 @@ impl MagmaReal for f32 {
 }
 
 #[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+impl MagmaRealBatched for f32 {
+    fn magma_set_pointer(
+        output_array: *mut *mut Self,
+        input: *mut Self,
+        lda: i32,
+        row: i32,
+        column: i32,
+        batch_offset: i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) {
+        // SAFETY: Call sites guarantee valid dimensions and pointers.
+        unsafe {
+            magma_sset_pointer(
+                output_array,
+                input,
+                lda,
+                row,
+                column,
+                batch_offset,
+                batch_count,
+                queue,
+            );
+        };
+    }
+
+    fn magma_getrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        ipiv_array: *mut *mut i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32 {
+        // SAFETY: Call sites guarantee valid dimensions and pointers.
+        unsafe {
+            magma_sgetrf_batched(m, n, d_a_array, lda, ipiv_array, info_array, batch_count, queue)
+        }
+    }
+
+    fn magma_potrf_batched(
+        uplo: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32 {
+        // SAFETY: Call sites guarantee valid dimensions and pointers.
+        unsafe { magma_spotrf_batched(uplo, n, d_a_array, lda, info_array, batch_count, queue) }
+    }
+
+    fn magma_geqrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        dtau_array: *mut *mut Self,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32 {
+        // SAFETY: Call sites guarantee valid dimensions and pointers.
+        unsafe {
+            magma_sgeqrf_batched(m, n, d_a_array, lda, dtau_array, info_array, batch_count, queue)
+        }
+    }
+}
+
+#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
 impl MagmaReal for f64 {
     fn magma_gesv(
         n: i32,
@@ -442,12 +708,263 @@ impl MagmaReal for f64 {
     }
 }
 
+#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+impl MagmaRealBatched for f64 {
+    fn magma_set_pointer(
+        output_array: *mut *mut Self,
+        input: *mut Self,
+        lda: i32,
+        row: i32,
+        column: i32,
+        batch_offset: i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) {
+        // SAFETY: Call sites guarantee valid dimensions and pointers.
+        unsafe {
+            magma_dset_pointer(
+                output_array,
+                input,
+                lda,
+                row,
+                column,
+                batch_offset,
+                batch_count,
+                queue,
+            );
+        };
+    }
+
+    fn magma_getrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        ipiv_array: *mut *mut i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32 {
+        // SAFETY: Call sites guarantee valid dimensions and pointers.
+        unsafe {
+            magma_dgetrf_batched(m, n, d_a_array, lda, ipiv_array, info_array, batch_count, queue)
+        }
+    }
+
+    fn magma_potrf_batched(
+        uplo: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32 {
+        // SAFETY: Call sites guarantee valid dimensions and pointers.
+        unsafe { magma_dpotrf_batched(uplo, n, d_a_array, lda, info_array, batch_count, queue) }
+    }
+
+    fn magma_geqrf_batched(
+        m: i32,
+        n: i32,
+        d_a_array: *mut *mut Self,
+        lda: i32,
+        dtau_array: *mut *mut Self,
+        info_array: *mut i32,
+        batch_count: i32,
+        queue: MagmaQueue,
+    ) -> i32 {
+        // SAFETY: Call sites guarantee valid dimensions and pointers.
+        unsafe {
+            magma_dgeqrf_batched(m, n, d_a_array, lda, dtau_array, info_array, batch_count, queue)
+        }
+    }
+}
+
 fn ensure_magma_initialized() -> Result<(), &'static str> {
     let status = *MAGMA_INIT_STATUS.get_or_init(|| {
         // SAFETY: MAGMA global initialization is process-global and idempotent here.
         unsafe { magma_init() }
     });
     if status == MAGMA_SUCCESS { Ok(()) } else { Err("provider_init_failed") }
+}
+
+#[inline]
+fn callsite_func() -> *const c_char { CALLSITE_FUNC.as_ptr().cast() }
+
+#[inline]
+fn callsite_file() -> *const c_char { CALLSITE_FILE.as_ptr().cast() }
+
+struct MagmaQueueGuard {
+    raw: MagmaQueue,
+}
+
+impl MagmaQueueGuard {
+    fn new() -> Result<Self, &'static str> {
+        ensure_magma_initialized()?;
+        let mut device = 0_i32;
+        // SAFETY: Writes current MAGMA device id to a valid output pointer.
+        unsafe { magma_getdevice(&raw mut device) };
+        let mut queue = std::ptr::null_mut();
+        // SAFETY: Queue creation with valid device id and output pointer.
+        unsafe {
+            magma_queue_create_internal(
+                device,
+                &raw mut queue,
+                callsite_func(),
+                callsite_file(),
+                0,
+            );
+        };
+        if queue.is_null() {
+            return Err("provider_init_failed");
+        }
+        Ok(Self { raw: queue })
+    }
+
+    #[inline]
+    fn as_raw(&self) -> MagmaQueue { self.raw }
+
+    fn sync(&self) {
+        // SAFETY: Queue handle is valid for lifetime of this guard.
+        unsafe { magma_queue_sync_internal(self.raw, callsite_func(), callsite_file(), 0) };
+    }
+}
+
+impl Drop for MagmaQueueGuard {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            // SAFETY: Queue handle is valid and is released once in Drop.
+            unsafe { magma_queue_destroy_internal(self.raw, callsite_func(), callsite_file(), 0) };
+        }
+    }
+}
+
+struct MagmaDeviceMem {
+    ptr: *mut c_void,
+}
+
+impl MagmaDeviceMem {
+    fn alloc(bytes: usize) -> Result<Self, &'static str> {
+        let mut ptr = std::ptr::null_mut();
+        // SAFETY: MAGMA allocator writes a device allocation pointer on success.
+        let status = unsafe { magma_malloc(&raw mut ptr, bytes) };
+        if status != MAGMA_SUCCESS || ptr.is_null() {
+            return Err("provider_alloc_failed");
+        }
+        Ok(Self { ptr })
+    }
+
+    #[inline]
+    fn as_ptr<T>(&self) -> *mut T { self.ptr.cast() }
+}
+
+impl Drop for MagmaDeviceMem {
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            // SAFETY: Device pointer is valid and released once in Drop.
+            unsafe { magma_free_internal(self.ptr, callsite_func(), callsite_file(), 0) };
+        }
+    }
+}
+
+fn upload_batched_col_major<T: MagmaReal>(
+    matrices_col_major: &[T],
+    batch_count: usize,
+    rows: usize,
+    cols: usize,
+    queue: &MagmaQueueGuard,
+) -> Result<MagmaDeviceMem, &'static str> {
+    let matrix_elems = rows.saturating_mul(cols);
+    let total_elems = batch_count.saturating_mul(matrix_elems);
+    if matrices_col_major.len() != total_elems {
+        return Err("invalid_dimensions");
+    }
+    let rows_i32 = as_i32(rows)?;
+    let cols_i32 = as_i32(cols)?;
+    let elem_size = i32::try_from(size_of::<T>()).map_err(|_| "invalid_dimensions")?;
+    let device = MagmaDeviceMem::alloc(total_elems.saturating_mul(size_of::<T>()))?;
+
+    for batch_index in 0..batch_count {
+        let src_offset = batch_index * matrix_elems;
+        let src_ptr = matrices_col_major[src_offset..].as_ptr().cast::<c_void>();
+        // SAFETY: Offset is in-bounds of `device` allocation by construction.
+        let dst_ptr = unsafe { device.as_ptr::<T>().add(src_offset) }.cast::<c_void>();
+        // SAFETY: Copies one `n x n` matrix from host to valid device destination.
+        unsafe {
+            magma_setmatrix_internal(
+                rows_i32,
+                cols_i32,
+                elem_size,
+                src_ptr,
+                rows_i32,
+                dst_ptr,
+                rows_i32,
+                queue.as_raw(),
+                callsite_func(),
+                callsite_file(),
+                0,
+            );
+        }
+    }
+    Ok(device)
+}
+
+fn upload_square_batch<T: MagmaReal>(
+    matrices_col_major: &[T],
+    batch_count: usize,
+    n: usize,
+    queue: &MagmaQueueGuard,
+) -> Result<MagmaDeviceMem, &'static str> {
+    upload_batched_col_major(matrices_col_major, batch_count, n, n, queue)
+}
+
+fn download_batched_col_major<T: MagmaReal>(
+    device: &MagmaDeviceMem,
+    batch_count: usize,
+    rows: usize,
+    cols: usize,
+    queue: &MagmaQueueGuard,
+) -> Result<Vec<T>, &'static str> {
+    let matrix_elems = rows.saturating_mul(cols);
+    let total_elems = batch_count.saturating_mul(matrix_elems);
+    let rows_i32 = as_i32(rows)?;
+    let cols_i32 = as_i32(cols)?;
+    let elem_size = i32::try_from(size_of::<T>()).map_err(|_| "invalid_dimensions")?;
+    let mut host = vec![T::zero(); total_elems];
+
+    for batch_index in 0..batch_count {
+        let dst_offset = batch_index * matrix_elems;
+        // SAFETY: Offset is in-bounds of `device` allocation by construction.
+        let src_ptr = unsafe { device.as_ptr::<T>().add(dst_offset) }.cast::<c_void>();
+        let dst_ptr = host[dst_offset..].as_mut_ptr().cast::<c_void>();
+        // SAFETY: Copies one `n x n` matrix from valid device source to host destination.
+        unsafe {
+            magma_getmatrix_internal(
+                rows_i32,
+                cols_i32,
+                elem_size,
+                src_ptr.cast_const(),
+                rows_i32,
+                dst_ptr,
+                rows_i32,
+                queue.as_raw(),
+                callsite_func(),
+                callsite_file(),
+                0,
+            );
+        }
+    }
+    Ok(host)
+}
+
+fn download_square_batch<T: MagmaReal>(
+    device: &MagmaDeviceMem,
+    batch_count: usize,
+    n: usize,
+    queue: &MagmaQueueGuard,
+) -> Result<Vec<T>, &'static str> {
+    download_batched_col_major(device, batch_count, n, n, queue)
 }
 
 #[inline]
@@ -538,6 +1055,329 @@ fn lower_from_col_major_complex(data: &[Complex64], n: usize) -> Array2<Complex6
         }
     }
     output
+}
+
+fn to_col_major_batch<T: Copy>(matrices: &ArrayView3<'_, T>) -> Vec<T> {
+    let (batch_count, rows, cols) = matrices.dim();
+    let mut output = Vec::with_capacity(batch_count * rows * cols);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.extend(to_col_major(&matrix));
+    }
+    output
+}
+
+fn validate_batched_square_finite<T: NabledReal>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<(usize, usize), &'static str> {
+    let (batch_count, rows, cols) = matrices.dim();
+    if matrices.is_empty() || batch_count == 0 {
+        return Err("empty");
+    }
+    if rows != cols {
+        return Err("not_square");
+    }
+    if matrices.iter().any(|value| !value.is_finite()) {
+        return Err("non_finite");
+    }
+    Ok((batch_count, rows))
+}
+
+fn validate_batched_finite<T: NabledReal>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<(usize, usize, usize), &'static str> {
+    let (batch_count, rows, cols) = matrices.dim();
+    if matrices.is_empty() || batch_count == 0 {
+        return Err("empty");
+    }
+    if matrices.iter().any(|value| !value.is_finite()) {
+        return Err("non_finite");
+    }
+    Ok((batch_count, rows, cols))
+}
+
+fn setup_device_matrix_pointer_array<T: MagmaRealBatched>(
+    device_matrices: &MagmaDeviceMem,
+    lda: usize,
+    batch_offset: usize,
+    batch_count: usize,
+    queue: &MagmaQueueGuard,
+) -> Result<MagmaDeviceMem, &'static str> {
+    let ptr_bytes = batch_count.saturating_mul(size_of::<*mut T>());
+    let pointer_array = MagmaDeviceMem::alloc(ptr_bytes)?;
+    T::magma_set_pointer(
+        pointer_array.as_ptr::<*mut T>(),
+        device_matrices.as_ptr::<T>(),
+        as_i32(lda)?,
+        0,
+        0,
+        as_i32(batch_offset)?,
+        as_i32(batch_count)?,
+        queue.as_raw(),
+    );
+    Ok(pointer_array)
+}
+
+fn setup_device_pivot_arrays(
+    n: usize,
+    batch_count: usize,
+    queue: &MagmaQueueGuard,
+) -> Result<(MagmaDeviceMem, MagmaDeviceMem), &'static str> {
+    let pivots =
+        MagmaDeviceMem::alloc(batch_count.saturating_mul(n).saturating_mul(size_of::<i32>()))?;
+    let pivot_ptrs = MagmaDeviceMem::alloc(batch_count.saturating_mul(size_of::<*mut i32>()))?;
+    // SAFETY: Pointer arrays and backing pivot storage are valid for this queue operation.
+    unsafe {
+        magma_iset_pointer(
+            pivot_ptrs.as_ptr::<*mut i32>(),
+            pivots.as_ptr::<i32>(),
+            as_i32(n)?,
+            0,
+            0,
+            as_i32(n)?,
+            as_i32(batch_count)?,
+            queue.as_raw(),
+        );
+    }
+    Ok((pivots, pivot_ptrs))
+}
+
+fn extract_lu_from_col_major_batch<T: NabledReal>(
+    factors_col_major: &[T],
+    batch_count: usize,
+    n: usize,
+) -> Vec<(Array2<T>, Array2<T>)> {
+    let mut output = Vec::with_capacity(batch_count);
+    let matrix_elems = n * n;
+    for batch_index in 0..batch_count {
+        let offset = batch_index * matrix_elems;
+        let matrix_data = &factors_col_major[offset..(offset + matrix_elems)];
+        let mut l = Array2::<T>::zeros((n, n));
+        let mut u = Array2::<T>::zeros((n, n));
+        for i in 0..n {
+            l[[i, i]] = T::one();
+        }
+        for j in 0..n {
+            for i in 0..n {
+                let value = matrix_data[i + j * n];
+                if i > j {
+                    l[[i, j]] = value;
+                } else {
+                    u[[i, j]] = value;
+                }
+            }
+        }
+        output.push((l, u));
+    }
+    output
+}
+
+fn extract_lower_from_col_major_batch<T: NabledReal>(
+    factors_col_major: &[T],
+    batch_count: usize,
+    n: usize,
+) -> Vec<Array2<T>> {
+    let mut output = Vec::with_capacity(batch_count);
+    let matrix_elems = n * n;
+    for batch_index in 0..batch_count {
+        let offset = batch_index * matrix_elems;
+        let matrix_data = &factors_col_major[offset..(offset + matrix_elems)];
+        output.push(lower_from_col_major(matrix_data, n));
+    }
+    output
+}
+
+fn extract_r_from_col_major<T: NabledReal>(
+    factorized: &[T],
+    rows: usize,
+    cols: usize,
+) -> Array2<T> {
+    let mut r = Array2::<T>::zeros((cols, cols));
+    for col in 0..cols {
+        let upper = col.min(rows.saturating_sub(1));
+        for row in 0..=upper {
+            r[[row, col]] = factorized[row + col * rows];
+        }
+    }
+    r
+}
+
+#[allow(clippy::type_complexity)]
+pub(crate) fn qr_decompose_batched<T: MagmaRealBatched>(
+    matrices: &ArrayView3<'_, T>,
+    rank_tolerance: T,
+) -> Result<Vec<(Array2<T>, Array2<T>, usize)>, &'static str> {
+    let (batch_count, rows, cols) = validate_batched_finite(matrices)?;
+    if rows < cols {
+        return Err("unsupported_shape");
+    }
+
+    let queue = MagmaQueueGuard::new()?;
+    let host_col_major = to_col_major_batch(matrices);
+    let matrix_elems = rows.saturating_mul(cols);
+    let k = rows.min(cols);
+
+    let device_matrices =
+        upload_batched_col_major(&host_col_major, batch_count, rows, cols, &queue)?;
+    let matrix_ptrs = setup_device_matrix_pointer_array::<T>(
+        &device_matrices,
+        rows,
+        matrix_elems,
+        batch_count,
+        &queue,
+    )?;
+    let tau_storage =
+        MagmaDeviceMem::alloc(batch_count.saturating_mul(k).saturating_mul(size_of::<T>()))?;
+    let tau_ptrs = setup_device_matrix_pointer_array::<T>(&tau_storage, k, k, batch_count, &queue)?;
+
+    let mut info = vec![0_i32; batch_count];
+    let status = T::magma_geqrf_batched(
+        as_i32(rows)?,
+        as_i32(cols)?,
+        matrix_ptrs.as_ptr::<*mut T>(),
+        as_i32(rows)?,
+        tau_ptrs.as_ptr::<*mut T>(),
+        info.as_mut_ptr(),
+        as_i32(batch_count)?,
+        queue.as_raw(),
+    );
+    queue.sync();
+
+    if status != MAGMA_SUCCESS {
+        return Err("provider_failure");
+    }
+    if info.iter().any(|entry| *entry < 0) {
+        return Err("invalid_input");
+    }
+    if info.iter().any(|entry| *entry > 0) {
+        return Err("convergence_failed");
+    }
+
+    let factorized_col_major =
+        download_batched_col_major::<T>(&device_matrices, batch_count, rows, cols, &queue)?;
+    let tau_values = download_batched_col_major::<T>(&tau_storage, batch_count, k, 1, &queue)?;
+
+    let rows_i32 = as_i32(rows)?;
+    let cols_i32 = as_i32(cols)?;
+    let k_i32 = as_i32(k)?;
+
+    let mut output = Vec::with_capacity(batch_count);
+    for batch_index in 0..batch_count {
+        let matrix_offset = batch_index * matrix_elems;
+        let factorized = &factorized_col_major[matrix_offset..(matrix_offset + matrix_elems)];
+        let mut q_col_major = factorized.to_vec();
+        let mut tau = tau_values[(batch_index * k)..((batch_index + 1) * k)].to_vec();
+        let mut orgqr_info = 0_i32;
+
+        T::magma_orgqr2(
+            rows_i32,
+            cols_i32,
+            k_i32,
+            q_col_major.as_mut_ptr(),
+            rows_i32,
+            tau.as_mut_ptr(),
+            &raw mut orgqr_info,
+        );
+
+        if orgqr_info < 0 {
+            return Err("invalid_input");
+        }
+
+        let q = from_col_major(&q_col_major, rows, cols);
+        let r = extract_r_from_col_major(factorized, rows, cols);
+        let rank = (0..cols)
+            .filter(|&index| num_traits::Float::abs(r[[index, index]]) > rank_tolerance)
+            .count();
+        output.push((q, r, rank));
+    }
+
+    Ok(output)
+}
+
+#[allow(clippy::type_complexity)]
+pub(crate) fn lu_decompose_batched<T: MagmaRealBatched>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<(Array2<T>, Array2<T>)>, &'static str> {
+    let (batch_count, n) = validate_batched_square_finite(matrices)?;
+    let queue = MagmaQueueGuard::new()?;
+    let host_col_major = to_col_major_batch(matrices);
+    let device_matrices = upload_square_batch(&host_col_major, batch_count, n, &queue)?;
+    let matrix_ptrs = setup_device_matrix_pointer_array::<T>(
+        &device_matrices,
+        n,
+        n.saturating_mul(n),
+        batch_count,
+        &queue,
+    )?;
+    let (_pivot_storage, pivot_ptrs) = setup_device_pivot_arrays(n, batch_count, &queue)?;
+
+    let mut info = vec![0_i32; batch_count];
+    let status = T::magma_getrf_batched(
+        as_i32(n)?,
+        as_i32(n)?,
+        matrix_ptrs.as_ptr::<*mut T>(),
+        as_i32(n)?,
+        pivot_ptrs.as_ptr::<*mut i32>(),
+        info.as_mut_ptr(),
+        as_i32(batch_count)?,
+        queue.as_raw(),
+    );
+    queue.sync();
+
+    if status != MAGMA_SUCCESS {
+        return Err("provider_failure");
+    }
+    if info.iter().any(|entry| *entry < 0) {
+        return Err("invalid_input");
+    }
+    if info.iter().any(|entry| *entry > 0) {
+        return Err("singular");
+    }
+
+    let factorized_col_major =
+        download_square_batch::<T>(&device_matrices, batch_count, n, &queue)?;
+    Ok(extract_lu_from_col_major_batch(&factorized_col_major, batch_count, n))
+}
+
+pub(crate) fn cholesky_decompose_batched<T: MagmaRealBatched>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<Array2<T>>, &'static str> {
+    let (batch_count, n) = validate_batched_square_finite(matrices)?;
+    let queue = MagmaQueueGuard::new()?;
+    let host_col_major = to_col_major_batch(matrices);
+    let device_matrices = upload_square_batch(&host_col_major, batch_count, n, &queue)?;
+    let matrix_ptrs = setup_device_matrix_pointer_array::<T>(
+        &device_matrices,
+        n,
+        n.saturating_mul(n),
+        batch_count,
+        &queue,
+    )?;
+
+    let mut info = vec![0_i32; batch_count];
+    let status = T::magma_potrf_batched(
+        MAGMA_LOWER,
+        as_i32(n)?,
+        matrix_ptrs.as_ptr::<*mut T>(),
+        as_i32(n)?,
+        info.as_mut_ptr(),
+        as_i32(batch_count)?,
+        queue.as_raw(),
+    );
+    queue.sync();
+
+    if status != MAGMA_SUCCESS {
+        return Err("provider_failure");
+    }
+    if info.iter().any(|entry| *entry < 0) {
+        return Err("invalid_input");
+    }
+    if info.iter().any(|entry| *entry > 0) {
+        return Err("not_positive_definite");
+    }
+
+    let factorized_col_major =
+        download_square_batch::<T>(&device_matrices, batch_count, n, &queue)?;
+    Ok(extract_lower_from_col_major_batch(&factorized_col_major, batch_count, n))
 }
 
 fn lu_factor_raw<T: MagmaReal>(

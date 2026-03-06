@@ -122,6 +122,9 @@ Workspace migration for library domains is complete.
 114. Remote orchestration now has a single command surface (`scripts/gpu_remote.sh`) while preserving low-level scripts; prepare auto-detects pre-baked images via `/etc/nabled/nvidia-image` to skip redundant bootstrap by default.
 115. `V2-006` is complete: MAGMA provider breadth now includes complex LU/Cholesky/QR/SVD and complex non-symmetric eigen decomposition, with compile-time provider precedence standardized across touched domains (`magma-system` > `lapack-provider` > internal).
 116. Remote tmux job reliability is now fixed for pre-baked/root sessions: runner scripts now receive explicit job paths and export a stable toolchain PATH, preventing `job_log` unbound-variable failures and `cargo: command not found` regressions in `gpu_remote.sh one/run` flows.
+117. `V2-007` is complete for MAGMA-supported batched decomposition domains: `nabled-linalg::batched` now uses MAGMA-native batched kernels for real-valued LU/Cholesky/QR under `magma-system`, while SVD and symmetric-eigen remain explicit per-slice provider loops due unavailable equivalent MAGMA batched kernels for current contracts.
+118. `V2-008` is complete: MAGMA sparse capabilities were assessed on remote RTX 4090 (`magmasparse_*` headers + sparse symbols), and integration planning is now explicit around a dedicated `magma_sparse` FFI boundary and phased sparse kernel/solver adoption with explicit contracts.
+119. `V2-009` is complete: mixed-precision/refinement opportunities were assessed and verified (`magma_dsgesv_gpu`, `magma_dsgesv_iteref_gpu`, `magma_zcgesv_gpu`), with a locked plan for opt-in mixed-precision solve APIs that expose convergence/refinement metadata explicitly.
 
 ## Current Code Ownership
 
@@ -160,7 +163,7 @@ GPU phase-2 continuation:
 
 1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`).
 2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
-3. Advance MAGMA phase-2 follow-ons (`V2-007` batched decomposition kernels, then `V2-008` sparse path assessment).
+3. Execute implementation follow-ons from completed `V2-008`/`V2-009` plans (sparse FFI layer and opt-in mixed-precision solver APIs).
 
 ## Completion Criteria For Migration
 

@@ -183,12 +183,15 @@ Use this file to resume work quickly after context compaction without re-auditin
 141. `D-141`: Remote workflow ergonomics/hardening pass is complete: canonical wrapper `scripts/gpu_remote.sh` now provides a single command surface (`up|one|run|attach|probe|magma-verify`), and prepare now auto-detects pre-baked NVIDIA images via `/etc/nabled/nvidia-image` to skip redundant bootstrap while preserving force-bootstrap override.
 142. `D-142`: `V2-006` is complete: MAGMA provider breadth now includes complex LU/Cholesky/QR/SVD and complex non-symmetric eigen decomposition, with compile-time dispatch precedence normalized across domains (`magma-system` > `lapack-provider` > internal) and all quality gates green.
 143. `D-143`: Remote tmux-job execution is now resilient on pre-baked NVIDIA images: `gpu_remote_tmux_run.sh` now injects resolved `job_script`/`job_log` into runner scripts and exports a stable toolchain PATH (`REMOTE_HOME`, `/home/agent/.cargo/bin`, `/root/.cargo/bin`) so root-run jobs can find `cargo`/`just` reliably.
+144. `D-144`: `V2-007` is complete for MAGMA-supported decomposition kernels: `nabled-linalg::batched` now routes real-valued `lu`, `cholesky`, and `qr` through MAGMA-native batched kernels under `magma-system`; `svd`/`symmetric_eigen` remain explicit per-slice provider loops because equivalent MAGMA batched kernels are not available for current contracts.
+145. `D-145`: `V2-008` is complete: MAGMA sparse API fit was assessed on remote RTX 4090 (`magmasparse_*` headers + sparse symbols verified), and the integration plan is now explicit (dedicated `magma_sparse` FFI boundary, phased sparse kernel/solver integration, no hidden dense conversion fallback).
+146. `D-146`: `V2-009` is complete: mixed-precision MAGMA opportunities were assessed and confirmed (`magma_dsgesv_gpu`, `magma_dsgesv_iteref_gpu`, `magma_zcgesv_gpu`), and the integration plan is locked around opt-in mixed-precision solve APIs with explicit refinement/convergence contracts.
 
 ## Next
 
 1. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32` and MAGMA provider outliers).
 2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
-3. `V2-007`: MAGMA-native batched decomposition kernels.
+3. Execute sparse/mixed MAGMA follow-on implementation phases from `V2-008`/`V2-009` plans.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.
