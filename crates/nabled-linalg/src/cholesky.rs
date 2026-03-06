@@ -6,7 +6,7 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 use crate::internal::DenseKernelPolicy;
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
@@ -114,7 +114,7 @@ fn map_cholesky_provider_error(error: &'static str) -> CholeskyError {
     }
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -151,7 +151,7 @@ fn decompose_complex_internal(
     Ok(l)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn decompose_internal<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
@@ -254,7 +254,37 @@ where
     matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
+fn decompose_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, CholeskyError> {
+    validate_complex_square_finite_view(matrix)?;
+    magma::cholesky_decompose_complex(matrix).map_err(map_cholesky_provider_error)
+}
+
+#[cfg(feature = "magma-system")]
+fn solve_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<Array1<Complex64>, CholeskyError> {
+    validate_complex_square_finite_view(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(CholeskyError::InvalidInput(
+            "RHS length must match matrix dimensions".to_string(),
+        ));
+    }
+    magma::cholesky_solve_complex(matrix, rhs).map_err(map_cholesky_provider_error)
+}
+
+#[cfg(feature = "magma-system")]
+fn inverse_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, CholeskyError> {
+    validate_complex_square_finite_view(matrix)?;
+    magma::cholesky_inverse_complex(matrix).map_err(map_cholesky_provider_error)
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
@@ -264,7 +294,7 @@ fn decompose_complex_provider(
     matrix.cholesky(UPLO::Lower).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn solve_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
@@ -280,7 +310,7 @@ fn solve_complex_provider(
     matrix.solvec(rhs).map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn inverse_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
@@ -290,7 +320,7 @@ fn inverse_complex_provider(
     matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 #[allow(clippy::many_single_char_names)]
 fn solve_complex_from_factor(
     lower_factor: &Array2<Complex64>,
@@ -449,12 +479,17 @@ pub fn decompose_complex(
 fn decompose_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexCholeskyResult, CholeskyError> {
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
     {
         let l = decompose_complex_provider(matrix)?;
         Ok(NdarrayComplexCholeskyResult { l })
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+    {
+        let l = decompose_complex_provider(matrix)?;
+        Ok(NdarrayComplexCholeskyResult { l })
+    }
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         let l = decompose_complex_internal(matrix)?;
         Ok(NdarrayComplexCholeskyResult { l })
@@ -559,11 +594,15 @@ fn solve_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, CholeskyError> {
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
     {
         solve_complex_provider(matrix, rhs)
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+    {
+        solve_complex_provider(matrix, rhs)
+    }
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         let lower_factor = decompose_complex_internal(matrix)?;
         solve_complex_from_factor(&lower_factor, rhs)
@@ -729,11 +768,15 @@ pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, 
 fn inverse_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
     {
         inverse_complex_provider(matrix)
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+    {
+        inverse_complex_provider(matrix)
+    }
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         let lower_factor = decompose_complex_internal(matrix)?;
         let size = lower_factor.nrows();

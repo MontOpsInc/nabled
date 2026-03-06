@@ -474,7 +474,7 @@ where
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn nonsymmetric_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
@@ -609,7 +609,22 @@ where
     Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors })
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
+fn nonsymmetric_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
+    validate_complex_square_finite(matrix)?;
+    let (eigenvalues, right_eigenvectors) =
+        magma::nonsymmetric_eigen_complex(matrix).map_err(|error| match error {
+            "empty" => EigenError::EmptyMatrix,
+            "not_square" => EigenError::NotSquare,
+            "convergence_failed" => EigenError::ConvergenceFailed,
+            _ => EigenError::NumericalInstability,
+        })?;
+    Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn nonsymmetric_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
@@ -812,11 +827,15 @@ pub fn nonsymmetric_complex(
 fn nonsymmetric_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult<f64>, EigenError> {
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
     {
         nonsymmetric_complex_provider(matrix)
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+    {
+        nonsymmetric_complex_provider(matrix)
+    }
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         nonsymmetric_complex_internal(matrix)
     }

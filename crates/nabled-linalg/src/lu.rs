@@ -122,10 +122,10 @@ fn validate_complex_square_finite_view(matrix: &ArrayView2<'_, Complex64>) -> Re
     Ok(())
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 type ComplexLUFactors = (Array2<Complex64>, Array2<Complex64>, Vec<usize>, i8);
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -186,7 +186,7 @@ fn decompose_complex_internal(
     Ok((l, u, pivots, sign))
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 #[allow(clippy::many_single_char_names)]
 fn solve_complex_from_factors(
     l: &Array2<Complex64>,
@@ -229,7 +229,7 @@ fn solve_complex_from_factors(
     Ok(x)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn inverse_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, LUError> {
@@ -321,7 +321,19 @@ where
     matrix.det().map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
+fn solve_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<Array1<Complex64>, LUError> {
+    validate_complex_square_finite_view(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
+    }
+    magma::lu_solve_complex(matrix, rhs).map_err(map_lu_error)
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn solve_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
@@ -335,7 +347,15 @@ fn solve_complex_provider(
     matrix.solve(rhs).map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
+fn inverse_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, LUError> {
+    validate_complex_square_finite_view(matrix)?;
+    magma::lu_inverse_complex(matrix).map_err(map_lu_error)
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn inverse_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, LUError> {
@@ -345,7 +365,13 @@ fn inverse_complex_provider(
     matrix.inv().map_err(|_| LUError::SingularMatrix)
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
+fn determinant_complex_provider(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
+    validate_complex_square_finite_view(matrix)?;
+    magma::lu_determinant_complex(matrix).map_err(map_lu_error)
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn determinant_complex_provider(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
     use ndarray_linalg::Determinant as _;
 
@@ -442,11 +468,15 @@ fn solve_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
 ) -> Result<Array1<Complex64>, LUError> {
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
     {
         solve_complex_provider(matrix, rhs)
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+    {
+        solve_complex_provider(matrix, rhs)
+    }
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
         solve_complex_from_factors(&l, &u, &pivots, rhs)
@@ -532,11 +562,15 @@ pub fn inverse_complex(matrix: &Array2<Complex64>) -> Result<Array2<Complex64>, 
 }
 
 fn inverse_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Result<Array2<Complex64>, LUError> {
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
     {
         inverse_complex_provider(matrix)
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+    {
+        inverse_complex_provider(matrix)
+    }
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         inverse_complex_internal(matrix)
     }
@@ -621,11 +655,15 @@ pub fn determinant_complex(matrix: &Array2<Complex64>) -> Result<Complex64, LUEr
 }
 
 fn determinant_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
     {
         determinant_complex_provider(matrix)
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+    {
+        determinant_complex_provider(matrix)
+    }
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         let (_, u, _, sign) = decompose_complex_internal(matrix)?;
         let mut determinant = Complex64::new(f64::from(sign), 0.0);

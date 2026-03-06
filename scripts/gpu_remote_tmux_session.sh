@@ -35,7 +35,7 @@ SSH_OPTS=(
 ssh "${SSH_OPTS[@]}" -i "$SSH_KEY" -p "$SSH_PORT" "${SSH_USER}@${HOST}" <<EOF
 set -euo pipefail
 export HOME='${REMOTE_HOME}'
-export PATH='${REMOTE_HOME}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+export PATH='${REMOTE_HOME}/.cargo/bin:/home/agent/.cargo/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 mkdir -p '${LOG_DIR}'
 touch '${CURRENT_LOG}'
 

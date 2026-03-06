@@ -400,7 +400,7 @@ where
     Ok(result.solution)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
@@ -446,7 +446,27 @@ fn decompose_complex_internal(
     Ok(QRResult { q, r, p: None, rank })
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
+fn decompose_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<Complex64>, QRError> {
+    if config.use_pivoting {
+        return decompose_complex_pivoted_internal(matrix, config);
+    }
+
+    validate_qr_complex_input(matrix)?;
+    if matrix.nrows() >= matrix.ncols() {
+        let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
+        let (q, r, rank) =
+            magma::qr_decompose_complex(matrix, tolerance).map_err(map_qr_provider_error)?;
+        return Ok(QRResult { q, r, p: None, rank });
+    }
+
+    decompose_complex_internal(matrix, config)
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
@@ -534,11 +554,15 @@ fn decompose_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<Complex64>, QRError> {
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
     {
         decompose_complex_provider(matrix, config)
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+    {
+        decompose_complex_provider(matrix, config)
+    }
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         decompose_complex_internal(matrix, config)
     }

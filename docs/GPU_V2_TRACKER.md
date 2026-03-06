@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-06 (MAGMA remote verification complete; one-entrypoint remote workflow finalized)
+Last updated: 2026-03-06 (V2-006 MAGMA provider breadth expansion complete)
 
 ## Purpose
 
@@ -30,7 +30,7 @@ This tracker is focused on:
 | `V2-003` | Runtime workload policy (small vs large) for GPU backend routing | Completed | Centralized `accelerator::policy` now gates all GPU backend-dispatched kernels with env-overridable thresholds tuned from remote 4090 release-profile measurements. |
 | `V2-004` | MAGMA CUDA provider integration (scaffold + domain wiring) | Completed | MAGMA provider paths are wired for LU/Cholesky/QR/SVD/symmetric eigen, with provider-safe scalar bounds propagated across dependent domains. |
 | `V2-005` | MAGMA verification matrix + benchmark parity report | Completed | Remote RTX 4090 run completed with correctness/capability artifacts and provider benchmark summaries captured locally. |
-| `V2-006` | MAGMA provider breadth expansion (complex + additional decomposition domains) | Planned | Extend MAGMA provider coverage where mathematically/FFI-supported, with explicit contracts for unsupported domains. |
+| `V2-006` | MAGMA provider breadth expansion (complex + additional decomposition domains) | Completed | Complex MAGMA provider paths now cover LU, Cholesky, QR, SVD, and non-symmetric eigen decomposition, with compile-time dispatch preference (`magma-system` > `lapack-provider` > internal) and explicit shape/error contracts. |
 | `V2-007` | MAGMA-native batched decomposition kernels | Planned | Move from per-slice provider loops to MAGMA batched kernels where available and beneficial. |
 | `V2-008` | MAGMA sparse path assessment and integration plan | Planned | Evaluate MAGMA sparse APIs vs current sparse backend/provider model and integrate high-value paths. |
 | `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Planned | Identify workflows where mixed precision improves throughput while preserving accuracy contracts. |
@@ -88,6 +88,8 @@ Policy is centralized in `accelerator::policy` and used by `GpuBackend` dispatch
    - use EGL ICD (`libEGL_nvidia.so.0`) via `VK_ICD_FILENAMES` and set `XDG_RUNTIME_DIR`.
 5. Pre-baked image optimization:
    - if host image has `/etc/nabled/nvidia-image`, `gpu_remote_prepare.sh` skips redundant apt/rust bootstrap.
+6. Root/pre-baked execution reliability:
+   - tmux job runners export a stable toolchain PATH including both `/home/agent/.cargo/bin` and `/root/.cargo/bin`.
 
 ## V2-005 Result Snapshot (RTX 4090 Remote)
 
@@ -104,14 +106,32 @@ High-level outcomes:
 3. Provider benchmark comparison is captured for the same benchmark surface (`289` common entries).
 4. The provider comparison shows mixed performance by domain/shape and confirms this should feed `K-005` outlier optimization, not a single global gate.
 
+## V2-006 Result Snapshot
+
+1. Complex MAGMA provider kernels are implemented in `crates/nabled-linalg/src/provider/magma.rs` for:
+   - LU solve/inverse/determinant
+   - Cholesky decompose/solve/inverse
+   - QR decomposition
+   - SVD decomposition
+   - Non-symmetric complex eigen decomposition
+2. Domain dispatch is now normalized to prefer MAGMA when enabled:
+   - `magma-system` -> MAGMA provider path
+   - else `lapack-provider` -> LAPACK provider path
+   - else -> internal implementation
+3. Contract surface is explicit:
+   - unsupported shape/provider constraints are returned as typed domain errors
+   - no runtime provider selection; dispatch remains compile-time gated
+4. Validation status:
+   - `magma-system` strict clippy/check is green
+   - repository quality gates (`just checks`) remain green after integration
+
 ## MAGMA Expansion Scope (Post V2-005)
 
 This is the explicit capture of remaining MAGMA-oriented work:
 
-1. Expand provider coverage beyond current real dense decomposition set where MAGMA API support exists and is contract-safe.
-2. Introduce MAGMA-native batched decomposition paths to reduce per-slice overhead in `nabled-linalg::batched`.
-3. Assess MAGMA sparse APIs for fit with nabled sparse domain contracts (`CSR/CSC/COO`, preconditioners, solve reuse).
-4. Evaluate mixed-precision + iterative-refinement paths as opt-in high-performance workflows.
+1. Introduce MAGMA-native batched decomposition paths to reduce per-slice overhead in `nabled-linalg::batched`.
+2. Assess MAGMA sparse APIs for fit with nabled sparse domain contracts (`CSR/CSC/COO`, preconditioners, solve reuse).
+3. Evaluate mixed-precision + iterative-refinement paths as opt-in high-performance workflows.
 
 All expansion items must preserve:
 
@@ -127,7 +147,7 @@ All expansion items must preserve:
 2. `C2` Batched audit closure:
    - Record exact GPU-relevant batched paths and decomposition gaps.
 3. `C3` MAGMA domain closure:
-   - Wire targeted decomposition domains to MAGMA provider path and verify parity.
+   - Completed: targeted decomposition domains are wired to MAGMA provider path and validated via strict `magma-system` clippy/check plus repository gates.
 
 ## Notes
 

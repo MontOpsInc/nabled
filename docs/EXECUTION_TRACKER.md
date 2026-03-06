@@ -181,12 +181,14 @@ Use this file to resume work quickly after context compaction without re-auditin
 139. `D-139`: Remote NVIDIA workflow automation is now tmux-first and near one-command: `docker/Dockerfile.nvidia`, `scripts/gpu_remote.sh`, and tmux run/attach scripts provide deterministic setup, execution, and observability defaults.
 140. `D-140`: MAGMA expansion backlog is now explicitly tracked (`V2-006..V2-009`) covering provider breadth, batched kernels, sparse assessment, and mixed-precision opportunities.
 141. `D-141`: Remote workflow ergonomics/hardening pass is complete: canonical wrapper `scripts/gpu_remote.sh` now provides a single command surface (`up|one|run|attach|probe|magma-verify`), and prepare now auto-detects pre-baked NVIDIA images via `/etc/nabled/nvidia-image` to skip redundant bootstrap while preserving force-bootstrap override.
+142. `D-142`: `V2-006` is complete: MAGMA provider breadth now includes complex LU/Cholesky/QR/SVD and complex non-symmetric eigen decomposition, with compile-time dispatch precedence normalized across domains (`magma-system` > `lapack-provider` > internal) and all quality gates green.
+143. `D-143`: Remote tmux-job execution is now resilient on pre-baked NVIDIA images: `gpu_remote_tmux_run.sh` now injects resolved `job_script`/`job_log` into runner scripts and exports a stable toolchain PATH (`REMOTE_HOME`, `/home/agent/.cargo/bin`, `/root/.cargo/bin`) so root-run jobs can find `cargo`/`just` reliably.
 
 ## Next
 
-1. `V2-006`: MAGMA provider breadth expansion (complex + additional decomposition domains).
-2. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32` and MAGMA provider outliers).
-3. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+1. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32` and MAGMA provider outliers).
+2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+3. `V2-007`: MAGMA-native batched decomposition kernels.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.

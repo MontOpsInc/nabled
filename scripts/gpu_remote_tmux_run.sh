@@ -43,7 +43,7 @@ COMMAND_B64="$(printf '%s' "${USER_COMMAND}" | base64 | tr -d '\n')"
 ssh "${SSH_OPTS[@]}" -i "$SSH_KEY" -p "$SSH_PORT" "${SSH_USER}@${HOST}" <<EOF
 set -euo pipefail
 export HOME='${REMOTE_HOME}'
-export PATH='${REMOTE_HOME}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+export PATH='${REMOTE_HOME}/.cargo/bin:/home/agent/.cargo/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 if ! tmux has-session -t '${TMUX_SESSION}' 2>/dev/null; then
   echo 'tmux session ${TMUX_SESSION} does not exist' >&2
@@ -62,6 +62,10 @@ ln -sfn "\${job_log}" '${CURRENT_LOG}'
 cat >"\${runner_script}" <<'RUNNER'
 #!/usr/bin/env bash
 set -euo pipefail
+export HOME='__REMOTE_HOME__'
+export PATH='__RUNNER_PATH__'
+job_script='__JOB_SCRIPT__'
+job_log='__JOB_LOG__'
 cd '__REMOTE_REPO_DIR__'
 echo "[START] \$(date -u)" | tee -a "\${job_log}"
 bash "\${job_script}" 2>&1 | tee -a "\${job_log}"
@@ -70,6 +74,10 @@ echo "[END rc=\${rc}] \$(date -u)" | tee -a "\${job_log}"
 exit \${rc}
 RUNNER
 sed -i "s|__REMOTE_REPO_DIR__|${REMOTE_REPO_DIR}|g" "\${runner_script}"
+sed -i "s|__REMOTE_HOME__|${REMOTE_HOME}|g" "\${runner_script}"
+sed -i "s|__RUNNER_PATH__|${REMOTE_HOME}/.cargo/bin:/home/agent/.cargo/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|g" "\${runner_script}"
+sed -i "s|__JOB_SCRIPT__|\${job_script}|g" "\${runner_script}"
+sed -i "s|__JOB_LOG__|\${job_log}|g" "\${runner_script}"
 chmod +x "\${runner_script}"
 
 tmux send-keys -t '${TMUX_SESSION}:work.0' C-c

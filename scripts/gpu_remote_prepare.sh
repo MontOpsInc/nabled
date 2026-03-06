@@ -35,7 +35,7 @@ SSH_OPTS=(
 ssh "${SSH_OPTS[@]}" -i "$SSH_KEY" -p "$SSH_PORT" "${SSH_USER}@${HOST}" <<EOF
 set -euo pipefail
 export HOME='${REMOTE_HOME}'
-export PATH='${REMOTE_HOME}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+export PATH='${REMOTE_HOME}/.cargo/bin:/home/agent/.cargo/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 SUDO=sudo
 if [[ \$(id -u) -eq 0 ]]; then
@@ -81,6 +81,21 @@ if [[ '${NABLED_REMOTE_FORCE_BOOTSTRAP}' == '1' || "\${is_prebaked}" == '0' ]]; 
   fi
 else
   echo "detected pre-baked nabled NVIDIA image; skipping package bootstrap"
+fi
+
+if ! command -v cargo >/dev/null 2>&1 && [[ -x /home/agent/.cargo/bin/cargo ]]; then
+  export PATH="/home/agent/.cargo/bin:\${PATH}"
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "cargo missing; bootstrapping rustup toolchain"
+  curl https://sh.rustup.rs -sSf | sh -s -- -y
+  rustup toolchain install stable
+  rustup default stable
+fi
+
+if ! command -v just >/dev/null 2>&1; then
+  cargo +stable install just --locked
 fi
 
 if [[ -d '${REMOTE_REPO_DIR}/.git' ]]; then

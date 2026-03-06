@@ -1,6 +1,6 @@
 //! Singular value decomposition over ndarray matrices.
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -25,7 +25,7 @@ pub trait SvdInternalScalar: NabledReal {}
 
 #[cfg(not(feature = "magma-system"))]
 impl<T> SvdInternalScalar for T where T: NabledReal {}
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 use crate::schur;
 
 /// SVD result for ndarray matrices.
@@ -173,7 +173,7 @@ where
     Ok(NdarraySVD { u, singular_values, vt })
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVDError> {
     if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
         return Err(SVDError::InvalidInput("matrix must be finite".to_string()));
@@ -181,7 +181,7 @@ fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVD
     Ok(())
 }
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -224,6 +224,18 @@ fn decompose_complex_internal(
         }
     }
 
+    Ok(NdarrayComplexSVD { u, singular_values, vt })
+}
+
+#[cfg(feature = "magma-system")]
+fn decompose_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayComplexSVD, SVDError> {
+    if matrix.is_empty() {
+        return Err(SVDError::EmptyMatrix);
+    }
+    let (u, singular_values, vt) =
+        magma::svd_decompose_complex(matrix).map_err(map_svd_provider_error)?;
     Ok(NdarrayComplexSVD { u, singular_values, vt })
 }
 
@@ -360,7 +372,11 @@ fn decompose_complex_impl(
         return Err(SVDError::EmptyMatrix);
     }
 
-    #[cfg(feature = "lapack-provider")]
+    #[cfg(feature = "magma-system")]
+    {
+        decompose_complex_provider(matrix)
+    }
+    #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
     {
         use ndarray_linalg::SVD as _;
         let (u_opt, singular_values, vt_opt) =
@@ -369,7 +385,7 @@ fn decompose_complex_impl(
         let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
         Ok(NdarrayComplexSVD { u, singular_values, vt })
     }
-    #[cfg(not(feature = "lapack-provider"))]
+    #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         decompose_complex_internal(matrix)
     }

@@ -120,6 +120,8 @@ Workspace migration for library domains is complete.
 112. Canonical NVIDIA dev image is now defined at `docker/Dockerfile.nvidia` with `agent` user, Rust/tooling, MAGMA/OpenBLAS/LAPACK, Vulkan, and Python/PyO3 prerequisites preinstalled.
 113. NVIDIA image and host setup now harden SSH defaults and shell identity behavior for remote sessions (key-only auth with `PermitRootLogin prohibit-password`, plus login-time HOME self-heal from passwd).
 114. Remote orchestration now has a single command surface (`scripts/gpu_remote.sh`) while preserving low-level scripts; prepare auto-detects pre-baked images via `/etc/nabled/nvidia-image` to skip redundant bootstrap by default.
+115. `V2-006` is complete: MAGMA provider breadth now includes complex LU/Cholesky/QR/SVD and complex non-symmetric eigen decomposition, with compile-time provider precedence standardized across touched domains (`magma-system` > `lapack-provider` > internal).
+116. Remote tmux job reliability is now fixed for pre-baked/root sessions: runner scripts now receive explicit job paths and export a stable toolchain PATH, preventing `job_log` unbound-variable failures and `cargo: command not found` regressions in `gpu_remote.sh one/run` flows.
 
 ## Current Code Ownership
 
@@ -156,9 +158,9 @@ Workspace migration for library domains is complete.
 
 GPU phase-2 continuation:
 
-1. Expand MAGMA provider breadth (`V2-006`) and capture explicit support/unsupported contracts by domain.
-2. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`).
-3. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
+1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`).
+2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
+3. Advance MAGMA phase-2 follow-ons (`V2-007` batched decomposition kernels, then `V2-008` sparse path assessment).
 
 ## Completion Criteria For Migration
 
