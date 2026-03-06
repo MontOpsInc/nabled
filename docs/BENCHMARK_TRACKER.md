@@ -330,7 +330,7 @@ Interpretation:
 
 ### Remote V2 Baseline (RTX 4090, release profile)
 
-1. Remote sweep run via `scripts/gpu_v2_remote_probe.sh` with `accelerator-wgpu` and Vulkan.
+1. Remote sweep run via `scripts/gpu_remote.sh one <host> gpu-probe` with `accelerator-wgpu` and Vulkan.
 2. Dense square `matmat` crossover (CPU vs direct GPU path) on this setup is approximately near `N ~= 900`.
 3. This baseline informed `accelerator::policy` default thresholds so GPU dispatch avoids small/medium workload regressions by default.
 
@@ -346,8 +346,8 @@ Execution config:
 Commands used:
 
 ```bash
-scripts/gpu_v2_remote_prepare.sh <host>
-scripts/gpu_v2_remote_magma_verify.sh <host>
+scripts/gpu_remote.sh up <host>
+scripts/gpu_remote.sh one <host> magma-verify
 # provider comparison pass:
 NABLED_PROVIDER_BENCH_FEATURES=openblas-system just -f .justfile bench-smoke-report-provider
 NABLED_PROVIDER_BENCH_FEATURES=magma-system    just -f .justfile bench-smoke-report-provider

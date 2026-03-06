@@ -5,6 +5,10 @@ provider_features := env('NABLED_PROVIDER_FEATURES', 'openblas-system')
 provider_bench_features := env('NABLED_PROVIDER_BENCH_FEATURES', 'openblas-system')
 coverage_line_threshold := "90"
 coverage_ignore_regex := "crates/nabled-linalg/src/accelerator/gpu.rs"
+gpu_remote_user := env('NABLED_GPU_REMOTE_USER', 'root')
+gpu_remote_port := env('NABLED_GPU_REMOTE_PORT', '40637')
+gpu_remote_key := env('NABLED_GPU_REMOTE_KEY', '${HOME}/.ssh/nabled_vast_4090')
+docker_nvidia_tag := env('NABLED_DOCKER_NVIDIA_TAG', 'montopsinc/nabled:nvidia-cuda12.9-rust-stable-amd64')
 
 # List of Examples
 
@@ -12,6 +16,25 @@ examples := ''
 
 default:
     @just --list
+
+# --- REMOTE GPU WORKFLOW ---
+docker-nvidia-build tag=docker_nvidia_tag:
+    docker build -f docker/Dockerfile.nvidia -t "{{ tag }}" .
+
+docker-nvidia-push tag=docker_nvidia_tag:
+    docker push "{{ tag }}"
+
+gpu-remote-up host:
+    SSH_USER={{ gpu_remote_user }} SSH_PORT={{ gpu_remote_port }} SSH_KEY={{ gpu_remote_key }} scripts/gpu_remote.sh up "{{ host }}"
+
+gpu-remote-one host job='magma-verify':
+    SSH_USER={{ gpu_remote_user }} SSH_PORT={{ gpu_remote_port }} SSH_KEY={{ gpu_remote_key }} scripts/gpu_remote.sh one "{{ host }}" "{{ job }}"
+
+gpu-remote-run host command:
+    SSH_USER={{ gpu_remote_user }} SSH_PORT={{ gpu_remote_port }} SSH_KEY={{ gpu_remote_key }} scripts/gpu_remote.sh run "{{ host }}" "{{ command }}"
+
+gpu-remote-attach host:
+    SSH_USER={{ gpu_remote_user }} SSH_PORT={{ gpu_remote_port }} SSH_KEY={{ gpu_remote_key }} scripts/gpu_remote.sh attach "{{ host }}"
 
 # --- TESTS ---
 test:

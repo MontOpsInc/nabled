@@ -17,10 +17,12 @@ Before making architectural or broad refactor changes, read these in order:
 1. `docs/README.md`
 2. `docs/DECISIONS.md`
 3. `docs/CAPABILITY_MATRIX.md`
-4. `docs/EXECUTION_TRACKER.md`
-5. `docs/architecture.md`
-6. `docs/ROADMAP.md`
-7. `docs/STATUS.md`
+4. `docs/GPU_V2_TRACKER.md`
+5. `docs/REMOTE_GPU_WORKFLOW.md`
+6. `docs/EXECUTION_TRACKER.md`
+7. `docs/architecture.md`
+8. `docs/ROADMAP.md`
+9. `docs/STATUS.md`
 
 Do not infer status from memory. Use:
 1. `docs/STATUS.md` for current migration state.
@@ -81,3 +83,36 @@ When architecture or behavior changes, update docs in the same change set:
 3. `docs/EXECUTION_TRACKER.md` for execution progression (`Done / Next / Needed`).
 4. `docs/ROADMAP.md` if sequencing changes.
 5. Relevant rustdoc comments for API contract changes.
+
+## Remote GPU Workflow (Mandatory for CUDA/MAGMA Tasks)
+
+For remote NVIDIA work, use the scripted tmux-first workflow from `docs/REMOTE_GPU_WORKFLOW.md`.
+
+Defaults:
+
+1. `SSH_USER=root`
+2. `SSH_PORT=18800`
+3. `SSH_KEY=~/.ssh/nabled_vast_4090`
+
+Required flow:
+
+1. Preferred single entrypoint:
+   - `scripts/gpu_remote.sh up <host>`
+   - `scripts/gpu_remote.sh one <host> magma-verify`
+   - `scripts/gpu_remote.sh one <host> gpu-probe`
+   - `scripts/gpu_remote.sh run <host> "<command>"`
+   - `scripts/gpu_remote.sh attach <host>`
+2. Equivalent low-level commands (if needed):
+   - `scripts/gpu_remote_prepare.sh <host>`
+   - `scripts/gpu_remote_tmux_session.sh <host>`
+3. Launch standard job:
+   - `scripts/gpu_remote.sh one <host> magma-verify`
+   - `scripts/gpu_remote.sh one <host> gpu-probe`
+4. Launch custom command:
+   - `scripts/gpu_remote_tmux_run.sh <host> "<command>"`
+5. Observe:
+   - `scripts/gpu_remote_tmux_attach.sh <host>`
+
+Do not run long remote jobs as ad hoc direct SSH commands when tmux scripts exist; observability and reproducibility are required.
+Remote scripts intentionally ignore local SSH config (`-F /dev/null`) and pin explicit connection options to prevent host-specific drift.
+Remote scripts use stdin-driven SSH execution for non-interactive steps to avoid provider command-mode wrappers.

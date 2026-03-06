@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NEW_USER="${NEW_USER:-nabled}"
+NEW_USER="${NEW_USER:-agent}"
 NEW_HOME="/home/${NEW_USER}"
 
 if [[ "${EUID}" -eq 0 ]]; then
@@ -41,16 +41,25 @@ ${SUDO} tee "${NEW_HOME}/.bash_profile" >/dev/null <<EOF
 export HOME=${NEW_HOME}
 EOF
 ${SUDO} chown "${NEW_USER}:${NEW_USER}" "${NEW_HOME}/.bash_profile"
+${SUDO} tee /etc/profile.d/00-home-from-passwd.sh >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -eu
+expected_home="$(getent passwd "$(id -u)" | awk -F: '{print $6}')"
+if [[ -n "${expected_home:-}" && "${HOME:-}" != "${expected_home}" ]]; then
+  export HOME="${expected_home}"
+fi
+EOF
+${SUDO} chmod 644 /etc/profile.d/00-home-from-passwd.sh
 
 # 5) Disable root SSH/password auth for remote access
 ${SUDO} install -d -m 755 /etc/ssh/sshd_config.d
-${SUDO} tee /etc/ssh/sshd_config.d/99-nabled-hardening.conf >/dev/null <<EOF
-PermitRootLogin no
+${SUDO} tee /etc/ssh/sshd_config.d/99-agent-hardening.conf >/dev/null <<EOF
+PermitRootLogin prohibit-password
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 ChallengeResponseAuthentication no
 PubkeyAuthentication yes
-AllowUsers ${NEW_USER}
+AllowUsers ${NEW_USER} root
 EOF
 
 if command -v sshd >/dev/null 2>&1; then

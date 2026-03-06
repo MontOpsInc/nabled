@@ -171,18 +171,22 @@ Use this file to resume work quickly after context compaction without re-auditin
 129. `D-129`: Remaining GPU fallback-only gaps are closed: backend-dispatched sparse-sparse matmat, triangular solve vec/mat, and complex tensor kernels now attempt native GPU execution with explicit CPU fallback retained.
 130. `D-130`: Coverage gate alignment is complete for this round: `just coverage-*` and CI coverage now exclude `crates/nabled-linalg/src/accelerator/gpu.rs` from line-threshold enforcement while dedicated `accelerator-wgpu` test matrices remain mandatory.
 131. `D-131`: V2 prep baseline landed: centralized GPU workload-size routing policy (`accelerator::policy`) is now wired into backend dispatch across dense/sparse/vector/triangular/tensor kernels, and v2 execution is tracked in `docs/GPU_V2_TRACKER.md`.
-132. `D-132`: `V2-001` completed: remote NVIDIA verification workflow is now repeatable via checked-in scripts (`scripts/gpu_v2_remote_prepare.sh`, `scripts/gpu_v2_remote_probe.sh`) and tmux-driven execution.
+132. `D-132`: `V2-001` completed: remote NVIDIA verification workflow is now repeatable via checked-in canonical entrypoint (`scripts/gpu_remote.sh`) and tmux-driven execution.
 133. `D-133`: `V2-002` completed: batched workload relevance map is now explicit in `docs/GPU_V2_TRACKER.md` (GPU-relevant kernel batch APIs vs provider-only decomposition batch APIs).
 134. `D-134`: `V2-003` completed: GPU routing thresholds were tuned from remote 4090 release-profile probe measurements and encoded as centralized defaults in `accelerator::policy`.
 135. `D-135`: `V2-004` is complete: MAGMA provider scaffolding and decomposition-domain wiring now cover LU, Cholesky, QR, SVD, and symmetric eigen, with provider-safe scalar bounds propagated through dependent linalg/ml call paths.
 136. `D-136`: Post-`V2-004` quality validation is green in both tracks: `magma-system` workspace check/clippy and standard repository quality gates (`just checks`) pass.
-137. `D-137`: `V2-005` execution tooling is now scripted end-to-end: remote MAGMA verification/capability/bench collection can be run via `scripts/gpu_v2_remote_magma_verify.sh`.
+137. `D-137`: `V2-005` execution tooling is now scripted end-to-end: remote MAGMA verification/capability/bench collection can be run via `scripts/gpu_remote.sh one <host> magma-verify`.
 138. `D-138`: `V2-005` is complete: remote RTX 4090 MAGMA verification and provider benchmark capture succeeded, with artifacts checked into local `coverage/gpu-v2/magma/` for follow-on outlier analysis.
+139. `D-139`: Remote NVIDIA workflow automation is now tmux-first and near one-command: `docker/Dockerfile.nvidia`, `scripts/gpu_remote.sh`, and tmux run/attach scripts provide deterministic setup, execution, and observability defaults.
+140. `D-140`: MAGMA expansion backlog is now explicitly tracked (`V2-006..V2-009`) covering provider breadth, batched kernels, sparse assessment, and mixed-precision opportunities.
+141. `D-141`: Remote workflow ergonomics/hardening pass is complete: canonical wrapper `scripts/gpu_remote.sh` now provides a single command surface (`up|one|run|attach|probe|magma-verify`), and prepare now auto-detects pre-baked NVIDIA images via `/etc/nabled/nvidia-image` to skip redundant bootstrap while preserving force-bootstrap override.
 
 ## Next
 
-1. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32` and MAGMA provider outliers).
-2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+1. `V2-006`: MAGMA provider breadth expansion (complex + additional decomposition domains).
+2. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32` and MAGMA provider outliers).
+3. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.

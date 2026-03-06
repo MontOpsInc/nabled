@@ -109,13 +109,17 @@ Workspace migration for library domains is complete.
 101. Coverage gate now excludes `crates/nabled-linalg/src/accelerator/gpu.rs` from line-threshold enforcement to keep the `>90%` policy aligned with deterministic CPU/provider test surfaces while GPU-specific paths are validated via dedicated accelerator-wgpu test matrices.
 102. V2 GPU/provider workstream is now tracked explicitly in `docs/GPU_V2_TRACKER.md` (batch workload scope, runtime GPU policy, and MAGMA integration milestones).
 103. GPU backend dispatch now uses a centralized workload-size policy (`accelerator::policy`) so small workloads remain on CPU and large workloads attempt GPU execution before fallback handling.
-104. Remote NVIDIA verification for V2 is now scripted and repeatable (`scripts/gpu_v2_remote_prepare.sh`, `scripts/gpu_v2_remote_probe.sh`) and validated on a 4090 host with tmux-driven command execution.
+104. Remote NVIDIA verification for V2 is now scripted and repeatable via canonical entrypoint (`scripts/gpu_remote.sh`) and validated on a 4090 host with tmux-driven command execution.
 105. Batched workload relevance is now explicit: decomposition batch APIs are provider-accelerated per-slice loops, while kernel-level batch APIs are backend-dispatched and GPU-capable.
 106. GPU routing defaults were tuned from remote release-profile measurements (4090 + Vulkan), reducing unnecessary GPU attempts on small/medium workloads while preserving env-based override controls.
 107. `V2-004` is complete: MAGMA provider domain wiring now covers LU, Cholesky, QR, SVD, and symmetric eigen, and dependent linalg/ml paths compile with provider-safe scalar bounds.
 108. Post-`V2-004` validation is green: `magma-system` workspace check/clippy and standard repository quality gates (`just checks`) pass.
-109. Remote MAGMA verification orchestration is now scripted (`scripts/gpu_v2_remote_magma_verify.sh`) to generate correctness/capability artifacts and provider benchmark summaries on the 4090 host.
+109. Remote MAGMA verification orchestration is now scripted via canonical entrypoint (`scripts/gpu_remote.sh one <host> magma-verify`) to generate correctness/capability artifacts and provider benchmark summaries on the 4090 host.
 110. Remote MAGMA verification is now executed and captured for V2: RTX 4090 artifacts are available under `coverage/gpu-v2/magma/` (verification log plus `openblas-system` vs `magma-system` provider summaries).
+111. Remote GPU workflow is now tmux-first and near one-command: host bootstrap, session provisioning, launch, and attach flows are scripted under a single command surface (`gpu_remote.sh`) with reusable remote job scripts.
+112. Canonical NVIDIA dev image is now defined at `docker/Dockerfile.nvidia` with `agent` user, Rust/tooling, MAGMA/OpenBLAS/LAPACK, Vulkan, and Python/PyO3 prerequisites preinstalled.
+113. NVIDIA image and host setup now harden SSH defaults and shell identity behavior for remote sessions (key-only auth with `PermitRootLogin prohibit-password`, plus login-time HOME self-heal from passwd).
+114. Remote orchestration now has a single command surface (`scripts/gpu_remote.sh`) while preserving low-level scripts; prepare auto-detects pre-baked images via `/etc/nabled/nvidia-image` to skip redundant bootstrap by default.
 
 ## Current Code Ownership
 
@@ -150,10 +154,11 @@ Workspace migration for library domains is complete.
 
 ## Next Required Milestone
 
-GPU phase-2 hardening:
+GPU phase-2 continuation:
 
-1. Produce MAGMA correctness/perf verification matrix (`V2-005`).
-2. Continue `L-GPU-WGPU-F32` outlier optimization pass (`K-005`) and then lock remaining Provider/Backend/Kernel boundary cleanup (`K-006`).
+1. Expand MAGMA provider breadth (`V2-006`) and capture explicit support/unsupported contracts by domain.
+2. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`).
+3. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
 
 ## Completion Criteria For Migration
 
