@@ -125,6 +125,8 @@ Workspace migration for library domains is complete.
 117. `V2-007` is complete for MAGMA-supported batched decomposition domains: `nabled-linalg::batched` now uses MAGMA-native batched kernels for real-valued LU/Cholesky/QR under `magma-system`, while SVD and symmetric-eigen remain explicit per-slice provider loops due unavailable equivalent MAGMA batched kernels for current contracts.
 118. `V2-008` is complete: MAGMA sparse capabilities were assessed on remote RTX 4090 (`magmasparse_*` headers + sparse symbols), and integration planning is now explicit around a dedicated `magma_sparse` FFI boundary and phased sparse kernel/solver adoption with explicit contracts.
 119. `V2-009` is complete: mixed-precision/refinement opportunities were assessed and verified (`magma_dsgesv_gpu`, `magma_dsgesv_iteref_gpu`, `magma_zcgesv_gpu`), with a locked plan for opt-in mixed-precision solve APIs that expose convergence/refinement metadata explicitly.
+120. `V2-008` phase-1 sparse implementation is now landed: `provider::magma_sparse` owns MAGMA sparse queue/matrix lifecycle and powers opt-in sparse matvec/sparse-dense matmat APIs (`f32`/`f64`, i32-indexed CSR view contract) with parity tests.
+121. `V2-009` phase-1 mixed-precision implementation is now landed: LU mixed solve APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) return explicit refinement-iteration metadata and map convergence/provider outcomes into typed LU errors.
 
 ## Current Code Ownership
 
@@ -163,7 +165,7 @@ GPU phase-2 continuation:
 
 1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`).
 2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
-3. Execute implementation follow-ons from completed `V2-008`/`V2-009` plans (sparse FFI layer and opt-in mixed-precision solver APIs).
+3. Execute remaining phase-2 follow-ons from `V2-008`/`V2-009` (sparse iterative/preconditioned solve acceleration and mixed-precision expansion beyond LU-only APIs).
 
 ## Completion Criteria For Migration
 

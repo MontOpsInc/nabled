@@ -68,7 +68,9 @@ fn map_lu_error(error: LUError) -> RegressionError {
         LUError::EmptyMatrix => RegressionError::EmptyInput,
         LUError::NotSquare => RegressionError::InvalidInput("normal matrix was not square".into()),
         LUError::InvalidInput(message) => RegressionError::InvalidInput(message),
-        LUError::SingularMatrix | LUError::NumericalInstability => RegressionError::Singular,
+        LUError::SingularMatrix | LUError::ConvergenceFailed | LUError::NumericalInstability => {
+            RegressionError::Singular
+        }
     }
 }
 

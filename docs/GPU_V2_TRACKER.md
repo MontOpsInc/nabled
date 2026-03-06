@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-06 (V2-009 MAGMA sparse/mixed-precision assessment complete)
+Last updated: 2026-03-06 (V2-008 sparse phase-1 + V2-009 mixed-precision LU phase-1 implemented)
 
 ## Purpose
 
@@ -32,8 +32,8 @@ This tracker is focused on:
 | `V2-005` | MAGMA verification matrix + benchmark parity report | Completed | Remote RTX 4090 run completed with correctness/capability artifacts and provider benchmark summaries captured locally. |
 | `V2-006` | MAGMA provider breadth expansion (complex + additional decomposition domains) | Completed | Complex MAGMA provider paths now cover LU, Cholesky, QR, SVD, and non-symmetric eigen decomposition, with compile-time dispatch preference (`magma-system` > `lapack-provider` > internal) and explicit shape/error contracts. |
 | `V2-007` | MAGMA-native batched decomposition kernels | Completed | `nabled-linalg::batched` now uses MAGMA-native batched LU/Cholesky/QR for real-valued provider paths under `magma-system`; SVD/symmetric-eigen remain per-slice provider loops due no equivalent MAGMA batched kernels for current API contracts. |
-| `V2-008` | MAGMA sparse path assessment and integration plan | Completed | MAGMA sparse API fit was assessed on RTX 4090 host (`magmasparse_*` headers + exported symbols); integration plan is locked around an explicit `magma_sparse` FFI layer and opt-in sparse solve acceleration phases. |
-| `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Completed | MAGMA mixed-precision kernels were verified available (`magma_dsgesv_gpu`, `magma_dsgesv_iteref_gpu`, `magma_zcgesv_gpu`); integration plan is locked around opt-in mixed-precision solve APIs with explicit convergence/error contracts. |
+| `V2-008` | MAGMA sparse path assessment and integration plan | Completed | Assessment is complete and phase-1 is implemented: dedicated `provider::magma_sparse` FFI lifecycle plus opt-in MAGMA sparse matvec/sparse-dense matmat APIs for `f32`/`f64` with parity tests. |
+| `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Completed | Availability was verified and phase-1 implementation is landed: opt-in mixed-precision LU solve APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) now delegate to MAGMA with explicit refinement/error contracts. |
 
 ## Batched Surface Snapshot (Current)
 
@@ -144,6 +144,18 @@ Integration plan (locked):
 3. Phase 2 target: iterative sparse solves/preconditioners (`cg/gmres/bicgstab`-family) with explicit tolerance/iteration contracts and typed convergence errors.
 4. Keep provider/backend orthogonality: no hidden runtime provider switching and no hidden dense conversions.
 
+### V2-008 Follow-on Implementation (Phase 1)
+
+1. Added dedicated sparse provider FFI boundary:
+   - `crates/nabled-linalg/src/provider/magma_sparse.rs`
+2. Added opt-in sparse MAGMA APIs (i32-indexed CSR view contract):
+   - `sparse::matvec_magma_{f32,f64}_view`
+   - `sparse::matvec_magma_{f32,f64}_view_into`
+   - `sparse::matmat_dense_magma_{f32,f64}_view`
+   - `sparse::matmat_dense_magma_{f32,f64}_view_into`
+3. Added parity tests against internal sparse paths for all four operation/dtype combinations.
+4. Scope is intentionally phase-1 only; phase-2 sparse iterative/preconditioned solves remain open.
+
 ## V2-009 Result Snapshot
 
 Remote assessment outcomes (RTX 4090 host):
@@ -160,6 +172,19 @@ Integration plan (locked):
 2. Surface refinement metadata explicitly (`iterations`, `converged`, `fallback-used`) so callers can choose policy.
 3. Map MAGMA `info`/iteration outcomes into typed domain errors; do not hide non-convergence.
 4. Benchmark against current MAGMA double-precision solve baselines before enabling in default provider flows.
+
+### V2-009 Follow-on Implementation (Phase 1)
+
+1. Landed in `nabled-linalg::lu`:
+   - `solve_mixed_f64`, `solve_mixed_f64_view`
+   - `solve_mixed_complex`, `solve_mixed_complex_view`
+2. Return contract is explicit via `MixedSolveResult<T>`:
+   - `solution`
+   - `refinement_iterations`
+3. Error mapping is explicit:
+   - `convergence_failed` maps to `LUError::ConvergenceFailed`
+   - missing MAGMA feature maps to explicit `InvalidInput` message
+4. Current scope is intentionally LU-only; expansion to other domains remains a follow-on.
 
 ## MAGMA Expansion Scope (Post V2-005)
 

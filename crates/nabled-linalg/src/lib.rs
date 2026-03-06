@@ -133,6 +133,7 @@ impl IntoNabledError for LUError {
             LUError::EmptyMatrix => NabledError::Shape(ShapeError::EmptyInput),
             LUError::NotSquare => NabledError::Shape(ShapeError::NotSquare),
             LUError::SingularMatrix => NabledError::SingularMatrix,
+            LUError::ConvergenceFailed => NabledError::ConvergenceFailed,
             LUError::InvalidInput(message) => NabledError::InvalidInput(message),
             LUError::NumericalInstability => NabledError::NumericalInstability,
         }
@@ -446,6 +447,10 @@ mod tests {
         assert!(matches!(
             LUError::InvalidInput("x".to_string()).into_nabled_error(),
             NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            LUError::ConvergenceFailed.into_nabled_error(),
+            NabledError::ConvergenceFailed
         ));
         assert!(matches!(
             LUError::NumericalInstability.into_nabled_error(),

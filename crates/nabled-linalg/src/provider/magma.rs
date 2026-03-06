@@ -8,12 +8,13 @@ use std::sync::OnceLock;
 
 use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2, ArrayView3, Axis};
-use num_complex::Complex64;
+use num_complex::{Complex32, Complex64};
 
 use crate::internal::DenseKernelPolicy;
 
 const MAGMA_SUCCESS: i32 = 0;
 const MAGMA_LOWER: i32 = 122;
+const MAGMA_NO_TRANS: i32 = 111;
 const MAGMA_NO_VEC: i32 = 301;
 const MAGMA_VEC: i32 = 302;
 const MAGMA_ALL_VEC: i32 = 304;
@@ -106,6 +107,40 @@ unsafe extern "C" {
         ipiv: *mut i32,
         b: *mut Complex64,
         ldb: i32,
+        info: *mut i32,
+    );
+    fn magma_dsgesv_gpu(
+        trans: i32,
+        n: i32,
+        nrhs: i32,
+        d_a: *mut f64,
+        ldda: i32,
+        ipiv: *mut i32,
+        d_ipiv: *mut i32,
+        d_b: *mut f64,
+        lddb: i32,
+        d_x: *mut f64,
+        lddx: i32,
+        d_workd: *mut f64,
+        d_works: *mut f32,
+        iter: *mut i32,
+        info: *mut i32,
+    );
+    fn magma_zcgesv_gpu(
+        trans: i32,
+        n: i32,
+        nrhs: i32,
+        d_a: *mut Complex64,
+        ldda: i32,
+        ipiv: *mut i32,
+        d_ipiv: *mut i32,
+        d_b: *mut Complex64,
+        lddb: i32,
+        d_x: *mut Complex64,
+        lddx: i32,
+        d_workd: *mut Complex64,
+        d_works: *mut Complex32,
+        iter: *mut i32,
         info: *mut i32,
     );
 
@@ -1485,6 +1520,265 @@ pub(crate) fn lu_solve<T: MagmaReal>(
         return Err("singular");
     }
     Ok(Array1::from_vec(b))
+}
+
+fn validate_mixed_lu_real_inputs(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+) -> Result<(usize, i32), &'static str> {
+    if matrix.is_empty() {
+        return Err("empty");
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err("not_square");
+    }
+    if rhs.len() != matrix.nrows() {
+        return Err("bad_dimensions");
+    }
+    if matrix.iter().any(|value| !value.is_finite()) || rhs.iter().any(|value| !value.is_finite()) {
+        return Err("non_finite");
+    }
+    Ok((matrix.nrows(), as_i32(matrix.nrows())?))
+}
+
+fn validate_mixed_lu_complex_inputs(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<(usize, i32), &'static str> {
+    if matrix.is_empty() {
+        return Err("empty");
+    }
+    if matrix.nrows() != matrix.ncols() {
+        return Err("not_square");
+    }
+    if rhs.len() != matrix.nrows() {
+        return Err("bad_dimensions");
+    }
+    if !matrix_is_finite_complex(matrix) || !vector_is_finite_complex(rhs) {
+        return Err("non_finite");
+    }
+    Ok((matrix.nrows(), as_i32(matrix.nrows())?))
+}
+
+fn mixed_lu_iterations(info: i32, iterations: i32) -> Result<usize, &'static str> {
+    if info < 0 {
+        return Err("invalid_input");
+    }
+    if info > 0 {
+        return Err("singular");
+    }
+    if iterations < 0 {
+        return Err("convergence_failed");
+    }
+    usize::try_from(iterations).map_err(|_| "invalid_input")
+}
+
+pub(crate) fn lu_solve_mixed_f64(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+) -> Result<(Array1<f64>, usize), &'static str> {
+    let (n, n_i32) = validate_mixed_lu_real_inputs(matrix, rhs)?;
+    let queue = MagmaQueueGuard::new()?;
+    let nrhs_i32 = 1_i32;
+    let matrix_elems = n.saturating_mul(n);
+    let rhs_elems = n;
+    let work_len = n.saturating_mul(n.saturating_add(1));
+    let elem_size_f64 = i32::try_from(size_of::<f64>()).map_err(|_| "invalid_dimensions")?;
+
+    let a_host = to_col_major(matrix);
+    let b_host = rhs.to_vec();
+    let device_a = MagmaDeviceMem::alloc(matrix_elems.saturating_mul(size_of::<f64>()))?;
+    let device_b = MagmaDeviceMem::alloc(rhs_elems.saturating_mul(size_of::<f64>()))?;
+    let device_x = MagmaDeviceMem::alloc(rhs_elems.saturating_mul(size_of::<f64>()))?;
+    let device_work_d = MagmaDeviceMem::alloc(work_len.saturating_mul(size_of::<f64>()))?;
+    let device_work_s = MagmaDeviceMem::alloc(work_len.saturating_mul(size_of::<f32>()))?;
+    let device_pivots = MagmaDeviceMem::alloc(n.saturating_mul(size_of::<i32>()))?;
+
+    // SAFETY: Source and destination buffers are valid and sized for one square matrix.
+    unsafe {
+        magma_setmatrix_internal(
+            n_i32,
+            n_i32,
+            elem_size_f64,
+            a_host.as_ptr().cast::<c_void>(),
+            n_i32,
+            device_a.as_ptr::<f64>().cast::<c_void>(),
+            n_i32,
+            queue.as_raw(),
+            callsite_func(),
+            callsite_file(),
+            0,
+        );
+        magma_setmatrix_internal(
+            n_i32,
+            nrhs_i32,
+            elem_size_f64,
+            b_host.as_ptr().cast::<c_void>(),
+            n_i32,
+            device_b.as_ptr::<f64>().cast::<c_void>(),
+            n_i32,
+            queue.as_raw(),
+            callsite_func(),
+            callsite_file(),
+            0,
+        );
+    }
+
+    let mut pivots = vec![0_i32; n];
+    let mut iterations = 0_i32;
+    let mut info = 0_i32;
+
+    // SAFETY: Pointers refer to valid device/host buffers matching MAGMA's mixed-solve contract.
+    unsafe {
+        magma_dsgesv_gpu(
+            MAGMA_NO_TRANS,
+            n_i32,
+            nrhs_i32,
+            device_a.as_ptr::<f64>(),
+            n_i32,
+            pivots.as_mut_ptr(),
+            device_pivots.as_ptr::<i32>(),
+            device_b.as_ptr::<f64>(),
+            n_i32,
+            device_x.as_ptr::<f64>(),
+            n_i32,
+            device_work_d.as_ptr::<f64>(),
+            device_work_s.as_ptr::<f32>(),
+            &raw mut iterations,
+            &raw mut info,
+        );
+    }
+    queue.sync();
+    let refinement_iterations = mixed_lu_iterations(info, iterations)?;
+
+    let mut solution = vec![0.0_f64; rhs_elems];
+    // SAFETY: Device output vector is valid and copied into a host buffer of matching size.
+    unsafe {
+        magma_getmatrix_internal(
+            n_i32,
+            nrhs_i32,
+            elem_size_f64,
+            device_x.as_ptr::<f64>().cast::<c_void>().cast_const(),
+            n_i32,
+            solution.as_mut_ptr().cast::<c_void>(),
+            n_i32,
+            queue.as_raw(),
+            callsite_func(),
+            callsite_file(),
+            0,
+        );
+    }
+    queue.sync();
+
+    if solution.iter().any(|value| !value.is_finite()) {
+        return Err("non_finite");
+    }
+
+    Ok((Array1::from_vec(solution), refinement_iterations))
+}
+
+pub(crate) fn lu_solve_mixed_complex(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<(Array1<Complex64>, usize), &'static str> {
+    let (n, n_i32) = validate_mixed_lu_complex_inputs(matrix, rhs)?;
+    let queue = MagmaQueueGuard::new()?;
+    let nrhs_i32 = 1_i32;
+    let matrix_elems = n.saturating_mul(n);
+    let rhs_elems = n;
+    let work_len = n.saturating_mul(n.saturating_add(1));
+    let elem_size_z = i32::try_from(size_of::<Complex64>()).map_err(|_| "invalid_dimensions")?;
+
+    let a_host = to_col_major(matrix);
+    let b_host = rhs.to_vec();
+    let device_a = MagmaDeviceMem::alloc(matrix_elems.saturating_mul(size_of::<Complex64>()))?;
+    let device_b = MagmaDeviceMem::alloc(rhs_elems.saturating_mul(size_of::<Complex64>()))?;
+    let device_x = MagmaDeviceMem::alloc(rhs_elems.saturating_mul(size_of::<Complex64>()))?;
+    let device_work_d = MagmaDeviceMem::alloc(work_len.saturating_mul(size_of::<Complex64>()))?;
+    let device_work_s = MagmaDeviceMem::alloc(work_len.saturating_mul(size_of::<Complex32>()))?;
+    let device_pivots = MagmaDeviceMem::alloc(n.saturating_mul(size_of::<i32>()))?;
+
+    // SAFETY: Source and destination buffers are valid and sized for one square matrix.
+    unsafe {
+        magma_setmatrix_internal(
+            n_i32,
+            n_i32,
+            elem_size_z,
+            a_host.as_ptr().cast::<c_void>(),
+            n_i32,
+            device_a.as_ptr::<Complex64>().cast::<c_void>(),
+            n_i32,
+            queue.as_raw(),
+            callsite_func(),
+            callsite_file(),
+            0,
+        );
+        magma_setmatrix_internal(
+            n_i32,
+            nrhs_i32,
+            elem_size_z,
+            b_host.as_ptr().cast::<c_void>(),
+            n_i32,
+            device_b.as_ptr::<Complex64>().cast::<c_void>(),
+            n_i32,
+            queue.as_raw(),
+            callsite_func(),
+            callsite_file(),
+            0,
+        );
+    }
+
+    let mut pivots = vec![0_i32; n];
+    let mut iterations = 0_i32;
+    let mut info = 0_i32;
+
+    // SAFETY: Pointers refer to valid device/host buffers matching MAGMA's mixed-solve contract.
+    unsafe {
+        magma_zcgesv_gpu(
+            MAGMA_NO_TRANS,
+            n_i32,
+            nrhs_i32,
+            device_a.as_ptr::<Complex64>(),
+            n_i32,
+            pivots.as_mut_ptr(),
+            device_pivots.as_ptr::<i32>(),
+            device_b.as_ptr::<Complex64>(),
+            n_i32,
+            device_x.as_ptr::<Complex64>(),
+            n_i32,
+            device_work_d.as_ptr::<Complex64>(),
+            device_work_s.as_ptr::<Complex32>(),
+            &raw mut iterations,
+            &raw mut info,
+        );
+    }
+    queue.sync();
+    let refinement_iterations = mixed_lu_iterations(info, iterations)?;
+
+    let mut solution = vec![Complex64::new(0.0, 0.0); rhs_elems];
+    // SAFETY: Device output vector is valid and copied into a host buffer of matching size.
+    unsafe {
+        magma_getmatrix_internal(
+            n_i32,
+            nrhs_i32,
+            elem_size_z,
+            device_x.as_ptr::<Complex64>().cast::<c_void>().cast_const(),
+            n_i32,
+            solution.as_mut_ptr().cast::<c_void>(),
+            n_i32,
+            queue.as_raw(),
+            callsite_func(),
+            callsite_file(),
+            0,
+        );
+    }
+    queue.sync();
+
+    if solution.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
+        return Err("non_finite");
+    }
+
+    Ok((Array1::from_vec(solution), refinement_iterations))
 }
 
 pub(crate) fn lu_inverse<T: MagmaReal>(

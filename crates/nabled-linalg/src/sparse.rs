@@ -6,10 +6,25 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2};
 use thiserror::Error;
 
+#[cfg(feature = "magma-system")]
+use crate::provider::magma_sparse;
+
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
 
 fn default_tolerance<T: NabledReal>() -> T {
     T::from_f64(DEFAULT_TOLERANCE).unwrap_or(T::epsilon())
+}
+
+#[cfg(feature = "magma-system")]
+fn map_magma_sparse_error(error: &'static str) -> SparseError {
+    match error {
+        "empty" => SparseError::EmptyInput,
+        "bad_dimensions" | "invalid_dimensions" => SparseError::DimensionMismatch,
+        "invalid_structure" | "non_finite" | "provider_init_failed" | "provider_failure" => {
+            SparseError::InvalidStructure
+        }
+        _ => SparseError::InvalidStructure,
+    }
 }
 
 fn dot<T: NabledReal>(left: &Array1<T>, right: &Array1<T>) -> Result<T, SparseError> {
@@ -634,6 +649,98 @@ pub fn matvec_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     let mut output = Array1::<T>::zeros(matrix.nrows);
     matvec_view_into(matrix, vector, &mut output)?;
     Ok(output)
+}
+
+/// Compute sparse matrix-vector product `y = A x` via MAGMA sparse (`f64`).
+///
+/// This path requires feature `magma-system` and an `i32`-indexed CSR view.
+///
+/// # Errors
+/// Returns an error if dimensions/structure are invalid or provider execution fails.
+#[cfg(feature = "magma-system")]
+pub fn matvec_magma_f64_view(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    vector: &Array1<f64>,
+) -> Result<Array1<f64>, SparseError> {
+    matrix.validate()?;
+    if vector.len() != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    magma_sparse::spmv_f64(
+        matrix.nrows,
+        matrix.ncols,
+        matrix.row_ptrs,
+        matrix.col_indices,
+        matrix.values,
+        vector,
+    )
+    .map_err(map_magma_sparse_error)
+}
+
+/// Compute sparse matrix-vector product `y = A x` via MAGMA sparse (`f32`).
+///
+/// This path requires feature `magma-system` and an `i32`-indexed CSR view.
+///
+/// # Errors
+/// Returns an error if dimensions/structure are invalid or provider execution fails.
+#[cfg(feature = "magma-system")]
+pub fn matvec_magma_f32_view(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    vector: &Array1<f32>,
+) -> Result<Array1<f32>, SparseError> {
+    matrix.validate()?;
+    if vector.len() != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    magma_sparse::spmv_f32(
+        matrix.nrows,
+        matrix.ncols,
+        matrix.row_ptrs,
+        matrix.col_indices,
+        matrix.values,
+        vector,
+    )
+    .map_err(map_magma_sparse_error)
+}
+
+/// Compute sparse matrix-vector product `y = A x` via MAGMA sparse (`f64`) into `output`.
+///
+/// This path requires feature `magma-system` and an `i32`-indexed CSR view.
+///
+/// # Errors
+/// Returns an error if dimensions/structure are invalid or provider execution fails.
+#[cfg(feature = "magma-system")]
+pub fn matvec_magma_f64_view_into(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    vector: &Array1<f64>,
+    output: &mut Array1<f64>,
+) -> Result<(), SparseError> {
+    if output.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    let result = matvec_magma_f64_view(matrix, vector)?;
+    output.assign(&result);
+    Ok(())
+}
+
+/// Compute sparse matrix-vector product `y = A x` via MAGMA sparse (`f32`) into `output`.
+///
+/// This path requires feature `magma-system` and an `i32`-indexed CSR view.
+///
+/// # Errors
+/// Returns an error if dimensions/structure are invalid or provider execution fails.
+#[cfg(feature = "magma-system")]
+pub fn matvec_magma_f32_view_into(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    vector: &Array1<f32>,
+    output: &mut Array1<f32>,
+) -> Result<(), SparseError> {
+    if output.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    let result = matvec_magma_f32_view(matrix, vector)?;
+    output.assign(&result);
+    Ok(())
 }
 
 /// Compute sparse matrix-vector product `y = A x` into `output`.
@@ -2141,6 +2248,98 @@ pub fn matmat_dense_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     let mut output = Array2::<T>::zeros((matrix.nrows, dense.ncols()));
     matmat_dense_view_into(matrix, dense, &mut output)?;
     Ok(output)
+}
+
+/// Compute sparse-dense matrix multiplication `Y = A B` via MAGMA sparse (`f64`).
+///
+/// This path requires feature `magma-system` and an `i32`-indexed CSR view.
+///
+/// # Errors
+/// Returns an error if dimensions/structure are invalid or provider execution fails.
+#[cfg(feature = "magma-system")]
+pub fn matmat_dense_magma_f64_view(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    dense: &Array2<f64>,
+) -> Result<Array2<f64>, SparseError> {
+    matrix.validate()?;
+    if dense.nrows() != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    magma_sparse::spmm_f64(
+        matrix.nrows,
+        matrix.ncols,
+        matrix.row_ptrs,
+        matrix.col_indices,
+        matrix.values,
+        dense,
+    )
+    .map_err(map_magma_sparse_error)
+}
+
+/// Compute sparse-dense matrix multiplication `Y = A B` via MAGMA sparse (`f32`).
+///
+/// This path requires feature `magma-system` and an `i32`-indexed CSR view.
+///
+/// # Errors
+/// Returns an error if dimensions/structure are invalid or provider execution fails.
+#[cfg(feature = "magma-system")]
+pub fn matmat_dense_magma_f32_view(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    dense: &Array2<f32>,
+) -> Result<Array2<f32>, SparseError> {
+    matrix.validate()?;
+    if dense.nrows() != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    magma_sparse::spmm_f32(
+        matrix.nrows,
+        matrix.ncols,
+        matrix.row_ptrs,
+        matrix.col_indices,
+        matrix.values,
+        dense,
+    )
+    .map_err(map_magma_sparse_error)
+}
+
+/// Compute sparse-dense matrix multiplication `Y = A B` via MAGMA sparse (`f64`) into `output`.
+///
+/// This path requires feature `magma-system` and an `i32`-indexed CSR view.
+///
+/// # Errors
+/// Returns an error if dimensions/structure are invalid or provider execution fails.
+#[cfg(feature = "magma-system")]
+pub fn matmat_dense_magma_f64_view_into(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    dense: &Array2<f64>,
+    output: &mut Array2<f64>,
+) -> Result<(), SparseError> {
+    if output.dim() != (matrix.nrows, dense.ncols()) {
+        return Err(SparseError::DimensionMismatch);
+    }
+    let result = matmat_dense_magma_f64_view(matrix, dense)?;
+    output.assign(&result);
+    Ok(())
+}
+
+/// Compute sparse-dense matrix multiplication `Y = A B` via MAGMA sparse (`f32`) into `output`.
+///
+/// This path requires feature `magma-system` and an `i32`-indexed CSR view.
+///
+/// # Errors
+/// Returns an error if dimensions/structure are invalid or provider execution fails.
+#[cfg(feature = "magma-system")]
+pub fn matmat_dense_magma_f32_view_into(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    dense: &Array2<f32>,
+    output: &mut Array2<f32>,
+) -> Result<(), SparseError> {
+    if output.dim() != (matrix.nrows, dense.ncols()) {
+        return Err(SparseError::DimensionMismatch);
+    }
+    let result = matmat_dense_magma_f32_view(matrix, dense)?;
+    output.assign(&result);
+    Ok(())
 }
 
 /// Compute sparse-dense matrix multiplication `Y = A B` into `output`.
@@ -6008,5 +6207,79 @@ mod tests {
             &factorization,
         );
         assert!(matches!(result, Err(SparseError::DimensionMismatch)));
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn magma_matvec_view_matches_internal_f64() {
+        let row_ptrs = vec![0_i32, 2, 4];
+        let col_indices = vec![0_i32, 1, 0, 1];
+        let values = vec![4.0_f64, 1.0, 2.0, 3.0];
+        let view = CsrMatrixView::new(2, 2, &row_ptrs, &col_indices, &values).unwrap();
+        let vector = Array1::from_vec(vec![1.0_f64, -2.0_f64]);
+
+        let expected = matvec_view(&view, &vector).unwrap();
+        let magma = matvec_magma_f64_view(&view, &vector).unwrap();
+        for index in 0..expected.len() {
+            assert!((expected[index] - magma[index]).abs() < 1e-9_f64);
+        }
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn magma_matvec_view_matches_internal_f32() {
+        let row_ptrs = vec![0_i32, 2, 4];
+        let col_indices = vec![0_i32, 1, 0, 1];
+        let values = vec![4.0_f32, 1.0, 2.0, 3.0];
+        let view = CsrMatrixView::new(2, 2, &row_ptrs, &col_indices, &values).unwrap();
+        let vector = Array1::from_vec(vec![1.0_f32, -2.0_f32]);
+
+        let expected = matvec_view(&view, &vector).unwrap();
+        let magma = matvec_magma_f32_view(&view, &vector).unwrap();
+        for index in 0..expected.len() {
+            assert!((expected[index] - magma[index]).abs() < 1e-5_f32);
+        }
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn magma_matmat_dense_view_matches_internal_f64() {
+        let row_ptrs = vec![0_i32, 2, 4];
+        let col_indices = vec![0_i32, 1, 0, 1];
+        let values = vec![4.0_f64, 1.0, 2.0, 3.0];
+        let view = CsrMatrixView::new(2, 2, &row_ptrs, &col_indices, &values).unwrap();
+        let dense = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64,
+        ])
+        .unwrap();
+
+        let expected = matmat_dense_view(&view, &dense).unwrap();
+        let magma = matmat_dense_magma_f64_view(&view, &dense).unwrap();
+        for row in 0..expected.nrows() {
+            for col in 0..expected.ncols() {
+                assert!((expected[[row, col]] - magma[[row, col]]).abs() < 1e-9_f64);
+            }
+        }
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn magma_matmat_dense_view_matches_internal_f32() {
+        let row_ptrs = vec![0_i32, 2, 4];
+        let col_indices = vec![0_i32, 1, 0, 1];
+        let values = vec![4.0_f32, 1.0, 2.0, 3.0];
+        let view = CsrMatrixView::new(2, 2, &row_ptrs, &col_indices, &values).unwrap();
+        let dense = Array2::from_shape_vec((2, 3), vec![
+            1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, 5.0_f32, 6.0_f32,
+        ])
+        .unwrap();
+
+        let expected = matmat_dense_view(&view, &dense).unwrap();
+        let magma = matmat_dense_magma_f32_view(&view, &dense).unwrap();
+        for row in 0..expected.nrows() {
+            for col in 0..expected.ncols() {
+                assert!((expected[[row, col]] - magma[[row, col]]).abs() < 1e-4_f32);
+            }
+        }
     }
 }

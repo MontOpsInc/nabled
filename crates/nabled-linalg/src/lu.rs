@@ -30,6 +30,15 @@ pub struct LogDetResult<T> {
     pub ln_abs_det: T,
 }
 
+/// Result metadata for mixed-precision LU solve routines.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MixedSolveResult<T> {
+    /// The solved vector `x` from `Ax=b`.
+    pub solution:              Array1<T>,
+    /// Iterative-refinement steps performed by the provider.
+    pub refinement_iterations: usize,
+}
+
 /// Error type for LU operations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LUError {
@@ -39,6 +48,8 @@ pub enum LUError {
     NotSquare,
     /// Matrix is singular.
     SingularMatrix,
+    /// Iterative solver failed to converge.
+    ConvergenceFailed,
     /// Invalid input.
     InvalidInput(String),
     /// Numerical instability detected.
@@ -51,6 +62,7 @@ impl fmt::Display for LUError {
             LUError::EmptyMatrix => write!(f, "Matrix cannot be empty"),
             LUError::NotSquare => write!(f, "Matrix must be square"),
             LUError::SingularMatrix => write!(f, "Matrix is singular"),
+            LUError::ConvergenceFailed => write!(f, "Convergence failed"),
             LUError::InvalidInput(message) => write!(f, "Invalid input: {message}"),
             LUError::NumericalInstability => write!(f, "Numerical instability detected"),
         }
@@ -64,6 +76,7 @@ fn map_lu_error(error: &'static str) -> LUError {
         "empty" => LUError::EmptyMatrix,
         "not_square" => LUError::NotSquare,
         "singular" => LUError::SingularMatrix,
+        "convergence_failed" => LUError::ConvergenceFailed,
         "non_finite" => LUError::NumericalInstability,
         "bad_dimensions" => {
             LUError::InvalidInput("RHS length must match matrix dimensions".to_string())
@@ -255,6 +268,11 @@ fn decompose_internal<T: NabledReal>(
     Ok((NdarrayLUResult { l, u }, pivots, sign))
 }
 
+#[cfg(not(feature = "magma-system"))]
+fn mixed_lu_requires_magma_error() -> LUError {
+    LUError::InvalidInput("mixed LU solve requires feature `magma-system`".to_string())
+}
+
 #[cfg(feature = "magma-system")]
 fn solve_provider<T>(
     matrix: &ArrayView2<'_, T>,
@@ -283,6 +301,58 @@ where
 {
     validate_square_finite_view(matrix)?;
     magma::lu_determinant(matrix).map_err(map_lu_error)
+}
+
+#[cfg(feature = "magma-system")]
+fn solve_mixed_f64_provider(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+) -> Result<MixedSolveResult<f64>, LUError> {
+    validate_square_finite_view(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
+    }
+    let (solution, refinement_iterations) =
+        magma::lu_solve_mixed_f64(matrix, rhs).map_err(map_lu_error)?;
+    Ok(MixedSolveResult { solution, refinement_iterations })
+}
+
+#[cfg(not(feature = "magma-system"))]
+fn solve_mixed_f64_provider(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+) -> Result<MixedSolveResult<f64>, LUError> {
+    validate_square_finite_view(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
+    }
+    Err(mixed_lu_requires_magma_error())
+}
+
+#[cfg(feature = "magma-system")]
+fn solve_mixed_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<MixedSolveResult<Complex64>, LUError> {
+    validate_complex_square_finite_view(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
+    }
+    let (solution, refinement_iterations) =
+        magma::lu_solve_mixed_complex(matrix, rhs).map_err(map_lu_error)?;
+    Ok(MixedSolveResult { solution, refinement_iterations })
+}
+
+#[cfg(not(feature = "magma-system"))]
+fn solve_mixed_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<MixedSolveResult<Complex64>, LUError> {
+    validate_complex_square_finite_view(matrix)?;
+    if rhs.len() != matrix.nrows() {
+        return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
+    }
+    Err(mixed_lu_requires_magma_error())
 }
 
 #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
@@ -505,6 +575,65 @@ pub fn solve_view<T: NabledReal>(
     rhs: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, LUError> {
     solve_impl(matrix, rhs)
+}
+
+/// Solve `Ax=b` using MAGMA mixed-precision iterative refinement (`f64` -> `f32` work buffers).
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if input is invalid, matrix is singular, convergence fails, or `magma-system`
+/// is not enabled.
+pub fn solve_mixed_f64(
+    matrix: &Array2<f64>,
+    rhs: &Array1<f64>,
+) -> Result<MixedSolveResult<f64>, LUError> {
+    solve_mixed_f64_provider(&matrix.view(), &rhs.view())
+}
+
+/// Solve `Ax=b` using MAGMA mixed-precision iterative refinement from views (`f64` -> `f32` work
+/// buffers).
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if input is invalid, matrix is singular, convergence fails, or `magma-system`
+/// is not enabled.
+pub fn solve_mixed_f64_view(
+    matrix: &ArrayView2<'_, f64>,
+    rhs: &ArrayView1<'_, f64>,
+) -> Result<MixedSolveResult<f64>, LUError> {
+    solve_mixed_f64_provider(matrix, rhs)
+}
+
+/// Solve complex-valued `Ax=b` using MAGMA mixed-precision iterative refinement
+/// (`Complex64` -> `Complex32` work buffers).
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if input is invalid, matrix is singular, convergence fails, or `magma-system`
+/// is not enabled.
+pub fn solve_mixed_complex(
+    matrix: &Array2<Complex64>,
+    rhs: &Array1<Complex64>,
+) -> Result<MixedSolveResult<Complex64>, LUError> {
+    solve_mixed_complex_provider(&matrix.view(), &rhs.view())
+}
+
+/// Solve complex-valued `Ax=b` using MAGMA mixed-precision iterative refinement from views
+/// (`Complex64` -> `Complex32` work buffers).
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if input is invalid, matrix is singular, convergence fails, or `magma-system`
+/// is not enabled.
+pub fn solve_mixed_complex_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<MixedSolveResult<Complex64>, LUError> {
+    solve_mixed_complex_provider(matrix, rhs)
 }
 
 /// Solve complex-valued `Ax=b` from matrix/vector views.
@@ -837,6 +966,46 @@ mod tests {
         let lu = decompose(&matrix).unwrap();
         assert_eq!(lu.l.dim(), (2, 2));
         assert_eq!(lu.u.dim(), (2, 2));
+    }
+
+    #[cfg(not(feature = "magma-system"))]
+    #[test]
+    fn mixed_solve_requires_magma_feature() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0_f64, 1.0, 1.0, 3.0]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0]);
+        let error = solve_mixed_f64(&matrix, &rhs).unwrap_err();
+        assert!(
+            matches!(error, LUError::InvalidInput(message) if message.contains("magma-system"))
+        );
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn mixed_f64_solve_reconstructs_rhs() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![5.0_f64, 1.0, 1.0, 4.0]).unwrap();
+        let rhs = Array1::from_vec(vec![2.0_f64, 3.0]);
+        let result = solve_mixed_f64(&matrix, &rhs).unwrap();
+        let reconstructed = matrix.dot(&result.solution);
+        assert!((reconstructed[0] - rhs[0]).abs() < 1e-9);
+        assert!((reconstructed[1] - rhs[1]).abs() < 1e-9);
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn mixed_complex_solve_reconstructs_rhs() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(3.0, 0.5),
+            Complex64::new(1.0, -0.25),
+            Complex64::new(0.5, 0.5),
+            Complex64::new(2.5, -0.75),
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.5), Complex64::new(0.0, 1.0)]);
+        let result = solve_mixed_complex(&matrix, &rhs).unwrap();
+        let reconstructed = matrix.dot(&result.solution);
+        for i in 0..rhs.len() {
+            assert!((reconstructed[i] - rhs[i]).norm() < 1e-8);
+        }
     }
 
     #[test]

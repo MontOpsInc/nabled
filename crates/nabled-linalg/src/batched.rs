@@ -211,6 +211,7 @@ fn map_lu_provider_error(error: &'static str) -> lu::LUError {
         "empty" => lu::LUError::EmptyMatrix,
         "not_square" => lu::LUError::NotSquare,
         "singular" => lu::LUError::SingularMatrix,
+        "convergence_failed" => lu::LUError::ConvergenceFailed,
         "non_finite" => lu::LUError::NumericalInstability,
         "provider_init_failed" | "provider_alloc_failed" | "provider_failure" => {
             lu::LUError::InvalidInput("provider failure".to_string())

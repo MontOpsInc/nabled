@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Purpose
 
@@ -32,6 +32,8 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 2. Provider-backed calls through `ndarray-linalg` can require owned arrays due provider trait/method signatures (not wrapper-level conversion policy).
 3. Shape-changing outputs (for example reduced/truncated decomposition outputs) allocate result arrays by API contract.
 4. Current `wgpu` kernels stage host input buffers to device and read output buffers back to host memory per invocation; this host↔device transfer is expected for the current ndarray-owned public API contract.
+5. Opt-in MAGMA sparse APIs (`matvec_magma_*`, `matmat_dense_magma_*`) stage CSR/vector/dense host buffers and allocate provider/device workspace per invocation; this is required by MAGMA sparse C API contracts and is explicit to these MAGMA-only entrypoints.
+6. Opt-in MAGMA mixed LU APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) allocate provider work buffers and stage matrix/RHS/solution host↔device transfers per invocation; behavior is explicit and confined to mixed-precision APIs.
 
 ## V1 No-Surprises Audit Status
 
