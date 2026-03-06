@@ -22,9 +22,12 @@ SSH_OPTS=(
   -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}"
   -o ServerAliveInterval=30
   -o ServerAliveCountMax=6
+  -o ControlMaster=no
+  -o ControlPath=none
+  -o ControlPersist=no
 )
 
-ssh "${SSH_OPTS[@]}" -i "$SSH_KEY" -p "$SSH_PORT" "${SSH_USER}@${HOST}" "bash -lc '
+ssh "${SSH_OPTS[@]}" -i "$SSH_KEY" -p "$SSH_PORT" "${SSH_USER}@${HOST}" "bash --noprofile --norc -c '
 set -euo pipefail
 export HOME=/home/${SSH_USER}
 export PATH=/home/${SSH_USER}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

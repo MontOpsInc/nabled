@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-05 (MAGMA domain wiring complete; remote verification pending)
+Last updated: 2026-03-06 (MAGMA remote verification and provider benchmark capture complete)
 
 ## Purpose
 
@@ -29,7 +29,7 @@ This tracker is focused on:
 | `V2-002` | Batched surface audit and GPU relevance map | Completed | Decomposition batch APIs are provider-accelerated per-slice loops; kernel-level batch APIs are backend-dispatched and GPU-capable (`batched_matmat`, `batched_row_matvec`). |
 | `V2-003` | Runtime workload policy (small vs large) for GPU backend routing | Completed | Centralized `accelerator::policy` now gates all GPU backend-dispatched kernels with env-overridable thresholds tuned from remote 4090 release-profile measurements. |
 | `V2-004` | MAGMA CUDA provider integration (scaffold + domain wiring) | Completed | MAGMA provider paths are wired for LU/Cholesky/QR/SVD/symmetric eigen, with provider-safe scalar bounds propagated across dependent domains. |
-| `V2-005` | MAGMA verification matrix + benchmark parity report | In Progress | Run correctness/perf checkpoints on remote GPU host and capture comparator report artifacts. |
+| `V2-005` | MAGMA verification matrix + benchmark parity report | Completed | Remote RTX 4090 run completed with correctness/capability artifacts and provider benchmark summaries captured locally. |
 
 ## Batched Surface Snapshot (Current)
 
@@ -82,6 +82,21 @@ Policy is centralized in `accelerator::policy` and used by `GpuBackend` dispatch
    - `scripts/gpu_v2_remote_magma_verify.sh <host>`
 4. For headless Vulkan in containerized environments:
    - use EGL ICD (`libEGL_nvidia.so.0`) via `VK_ICD_FILENAMES` and set `XDG_RUNTIME_DIR`.
+
+## V2-005 Result Snapshot (RTX 4090 Remote)
+
+Artifacts:
+
+1. `coverage/gpu-v2/magma/verification-4090.log`
+2. `coverage/gpu-v2/magma/bench/openblas-system-summary-4090.json`
+3. `coverage/gpu-v2/magma/bench/magma-system-summary-4090.json`
+
+High-level outcomes:
+
+1. MAGMA feature build/check/clippy and correctness suites pass on remote NVIDIA host.
+2. Backend capability report generation under `magma-system` succeeds.
+3. Provider benchmark comparison is captured for the same benchmark surface (`289` common entries).
+4. The provider comparison shows mixed performance by domain/shape and confirms this should feed `K-005` outlier optimization, not a single global gate.
 
 ## Planned Checkpoints
 

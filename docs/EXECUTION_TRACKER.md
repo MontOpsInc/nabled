@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Purpose
 
@@ -177,12 +177,12 @@ Use this file to resume work quickly after context compaction without re-auditin
 135. `D-135`: `V2-004` is complete: MAGMA provider scaffolding and decomposition-domain wiring now cover LU, Cholesky, QR, SVD, and symmetric eigen, with provider-safe scalar bounds propagated through dependent linalg/ml call paths.
 136. `D-136`: Post-`V2-004` quality validation is green in both tracks: `magma-system` workspace check/clippy and standard repository quality gates (`just checks`) pass.
 137. `D-137`: `V2-005` execution tooling is now scripted end-to-end: remote MAGMA verification/capability/bench collection can be run via `scripts/gpu_v2_remote_magma_verify.sh`.
+138. `D-138`: `V2-005` is complete: remote RTX 4090 MAGMA verification and provider benchmark capture succeeded, with artifacts checked into local `coverage/gpu-v2/magma/` for follow-on outlier analysis.
 
 ## Next
 
-1. `V2-005`: Produce MAGMA correctness/perf verification matrix and comparator report.
-2. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32`).
-3. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+1. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32` and MAGMA provider outliers).
+2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.

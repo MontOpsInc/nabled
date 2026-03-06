@@ -1,6 +1,6 @@
 # Benchmark Tracker
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Purpose
 
@@ -45,6 +45,7 @@ A chunk is defined by:
 | `L-CPU-NATIVE-TENSOR` | Tensor/cube kernels | internal provider, CPU backend, `f64` (+ complex where exposed) | `tensor` | partial (manual baseline subset) | Planned |
 | `L-CPU-NATIVE-ACCEL` | Accelerator CPU paths | internal provider, CPU backend | `accelerator` | partial (manual baseline) | Planned |
 | `L-CPU-PROVIDER-DECOMP` | Provider-backed decompositions | `openblas-system` provider, CPU backend | same as `L-CPU-NATIVE-DECOMP` | same comparator gaps as native unless expanded | Planned |
+| `L-CPU-PROVIDER-MAGMA` | Provider-backed decompositions (NVIDIA MAGMA) | `magma-system` provider, CPU backend | same as `L-CPU-NATIVE-DECOMP` | paired against `openblas-system` provider summaries | Measured |
 | `L-GPU-WGPU-F32` | GPU kernel paths | internal/provider orthogonal, `accelerator-wgpu`, `f32` scope | `accelerator` (`accelerator_nabled_gpu_cpu_f32`, `accelerator_nabled_gpu_wgpu_f32`) + tensor GPU-covered paths | expanded (`f32` CPU comparator + GPU groups) | In progress (measured + optimization active) |
 
 ## Active Round Scope
@@ -332,6 +333,37 @@ Interpretation:
 1. Remote sweep run via `scripts/gpu_v2_remote_probe.sh` with `accelerator-wgpu` and Vulkan.
 2. Dense square `matmat` crossover (CPU vs direct GPU path) on this setup is approximately near `N ~= 900`.
 3. This baseline informed `accelerator::policy` default thresholds so GPU dispatch avoids small/medium workload regressions by default.
+
+## Chunk Run: `L-CPU-PROVIDER-MAGMA` (Remote RTX 4090)
+
+Execution config:
+
+1. Providers compared: `openblas-system` vs `magma-system`.
+2. Backend: CPU backend orchestration (provider-sensitive decomposition internals).
+3. Feature path: `--no-default-features --features <provider>`.
+4. Host: Vast.ai RTX 4090 environment.
+
+Commands used:
+
+```bash
+scripts/gpu_v2_remote_prepare.sh <host>
+scripts/gpu_v2_remote_magma_verify.sh <host>
+# provider comparison pass:
+NABLED_PROVIDER_BENCH_FEATURES=openblas-system just -f .justfile bench-smoke-report-provider
+NABLED_PROVIDER_BENCH_FEATURES=magma-system    just -f .justfile bench-smoke-report-provider
+```
+
+Artifacts:
+
+1. `coverage/gpu-v2/magma/verification-4090.log`
+2. `coverage/gpu-v2/magma/bench/openblas-system-summary-4090.json`
+3. `coverage/gpu-v2/magma/bench/magma-system-summary-4090.json`
+
+Summary:
+
+1. Both provider runs produced complete benchmark summaries (`289` common benchmark entries).
+2. Median ratio (`magma/openblas`) across all entries is near parity (`~0.997`), with domain-specific outliers concentrated in tiny-shape decomposition cases where fixed provider overhead dominates.
+3. For decomposition-heavy domains, MAGMA is mixed by operation/size and should be tuned via outlier-ranked follow-up (`K-005`) rather than treated as globally faster/slower.
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

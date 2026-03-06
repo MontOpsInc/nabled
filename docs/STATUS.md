@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Summary
 
@@ -115,6 +115,7 @@ Workspace migration for library domains is complete.
 107. `V2-004` is complete: MAGMA provider domain wiring now covers LU, Cholesky, QR, SVD, and symmetric eigen, and dependent linalg/ml paths compile with provider-safe scalar bounds.
 108. Post-`V2-004` validation is green: `magma-system` workspace check/clippy and standard repository quality gates (`just checks`) pass.
 109. Remote MAGMA verification orchestration is now scripted (`scripts/gpu_v2_remote_magma_verify.sh`) to generate correctness/capability artifacts and provider benchmark summaries on the 4090 host.
+110. Remote MAGMA verification is now executed and captured for V2: RTX 4090 artifacts are available under `coverage/gpu-v2/magma/` (verification log plus `openblas-system` vs `magma-system` provider summaries).
 
 ## Current Code Ownership
 
