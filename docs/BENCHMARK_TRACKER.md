@@ -365,6 +365,21 @@ Summary:
 2. Median ratio (`magma/openblas`) across all entries is near parity (`~0.997`), with domain-specific outliers concentrated in tiny-shape decomposition cases where fixed provider overhead dominates.
 3. For decomposition-heavy domains, MAGMA is mixed by operation/size and should be tuned via outlier-ranked follow-up (`K-005`) rather than treated as globally faster/slower.
 
+### K-005 Phase-1 (small-shape MAGMA routing)
+
+1. MAGMA decomposition calls now use a centralized size gate (`DenseKernelPolicy::prefer_magma_decomposition`) before selecting MAGMA provider kernels in:
+   - `lu` solve/inverse/determinant (real + complex),
+   - `qr` decompose paths (real + complex),
+   - `svd` decompose paths (real + complex, including downstream `polar`/`schur` effects via reused decomposition APIs).
+2. Default cutoff is `min(rows, cols) >= 128`.
+3. Runtime override is available via:
+   - `NABLED_MAGMA_MIN_DECOMPOSITION_DIM=<usize>`
+4. Intent:
+   - avoid fixed MAGMA launch/transfer overhead on tiny decomposition shapes,
+   - preserve MAGMA path for larger workloads where GPU/provider acceleration is beneficial.
+5. Follow-up required:
+   - rerun remote provider compare (`openblas-system` vs `magma-system`) and refresh ranked outlier tables after this routing pass.
+
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 
 Use these notes when resuming point-by-point parity work.

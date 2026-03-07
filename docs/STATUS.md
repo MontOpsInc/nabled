@@ -129,6 +129,8 @@ Workspace migration for library domains is complete.
 121. `V2-009` phase-1 mixed-precision implementation is now landed: LU mixed solve APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) return explicit refinement-iteration metadata and map convergence/provider outcomes into typed LU errors.
 122. `V2-008` phase-2 sparse implementation is now landed: MAGMA-backed sparse iterative/preconditioned solve APIs (`CG`, `PCG-Jacobi`, `GMRES`, `BiCGSTAB`, plus `ILU0`-preconditioned `GMRES`/`BiCGSTAB`) are available for `f32`/`f64` over `i32` CSR views with parity tests.
 123. Complex tensor public APIs now route accelerator-backed single-axis contraction, batched last-two matmul, and last-axis summation through backend dispatch (`GpuBackend` when enabled, explicit CPU fallback otherwise), preserving deterministic output/error contracts.
+124. `V2-009` phase-2 mixed-precision expansion is now landed: Sylvester/Lyapunov expose mixed/refinement APIs (`solve_sylvester_mixed_*`, `solve_lyapunov_mixed_*`) with explicit `refinement_iterations` metadata and typed error mapping from LU mixed solves.
+125. `K-005` phase-1 MAGMA outlier remediation is now landed: tiny decomposition workloads are routed away from MAGMA via centralized size policy (`DenseKernelPolicy::prefer_magma_decomposition`, default cutoff `min(rows, cols) >= 128`, env override `NABLED_MAGMA_MIN_DECOMPOSITION_DIM`) across LU solve/inverse/determinant and QR/SVD decomposition paths (including downstream `polar`/`schur` flows).
 
 ## Current Code Ownership
 
@@ -165,9 +167,8 @@ Workspace migration for library domains is complete.
 
 GPU phase-2 continuation:
 
-1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`).
+1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`), starting with remote provider benchmark rerun after phase-1 routing.
 2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
-3. Execute remaining phase-2 follow-ons from `V2-009` (mixed-precision expansion beyond LU-only APIs).
 
 ## Completion Criteria For Migration
 

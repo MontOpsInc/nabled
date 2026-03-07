@@ -188,12 +188,16 @@ Use this file to resume work quickly after context compaction without re-auditin
 146. `D-146`: `V2-009` phase-1 is complete: opt-in mixed-precision LU solve APIs are implemented in `nabled-linalg::lu` (`solve_mixed_f64*`, `solve_mixed_complex*`) with explicit refinement-iteration metadata and typed convergence/error mapping.
 147. `D-147`: `V2-008` phase-1 is complete: dedicated `provider::magma_sparse` FFI lifecycle is implemented and wired to opt-in sparse MAGMA APIs for matvec/sparse-dense matmat (`f32`/`f64`, i32-indexed CSR views) with parity tests.
 148. `D-148`: `V2-008` phase-2 is complete: MAGMA-backed sparse iterative/preconditioned solve APIs are implemented for `i32` CSR views (`CG`, `PCG-Jacobi`, `GMRES`, `BiCGSTAB`, plus `ILU0`-preconditioned `GMRES`/`BiCGSTAB`) in `f32`/`f64`, with parity tests against internal solver paths.
+149. `D-149`: `V2-009` phase-2 is complete: mixed-precision/refinement APIs now extend beyond LU into Sylvester/Lyapunov (`solve_sylvester_mixed_*`, `solve_lyapunov_mixed_*`) with explicit refinement metadata and typed error mapping.
+150. `D-150`: `K-005` phase-1 remediation is landed: MAGMA decomposition routing now applies a centralized small-shape cutoff (`DenseKernelPolicy::prefer_magma_decomposition`, env override `NABLED_MAGMA_MIN_DECOMPOSITION_DIM`) so tiny LU/QR/SVD-driven paths use internal kernels and larger shapes continue on MAGMA.
+151. `D-151`: `K-005` phase-2 compile-matrix stabilization is complete in `nabled-linalg`: combined `lapack-provider + magma-system` builds now compile/clippy cleanly with normalized cfg gating across eigen/qr/schur/svd/lu/internal/batched paths.
+152. `D-152`: `K-005` phase-3 is complete: batched decomposition routing for MAGMA-supported domains (`lu`, `cholesky`, `qr`) is now dynamic and policy-driven via batch-size + shape/work heuristics.
+153. `D-153`: `K-005` phase-4 (policy-caching portion) is complete: decomposition/batched routing env lookups are cached via `OnceLock` in `DenseKernelPolicy`; remaining phase-4 work is remote provider benchmark rerun and outlier refresh.
 
 ## Next
 
-1. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32` and MAGMA provider outliers).
+1. `K-005` phase-4 (remaining): rerun remote provider benchmark comparison (`openblas-system` vs `magma-system`) after routing/caching changes and refresh ranked MAGMA outlier table.
 2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
-3. Execute remaining phase-2 MAGMA follow-ons: mixed-precision expansion beyond LU-only APIs.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.

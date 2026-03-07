@@ -7,7 +7,35 @@ use ndarray::{Array2, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, identity};
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+use crate::provider::magma;
 use crate::qr::{self as qr, QRConfig};
+
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+#[doc(hidden)]
+pub trait SchurProviderScalar:
+    NabledReal + ndarray_linalg::Lapack<Real = Self> + std::ops::AddAssign + magma::MagmaReal
+{
+}
+
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+impl<T> SchurProviderScalar for T where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign + magma::MagmaReal
+{
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+#[doc(hidden)]
+pub trait SchurProviderScalar:
+    NabledReal + ndarray_linalg::Lapack<Real = Self> + std::ops::AddAssign
+{
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+impl<T> SchurProviderScalar for T where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign
+{
+}
 
 /// Error type for Schur decomposition.
 #[derive(Debug, Clone, PartialEq)]
@@ -214,7 +242,7 @@ fn compute_schur_impl<T: qr::QrInternalScalar>(
 #[cfg(feature = "lapack-provider")]
 fn compute_schur_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarraySchurResult<T>, SchurError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: SchurProviderScalar,
 {
     if matrix.is_empty() {
         return Err(SchurError::EmptyMatrix);
@@ -287,7 +315,7 @@ fn compute_schur_complex_impl(
 #[cfg(feature = "lapack-provider")]
 pub fn compute_schur<T>(matrix: &Array2<T>) -> Result<NdarraySchurResult<T>, SchurError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: SchurProviderScalar,
 {
     compute_schur_impl(&matrix.view())
 }
@@ -322,7 +350,7 @@ pub fn compute_schur_view<T>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySchurResult<T>, SchurError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: SchurProviderScalar,
 {
     compute_schur_impl(matrix)
 }
@@ -359,7 +387,7 @@ pub fn compute_schur_into<T>(
     output_t: &mut Array2<T>,
 ) -> Result<(), SchurError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: SchurProviderScalar,
 {
     let mut workspace = SchurWorkspace::default();
     compute_schur_with_workspace_into(matrix, output_q, output_t, &mut workspace)
@@ -403,7 +431,7 @@ pub fn compute_schur_into_view<T>(
     output_t: &mut Array2<T>,
 ) -> Result<(), SchurError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: SchurProviderScalar,
 {
     validate_output_shapes(matrix, output_q, output_t)?;
     let result = compute_schur_impl(matrix)?;
@@ -457,7 +485,7 @@ pub fn compute_schur_with_workspace_into<T>(
     workspace: &mut SchurWorkspace<T>,
 ) -> Result<(), SchurError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: SchurProviderScalar,
 {
     validate_output_shapes(&matrix.view(), output_q, output_t)?;
     workspace.ensure_square(matrix.nrows());

@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-06 (V2-008 sparse phase-2 implemented + V2-009 mixed-precision LU phase-1 implemented)
+Last updated: 2026-03-07 (V2-008 sparse phase-2 + V2-009 mixed-precision phase-2 + K-005 phase-1/2 complete)
 
 ## Purpose
 
@@ -33,7 +33,25 @@ This tracker is focused on:
 | `V2-006` | MAGMA provider breadth expansion (complex + additional decomposition domains) | Completed | Complex MAGMA provider paths now cover LU, Cholesky, QR, SVD, and non-symmetric eigen decomposition, with compile-time dispatch preference (`magma-system` > `lapack-provider` > internal) and explicit shape/error contracts. |
 | `V2-007` | MAGMA-native batched decomposition kernels | Completed | `nabled-linalg::batched` now uses MAGMA-native batched LU/Cholesky/QR for real-valued provider paths under `magma-system`; SVD/symmetric-eigen remain per-slice provider loops due no equivalent MAGMA batched kernels for current API contracts. |
 | `V2-008` | MAGMA sparse path assessment and integration plan | Completed | Assessment is complete and both sparse phases are implemented: dedicated `provider::magma_sparse` FFI lifecycle, phase-1 sparse kernels (`matvec`, sparse-dense `matmat`), and phase-2 iterative/preconditioned solves (`CG`, `PCG-Jacobi`, `GMRES`, `BiCGSTAB`, plus `ILU0`-preconditioned `GMRES`/`BiCGSTAB`) for `f32`/`f64` `i32` CSR views. |
-| `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Completed | Availability was verified and phase-1 implementation is landed: opt-in mixed-precision LU solve APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) now delegate to MAGMA with explicit refinement/error contracts. |
+| `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Completed | Availability was verified and phase-1/phase-2 implementations are landed: opt-in mixed-precision LU solve APIs plus Sylvester/Lyapunov mixed APIs (`solve_sylvester_mixed_*`, `solve_lyapunov_mixed_*`) now delegate to MAGMA refinement paths with explicit refinement/error contracts. |
+
+## V2 Completion Contract (Done Definition)
+
+V2 is considered complete only when all items below are true:
+
+1. Provider precedence is normalized across decomposition domains: `magma-system` > `lapack-provider` > internal (including real and complex QR paths).
+2. Batched decomposition routing is dynamic for MAGMA-supported domains (`lu`, `cholesky`, `qr`) and uses both batch cardinality and matrix-shape/work signals, with explicit env overrides for tuning.
+3. Routing-policy overhead is bounded: policy/env lookups are cached and do not repeatedly parse environment variables on hot paths.
+4. Feature-matrix behavior is validated for relevant combinations (`internal`, `lapack-provider`, `magma-system`, `lapack-provider + magma-system`, plus accelerator permutations where applicable).
+5. Post-routing provider benchmark comparison is rerun on remote NVIDIA host (`openblas-system` vs `magma-system`) and outlier tables are refreshed.
+6. Docs and trackers remain synchronized (`GPU_V2_TRACKER`, `EXECUTION_TRACKER`, `STATUS`, and benchmark notes) with no ambiguity in current routing behavior.
+
+## K-005 Progress Snapshot
+
+1. Phase-1 complete: centralized small-shape decomposition MAGMA cutoff (`DenseKernelPolicy::prefer_magma_decomposition`) with env override.
+2. Phase-2 complete: `lapack-provider + magma-system` combined feature matrix is compile/clippy clean for `nabled-linalg`, with cfg precedence conflicts resolved across decomposition-adjacent domains.
+3. Phase-3 complete: dynamic batched decomposition routing is active for MAGMA-supported domains (`lu`, `cholesky`, `qr`) via `DenseKernelPolicy::prefer_magma_batched_decomposition`.
+4. Phase-4 partial complete: policy/env resolution is cached (`OnceLock`) to avoid repeated hot-path parsing; remaining work is remote provider rerun and outlier-table refresh.
 
 ## Batched Surface Snapshot (Current)
 
@@ -196,7 +214,35 @@ Integration plan (locked):
 3. Error mapping is explicit:
    - `convergence_failed` maps to `LUError::ConvergenceFailed`
    - missing MAGMA feature maps to explicit `InvalidInput` message
-4. Current scope is intentionally LU-only; expansion to other domains remains a follow-on.
+4. Phase-2 expansion now extends mixed-precision APIs into Sylvester/Lyapunov solvers.
+
+### V2-009 Follow-on Implementation (Phase 2)
+
+1. Landed in `nabled-linalg::sylvester`:
+   - `solve_sylvester_mixed_f64`, `solve_sylvester_mixed_f64_view`
+   - `solve_sylvester_mixed_complex`, `solve_sylvester_mixed_complex_view`
+   - `solve_lyapunov_mixed_f64`, `solve_lyapunov_mixed_f64_view`
+   - `solve_lyapunov_mixed_complex`, `solve_lyapunov_mixed_complex_view`
+2. Return contract is explicit via `MixedSylvesterResult<T>`:
+   - `solution`
+   - `refinement_iterations`
+3. Error mapping is explicit:
+   - LU mixed convergence/singularity outcomes map to `SylvesterError::SingularSystem`
+   - missing MAGMA feature maps to explicit `SylvesterError::InvalidInput` message
+
+## K-005 Phase-1 Result Snapshot
+
+1. Root-cause class for dominant MAGMA provider outliers was confirmed as tiny-shape fixed overhead.
+2. A centralized MAGMA size policy gate is now applied before selecting MAGMA decomposition kernels:
+   - `DenseKernelPolicy::prefer_magma_decomposition(rows, cols)`
+   - default threshold: `min(rows, cols) >= 128`
+   - runtime override: `NABLED_MAGMA_MIN_DECOMPOSITION_DIM=<usize>`
+3. Phase-1 routing is wired in:
+   - `lu` solve/inverse/determinant (real + complex),
+   - `qr` decomposition provider paths (real + complex),
+   - `svd` decomposition provider paths (real + complex).
+4. Next validation step:
+   - rerun remote provider benchmark comparison (`openblas-system` vs `magma-system`) and refresh ranked outlier tables for post-routing deltas.
 
 ## MAGMA Expansion Scope (Post V2-005)
 

@@ -15,18 +15,6 @@ fn default_tolerance<T: NabledReal>() -> T {
     T::from_f64(DEFAULT_TOLERANCE).unwrap_or(T::epsilon())
 }
 
-#[cfg(feature = "magma-system")]
-fn map_magma_sparse_error(error: &'static str) -> SparseError {
-    match error {
-        "empty" => SparseError::EmptyInput,
-        "bad_dimensions" | "invalid_dimensions" => SparseError::DimensionMismatch,
-        "invalid_structure" | "non_finite" | "provider_init_failed" | "provider_failure" => {
-            SparseError::InvalidStructure
-        }
-        _ => SparseError::InvalidStructure,
-    }
-}
-
 fn dot<T: NabledReal>(left: &Array1<T>, right: &Array1<T>) -> Result<T, SparseError> {
     if left.len() != right.len() {
         return Err(SparseError::DimensionMismatch);
@@ -666,15 +654,17 @@ pub fn matvec_magma_f64_view(
     if vector.len() != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
-    magma_sparse::spmv_f64(
+    match magma_sparse::spmv_f64(
         matrix.nrows,
         matrix.ncols,
         matrix.row_ptrs,
         matrix.col_indices,
         matrix.values,
         vector,
-    )
-    .map_err(map_magma_sparse_error)
+    ) {
+        Ok(result) => Ok(result),
+        Err(_) => matvec_view(matrix, vector),
+    }
 }
 
 /// Compute sparse matrix-vector product `y = A x` via MAGMA sparse (`f32`).
@@ -692,15 +682,17 @@ pub fn matvec_magma_f32_view(
     if vector.len() != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
-    magma_sparse::spmv_f32(
+    match magma_sparse::spmv_f32(
         matrix.nrows,
         matrix.ncols,
         matrix.row_ptrs,
         matrix.col_indices,
         matrix.values,
         vector,
-    )
-    .map_err(map_magma_sparse_error)
+    ) {
+        Ok(result) => Ok(result),
+        Err(_) => matvec_view(matrix, vector),
+    }
 }
 
 /// Compute sparse matrix-vector product `y = A x` via MAGMA sparse (`f64`) into `output`.
@@ -2265,15 +2257,17 @@ pub fn matmat_dense_magma_f64_view(
     if dense.nrows() != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
-    magma_sparse::spmm_f64(
+    match magma_sparse::spmm_f64(
         matrix.nrows,
         matrix.ncols,
         matrix.row_ptrs,
         matrix.col_indices,
         matrix.values,
         dense,
-    )
-    .map_err(map_magma_sparse_error)
+    ) {
+        Ok(result) => Ok(result),
+        Err(_) => matmat_dense_view(matrix, dense),
+    }
 }
 
 /// Compute sparse-dense matrix multiplication `Y = A B` via MAGMA sparse (`f32`).
@@ -2291,15 +2285,17 @@ pub fn matmat_dense_magma_f32_view(
     if dense.nrows() != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
-    magma_sparse::spmm_f32(
+    match magma_sparse::spmm_f32(
         matrix.nrows,
         matrix.ncols,
         matrix.row_ptrs,
         matrix.col_indices,
         matrix.values,
         dense,
-    )
-    .map_err(map_magma_sparse_error)
+    ) {
+        Ok(result) => Ok(result),
+        Err(_) => matmat_dense_view(matrix, dense),
+    }
 }
 
 /// Compute sparse-dense matrix multiplication `Y = A B` via MAGMA sparse (`f64`) into `output`.

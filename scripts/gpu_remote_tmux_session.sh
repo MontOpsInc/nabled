@@ -50,6 +50,8 @@ tmux new-window -t '${TMUX_SESSION}' -n logs "bash --noprofile --norc -lc \"tail
 tmux set-option -t '${TMUX_SESSION}' remain-on-exit on
 tmux set-option -t '${TMUX_SESSION}' history-limit 200000
 tmux set-option -t '${TMUX_SESSION}' mouse on
+tmux set-option -t '${TMUX_SESSION}' window-size latest
+tmux set-window-option -t '${TMUX_SESSION}' aggressive-resize on
 tmux pipe-pane -o -t '${TMUX_SESSION}:work.0' "cat >> '${LOG_DIR}/tmux-work-pane.log'"
 echo 'created tmux session ${TMUX_SESSION}'
 EOF

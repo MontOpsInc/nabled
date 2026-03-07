@@ -37,12 +37,32 @@ impl fmt::Display for SylvesterError {
 
 impl std::error::Error for SylvesterError {}
 
+/// Result metadata for mixed-precision Sylvester/Lyapunov solves.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MixedSylvesterResult<T = f64> {
+    /// Solution matrix.
+    pub solution:              Array2<T>,
+    /// Iterative-refinement steps performed by the provider.
+    pub refinement_iterations: usize,
+}
+
 /// Reusable workspace for Sylvester/Lyapunov solves.
 #[derive(Debug, Clone)]
 pub struct SylvesterWorkspace<T: NabledReal = f64> {
     coefficient: Array2<T>,
     rhs:         Array1<T>,
     solution:    Array1<T>,
+}
+
+fn map_lu_error_to_sylvester(error: lu::LUError) -> SylvesterError {
+    match error {
+        lu::LUError::EmptyMatrix => SylvesterError::EmptyMatrix,
+        lu::LUError::NotSquare => SylvesterError::NotSquare,
+        lu::LUError::InvalidInput(message) => SylvesterError::InvalidInput(message),
+        lu::LUError::SingularMatrix
+        | lu::LUError::ConvergenceFailed
+        | lu::LUError::NumericalInstability => SylvesterError::SingularSystem,
+    }
 }
 
 impl<T: NabledReal> SylvesterWorkspace<T> {
@@ -464,6 +484,144 @@ fn solve_sylvester_complex_with_workspace_impl(
     Ok(())
 }
 
+fn solve_sylvester_mixed_f64_view_impl(
+    matrix_a: &ArrayView2<'_, f64>,
+    matrix_b: &ArrayView2<'_, f64>,
+    matrix_c: &ArrayView2<'_, f64>,
+) -> Result<MixedSylvesterResult<f64>, SylvesterError> {
+    let (n, m) = validate_sylvester_dims(matrix_a, matrix_b, matrix_c)?;
+    let system_size = n * m;
+    let mut coefficient = Array2::<f64>::zeros((system_size, system_size));
+    let mut rhs = Array1::<f64>::zeros(system_size);
+
+    for i in 0..n {
+        for j in 0..m {
+            let row = i * m + j;
+            rhs[row] = matrix_c[[i, j]];
+
+            for p in 0..n {
+                let col = p * m + j;
+                coefficient[[row, col]] += matrix_a[[i, p]];
+            }
+            for q in 0..m {
+                let col = i * m + q;
+                coefficient[[row, col]] += matrix_b[[q, j]];
+            }
+        }
+    }
+
+    let mixed = lu::solve_mixed_f64_view(&coefficient.view(), &rhs.view())
+        .map_err(map_lu_error_to_sylvester)?;
+    let mut solution = Array2::<f64>::zeros((n, m));
+    for i in 0..n {
+        for j in 0..m {
+            solution[[i, j]] = mixed.solution[i * m + j];
+        }
+    }
+
+    Ok(MixedSylvesterResult { solution, refinement_iterations: mixed.refinement_iterations })
+}
+
+fn solve_sylvester_mixed_complex_view_impl(
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView2<'_, Complex64>,
+    matrix_c: &ArrayView2<'_, Complex64>,
+) -> Result<MixedSylvesterResult<Complex64>, SylvesterError> {
+    let (n, m) = validate_sylvester_complex_dims(matrix_a, matrix_b, matrix_c)?;
+    let system_size = n * m;
+    let mut coefficient = Array2::<Complex64>::zeros((system_size, system_size));
+    let mut rhs = Array1::<Complex64>::zeros(system_size);
+
+    for i in 0..n {
+        for j in 0..m {
+            let row = i * m + j;
+            rhs[row] = matrix_c[[i, j]];
+
+            for p in 0..n {
+                let col = p * m + j;
+                coefficient[[row, col]] += matrix_a[[i, p]];
+            }
+            for q in 0..m {
+                let col = i * m + q;
+                coefficient[[row, col]] += matrix_b[[q, j]];
+            }
+        }
+    }
+
+    let mixed = lu::solve_mixed_complex_view(&coefficient.view(), &rhs.view())
+        .map_err(map_lu_error_to_sylvester)?;
+    let mut solution = Array2::<Complex64>::zeros((n, m));
+    for i in 0..n {
+        for j in 0..m {
+            solution[[i, j]] = mixed.solution[i * m + j];
+        }
+    }
+
+    Ok(MixedSylvesterResult { solution, refinement_iterations: mixed.refinement_iterations })
+}
+
+/// Solve Sylvester equation `A X + X B = C` using mixed-precision iterative refinement.
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular, convergence fails,
+/// or `magma-system` is not enabled.
+pub fn solve_sylvester_mixed_f64(
+    matrix_a: &Array2<f64>,
+    matrix_b: &Array2<f64>,
+    matrix_c: &Array2<f64>,
+) -> Result<MixedSylvesterResult<f64>, SylvesterError> {
+    solve_sylvester_mixed_f64_view_impl(&matrix_a.view(), &matrix_b.view(), &matrix_c.view())
+}
+
+/// Solve Sylvester equation `A X + X B = C` from views using mixed-precision iterative
+/// refinement.
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular, convergence fails,
+/// or `magma-system` is not enabled.
+pub fn solve_sylvester_mixed_f64_view(
+    matrix_a: &ArrayView2<'_, f64>,
+    matrix_b: &ArrayView2<'_, f64>,
+    matrix_c: &ArrayView2<'_, f64>,
+) -> Result<MixedSylvesterResult<f64>, SylvesterError> {
+    solve_sylvester_mixed_f64_view_impl(matrix_a, matrix_b, matrix_c)
+}
+
+/// Solve complex Sylvester equation `A X + X B = C` using mixed-precision iterative refinement.
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular, convergence fails,
+/// or `magma-system` is not enabled.
+pub fn solve_sylvester_mixed_complex(
+    matrix_a: &Array2<Complex64>,
+    matrix_b: &Array2<Complex64>,
+    matrix_c: &Array2<Complex64>,
+) -> Result<MixedSylvesterResult<Complex64>, SylvesterError> {
+    solve_sylvester_mixed_complex_view_impl(&matrix_a.view(), &matrix_b.view(), &matrix_c.view())
+}
+
+/// Solve complex Sylvester equation `A X + X B = C` from views using mixed-precision iterative
+/// refinement.
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular, convergence fails,
+/// or `magma-system` is not enabled.
+pub fn solve_sylvester_mixed_complex_view(
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView2<'_, Complex64>,
+    matrix_c: &ArrayView2<'_, Complex64>,
+) -> Result<MixedSylvesterResult<Complex64>, SylvesterError> {
+    solve_sylvester_mixed_complex_view_impl(matrix_a, matrix_b, matrix_c)
+}
+
 /// Solve complex Sylvester equation `A X + X B = C`.
 ///
 /// # Errors
@@ -597,6 +755,75 @@ pub fn solve_lyapunov_complex(
     let neg_q = q.mapv(|value| -value);
     let conjugate_transpose = a.t().mapv(|value| value.conj());
     solve_sylvester_complex(a, &conjugate_transpose, &neg_q)
+}
+
+/// Solve continuous Lyapunov equation `A X + X A^T + Q = 0` using mixed-precision iterative
+/// refinement.
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular, convergence fails,
+/// or `magma-system` is not enabled.
+pub fn solve_lyapunov_mixed_f64(
+    a: &Array2<f64>,
+    q: &Array2<f64>,
+) -> Result<MixedSylvesterResult<f64>, SylvesterError> {
+    solve_lyapunov_mixed_f64_view(&a.view(), &q.view())
+}
+
+/// Solve continuous Lyapunov equation `A X + X A^T + Q = 0` from views using mixed-precision
+/// iterative refinement.
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular, convergence fails,
+/// or `magma-system` is not enabled.
+pub fn solve_lyapunov_mixed_f64_view(
+    a: &ArrayView2<'_, f64>,
+    q: &ArrayView2<'_, f64>,
+) -> Result<MixedSylvesterResult<f64>, SylvesterError> {
+    if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
+        return Err(SylvesterError::DimensionMismatch);
+    }
+    let neg_q = q.mapv(|value| -value);
+    solve_sylvester_mixed_f64_view(a, &a.t(), &neg_q.view())
+}
+
+/// Solve complex continuous Lyapunov equation `A X + X A^H + Q = 0` using mixed-precision
+/// iterative refinement.
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular, convergence fails,
+/// or `magma-system` is not enabled.
+pub fn solve_lyapunov_mixed_complex(
+    a: &Array2<Complex64>,
+    q: &Array2<Complex64>,
+) -> Result<MixedSylvesterResult<Complex64>, SylvesterError> {
+    solve_lyapunov_mixed_complex_view(&a.view(), &q.view())
+}
+
+/// Solve complex continuous Lyapunov equation `A X + X A^H + Q = 0` from views using
+/// mixed-precision iterative refinement.
+///
+/// This API is available in all builds, but requires feature `magma-system` at runtime.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid, the linear system is singular, convergence fails,
+/// or `magma-system` is not enabled.
+pub fn solve_lyapunov_mixed_complex_view(
+    a: &ArrayView2<'_, Complex64>,
+    q: &ArrayView2<'_, Complex64>,
+) -> Result<MixedSylvesterResult<Complex64>, SylvesterError> {
+    if q.nrows() != q.ncols() || q.nrows() != a.nrows() {
+        return Err(SylvesterError::DimensionMismatch);
+    }
+    let neg_q = q.mapv(|value| -value);
+    let conjugate_transpose = a.t().mapv(|value| value.conj());
+    solve_sylvester_mixed_complex_view(a, &conjugate_transpose.view(), &neg_q.view())
 }
 
 /// Solve continuous Lyapunov equation `A X + X A^T + Q = 0` from matrix views.
@@ -859,5 +1086,80 @@ mod tests {
                 assert!((lyapunov[[i, j]] - lyapunov_into[[i, j]]).norm() < 1e-10_f64);
             }
         }
+    }
+
+    #[cfg(not(feature = "magma-system"))]
+    #[test]
+    fn mixed_sylvester_requires_magma_feature() {
+        let a = Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 2.0_f64]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![3.0_f64, 0.0_f64, 0.0_f64, 4.0_f64]).unwrap();
+        let c = Array2::from_shape_vec((2, 2), vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64]).unwrap();
+        let error = solve_sylvester_mixed_f64(&a, &b, &c).unwrap_err();
+        assert!(
+            matches!(error, SylvesterError::InvalidInput(message) if message.contains("magma-system"))
+        );
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn mixed_real_sylvester_and_lyapunov_paths_work() {
+        let a = Array2::from_shape_vec((2, 2), vec![2.0_f64, 0.0_f64, 0.0_f64, 3.0_f64]).unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 4.0_f64]).unwrap();
+        let c = Array2::from_shape_vec((2, 2), vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64]).unwrap();
+
+        let mixed = solve_sylvester_mixed_f64(&a, &b, &c).unwrap();
+        let residual = a.dot(&mixed.solution) + mixed.solution.dot(&b) - c.clone();
+        let max_residual = residual.iter().map(|value| value.abs()).fold(0.0_f64, f64::max);
+        assert!(max_residual < 1e-7_f64);
+        let _iters = mixed.refinement_iterations;
+
+        let q = Array2::eye(2);
+        let lyapunov_mixed = solve_lyapunov_mixed_f64(&a, &q).unwrap();
+        let lyapunov_residual =
+            a.dot(&lyapunov_mixed.solution) + lyapunov_mixed.solution.dot(&a.t()) + q;
+        let max_lyapunov =
+            lyapunov_residual.iter().map(|value| value.abs()).fold(0.0_f64, f64::max);
+        assert!(max_lyapunov < 1e-7_f64);
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn mixed_complex_sylvester_and_lyapunov_paths_work() {
+        let a = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(2.0_f64, 0.5_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(3.0_f64, -0.25_f64),
+        ])
+        .unwrap();
+        let b = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0_f64, 0.75_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(4.0_f64, -0.5_f64),
+        ])
+        .unwrap();
+        let c = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(0.5_f64, -0.2_f64),
+            Complex64::new(-1.0_f64, 0.4_f64),
+            Complex64::new(2.0_f64, 0.1_f64),
+        ])
+        .unwrap();
+
+        let mixed = solve_sylvester_mixed_complex(&a, &b, &c).unwrap();
+        let residual = a.dot(&mixed.solution) + mixed.solution.dot(&b) - c.clone();
+        let max_residual = residual.iter().map(|value| value.norm()).fold(0.0_f64, f64::max);
+        assert!(max_residual < 1e-7_f64);
+        let _iters = mixed.refinement_iterations;
+
+        let q = Array2::eye(2).mapv(|value| Complex64::new(value, 0.0_f64));
+        let lyapunov_mixed = solve_lyapunov_mixed_complex(&a, &q).unwrap();
+        let a_h = a.t().mapv(|value| value.conj());
+        let lyapunov_residual =
+            a.dot(&lyapunov_mixed.solution) + lyapunov_mixed.solution.dot(&a_h) + q;
+        let max_lyapunov =
+            lyapunov_residual.iter().map(|value| value.norm()).fold(0.0_f64, f64::max);
+        assert!(max_lyapunov < 1e-7_f64);
     }
 }

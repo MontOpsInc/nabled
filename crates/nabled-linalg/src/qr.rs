@@ -27,6 +27,32 @@ pub trait QrInternalScalar: NabledReal {}
 #[cfg(not(feature = "magma-system"))]
 impl<T> QrInternalScalar for T where T: NabledReal {}
 
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+#[doc(hidden)]
+pub trait QrProviderScalar:
+    NabledReal + ndarray_linalg::Lapack<Real = Self> + std::ops::AddAssign + magma::MagmaReal
+{
+}
+
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+impl<T> QrProviderScalar for T where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign + magma::MagmaReal
+{
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+#[doc(hidden)]
+pub trait QrProviderScalar:
+    NabledReal + ndarray_linalg::Lapack<Real = Self> + std::ops::AddAssign
+{
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+impl<T> QrProviderScalar for T where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign
+{
+}
+
 /// Error types for QR decomposition.
 #[derive(Debug, Clone, PartialEq)]
 pub enum QRError {
@@ -129,19 +155,6 @@ fn validate_qr_complex_input(matrix: &ArrayView2<'_, Complex64>) -> Result<(), Q
         return Err(QRError::NumericalInstability);
     }
     Ok(())
-}
-
-#[cfg(feature = "magma-system")]
-fn map_qr_provider_error(error: &'static str) -> QRError {
-    match error {
-        "empty" => QRError::EmptyMatrix,
-        "non_finite" => QRError::NumericalInstability,
-        "invalid_dimensions" | "unsupported_shape" => QRError::InvalidDimensions(
-            "unsupported matrix dimensions for provider path".to_string(),
-        ),
-        "convergence_failed" => QRError::ConvergenceFailed,
-        _ => QRError::InvalidInput(error.to_string()),
-    }
 }
 
 fn decompose_pivoted_internal<T: NabledReal>(
@@ -316,14 +329,18 @@ fn decompose_internal<T: NabledReal + magma::MagmaReal>(
     }
     validate_qr_input(matrix)?;
 
-    // MAGMA's QR provider path is used for overdetermined/square real
-    // matrices; underdetermined shapes remain on the internal path.
-    if matrix.nrows() >= matrix.ncols() {
+    // MAGMA's QR provider path is used for sufficiently large
+    // overdetermined/square real matrices; underdetermined/small shapes
+    // remain on the internal path to avoid fixed provider overhead.
+    if matrix.nrows() >= matrix.ncols()
+        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+    {
         let tolerance = config
             .rank_tolerance
             .max(T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()));
-        let (q, r, rank) = magma::qr_decompose(matrix, tolerance).map_err(map_qr_provider_error)?;
-        return Ok(QRResult { q, r, p: None, rank });
+        if let Ok((q, r, rank)) = magma::qr_decompose(matrix, tolerance) {
+            return Ok(QRResult { q, r, p: None, rank });
+        }
     }
 
     let (q, r, rank) = qr_gram_schmidt(
@@ -360,7 +377,7 @@ fn decompose_provider<T>(
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     use ndarray_linalg::QR as _;
 
@@ -369,6 +386,19 @@ where
     }
 
     validate_qr_input(matrix)?;
+
+    #[cfg(feature = "magma-system")]
+    if matrix.nrows() >= matrix.ncols()
+        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+    {
+        let tolerance = config
+            .rank_tolerance
+            .max(T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()));
+        if let Ok((q, r, rank)) = magma::qr_decompose(matrix, tolerance) {
+            return Ok(QRResult { q, r, p: None, rank });
+        }
+    }
+
     let (q, r) = matrix.qr().map_err(|_| QRError::ConvergenceFailed)?;
 
     let diagonal = r.nrows().min(r.ncols());
@@ -388,7 +418,7 @@ fn solve_least_squares_provider<T>(
     rhs: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     use ndarray_linalg::LeastSquaresSvd as _;
 
@@ -456,11 +486,13 @@ fn decompose_complex_provider(
     }
 
     validate_qr_complex_input(matrix)?;
-    if matrix.nrows() >= matrix.ncols() {
+    if matrix.nrows() >= matrix.ncols()
+        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+    {
         let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
-        let (q, r, rank) =
-            magma::qr_decompose_complex(matrix, tolerance).map_err(map_qr_provider_error)?;
-        return Ok(QRResult { q, r, p: None, rank });
+        if let Ok((q, r, rank)) = magma::qr_decompose_complex(matrix, tolerance) {
+            return Ok(QRResult { q, r, p: None, rank });
+        }
     }
 
     decompose_complex_internal(matrix, config)
@@ -495,7 +527,7 @@ fn decompose_complex_provider(
 #[cfg(feature = "lapack-provider")]
 pub fn decompose<T>(matrix: &Array2<T>, config: &QRConfig<T>) -> Result<QRResult<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     decompose_provider(&matrix.view(), config)
 }
@@ -522,7 +554,7 @@ pub fn decompose_view<T>(
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     decompose_provider(matrix, config)
 }
@@ -589,7 +621,7 @@ pub fn decompose_reduced<T>(
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     let full = decompose_view(&matrix.view(), config)?;
     let keep = matrix.nrows().min(matrix.ncols());
@@ -630,7 +662,7 @@ pub fn decompose_with_pivoting<T>(
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     let mut adjusted = config.clone();
     adjusted.use_pivoting = true;
@@ -664,7 +696,7 @@ pub fn solve_least_squares<T>(
     config: &QRConfig<T>,
 ) -> Result<Array1<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     solve_least_squares_impl(&matrix.view(), &rhs.view(), config)
 }
@@ -691,7 +723,7 @@ fn solve_least_squares_impl<T>(
     config: &QRConfig<T>,
 ) -> Result<Array1<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     validate_qr_input(matrix)?;
     if rhs.len() != matrix.nrows() {
@@ -884,7 +916,7 @@ pub fn solve_least_squares_view<T>(
     config: &QRConfig<T>,
 ) -> Result<Array1<T>, QRError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: QrProviderScalar,
 {
     solve_least_squares_impl(matrix, rhs, config)
 }

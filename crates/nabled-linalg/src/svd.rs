@@ -1,6 +1,6 @@
 //! Singular value decomposition over ndarray matrices.
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -25,7 +25,7 @@ pub trait SvdInternalScalar: NabledReal {}
 
 #[cfg(not(feature = "magma-system"))]
 impl<T> SvdInternalScalar for T where T: NabledReal {}
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 use crate::schur;
 
 /// SVD result for ndarray matrices.
@@ -76,16 +76,6 @@ impl fmt::Display for SVDError {
 
 impl std::error::Error for SVDError {}
 
-#[cfg(feature = "magma-system")]
-fn map_svd_provider_error(error: &'static str) -> SVDError {
-    match error {
-        "empty" => SVDError::EmptyMatrix,
-        "convergence_failed" => SVDError::ConvergenceFailed,
-        "non_finite" => SVDError::InvalidInput("matrix must be finite".to_string()),
-        _ => SVDError::InvalidInput(error.to_string()),
-    }
-}
-
 /// Configuration for pseudo-inverse computation.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PseudoInverseConfig<T: NabledReal> {
@@ -93,22 +83,8 @@ pub struct PseudoInverseConfig<T: NabledReal> {
     pub tolerance: Option<T>,
 }
 
-#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
-fn decompose_internal<T: NabledReal + magma::MagmaReal>(
-    matrix: &ArrayView2<'_, T>,
-) -> Result<NdarraySVD<T>, SVDError> {
-    if matrix.is_empty() {
-        return Err(SVDError::EmptyMatrix);
-    }
-    if matrix.iter().any(|value| !value.is_finite()) {
-        return Err(SVDError::InvalidInput("matrix must be finite".into()));
-    }
-    let (u, singular_values, vt) = magma::svd_decompose(matrix).map_err(map_svd_provider_error)?;
-    Ok(NdarraySVD { u, singular_values, vt })
-}
-
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
-fn decompose_internal<T: NabledReal>(
+#[cfg(not(feature = "lapack-provider"))]
+fn decompose_internal_fallback<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySVD<T>, SVDError> {
     if matrix.is_empty() {
@@ -154,6 +130,26 @@ fn decompose_internal<T: NabledReal>(
     Ok(NdarraySVD { u, singular_values, vt })
 }
 
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+fn decompose_internal<T: NabledReal + magma::MagmaReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarraySVD<T>, SVDError> {
+    if DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+        && let Ok((u, singular_values, vt)) = magma::svd_decompose(matrix)
+    {
+        return Ok(NdarraySVD { u, singular_values, vt });
+    }
+
+    decompose_internal_fallback(matrix)
+}
+
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+fn decompose_internal<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarraySVD<T>, SVDError> {
+    decompose_internal_fallback(matrix)
+}
+
 #[cfg(feature = "lapack-provider")]
 fn decompose_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarraySVD<T>, SVDError>
 where
@@ -173,7 +169,7 @@ where
     Ok(NdarraySVD { u, singular_values, vt })
 }
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVDError> {
     if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
         return Err(SVDError::InvalidInput("matrix must be finite".to_string()));
@@ -181,7 +177,7 @@ fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVD
     Ok(())
 }
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -234,9 +230,13 @@ fn decompose_complex_provider(
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
-    let (u, singular_values, vt) =
-        magma::svd_decompose_complex(matrix).map_err(map_svd_provider_error)?;
-    Ok(NdarrayComplexSVD { u, singular_values, vt })
+    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        return decompose_complex_internal(matrix);
+    }
+    match magma::svd_decompose_complex(matrix) {
+        Ok((u, singular_values, vt)) => Ok(NdarrayComplexSVD { u, singular_values, vt }),
+        Err(_) => decompose_complex_internal(matrix),
+    }
 }
 
 fn svd_relative_tolerance<T: NabledReal>(max_sv: T, dimension: usize) -> T {

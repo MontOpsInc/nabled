@@ -6,7 +6,7 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::{Complex, Complex64};
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::jacobi_eigen_symmetric;
 use crate::internal::{DenseKernelPolicy, sort_eigenpairs_desc};
 #[cfg(feature = "magma-system")]
@@ -342,18 +342,22 @@ fn match_left_eigenvectors<T: NabledReal>(
     matched
 }
 
-#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+#[cfg(feature = "magma-system")]
 fn symmetric_internal<T: NabledReal + magma::MagmaReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayEigenResult<T>, EigenError> {
     validate_symmetric_input(matrix)?;
-    let (eigenvalues, eigenvectors) =
-        magma::symmetric_eigen(matrix).map_err(|error| match error {
-            "empty" => EigenError::EmptyMatrix,
-            "not_square" => EigenError::NotSquare,
-            "convergence_failed" => EigenError::ConvergenceFailed,
-            _ => EigenError::NumericalInstability,
-        })?;
+    if let Ok((eigenvalues, eigenvectors)) = magma::symmetric_eigen(matrix) {
+        let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
+        return Ok(NdarrayEigenResult { eigenvalues, eigenvectors });
+    }
+
+    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
+        &matrix.to_owned(),
+        T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
+        DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
+    )
+    .map_err(|_| EigenError::ConvergenceFailed)?;
     let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
     Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
 }
@@ -446,7 +450,7 @@ fn generalized_internal<T: NabledReal>(
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn generalized_provider<T>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
@@ -474,7 +478,7 @@ where
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(not(feature = "lapack-provider"))]
 fn nonsymmetric_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
@@ -571,7 +575,7 @@ fn nonsymmetric_internal<T>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayNonsymmetricEigenResult<T>, EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: schur::SchurProviderScalar,
 {
     validate_nonsymmetric_input(matrix)?;
     if let Some(result) = nonsymmetric_small_matrix(matrix) {
@@ -614,14 +618,27 @@ fn nonsymmetric_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayNonsymmetricEigenResult, EigenError> {
     validate_complex_square_finite(matrix)?;
-    let (eigenvalues, right_eigenvectors) =
-        magma::nonsymmetric_eigen_complex(matrix).map_err(|error| match error {
-            "empty" => EigenError::EmptyMatrix,
-            "not_square" => EigenError::NotSquare,
-            "convergence_failed" => EigenError::ConvergenceFailed,
-            _ => EigenError::NumericalInstability,
-        })?;
-    Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
+    match magma::nonsymmetric_eigen_complex(matrix) {
+        Ok((eigenvalues, right_eigenvectors)) => {
+            Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
+        }
+        Err(error) => {
+            #[cfg(not(feature = "lapack-provider"))]
+            {
+                let _ = error;
+                nonsymmetric_complex_internal(matrix)
+            }
+            #[cfg(feature = "lapack-provider")]
+            {
+                match error {
+                    "empty" => Err(EigenError::EmptyMatrix),
+                    "not_square" => Err(EigenError::NotSquare),
+                    "convergence_failed" => Err(EigenError::ConvergenceFailed),
+                    _ => Err(EigenError::NumericalInstability),
+                }
+            }
+        }
+    }
 }
 
 #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
@@ -701,7 +718,7 @@ where
 ///
 /// # Errors
 /// Returns an error when dimensions are incompatible or `B` is not SPD.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn generalized<T>(
     matrix_a: &Array2<T>,
     matrix_b: &Array2<T>,
@@ -743,7 +760,7 @@ where
 ///
 /// # Errors
 /// Returns an error when dimensions are incompatible or `B` is not SPD.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn generalized_view<T>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
@@ -773,7 +790,7 @@ pub fn generalized_view<T: NabledReal>(
 #[cfg(feature = "lapack-provider")]
 pub fn nonsymmetric<T>(matrix: &Array2<T>) -> Result<NdarrayNonsymmetricEigenResult<T>, EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: schur::SchurProviderScalar,
 {
     nonsymmetric_internal(&matrix.view())
 }
@@ -798,7 +815,7 @@ pub fn nonsymmetric_view<T>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayNonsymmetricEigenResult<T>, EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: schur::SchurProviderScalar,
 {
     nonsymmetric_internal(matrix)
 }
@@ -887,7 +904,7 @@ pub fn nonsymmetric_bi<T>(
     config: &NonsymmetricEigenConfig<T>,
 ) -> Result<NdarrayNonsymmetricBiEigenResult<T>, EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: schur::SchurProviderScalar,
 {
     nonsymmetric_bi_view(&matrix.view(), config)
 }
@@ -917,7 +934,7 @@ pub fn nonsymmetric_bi_view<T>(
     config: &NonsymmetricEigenConfig<T>,
 ) -> Result<NdarrayNonsymmetricBiEigenResult<T>, EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: schur::SchurProviderScalar,
 {
     nonsymmetric_bi_view_impl(matrix, config)
 }
@@ -978,7 +995,7 @@ fn nonsymmetric_bi_view_impl<T>(
     config: &NonsymmetricEigenConfig<T>,
 ) -> Result<NdarrayNonsymmetricBiEigenResult<T>, EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: schur::SchurProviderScalar,
 {
     validate_nonsymmetric_input(matrix)?;
     let (balanced_matrix, balancing_diagonal) = balance_nonsymmetric_matrix(matrix, config);

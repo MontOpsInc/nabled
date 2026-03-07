@@ -7,7 +7,10 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, lu_decompose};
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(
+    feature = "magma-system",
+    not(any(feature = "lapack-provider", feature = "magma-system"))
+))]
 use crate::internal::{inverse_from_lu, lu_solve};
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
@@ -89,6 +92,18 @@ fn map_lu_error(error: &'static str) -> LUError {
 }
 
 #[cfg(feature = "magma-system")]
+fn is_magma_runtime_failure(error: &LUError) -> bool {
+    matches!(
+        error,
+        LUError::InvalidInput(message)
+            if message.contains("provider")
+                || message.contains("invalid_dimensions")
+                || message.contains("invalid_input")
+                || message.contains("provider_alloc_failed")
+    )
+}
+
+#[cfg(feature = "magma-system")]
 #[doc(hidden)]
 pub trait LuProviderScalar: NabledReal + magma::MagmaReal {}
 
@@ -135,10 +150,10 @@ fn validate_complex_square_finite_view(matrix: &ArrayView2<'_, Complex64>) -> Re
     Ok(())
 }
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 type ComplexLUFactors = (Array2<Complex64>, Array2<Complex64>, Vec<usize>, i8);
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -199,7 +214,7 @@ fn decompose_complex_internal(
     Ok((l, u, pivots, sign))
 }
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 #[allow(clippy::many_single_char_names)]
 fn solve_complex_from_factors(
     l: &Array2<Complex64>,
@@ -242,7 +257,7 @@ fn solve_complex_from_factors(
     Ok(x)
 }
 
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 fn inverse_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, LUError> {
@@ -282,7 +297,22 @@ where
     T: LuProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    magma::lu_solve(matrix, rhs).map_err(map_lu_error)
+    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+        return lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs).map_err(map_lu_error);
+    }
+    match magma::lu_solve(matrix, rhs) {
+        Ok(solution) => Ok(solution),
+        Err(error) => {
+            let mapped = map_lu_error(error);
+            if is_magma_runtime_failure(&mapped) {
+                let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+                return lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs)
+                    .map_err(map_lu_error);
+            }
+            Err(mapped)
+        }
+    }
 }
 
 #[cfg(feature = "magma-system")]
@@ -291,7 +321,22 @@ where
     T: LuProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    magma::lu_inverse(matrix).map_err(map_lu_error)
+    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+        return inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error);
+    }
+    match magma::lu_inverse(matrix) {
+        Ok(inverse) => Ok(inverse),
+        Err(error) => {
+            let mapped = map_lu_error(error);
+            if is_magma_runtime_failure(&mapped) {
+                let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+                return inverse_from_lu(&decomposition.l, &decomposition.u, &pivots)
+                    .map_err(map_lu_error);
+            }
+            Err(mapped)
+        }
+    }
 }
 
 #[cfg(feature = "magma-system")]
@@ -300,7 +345,35 @@ where
     T: LuProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    magma::lu_determinant(matrix).map_err(map_lu_error)
+    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
+        let mut determinant = if sign >= 0 { T::one() } else { -T::one() };
+        for i in 0..decomposition.u.nrows() {
+            determinant *= decomposition.u[[i, i]];
+        }
+        if !determinant.is_finite() {
+            return Err(LUError::NumericalInstability);
+        }
+        return Ok(determinant);
+    }
+    match magma::lu_determinant(matrix) {
+        Ok(determinant) => Ok(determinant),
+        Err(error) => {
+            let mapped = map_lu_error(error);
+            if is_magma_runtime_failure(&mapped) {
+                let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
+                let mut determinant = if sign >= 0 { T::one() } else { -T::one() };
+                for i in 0..decomposition.u.nrows() {
+                    determinant *= decomposition.u[[i, i]];
+                }
+                if !determinant.is_finite() {
+                    return Err(LUError::NumericalInstability);
+                }
+                return Ok(determinant);
+            }
+            Err(mapped)
+        }
+    }
 }
 
 #[cfg(feature = "magma-system")]
@@ -312,9 +385,21 @@ fn solve_mixed_f64_provider(
     if rhs.len() != matrix.nrows() {
         return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
     }
-    let (solution, refinement_iterations) =
-        magma::lu_solve_mixed_f64(matrix, rhs).map_err(map_lu_error)?;
-    Ok(MixedSolveResult { solution, refinement_iterations })
+    match magma::lu_solve_mixed_f64(matrix, rhs) {
+        Ok((solution, refinement_iterations)) => {
+            Ok(MixedSolveResult { solution, refinement_iterations })
+        }
+        Err(error) => {
+            let mapped = map_lu_error(error);
+            if is_magma_runtime_failure(&mapped) {
+                let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+                let solution = lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs)
+                    .map_err(map_lu_error)?;
+                return Ok(MixedSolveResult { solution, refinement_iterations: 0 });
+            }
+            Err(mapped)
+        }
+    }
 }
 
 #[cfg(not(feature = "magma-system"))]
@@ -338,9 +423,20 @@ fn solve_mixed_complex_provider(
     if rhs.len() != matrix.nrows() {
         return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
     }
-    let (solution, refinement_iterations) =
-        magma::lu_solve_mixed_complex(matrix, rhs).map_err(map_lu_error)?;
-    Ok(MixedSolveResult { solution, refinement_iterations })
+    match magma::lu_solve_mixed_complex(matrix, rhs) {
+        Ok((solution, refinement_iterations)) => {
+            Ok(MixedSolveResult { solution, refinement_iterations })
+        }
+        Err(error) => {
+            let mapped = map_lu_error(error);
+            if is_magma_runtime_failure(&mapped) {
+                let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
+                let solution = solve_complex_from_factors(&l, &u, &pivots, rhs)?;
+                return Ok(MixedSolveResult { solution, refinement_iterations: 0 });
+            }
+            Err(mapped)
+        }
+    }
 }
 
 #[cfg(not(feature = "magma-system"))]
@@ -400,7 +496,21 @@ fn solve_complex_provider(
     if rhs.len() != matrix.nrows() {
         return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
     }
-    magma::lu_solve_complex(matrix, rhs).map_err(map_lu_error)
+    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
+        return solve_complex_from_factors(&l, &u, &pivots, rhs);
+    }
+    match magma::lu_solve_complex(matrix, rhs) {
+        Ok(solution) => Ok(solution),
+        Err(error) => {
+            let mapped = map_lu_error(error);
+            if is_magma_runtime_failure(&mapped) {
+                let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
+                return solve_complex_from_factors(&l, &u, &pivots, rhs);
+            }
+            Err(mapped)
+        }
+    }
 }
 
 #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
@@ -422,7 +532,19 @@ fn inverse_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, LUError> {
     validate_complex_square_finite_view(matrix)?;
-    magma::lu_inverse_complex(matrix).map_err(map_lu_error)
+    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        return inverse_complex_internal(matrix);
+    }
+    match magma::lu_inverse_complex(matrix) {
+        Ok(inverse) => Ok(inverse),
+        Err(error) => {
+            let mapped = map_lu_error(error);
+            if is_magma_runtime_failure(&mapped) {
+                return inverse_complex_internal(matrix);
+            }
+            Err(mapped)
+        }
+    }
 }
 
 #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
@@ -438,7 +560,37 @@ fn inverse_complex_provider(
 #[cfg(feature = "magma-system")]
 fn determinant_complex_provider(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
     validate_complex_square_finite_view(matrix)?;
-    magma::lu_determinant_complex(matrix).map_err(map_lu_error)
+    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        let (_l, u, _, sign) = decompose_complex_internal(matrix)?;
+        let mut determinant =
+            if sign >= 0 { Complex64::new(1.0, 0.0) } else { Complex64::new(-1.0, 0.0) };
+        for i in 0..u.nrows() {
+            determinant *= u[[i, i]];
+        }
+        if !determinant.re.is_finite() || !determinant.im.is_finite() {
+            return Err(LUError::NumericalInstability);
+        }
+        return Ok(determinant);
+    }
+    match magma::lu_determinant_complex(matrix) {
+        Ok(determinant) => Ok(determinant),
+        Err(error) => {
+            let mapped = map_lu_error(error);
+            if is_magma_runtime_failure(&mapped) {
+                let (_l, u, _, sign) = decompose_complex_internal(matrix)?;
+                let mut determinant =
+                    if sign >= 0 { Complex64::new(1.0, 0.0) } else { Complex64::new(-1.0, 0.0) };
+                for i in 0..u.nrows() {
+                    determinant *= u[[i, i]];
+                }
+                if !determinant.re.is_finite() || !determinant.im.is_finite() {
+                    return Err(LUError::NumericalInstability);
+                }
+                return Ok(determinant);
+            }
+            Err(mapped)
+        }
+    }
 }
 
 #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]

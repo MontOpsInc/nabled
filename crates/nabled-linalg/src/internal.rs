@@ -1,7 +1,10 @@
 //! Internal ndarray-native helpers used across domain modules.
 
+#[cfg(feature = "magma-system")]
+use std::sync::OnceLock;
+
 use nabled_core::scalar::NabledReal;
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(not(feature = "lapack-provider"), feature = "magma-system"))]
 use ndarray::ArrayView1;
 use ndarray::{Array1, Array2, ArrayView2};
 
@@ -14,6 +17,14 @@ pub(crate) struct DenseKernelPolicy;
 impl DenseKernelPolicy {
     pub(crate) const BASE_TOLERANCE: f64 = DEFAULT_TOLERANCE;
     pub(crate) const JACOBI_MAX_ITERATIONS: usize = 256;
+    #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_COUNT: usize = 32;
+    #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_DIM: usize = 32;
+    #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_WORK: usize = 524_288;
+    #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_MIN_DECOMPOSITION_DIM: usize = 128;
     pub(crate) const MATRIX_FUNCTION_SERIES_TERMS: usize = 128;
     #[cfg(not(feature = "lapack-provider"))]
     pub(crate) const POLAR_MAX_ITERATIONS: usize = 64;
@@ -34,6 +45,84 @@ impl DenseKernelPolicy {
     #[cfg(not(feature = "lapack-provider"))]
     #[must_use]
     pub(crate) fn polar_convergence_tolerance() -> f64 { Self::BASE_TOLERANCE.sqrt() }
+
+    #[cfg(feature = "magma-system")]
+    fn env_positive_usize(name: &str) -> Option<usize> {
+        let raw = std::env::var(name).ok()?;
+        let parsed = raw.parse::<usize>().ok()?;
+        (parsed > 0).then_some(parsed)
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
+    pub(crate) fn magma_min_decomposition_dim() -> usize {
+        static VALUE: OnceLock<usize> = OnceLock::new();
+        *VALUE.get_or_init(|| {
+            Self::env_positive_usize("NABLED_MAGMA_MIN_DECOMPOSITION_DIM")
+                .unwrap_or(Self::MAGMA_MIN_DECOMPOSITION_DIM)
+        })
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
+    pub(crate) fn magma_batch_min_decomposition_count() -> usize {
+        static VALUE: OnceLock<usize> = OnceLock::new();
+        *VALUE.get_or_init(|| {
+            Self::env_positive_usize("NABLED_MAGMA_BATCH_MIN_DECOMPOSITION_COUNT")
+                .unwrap_or(Self::MAGMA_BATCH_MIN_DECOMPOSITION_COUNT)
+        })
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
+    pub(crate) fn magma_batch_min_decomposition_dim() -> usize {
+        static VALUE: OnceLock<usize> = OnceLock::new();
+        *VALUE.get_or_init(|| {
+            Self::env_positive_usize("NABLED_MAGMA_BATCH_MIN_DECOMPOSITION_DIM")
+                .unwrap_or(Self::MAGMA_BATCH_MIN_DECOMPOSITION_DIM)
+        })
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
+    pub(crate) fn magma_batch_min_decomposition_work() -> usize {
+        static VALUE: OnceLock<usize> = OnceLock::new();
+        *VALUE.get_or_init(|| {
+            Self::env_positive_usize("NABLED_MAGMA_BATCH_MIN_DECOMPOSITION_WORK")
+                .unwrap_or(Self::MAGMA_BATCH_MIN_DECOMPOSITION_WORK)
+        })
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
+    pub(crate) fn prefer_magma_decomposition(rows: usize, cols: usize) -> bool {
+        rows.min(cols) >= Self::magma_min_decomposition_dim()
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
+    pub(crate) fn prefer_magma_batched_decomposition(
+        batch: usize,
+        rows: usize,
+        cols: usize,
+    ) -> bool {
+        if batch == 0 || rows == 0 || cols == 0 {
+            return false;
+        }
+
+        let min_dim = rows.min(cols);
+        if min_dim >= Self::magma_min_decomposition_dim() {
+            // A few very large matrices are still good MAGMA candidates.
+            return true;
+        }
+
+        let batch_count_ok = batch >= Self::magma_batch_min_decomposition_count();
+        let batch_dim_ok = min_dim >= Self::magma_batch_min_decomposition_dim();
+        let work = batch.saturating_mul(rows).saturating_mul(cols);
+        let batch_work_ok = work >= Self::magma_batch_min_decomposition_work();
+
+        batch_count_ok && batch_dim_ok && batch_work_ok
+    }
 }
 
 pub(crate) fn validate_square_non_empty<T>(matrix: &Array2<T>) -> Result<(), &'static str> {
@@ -142,7 +231,7 @@ pub(crate) fn lu_decompose<T: NabledReal>(
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(not(feature = "lapack-provider"), feature = "magma-system"))]
 pub(crate) fn lu_solve<T: NabledReal>(
     l: &Array2<T>,
     u: &Array2<T>,
@@ -186,7 +275,7 @@ pub(crate) fn lu_solve<T: NabledReal>(
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[cfg(any(not(feature = "lapack-provider"), feature = "magma-system"))]
 pub(crate) fn inverse_from_lu<T: NabledReal>(
     l: &Array2<T>,
     u: &Array2<T>,

@@ -29,6 +29,7 @@ type MagmaQueue = *mut c_void;
 #[link(name = "magma")]
 unsafe extern "C" {
     fn magma_init() -> i32;
+    fn magma_setdevice(device: i32);
     fn magma_getdevice(dev: *mut i32);
     fn magma_queue_create_internal(
         device: i32,
@@ -840,6 +841,8 @@ impl MagmaQueueGuard {
         let mut device = 0_i32;
         // SAFETY: Writes current MAGMA device id to a valid output pointer.
         unsafe { magma_getdevice(&raw mut device) };
+        // SAFETY: Explicitly select the current device for this host thread before queue creation.
+        unsafe { magma_setdevice(device) };
         let mut queue = std::ptr::null_mut();
         // SAFETY: Queue creation with valid device id and output pointer.
         unsafe {
@@ -1930,6 +1933,7 @@ pub(crate) fn qr_decompose<T: MagmaReal>(
 }
 
 #[allow(clippy::type_complexity)]
+#[cfg_attr(feature = "lapack-provider", allow(dead_code))]
 pub(crate) fn svd_decompose<T: MagmaReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<(Array2<T>, Array1<T>, Array2<T>), &'static str> {

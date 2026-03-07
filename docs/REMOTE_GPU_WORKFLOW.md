@@ -1,6 +1,6 @@
 # Remote GPU Workflow
 
-Last updated: 2026-03-06
+Last updated: 2026-03-07
 
 ## Purpose
 
@@ -61,6 +61,7 @@ For Vast template startup script:
 scripts/gpu_remote.sh up <host>
 scripts/gpu_remote.sh one <host> magma-verify
 scripts/gpu_remote.sh one <host> magma-capability
+scripts/gpu_remote.sh one <host> magma-provider-bench
 scripts/gpu_remote.sh run <host> "just checks"
 scripts/gpu_remote.sh attach <host>
 ```
@@ -77,6 +78,7 @@ scripts/gpu_remote_tmux_session.sh <host>
 ```bash
 scripts/gpu_remote.sh one <host> magma-verify
 scripts/gpu_remote.sh one <host> magma-capability
+scripts/gpu_remote.sh one <host> magma-provider-bench
 scripts/gpu_remote.sh one <host> gpu-probe
 scripts/gpu_remote.sh one <host> checks
 ```
@@ -93,6 +95,17 @@ Session defaults:
 2. Window `work`: active command execution
 3. Window `gpu`: `watch -n 1 nvidia-smi`
 4. Window `logs`: tail of current job log
+
+### Tmux UX troubleshooting
+
+If `Ctrl+B` is echoed as `^B` or pane layout is unexpectedly tiny:
+
+1. Always attach through `scripts/gpu_remote_tmux_attach.sh`; it now uses a direct interactive SSH command and `tmux attach -d` to avoid stale-client sizing issues.
+2. Check for nested tmux (`echo $TMUX`). If nested, use `Ctrl+B Ctrl+B` for inner-session commands or detach outer tmux first.
+3. Detach stale clients that can constrain dimensions:
+   `tmux detach-client -a -t nabled-agent`
+4. Verify live client dimensions:
+   `tmux list-clients -F '#{client_tty} #{client_width}x#{client_height} #{session_name}'`
 
 ### 4) Run any custom command in `work`
 
@@ -112,7 +125,8 @@ Reusable remote jobs (called by wrapper scripts and tmux run flow):
 
 1. `scripts/remote_jobs/magma_verify_job.sh`
 2. `scripts/remote_jobs/magma_capability_job.sh`
-3. `scripts/remote_jobs/gpu_probe_job.sh`
+3. `scripts/remote_jobs/magma_provider_bench_job.sh`
+4. `scripts/remote_jobs/gpu_probe_job.sh`
 
 ## MAGMA expansion tracking
 

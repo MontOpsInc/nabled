@@ -5,6 +5,8 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array3, ArrayView3, Axis};
 
 #[cfg(feature = "magma-system")]
+use crate::internal::DenseKernelPolicy;
+#[cfg(feature = "magma-system")]
 use crate::provider::magma;
 use crate::{cholesky, eigen, lu, qr, svd};
 
@@ -14,7 +16,24 @@ use crate::{cholesky, eigen, lu, qr, svd};
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(feature = "magma-system")]
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+pub fn qr<T>(
+    matrices: &Array3<T>,
+    config: &qr::QRConfig<T>,
+) -> Result<Vec<qr::QRResult<T>>, qr::QRError>
+where
+    T: magma::MagmaRealBatched + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    qr_view(&matrices.view(), config)
+}
+
+/// Compute QR decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
 pub fn qr<T>(
     matrices: &Array3<T>,
     config: &qr::QRConfig<T>,
@@ -62,7 +81,54 @@ pub fn qr<T: qr::QrInternalScalar>(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(feature = "magma-system")]
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+pub fn qr_view<T>(
+    matrices: &ArrayView3<'_, T>,
+    config: &qr::QRConfig<T>,
+) -> Result<Vec<qr::QRResult<T>>, qr::QRError>
+where
+    T: magma::MagmaRealBatched + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(qr::QRError::EmptyMatrix);
+    }
+    let (batch_count, rows, cols) = matrices.dim();
+
+    // Pivoted and underdetermined QR stay on per-slice paths.
+    if config.use_pivoting
+        || rows < cols
+        || !DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols)
+    {
+        let mut fallback = Vec::with_capacity(matrices.dim().0);
+        for matrix in matrices.axis_iter(Axis(0)) {
+            fallback.push(qr::decompose_view(&matrix, config)?);
+        }
+        return Ok(fallback);
+    }
+
+    if let Ok(decompositions) = magma::qr_decompose_batched(matrices, config.rank_tolerance) {
+        let mut output = Vec::with_capacity(decompositions.len());
+        for (q, r, rank) in decompositions {
+            output.push(qr::QRResult { q, r, p: None, rank });
+        }
+        Ok(output)
+    } else {
+        // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
+        let mut fallback = Vec::with_capacity(batch_count);
+        for matrix in matrices.axis_iter(Axis(0)) {
+            fallback.push(qr::decompose_view(&matrix, config)?);
+        }
+        Ok(fallback)
+    }
+}
+
+/// Compute QR decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
 pub fn qr_view<T>(
     matrices: &ArrayView3<'_, T>,
     config: &qr::QRConfig<T>,
@@ -73,9 +139,13 @@ where
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(qr::QRError::EmptyMatrix);
     }
+    let (batch_count, rows, cols) = matrices.dim();
 
     // Pivoted and underdetermined QR stay on per-slice paths.
-    if config.use_pivoting || matrices.dim().1 < matrices.dim().2 {
+    if config.use_pivoting
+        || rows < cols
+        || !DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols)
+    {
         let mut fallback = Vec::with_capacity(matrices.dim().0);
         for matrix in matrices.axis_iter(Axis(0)) {
             fallback.push(qr::decompose_view(&matrix, config)?);
@@ -83,13 +153,20 @@ where
         return Ok(fallback);
     }
 
-    let decompositions = magma::qr_decompose_batched(matrices, config.rank_tolerance)
-        .map_err(map_qr_provider_error)?;
-    let mut output = Vec::with_capacity(decompositions.len());
-    for (q, r, rank) in decompositions {
-        output.push(qr::QRResult { q, r, p: None, rank });
+    if let Ok(decompositions) = magma::qr_decompose_batched(matrices, config.rank_tolerance) {
+        let mut output = Vec::with_capacity(decompositions.len());
+        for (q, r, rank) in decompositions {
+            output.push(qr::QRResult { q, r, p: None, rank });
+        }
+        Ok(output)
+    } else {
+        // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
+        let mut fallback = Vec::with_capacity(batch_count);
+        for matrix in matrices.axis_iter(Axis(0)) {
+            fallback.push(qr::decompose_view(&matrix, config)?);
+        }
+        Ok(fallback)
     }
-    Ok(output)
 }
 
 /// Compute QR decomposition for each matrix in a batch view.
@@ -205,58 +282,6 @@ pub fn svd_view<T: svd::SvdInternalScalar>(
     Ok(output)
 }
 
-#[cfg(feature = "magma-system")]
-fn map_lu_provider_error(error: &'static str) -> lu::LUError {
-    match error {
-        "empty" => lu::LUError::EmptyMatrix,
-        "not_square" => lu::LUError::NotSquare,
-        "singular" => lu::LUError::SingularMatrix,
-        "convergence_failed" => lu::LUError::ConvergenceFailed,
-        "non_finite" => lu::LUError::NumericalInstability,
-        "provider_init_failed" | "provider_alloc_failed" | "provider_failure" => {
-            lu::LUError::InvalidInput("provider failure".to_string())
-        }
-        "invalid_dimensions" | "invalid_input" => {
-            lu::LUError::InvalidInput("invalid dimensions".to_string())
-        }
-        _ => lu::LUError::InvalidInput(error.to_string()),
-    }
-}
-
-#[cfg(feature = "magma-system")]
-fn map_qr_provider_error(error: &'static str) -> qr::QRError {
-    match error {
-        "empty" => qr::QRError::EmptyMatrix,
-        "non_finite" => qr::QRError::NumericalInstability,
-        "unsupported_shape" | "invalid_dimensions" => {
-            qr::QRError::InvalidDimensions("unsupported matrix dimensions".to_string())
-        }
-        "convergence_failed" => qr::QRError::ConvergenceFailed,
-        "provider_init_failed" | "provider_alloc_failed" | "provider_failure" => {
-            qr::QRError::InvalidInput("provider failure".to_string())
-        }
-        "invalid_input" => qr::QRError::InvalidInput("invalid input".to_string()),
-        _ => qr::QRError::InvalidInput(error.to_string()),
-    }
-}
-
-#[cfg(feature = "magma-system")]
-fn map_cholesky_provider_error(error: &'static str) -> cholesky::CholeskyError {
-    match error {
-        "empty" => cholesky::CholeskyError::EmptyMatrix,
-        "not_square" => cholesky::CholeskyError::NotSquare,
-        "not_positive_definite" => cholesky::CholeskyError::NotPositiveDefinite,
-        "non_finite" => cholesky::CholeskyError::NumericalInstability,
-        "provider_init_failed" | "provider_alloc_failed" | "provider_failure" => {
-            cholesky::CholeskyError::InvalidInput("provider failure".to_string())
-        }
-        "invalid_dimensions" | "invalid_input" => {
-            cholesky::CholeskyError::InvalidInput("invalid dimensions".to_string())
-        }
-        _ => cholesky::CholeskyError::InvalidInput(error.to_string()),
-    }
-}
-
 /// Compute LU decomposition for each matrix in a batch.
 ///
 /// Input shape is `(batch, rows, cols)`.
@@ -307,12 +332,32 @@ pub fn lu_view<T>(matrices: &ArrayView3<'_, T>) -> Result<Vec<lu::NdarrayLUResul
 where
     T: lu::LuProviderScalar + magma::MagmaRealBatched,
 {
-    let factors = magma::lu_decompose_batched(matrices).map_err(map_lu_provider_error)?;
-    let mut output = Vec::with_capacity(factors.len());
-    for (l, u) in factors {
-        output.push(lu::NdarrayLUResult { l, u });
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(lu::LUError::EmptyMatrix);
     }
-    Ok(output)
+    let (batch_count, rows, cols) = matrices.dim();
+    if !DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols) {
+        let mut output = Vec::with_capacity(batch_count);
+        for matrix in matrices.axis_iter(Axis(0)) {
+            output.push(lu::decompose_view(&matrix)?);
+        }
+        return Ok(output);
+    }
+
+    if let Ok(factors) = magma::lu_decompose_batched(matrices) {
+        let mut output = Vec::with_capacity(factors.len());
+        for (l, u) in factors {
+            output.push(lu::NdarrayLUResult { l, u });
+        }
+        Ok(output)
+    } else {
+        // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
+        let mut fallback = Vec::with_capacity(batch_count);
+        for matrix in matrices.axis_iter(Axis(0)) {
+            fallback.push(lu::decompose_view(&matrix)?);
+        }
+        Ok(fallback)
+    }
 }
 
 /// Compute LU decomposition for each matrix in a batch view.
@@ -414,13 +459,32 @@ pub fn cholesky_view<T>(
 where
     T: cholesky::CholeskyProviderScalar + magma::MagmaRealBatched,
 {
-    let factors =
-        magma::cholesky_decompose_batched(matrices).map_err(map_cholesky_provider_error)?;
-    let mut output = Vec::with_capacity(factors.len());
-    for l in factors {
-        output.push(cholesky::NdarrayCholeskyResult { l });
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(cholesky::CholeskyError::EmptyMatrix);
     }
-    Ok(output)
+    let (batch_count, rows, cols) = matrices.dim();
+    if !DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols) {
+        let mut output = Vec::with_capacity(batch_count);
+        for matrix in matrices.axis_iter(Axis(0)) {
+            output.push(cholesky::decompose_view(&matrix)?);
+        }
+        return Ok(output);
+    }
+
+    if let Ok(factors) = magma::cholesky_decompose_batched(matrices) {
+        let mut output = Vec::with_capacity(factors.len());
+        for l in factors {
+            output.push(cholesky::NdarrayCholeskyResult { l });
+        }
+        Ok(output)
+    } else {
+        // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
+        let mut fallback = Vec::with_capacity(batch_count);
+        for matrix in matrices.axis_iter(Axis(0)) {
+            fallback.push(cholesky::decompose_view(&matrix)?);
+        }
+        Ok(fallback)
+    }
 }
 
 /// Compute Cholesky decomposition for each matrix in a batch view.
