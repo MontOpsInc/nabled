@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-06 (V2-008 sparse phase-1 + V2-009 mixed-precision LU phase-1 implemented)
+Last updated: 2026-03-06 (V2-008 sparse phase-2 implemented + V2-009 mixed-precision LU phase-1 implemented)
 
 ## Purpose
 
@@ -32,7 +32,7 @@ This tracker is focused on:
 | `V2-005` | MAGMA verification matrix + benchmark parity report | Completed | Remote RTX 4090 run completed with correctness/capability artifacts and provider benchmark summaries captured locally. |
 | `V2-006` | MAGMA provider breadth expansion (complex + additional decomposition domains) | Completed | Complex MAGMA provider paths now cover LU, Cholesky, QR, SVD, and non-symmetric eigen decomposition, with compile-time dispatch preference (`magma-system` > `lapack-provider` > internal) and explicit shape/error contracts. |
 | `V2-007` | MAGMA-native batched decomposition kernels | Completed | `nabled-linalg::batched` now uses MAGMA-native batched LU/Cholesky/QR for real-valued provider paths under `magma-system`; SVD/symmetric-eigen remain per-slice provider loops due no equivalent MAGMA batched kernels for current API contracts. |
-| `V2-008` | MAGMA sparse path assessment and integration plan | Completed | Assessment is complete and phase-1 is implemented: dedicated `provider::magma_sparse` FFI lifecycle plus opt-in MAGMA sparse matvec/sparse-dense matmat APIs for `f32`/`f64` with parity tests. |
+| `V2-008` | MAGMA sparse path assessment and integration plan | Completed | Assessment is complete and both sparse phases are implemented: dedicated `provider::magma_sparse` FFI lifecycle, phase-1 sparse kernels (`matvec`, sparse-dense `matmat`), and phase-2 iterative/preconditioned solves (`CG`, `PCG-Jacobi`, `GMRES`, `BiCGSTAB`, plus `ILU0`-preconditioned `GMRES`/`BiCGSTAB`) for `f32`/`f64` `i32` CSR views. |
 | `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Completed | Availability was verified and phase-1 implementation is landed: opt-in mixed-precision LU solve APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) now delegate to MAGMA with explicit refinement/error contracts. |
 
 ## Batched Surface Snapshot (Current)
@@ -154,7 +154,19 @@ Integration plan (locked):
    - `sparse::matmat_dense_magma_{f32,f64}_view`
    - `sparse::matmat_dense_magma_{f32,f64}_view_into`
 3. Added parity tests against internal sparse paths for all four operation/dtype combinations.
-4. Scope is intentionally phase-1 only; phase-2 sparse iterative/preconditioned solves remain open.
+4. Scope was intentionally phase-1 at this checkpoint; phase-2 is now implemented in follow-on APIs.
+
+### V2-008 Follow-on Implementation (Phase 2)
+
+1. Added MAGMA-backed iterative sparse solve APIs for `i32`-indexed CSR views:
+   - `conjugate_gradient_magma_f64_view`, `conjugate_gradient_magma_f32_view`
+   - `pcg_jacobi_magma_f64_view`, `pcg_jacobi_magma_f32_view`
+   - `gmres_magma_f64_view`, `gmres_magma_f32_view`
+   - `bicgstab_magma_f64_view`, `bicgstab_magma_f32_view`
+2. Added MAGMA-backed preconditioned sparse solve APIs:
+   - `gmres_ilu0_magma_f64_view`, `gmres_ilu0_magma_f32_view`
+   - `bicgstab_ilu0_magma_f64_view`, `bicgstab_ilu0_magma_f32_view`
+3. Added parity coverage tests versus internal solver paths for `f64` and `f32` across SPD and non-symmetric systems.
 
 ## V2-009 Result Snapshot
 

@@ -127,6 +127,8 @@ Workspace migration for library domains is complete.
 119. `V2-009` is complete: mixed-precision/refinement opportunities were assessed and verified (`magma_dsgesv_gpu`, `magma_dsgesv_iteref_gpu`, `magma_zcgesv_gpu`), with a locked plan for opt-in mixed-precision solve APIs that expose convergence/refinement metadata explicitly.
 120. `V2-008` phase-1 sparse implementation is now landed: `provider::magma_sparse` owns MAGMA sparse queue/matrix lifecycle and powers opt-in sparse matvec/sparse-dense matmat APIs (`f32`/`f64`, i32-indexed CSR view contract) with parity tests.
 121. `V2-009` phase-1 mixed-precision implementation is now landed: LU mixed solve APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) return explicit refinement-iteration metadata and map convergence/provider outcomes into typed LU errors.
+122. `V2-008` phase-2 sparse implementation is now landed: MAGMA-backed sparse iterative/preconditioned solve APIs (`CG`, `PCG-Jacobi`, `GMRES`, `BiCGSTAB`, plus `ILU0`-preconditioned `GMRES`/`BiCGSTAB`) are available for `f32`/`f64` over `i32` CSR views with parity tests.
+123. Complex tensor public APIs now route accelerator-backed single-axis contraction, batched last-two matmul, and last-axis summation through backend dispatch (`GpuBackend` when enabled, explicit CPU fallback otherwise), preserving deterministic output/error contracts.
 
 ## Current Code Ownership
 
@@ -165,7 +167,7 @@ GPU phase-2 continuation:
 
 1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`).
 2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
-3. Execute remaining phase-2 follow-ons from `V2-008`/`V2-009` (sparse iterative/preconditioned solve acceleration and mixed-precision expansion beyond LU-only APIs).
+3. Execute remaining phase-2 follow-ons from `V2-009` (mixed-precision expansion beyond LU-only APIs).
 
 ## Completion Criteria For Migration
 

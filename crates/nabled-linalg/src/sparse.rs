@@ -2342,6 +2342,559 @@ pub fn matmat_dense_magma_f32_view_into(
     Ok(())
 }
 
+#[cfg(feature = "magma-system")]
+fn validate_magma_iterative_inputs<T>(
+    matrix: &CsrMatrixView<'_, i32, T, i32>,
+    rhs: &Array1<T>,
+) -> Result<(), SparseError> {
+    matrix.validate()?;
+    if matrix.nrows != matrix.ncols || rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "magma-system")]
+fn expect_vector_len<T>(vector: &Array1<T>, expected: usize) -> Result<(), SparseError> {
+    if vector.len() == expected { Ok(()) } else { Err(SparseError::DimensionMismatch) }
+}
+
+#[cfg(feature = "magma-system")]
+fn conjugate_gradient_with_operator<T: NabledReal>(
+    rhs: &Array1<T>,
+    tolerance: T,
+    max_iterations: usize,
+    mut matvec: impl FnMut(&Array1<T>) -> Result<Array1<T>, SparseError>,
+) -> Result<Array1<T>, SparseError> {
+    let n = rhs.len();
+    let tolerance = tolerance.max(default_tolerance::<T>());
+    let mut solution = Array1::<T>::zeros(n);
+    let mut residual = rhs.clone();
+    let mut direction = residual.clone();
+    let mut residual_norm_sq = dot(&residual, &residual)?;
+
+    if residual_norm_sq.sqrt() <= tolerance {
+        return Ok(solution);
+    }
+
+    for _ in 0..max_iterations.max(1) {
+        let matrix_direction = matvec(&direction)?;
+        expect_vector_len(&matrix_direction, n)?;
+        let denominator = dot(&direction, &matrix_direction)?;
+        if denominator.abs() <= default_tolerance::<T>() {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        let alpha = residual_norm_sq / denominator;
+        for i in 0..n {
+            solution[i] += alpha * direction[i];
+            residual[i] -= alpha * matrix_direction[i];
+        }
+
+        let next_residual_norm_sq = dot(&residual, &residual)?;
+        if next_residual_norm_sq.sqrt() <= tolerance {
+            return Ok(solution);
+        }
+
+        let beta = next_residual_norm_sq / residual_norm_sq;
+        for i in 0..n {
+            direction[i] = residual[i] + beta * direction[i];
+        }
+        residual_norm_sq = next_residual_norm_sq;
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
+#[cfg(feature = "magma-system")]
+fn pcg_with_operator<T: NabledReal>(
+    rhs: &Array1<T>,
+    tolerance: T,
+    max_iterations: usize,
+    mut matvec: impl FnMut(&Array1<T>) -> Result<Array1<T>, SparseError>,
+    mut precondition: impl FnMut(&Array1<T>) -> Result<Array1<T>, SparseError>,
+) -> Result<Array1<T>, SparseError> {
+    let n = rhs.len();
+    let tolerance = tolerance.max(default_tolerance::<T>());
+    let mut solution = Array1::<T>::zeros(n);
+    let mut residual = rhs.clone();
+    let mut preconditioned_residual = precondition(&residual)?;
+    expect_vector_len(&preconditioned_residual, n)?;
+    let mut direction = preconditioned_residual.clone();
+    let mut rho = dot(&residual, &preconditioned_residual)?;
+
+    if rho.sqrt() <= tolerance {
+        return Ok(solution);
+    }
+
+    for _ in 0..max_iterations.max(1) {
+        let matrix_direction = matvec(&direction)?;
+        expect_vector_len(&matrix_direction, n)?;
+        let denominator = dot(&direction, &matrix_direction)?;
+        if denominator.abs() <= default_tolerance::<T>() {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        let alpha = rho / denominator;
+        for i in 0..n {
+            solution[i] += alpha * direction[i];
+            residual[i] -= alpha * matrix_direction[i];
+        }
+
+        if dot(&residual, &residual)?.sqrt() <= tolerance {
+            return Ok(solution);
+        }
+
+        preconditioned_residual = precondition(&residual)?;
+        expect_vector_len(&preconditioned_residual, n)?;
+        let rho_next = dot(&residual, &preconditioned_residual)?;
+        let beta = rho_next / rho;
+        for i in 0..n {
+            direction[i] = preconditioned_residual[i] + beta * direction[i];
+        }
+        rho = rho_next;
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
+#[cfg(feature = "magma-system")]
+#[allow(clippy::many_single_char_names)]
+fn gmres_with_operator<T: NabledReal>(
+    rhs: &Array1<T>,
+    tolerance: T,
+    max_iterations: usize,
+    mut matvec: impl FnMut(&Array1<T>) -> Result<Array1<T>, SparseError>,
+    mut precondition: impl FnMut(&Array1<T>) -> Result<Array1<T>, SparseError>,
+) -> Result<Array1<T>, SparseError> {
+    let n = rhs.len();
+    let m = n.min(max_iterations.max(1));
+    let tolerance = tolerance.max(default_tolerance::<T>());
+    let mut basis = Array2::<T>::zeros((n, m + 1));
+    let mut hessenberg = Array2::<T>::zeros((m + 1, m));
+
+    let preconditioned_rhs = precondition(rhs)?;
+    expect_vector_len(&preconditioned_rhs, n)?;
+    let beta = dot(&preconditioned_rhs, &preconditioned_rhs)?.sqrt();
+    if beta <= tolerance {
+        return Ok(Array1::<T>::zeros(n));
+    }
+
+    for row in 0..n {
+        basis[[row, 0]] = preconditioned_rhs[row] / beta;
+    }
+
+    let mut effective_m = m;
+    for j in 0..m {
+        let mut vj = Array1::<T>::zeros(n);
+        for row in 0..n {
+            vj[row] = basis[[row, j]];
+        }
+
+        let av = matvec(&vj)?;
+        expect_vector_len(&av, n)?;
+        let mut w = precondition(&av)?;
+        expect_vector_len(&w, n)?;
+
+        for i in 0..=j {
+            let mut hij = T::zero();
+            for row in 0..n {
+                hij += basis[[row, i]] * w[row];
+            }
+            hessenberg[[i, j]] = hij;
+            for row in 0..n {
+                w[row] -= hij * basis[[row, i]];
+            }
+        }
+
+        let norm_w = dot(&w, &w)?.sqrt();
+        hessenberg[[j + 1, j]] = norm_w;
+        if norm_w <= tolerance {
+            effective_m = j + 1;
+            break;
+        }
+        for row in 0..n {
+            basis[[row, j + 1]] = w[row] / norm_w;
+        }
+    }
+
+    let mut h = Array2::<T>::zeros((effective_m + 1, effective_m));
+    for row in 0..=effective_m {
+        for col in 0..effective_m {
+            h[[row, col]] = hessenberg[[row, col]];
+        }
+    }
+
+    let ht = h.t();
+    let normal_matrix = ht.dot(&h);
+    let mut rhs_ls = Array1::<T>::zeros(effective_m + 1);
+    rhs_ls[0] = beta;
+    let normal_rhs = ht.dot(&rhs_ls);
+    let y = solve_dense_system(normal_matrix, normal_rhs)?;
+
+    let mut solution = Array1::<T>::zeros(n);
+    for row in 0..n {
+        let mut sum = T::zero();
+        for col in 0..effective_m {
+            sum += basis[[row, col]] * y[col];
+        }
+        solution[row] = sum;
+    }
+
+    let residual = rhs - &matvec(&solution)?;
+    if dot(&residual, &residual)?.sqrt() <= tolerance {
+        Ok(solution)
+    } else {
+        Err(SparseError::MaxIterationsExceeded)
+    }
+}
+
+#[cfg(feature = "magma-system")]
+fn bicgstab_with_operator<T: NabledReal>(
+    rhs: &Array1<T>,
+    tolerance: T,
+    max_iterations: usize,
+    mut matvec: impl FnMut(&Array1<T>) -> Result<Array1<T>, SparseError>,
+    mut precondition: impl FnMut(&Array1<T>) -> Result<Array1<T>, SparseError>,
+) -> Result<Array1<T>, SparseError> {
+    let tolerance = tolerance.max(default_tolerance::<T>());
+    let n = rhs.len();
+    let mut solution = Array1::<T>::zeros(n);
+    let mut residual = rhs.clone();
+    let residual_shadow = residual.clone();
+    let mut rho_prev = T::one();
+    let mut alpha = T::one();
+    let mut omega = T::one();
+    let mut krylov_vector = Array1::<T>::zeros(n);
+    let mut search_direction = Array1::<T>::zeros(n);
+
+    if dot(&residual, &residual)?.sqrt() <= tolerance {
+        return Ok(solution);
+    }
+
+    for iteration in 0..max_iterations.max(1) {
+        let rho = dot(&residual_shadow, &residual)?;
+        if rho.abs() <= default_tolerance::<T>() {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        if iteration == 0 {
+            search_direction.assign(&residual);
+        } else {
+            if omega.abs() <= default_tolerance::<T>() {
+                return Err(SparseError::SingularMatrix);
+            }
+            let beta = (rho / rho_prev) * (alpha / omega);
+            for i in 0..n {
+                search_direction[i] =
+                    residual[i] + beta * (search_direction[i] - omega * krylov_vector[i]);
+            }
+        }
+
+        let preconditioned_search = precondition(&search_direction)?;
+        expect_vector_len(&preconditioned_search, n)?;
+        krylov_vector = matvec(&preconditioned_search)?;
+        expect_vector_len(&krylov_vector, n)?;
+        let denominator = dot(&residual_shadow, &krylov_vector)?;
+        if denominator.abs() <= default_tolerance::<T>() {
+            return Err(SparseError::SingularMatrix);
+        }
+        alpha = rho / denominator;
+
+        let mut auxiliary_residual = residual.clone();
+        for i in 0..n {
+            auxiliary_residual[i] -= alpha * krylov_vector[i];
+        }
+
+        if dot(&auxiliary_residual, &auxiliary_residual)?.sqrt() <= tolerance {
+            for i in 0..n {
+                solution[i] += alpha * preconditioned_search[i];
+            }
+            return Ok(solution);
+        }
+
+        let preconditioned_auxiliary = precondition(&auxiliary_residual)?;
+        expect_vector_len(&preconditioned_auxiliary, n)?;
+        let transformed_auxiliary = matvec(&preconditioned_auxiliary)?;
+        expect_vector_len(&transformed_auxiliary, n)?;
+        let transformed_norm_sq = dot(&transformed_auxiliary, &transformed_auxiliary)?;
+        if transformed_norm_sq.abs() <= default_tolerance::<T>() {
+            return Err(SparseError::SingularMatrix);
+        }
+        omega = dot(&transformed_auxiliary, &auxiliary_residual)? / transformed_norm_sq;
+        if omega.abs() <= default_tolerance::<T>() {
+            return Err(SparseError::SingularMatrix);
+        }
+
+        for i in 0..n {
+            solution[i] += alpha * preconditioned_search[i] + omega * preconditioned_auxiliary[i];
+        }
+        for i in 0..n {
+            residual[i] = auxiliary_residual[i] - omega * transformed_auxiliary[i];
+        }
+
+        if dot(&residual, &residual)?.sqrt() <= tolerance {
+            return Ok(solution);
+        }
+        rho_prev = rho;
+    }
+
+    Err(SparseError::MaxIterationsExceeded)
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed conjugate gradient (`f64`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, singular breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn conjugate_gradient_magma_f64_view(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    conjugate_gradient_with_operator(rhs, tolerance, max_iterations, |vector| {
+        matvec_magma_f64_view(matrix, vector)
+    })
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed conjugate gradient (`f32`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, singular breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn conjugate_gradient_magma_f32_view(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    rhs: &Array1<f32>,
+    tolerance: f32,
+    max_iterations: usize,
+) -> Result<Array1<f32>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    conjugate_gradient_with_operator(rhs, tolerance, max_iterations, |vector| {
+        matvec_magma_f32_view(matrix, vector)
+    })
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed Jacobi-preconditioned CG (`f64`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, singular breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn pcg_jacobi_magma_f64_view(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    let preconditioner = jacobi_preconditioner_view(matrix)?;
+    pcg_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f64_view(matrix, vector),
+        |vector| apply_jacobi_preconditioner(&preconditioner, vector),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed Jacobi-preconditioned CG (`f32`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, singular breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn pcg_jacobi_magma_f32_view(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    rhs: &Array1<f32>,
+    tolerance: f32,
+    max_iterations: usize,
+) -> Result<Array1<f32>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    let preconditioner = jacobi_preconditioner_view(matrix)?;
+    pcg_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f32_view(matrix, vector),
+        |vector| apply_jacobi_preconditioner(&preconditioner, vector),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed left-preconditioned GMRES (`f64`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, singular breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn gmres_magma_f64_view(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    gmres_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f64_view(matrix, vector),
+        |vector| Ok(vector.clone()),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed left-preconditioned GMRES (`f32`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, singular breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn gmres_magma_f32_view(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    rhs: &Array1<f32>,
+    tolerance: f32,
+    max_iterations: usize,
+) -> Result<Array1<f32>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    gmres_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f32_view(matrix, vector),
+        |vector| Ok(vector.clone()),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed ILU(0)-preconditioned GMRES (`f64`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, factorization breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn gmres_ilu0_magma_f64_view(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    let factorization = ilu0_factor_view(matrix)?;
+    gmres_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f64_view(matrix, vector),
+        |vector| apply_ilu0_preconditioner(&factorization, vector),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed ILU(0)-preconditioned GMRES (`f32`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, factorization breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn gmres_ilu0_magma_f32_view(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    rhs: &Array1<f32>,
+    tolerance: f32,
+    max_iterations: usize,
+) -> Result<Array1<f32>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    let factorization = ilu0_factor_view(matrix)?;
+    gmres_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f32_view(matrix, vector),
+        |vector| apply_ilu0_preconditioner(&factorization, vector),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed left-preconditioned `BiCGSTAB` (`f64`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, singular breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn bicgstab_magma_f64_view(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    bicgstab_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f64_view(matrix, vector),
+        |vector| Ok(vector.clone()),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed left-preconditioned `BiCGSTAB` (`f32`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, singular breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn bicgstab_magma_f32_view(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    rhs: &Array1<f32>,
+    tolerance: f32,
+    max_iterations: usize,
+) -> Result<Array1<f32>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    bicgstab_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f32_view(matrix, vector),
+        |vector| Ok(vector.clone()),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed ILU(0)-preconditioned `BiCGSTAB` (`f64`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, factorization breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn bicgstab_ilu0_magma_f64_view(
+    matrix: &CsrMatrixView<'_, i32, f64, i32>,
+    rhs: &Array1<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Result<Array1<f64>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    let factorization = ilu0_factor_view(matrix)?;
+    bicgstab_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f64_view(matrix, vector),
+        |vector| apply_ilu0_preconditioner(&factorization, vector),
+    )
+}
+
+/// Solve sparse linear system `A x = b` with MAGMA-backed ILU(0)-preconditioned `BiCGSTAB` (`f32`).
+///
+/// # Errors
+/// Returns an error for invalid dimensions/structure, factorization breakdown, or non-convergence.
+#[cfg(feature = "magma-system")]
+pub fn bicgstab_ilu0_magma_f32_view(
+    matrix: &CsrMatrixView<'_, i32, f32, i32>,
+    rhs: &Array1<f32>,
+    tolerance: f32,
+    max_iterations: usize,
+) -> Result<Array1<f32>, SparseError> {
+    validate_magma_iterative_inputs(matrix, rhs)?;
+    let factorization = ilu0_factor_view(matrix)?;
+    bicgstab_with_operator(
+        rhs,
+        tolerance,
+        max_iterations,
+        |vector| matvec_magma_f32_view(matrix, vector),
+        |vector| apply_ilu0_preconditioner(&factorization, vector),
+    )
+}
+
 /// Compute sparse-dense matrix multiplication `Y = A B` into `output`.
 ///
 /// # Errors
@@ -6280,6 +6833,96 @@ mod tests {
             for col in 0..expected.ncols() {
                 assert!((expected[[row, col]] - magma[[row, col]]).abs() < 1e-4_f32);
             }
+        }
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn magma_iterative_sparse_solvers_match_internal_f64() {
+        let spd_row_ptrs = vec![0_i32, 2, 5, 7];
+        let spd_col_indices = vec![0_i32, 1, 0, 1, 2, 1, 2];
+        let spd_values = vec![4.0_f64, 1.0, 1.0, 3.0, 1.0, 1.0, 2.0];
+        let spd_view =
+            CsrMatrixView::new(3, 3, &spd_row_ptrs, &spd_col_indices, &spd_values).unwrap();
+        let rhs_spd = Array1::from_vec(vec![1.0_f64, 2.0, 3.0]);
+
+        let cg_expected =
+            conjugate_gradient_solve_view(&spd_view, &rhs_spd, 1e-10_f64, 256).unwrap();
+        let cg_magma =
+            conjugate_gradient_magma_f64_view(&spd_view, &rhs_spd, 1e-10_f64, 256).unwrap();
+        for i in 0..cg_expected.len() {
+            assert!((cg_expected[i] - cg_magma[i]).abs() < 1e-8_f64);
+        }
+
+        let pcg_expected = pcg_solve_view(&spd_view, &rhs_spd, 1e-10_f64, 256).unwrap();
+        let pcg_magma = pcg_jacobi_magma_f64_view(&spd_view, &rhs_spd, 1e-10_f64, 256).unwrap();
+        for i in 0..pcg_expected.len() {
+            assert!((pcg_expected[i] - pcg_magma[i]).abs() < 1e-8_f64);
+        }
+
+        let nonsym_row_ptrs = vec![0_i32, 2, 5, 7];
+        let nonsym_col_indices = vec![0_i32, 1, 0, 1, 2, 1, 2];
+        let nonsym_values = vec![4.0_f64, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0];
+        let nonsym_view =
+            CsrMatrixView::new(3, 3, &nonsym_row_ptrs, &nonsym_col_indices, &nonsym_values)
+                .unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0, 3.0]);
+
+        let gmres_expected = gmres_ilu0_solve_view(&nonsym_view, &rhs, 1e-10_f64, 16).unwrap();
+        let gmres_magma = gmres_ilu0_magma_f64_view(&nonsym_view, &rhs, 1e-10_f64, 16).unwrap();
+        for i in 0..gmres_expected.len() {
+            assert!((gmres_expected[i] - gmres_magma[i]).abs() < 1e-7_f64);
+        }
+
+        let bicg_expected = bicgstab_ilu0_solve_view(&nonsym_view, &rhs, 1e-10_f64, 256).unwrap();
+        let bicg_magma = bicgstab_ilu0_magma_f64_view(&nonsym_view, &rhs, 1e-10_f64, 256).unwrap();
+        for i in 0..bicg_expected.len() {
+            assert!((bicg_expected[i] - bicg_magma[i]).abs() < 1e-7_f64);
+        }
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn magma_iterative_sparse_solvers_match_internal_f32() {
+        let spd_row_ptrs = vec![0_i32, 2, 5, 7];
+        let spd_col_indices = vec![0_i32, 1, 0, 1, 2, 1, 2];
+        let spd_values = vec![4.0_f32, 1.0, 1.0, 3.0, 1.0, 1.0, 2.0];
+        let spd_view =
+            CsrMatrixView::new(3, 3, &spd_row_ptrs, &spd_col_indices, &spd_values).unwrap();
+        let rhs_spd = Array1::from_vec(vec![1.0_f32, 2.0, 3.0]);
+
+        let cg_expected =
+            conjugate_gradient_solve_view(&spd_view, &rhs_spd, 1e-6_f32, 256).unwrap();
+        let cg_magma =
+            conjugate_gradient_magma_f32_view(&spd_view, &rhs_spd, 1e-6_f32, 256).unwrap();
+        for i in 0..cg_expected.len() {
+            assert!((cg_expected[i] - cg_magma[i]).abs() < 5e-4_f32);
+        }
+
+        let pcg_expected = pcg_solve_view(&spd_view, &rhs_spd, 1e-6_f32, 256).unwrap();
+        let pcg_magma = pcg_jacobi_magma_f32_view(&spd_view, &rhs_spd, 1e-6_f32, 256).unwrap();
+        for i in 0..pcg_expected.len() {
+            assert!((pcg_expected[i] - pcg_magma[i]).abs() < 5e-4_f32);
+        }
+
+        let nonsym_row_ptrs = vec![0_i32, 2, 5, 7];
+        let nonsym_col_indices = vec![0_i32, 1, 0, 1, 2, 1, 2];
+        let nonsym_values = vec![4.0_f32, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0];
+        let nonsym_view =
+            CsrMatrixView::new(3, 3, &nonsym_row_ptrs, &nonsym_col_indices, &nonsym_values)
+                .unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f32, 2.0, 3.0]);
+
+        let gmres_expected = gmres_ilu0_solve_view(&nonsym_view, &rhs, 1e-6_f32, 16).unwrap();
+        let gmres_magma = gmres_ilu0_magma_f32_view(&nonsym_view, &rhs, 1e-6_f32, 16).unwrap();
+        for i in 0..gmres_expected.len() {
+            assert!((gmres_expected[i] - gmres_magma[i]).abs() < 2e-3_f32);
+        }
+
+        let bicg_expected = bicgstab_ilu0_solve_view(&nonsym_view, &rhs, 1e-6_f32, 256).unwrap();
+        let bicg_magma = bicgstab_ilu0_magma_f32_view(&nonsym_view, &rhs, 1e-6_f32, 256).unwrap();
+        for i in 0..bicg_expected.len() {
+            assert!((bicg_expected[i] - bicg_magma[i]).abs() < 2e-3_f32);
         }
     }
 }

@@ -187,12 +187,13 @@ Use this file to resume work quickly after context compaction without re-auditin
 145. `D-145`: `V2-008` is complete: MAGMA sparse API fit was assessed on remote RTX 4090 (`magmasparse_*` headers + sparse symbols verified), and the integration plan is now explicit (dedicated `magma_sparse` FFI boundary, phased sparse kernel/solver integration, no hidden dense conversion fallback).
 146. `D-146`: `V2-009` phase-1 is complete: opt-in mixed-precision LU solve APIs are implemented in `nabled-linalg::lu` (`solve_mixed_f64*`, `solve_mixed_complex*`) with explicit refinement-iteration metadata and typed convergence/error mapping.
 147. `D-147`: `V2-008` phase-1 is complete: dedicated `provider::magma_sparse` FFI lifecycle is implemented and wired to opt-in sparse MAGMA APIs for matvec/sparse-dense matmat (`f32`/`f64`, i32-indexed CSR views) with parity tests.
+148. `D-148`: `V2-008` phase-2 is complete: MAGMA-backed sparse iterative/preconditioned solve APIs are implemented for `i32` CSR views (`CG`, `PCG-Jacobi`, `GMRES`, `BiCGSTAB`, plus `ILU0`-preconditioned `GMRES`/`BiCGSTAB`) in `f32`/`f64`, with parity tests against internal solver paths.
 
 ## Next
 
 1. `K-005`: Outlier-ranked benchmark optimization plan + execution log (starting with `L-GPU-WGPU-F32` and MAGMA provider outliers).
 2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
-3. Execute remaining phase-2 MAGMA follow-ons: sparse iterative/preconditioned solves and mixed-precision expansion beyond LU-only APIs.
+3. Execute remaining phase-2 MAGMA follow-ons: mixed-precision expansion beyond LU-only APIs.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.

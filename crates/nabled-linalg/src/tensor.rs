@@ -10,9 +10,13 @@ use ndarray::{
 };
 use num_complex::Complex64;
 
-use crate::accelerator::backends::AcceleratorError;
+#[cfg(feature = "accelerator-wgpu")]
+use crate::accelerator::backends::GpuBackend;
+use crate::accelerator::backends::{AcceleratorError, CpuBackend};
 use crate::accelerator::dispatch::{
-    tensor_batched_matmul_last_two_cpu, tensor_contract_axes_cpu, tensor_sum_last_axis_cpu,
+    tensor_batched_matmul_last_two_cpu, tensor_batched_matmul_last_two_with_backend,
+    tensor_contract_axes_cpu, tensor_contract_axes_with_backend, tensor_sum_last_axis_cpu,
+    tensor_sum_last_axis_with_backend,
 };
 use crate::svd;
 
@@ -38,6 +42,68 @@ impl std::error::Error for TensorError {}
 
 fn map_accelerator_error_to_tensor(_error: AcceleratorError) -> TensorError {
     TensorError::DimensionMismatch
+}
+
+fn tensor_contract_axes_complex_dispatch(
+    left: &ArrayD<Complex64>,
+    right: &ArrayD<Complex64>,
+    left_axis: usize,
+    right_axis: usize,
+) -> Result<ArrayD<Complex64>, TensorError> {
+    #[cfg(feature = "accelerator-wgpu")]
+    {
+        tensor_contract_axes_with_backend::<GpuBackend, Complex64>(
+            left, right, left_axis, right_axis,
+        )
+        .or_else(|_| {
+            tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
+                left, right, left_axis, right_axis,
+            )
+        })
+        .map_err(map_accelerator_error_to_tensor)
+    }
+    #[cfg(not(feature = "accelerator-wgpu"))]
+    {
+        tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
+            left, right, left_axis, right_axis,
+        )
+        .map_err(map_accelerator_error_to_tensor)
+    }
+}
+
+fn tensor_batched_matmul_last_two_complex_dispatch(
+    left: &ArrayD<Complex64>,
+    right: &ArrayD<Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
+    #[cfg(feature = "accelerator-wgpu")]
+    {
+        tensor_batched_matmul_last_two_with_backend::<GpuBackend, Complex64>(left, right)
+            .or_else(|_| {
+                tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(left, right)
+            })
+            .map_err(map_accelerator_error_to_tensor)
+    }
+    #[cfg(not(feature = "accelerator-wgpu"))]
+    {
+        tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(left, right)
+            .map_err(map_accelerator_error_to_tensor)
+    }
+}
+
+fn tensor_sum_last_axis_complex_dispatch(
+    input: &ArrayD<Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
+    #[cfg(feature = "accelerator-wgpu")]
+    {
+        tensor_sum_last_axis_with_backend::<GpuBackend, Complex64>(input)
+            .or_else(|_| tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(input))
+            .map_err(map_accelerator_error_to_tensor)
+    }
+    #[cfg(not(feature = "accelerator-wgpu"))]
+    {
+        tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(input)
+            .map_err(map_accelerator_error_to_tensor)
+    }
 }
 
 /// HOSVD decomposition result for rank-3 real tensors.
@@ -953,7 +1019,7 @@ pub fn sum_last_axis_complex_view(
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
     let owned = tensor.to_owned();
-    tensor_sum_last_axis_cpu(&owned).map_err(map_accelerator_error_to_tensor)
+    tensor_sum_last_axis_complex_dispatch(&owned)
 }
 
 /// Reduce a complex tensor view along its last axis by summation into `output`.
@@ -1111,8 +1177,12 @@ pub fn contract_axes_complex_view(
     if left_axes.len() == 1 {
         let left_owned = left.to_owned();
         let right_owned = right.to_owned();
-        return tensor_contract_axes_cpu(&left_owned, &right_owned, left_axes[0], right_axes[0])
-            .map_err(map_accelerator_error_to_tensor);
+        return tensor_contract_axes_complex_dispatch(
+            &left_owned,
+            &right_owned,
+            left_axes[0],
+            right_axes[0],
+        );
     }
 
     let left_free_axes = uncontracted_axes(left_view.ndim(), left_axes);
@@ -1205,8 +1275,7 @@ pub fn batched_matmul_last_two_complex_view(
 
     let left_owned = left.to_owned();
     let right_owned = right.to_owned();
-    tensor_batched_matmul_last_two_cpu(&left_owned, &right_owned)
-        .map_err(map_accelerator_error_to_tensor)
+    tensor_batched_matmul_last_two_complex_dispatch(&left_owned, &right_owned)
 }
 
 /// Perform N-D batched complex matrix multiplication over the last two axes into `output`.
