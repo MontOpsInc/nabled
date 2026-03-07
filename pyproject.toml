@@ -1,0 +1,18 @@
+[build-system]
+requires = ["maturin>=2.0"]
+build-backend = "maturin"
+
+[project]
+name = "pynabled"
+version = "0.0.4"
+description = "Ndarray-native linear algebra and ML library - Python bindings"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.16"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.maturin]
+manifest-path = "crates/pynabled/Cargo.toml"
+python-source = "python"
+module-name = "pynabled._pynabled"

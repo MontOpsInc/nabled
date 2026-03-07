@@ -3,35 +3,31 @@
 ## Locked Decisions
 
 1. Canonical compute substrate is `ndarray`.
-2. Core numerical APIs are pure numerical APIs over ndarray types.
-3. `nabled-core`, `nabled-linalg`, and `nabled-ml` do not depend on Arrow types.
-4. Optional Arrow interop may exist only in facade crate `nabled` behind explicit feature flags.
-5. Workspace structure is required for long-term scale.
-6. No hidden data conversion in hot compute paths.
-7. Quality gates remain strict: pedantic linting, CI parity, and coverage >= 90%.
-8. Backend selection is compile-time only; no runtime backend dispatch.
-9. Default execution path is internal ndarray-native implementations.
-10. Backend-specific behavior must not leak into public API names.
-11. No legacy/backward-compatibility shims for unreleased APIs.
-12. Decomposition-style APIs use concise domain naming (for example, `svd::decompose`).
-13. Performance-critical kernels expose explicit allocation-control APIs (`*_into`) and optional reusable workspace types.
-14. View/convenience APIs must not hide heap allocations without explicit rustdoc disclosure.
-15. Dense-kernel tolerance and iteration defaults are centralized in one shared policy (`nabled-linalg::internal::DenseKernelPolicy`).
-16. Delivery strategy is domain-first vertical slices: each domain is finalized with API, tests, benchmarks, and docs before expanding horizontally.
-17. P2 kickoff is incremental: establish rank-3 tensor/cube APIs and compile-time accelerator contracts first, then add concrete GPU and future multi-node kernels.
-18. Execution terminology is explicit and stable:
+2. Public APIs are pure numerical APIs over ndarray types.
+3. `nabled` does not depend on Arrow types.
+4. Workspace structure is required for long-term scale.
+5. No hidden data conversion in hot compute paths.
+6. Quality gates remain strict: pedantic linting, CI parity, and coverage >= 90%.
+7. Backend selection is compile-time only; no runtime backend dispatch.
+8. Default execution path is internal ndarray-native implementations.
+9. Backend-specific behavior must not leak into public API names.
+10. No legacy/backward-compatibility shims for unreleased APIs.
+11. Decomposition-style APIs use concise domain naming (for example, `svd::decompose`).
+12. Performance-critical kernels expose explicit allocation-control APIs (`*_into`) and optional reusable workspace types.
+13. View/convenience APIs must not hide heap allocations without explicit rustdoc disclosure.
+14. Dense-kernel tolerance and iteration defaults are centralized in one shared policy (`nabled-linalg::internal::DenseKernelPolicy`).
+15. Delivery strategy is domain-first vertical slices: each domain is finalized with API, tests, benchmarks, and docs before expanding horizontally.
+16. P2 kickoff is incremental: establish rank-3 tensor/cube APIs and compile-time accelerator contracts first, then add concrete GPU and future multi-node kernels.
+17. Execution terminology is explicit and stable:
    - `Provider`: decomposition implementation source (for example, internal vs OpenBLAS-backed).
    - `Backend`: primitive-kernel execution target (for example, CPU, GPU).
    - `Kernel`: operation-family contract implemented by backends (for example, matrix-matrix multiply).
-19. Provider and backend are orthogonal axes and may both be used within one public algorithm flow.
-20. Kernel implementations do not directly invoke provider selection; orchestration of provider-backed decomposition and backend-backed kernels lives in domain APIs.
-21. Provider selection remains compile-time via feature gating (`#[cfg]`) in domain code; no runtime provider-dispatch API is required.
-22. Kernel-family scope is explicitly cataloged (`docs/KERNEL_CATALOG.md`) and treated as finite/planned work, not ad hoc expansion.
-23. V1 tensor and GPU capability scope is explicitly bounded and version-locked in `docs/V1_STABILITY.md`; out-of-scope behavior must be explicit/typed, not implicit fallback.
-24. Runtime workload-size policy is allowed inside a selected backend implementation (for example, `GpuBackend` deciding not to attempt GPU for tiny workloads); this does not violate compile-time backend selection.
-25. Production-readiness and domain "done" state are governed by the external-anchor parity rubric in `docs/REFERENCE_RUBRIC.md` (multi-reference, domain-specific, finite scope).
-26. Arrow interop targets capability parity, not 1:1 signature parity; facade adapters should expose curated workflow entrypoints rather than mirror every ndarray overload.
-27. Arrow adapters must delegate to canonical ndarray-native public/view entrypoints so provider, backend, kernel, routing, and fallback behavior stays shared with ndarray callers.
+18. Provider and backend are orthogonal axes and may both be used within one public algorithm flow.
+19. Kernel implementations do not directly invoke provider selection; orchestration of provider-backed decomposition and backend-backed kernels lives in domain APIs.
+20. Provider selection remains compile-time via feature gating (`#[cfg]`) in domain code; no runtime provider-dispatch API is required.
+21. Kernel-family scope is explicitly cataloged (`docs/KERNEL_CATALOG.md`) and treated as finite/planned work, not ad hoc expansion.
+22. V1 tensor and GPU capability scope is explicitly bounded and version-locked in `docs/V1_STABILITY.md`; out-of-scope behavior must be explicit/typed, not implicit fallback.
+23. Runtime workload-size policy is allowed inside a selected backend implementation (for example, `GpuBackend` deciding not to attempt GPU for tiny workloads); this does not violate compile-time backend selection.
 
 ## API Purity Model
 
@@ -49,10 +45,13 @@
 ## Near-Term Non-Goals
 
 1. Cross-library interop adapters.
-2. Python bindings.
-3. Arrow integration inside lower crates (`nabled-core`, `nabled-linalg`, `nabled-ml`).
+2. Arrow integration inside `nabled`.
 
 These are deferred until the ndarray-first core is complete and stable.
+
+## Python Bindings (Implemented)
+
+Python bindings are implemented via the `pynabled` crate (PyO3-based). See `crates/pynabled` and the root `pyproject.toml` for build/install. The package exposes nabled's linear algebra and ML APIs to Python with NumPy arrays as the canonical data type.
 
 ## Provider and Backend Contract
 

@@ -4,6 +4,7 @@ members = [
     "crates/nabled-core",
     "crates/nabled-linalg",
     "crates/nabled-ml",
+    "crates/pynabled",
 ]
 default-members = [
     "crates/nabled",

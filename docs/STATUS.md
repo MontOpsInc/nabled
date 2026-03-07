@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-09
+Last updated: 2026-03-06
 
 ## Summary
 
@@ -8,11 +8,10 @@ Workspace migration for library domains is complete.
 
 1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`.
 2. `crates/nabled` is the facade package re-exporting workspace crates.
-3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.
-4. Facade crate `nabled` now exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; this now spans the implementable real-valued dense/sparse/tensor/batched/ML workflows under the current explicit contracts, while lower crates remain Arrow-free.
-5. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
-6. Public `*_lapack` compatibility wrappers have been removed.
-7. Dense-kernel APIs are normalized around `decompose`/domain-specific operation naming.
+3. `crates/nabled/src/` contains facade/library entrypoint and binary tooling only.
+4. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
+5. Public `*_lapack` compatibility wrappers have been removed.
+6. Dense-kernel APIs are normalized around `decompose`/domain-specific operation naming.
 7. Vector primitives are available in `nabled-linalg::vector` with pairwise and batched APIs.
 8. Explicit allocation paths (`*_into`) and reusable workspace pattern are in place for key hot paths.
 9. Tier-A benchmark surface expanded beyond four suites (LU/Cholesky/Eigen/Vector added).
@@ -128,42 +127,6 @@ Workspace migration for library domains is complete.
 119. `V2-009` is complete: mixed-precision/refinement opportunities were assessed and verified (`magma_dsgesv_gpu`, `magma_dsgesv_iteref_gpu`, `magma_zcgesv_gpu`), with a locked plan for opt-in mixed-precision solve APIs that expose convergence/refinement metadata explicitly.
 120. `V2-008` phase-1 sparse implementation is now landed: `provider::magma_sparse` owns MAGMA sparse queue/matrix lifecycle and powers opt-in sparse matvec/sparse-dense matmat APIs (`f32`/`f64`, i32-indexed CSR view contract) with parity tests.
 121. `V2-009` phase-1 mixed-precision implementation is now landed: LU mixed solve APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) return explicit refinement-iteration metadata and map convergence/provider outcomes into typed LU errors.
-122. `V2-008` phase-2 sparse implementation is now landed: MAGMA-backed sparse iterative/preconditioned solve APIs (`CG`, `PCG-Jacobi`, `GMRES`, `BiCGSTAB`, plus `ILU0`-preconditioned `GMRES`/`BiCGSTAB`) are available for `f32`/`f64` over `i32` CSR views with parity tests.
-123. Complex tensor public APIs now route accelerator-backed single-axis contraction, batched last-two matmul, and last-axis summation through backend dispatch (`GpuBackend` when enabled, explicit CPU fallback otherwise), preserving deterministic output/error contracts.
-124. `V2-009` phase-2 mixed-precision expansion is now landed: Sylvester/Lyapunov expose mixed/refinement APIs (`solve_sylvester_mixed_*`, `solve_lyapunov_mixed_*`) with explicit `refinement_iterations` metadata and typed error mapping from LU mixed solves.
-125. `K-005` phase-1 MAGMA outlier remediation is now landed: tiny decomposition workloads are routed away from MAGMA via centralized size policy (`DenseKernelPolicy::prefer_magma_decomposition`, default cutoff `min(rows, cols) >= 128`, env override `NABLED_MAGMA_MIN_DECOMPOSITION_DIM`) across LU solve/inverse/determinant and QR/SVD decomposition paths (including downstream `polar`/`schur` flows).
-126. MAGMA verification hardening now includes strict mode: `NABLED_MAGMA_STRICT=1` disables fallback-on-provider-runtime-failure in dense/batched MAGMA decomposition paths, and remote workflow now supports `scripts/gpu_remote.sh one <host> magma-strict-verify` with forced threshold overrides to prove MAGMA execution coverage.
-127. Remote MAGMA verification is now clean and reproducible in both normal and strict modes on RTX 4090 (`magma-verify` + `magma-strict-verify` exit successfully), and prior sparse CUDA context noise signatures are absent in strict logs.
-128. `K-005` phase-4 provider rerun/outlier refresh is complete on RTX 4090: post-routing benchmark comparison (`openblas-system` vs `magma-system`) was rerun on the current snapshot and ranked outlier deltas are now refreshed in `docs/BENCHMARK_TRACKER.md` with artifacts under `coverage/gpu-v2/magma/bench/`.
-129. MAGMA release signoff is now tracked in `docs/MAGMA_SIGNOFF.md` with stable per-API IDs, route-condition metadata, and direct execution-proof coverage for all currently routed MAGMA rows.
-130. `MAG-L-004` runtime-hygiene closure is complete: forced strict sparse+dense execution matrices and full `magma-strict-verify` are green on remote RTX 4090 with no cuSPARSE context-noise lines.
-131. `MAG-L-005` function-matrix expansion is complete: one row per MAGMA-scope public function now exists in `docs/MAGMA_PUBLIC_API_MATRIX.md`, mapped to canonical verified route IDs.
-132. `MAG-L-003` composed-domain closure is complete: `schur`, `polar`, and matrix-function routed MAGMA rows (`MAG-D-030..MAG-D-043`) are now explicitly verified with strict remote evidence (`job-20260307T203307Z.log`, `rc=0`).
-133. `MAG-L-001` and `MAG-L-002` are complete: `batched::svd*` and `batched::symmetric_eigen*` now attempt MAGMA routes in `M*` builds with batched policy + strict-fail semantics, and remote symbol-scan evidence confirms native batched SVD/eigen kernels are absent in the current MAGMA runtime (`coverage/gpu-v2/magma/capability-batched-symbols-20260307.log`), so per-slice MAGMA routing is now the explicit contract.
-134. MAGMA strict verification workflow is now hardened and validated on RTX 4090: strict jobs serialize tests (`RUST_TEST_THREADS=1`), separate baseline correctness from forced strict execution-matrix checks, assert matrix-test availability before execution, and pass cleanly (`job-20260307T205521Z.log`, `strict-verification-20260307.log`).
-135. K-005 small/medium decomposition routing has been tightened locally: MAGMA decomposition selection now requires both min-dimension and min-work (`rows*cols`) thresholds, and `lu`/`cholesky` now use MAGMA-first with lapack fallback in `magma+lapack` builds for non-eligible and runtime-fallback paths; full local quality gates remain green.
-136. K-005 remote follow-on rerun is complete after the latest routing pass: remote strict verification (`job-20260308T143914Z.log`) and provider comparison (`comparison-20260308T144030Z.md`) are green, and decomposition-scope MAGMA/openblas ratios remain near parity (median `~0.982`, p90 `~1.024`).
-137. Remote GPU prepare now handles dirty remote checkouts deterministically: `gpu_remote_prepare.sh` defaults `NABLED_REMOTE_AUTO_STASH=1`, stashing tracked/untracked changes before fast-forward pull to keep `gpu_remote.sh up` reproducible after host restarts.
-138. K-005 decomposition follow-on routing/fallback refinement is now landed for `eigen` and `sylvester`: `eigen::symmetric` fallback composition is explicit per feature matrix, Sylvester real solve provider routing now keys off original `(n,m)` work instead of expanded Kronecker system size, and prior K-005 focus outliers (`cholesky::inverse(32)`, `sylvester::solve_sylvester(24)`, `eigen::generalized(16)`) are now all at or better than parity in the latest provider compare.
-139. K-005 compile-matrix parity is now fixed for `magma-system`: `eigen` MAGMA+lapack fallback routing no longer duplicates validation on non-eligible shapes, `matrix_functions` scalar bounds are aligned for `lapack-provider + magma-system`, and local clippy passes for `--no-default-features --features magma-system`.
-140. Remote RTX 4090 rerun after the K-005 parity patch is complete: strict verification is green (`job-20260308T155035Z.log`, `rc=0`) and provider compare was refreshed (`comparison-20260308T154226Z.md`), with `eigen::generalized(32)` now in parity class (`~0.983x`) and remaining decomposition regressions concentrated in `cholesky::{inverse,solve}` plus `eigen::generalized(48)` in this run (noting visible host-level run-to-run variance).
-141. K-005 decomposition stability sweep is complete with repeated same-host sampling (`REPEATS=5`, `stability-20260308T162602Z.md`): decomposition scope medians stay near parity (`~0.997` to `~1.005`) and no regression remains persistently >`1.03x` across the recent rerun set, so K-005 is now treated as monitor-only.
-142. `K-006` ownership-boundary lock is complete for MAGMA routing policy: provider-specific decomposition routing/strict/verify policy moved from `internal::DenseKernelPolicy` into `provider::policy::MagmaProviderPolicy`, with decomposition/batched/sparse callsites rewired and feature-matrix compile checks green.
-143. Tensor algebra depth beyond v1 has advanced: rank-3 CP decomposition via ALS is now implemented (`cp_als3`, view/reconstruct/into variants) with deterministic SVD initialization and dedicated `f32`/`f64` reconstruction/error tests.
-144. Tensor decomposition depth now includes higher-rank HOSVD/Tucker surfaces for real tensors: `hosvd_nd`, `hosvd_nd_view`, `hosvd_nd_reconstruct`, and `hosvd_nd_reconstruct_into`, with parity/error tests across internal/provider compile matrices.
-145. Tensor-network depth now includes TT-SVD for real tensors: `tt_svd`, `tt_svd_view`, `tt_svd_reconstruct`, and `tt_svd_reconstruct_into` are implemented with rank-truncation configuration and `f32`/`f64` parity/error tests across internal/provider compile matrices.
-146. Tensor decomposition depth now includes `N`-D HOOI Tucker refinement for real tensors: `hooi_nd` and `hooi_nd_view` are implemented with configurable convergence policy (`HooiConfig<T>`) and `f32`/`f64` parity/error tests across internal/provider compile matrices.
-147. Tensor decomposition depth now includes `N`-D CP-ALS for real tensors: `cp_als_nd`, `cp_als_nd_view`, `cp_als_nd_reconstruct`, and `cp_als_nd_reconstruct_into` are implemented with shared N-D MTTKRP helpers and `f32`/`f64` parity/error tests across internal/provider compile matrices.
-148. Tensor-network ergonomics now include TT orthogonalization/rounding utilities: `tt_orthogonalize_left`, `tt_orthogonalize_right`, and `tt_round` (with `TtRoundConfig<T>`) are implemented with reconstruction-preservation and rank-compression parity tests across internal/provider compile matrices.
-149. Tensor-network algebra now includes TT binary/scalar utilities: `tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, and `tt_hadamard_round` are implemented with shape-safety/error contracts and `f32`/`f64` parity/reconstruction tests across internal/provider compile matrices.
-150. Production-readiness is now anchored by explicit external-reference rubric policy: `docs/REFERENCE_RUBRIC.md` defines domain anchors and objective done/v1-ready gates, and this rubric is linked from docs index/resume order and locked decisions.
-151. CP diagnostics/convergence depth is now explicit for rank-3 and N-D CP-ALS: report-returning decomposition APIs (`cp_als3_with_report`, `cp_als_nd_with_report`) and diagnostics helpers (`cp_als3_diagnostics*`, `cp_als_nd_diagnostics*`) provide fit/residual/relative-error metrics plus ALS convergence summaries across internal/provider compile matrices.
-152. Tucker ergonomics/utilities are now explicit for N-D workflows: projection/expansion APIs over explicit factor sets (`tucker_project*`, `tucker_expand*`) are implemented with owned/view/into variants and strict shape-validation contracts across internal/provider compile matrices.
-153. K-005 monitor automation is now first-class in remote workflow: `magma_provider_bench_decomposition_job.sh` now records persistent slowdown sets (threshold + run-count aware), and `magma_k005_monitor_job.sh` provides strict repeat-based gating (`REPEATS=5`, ratio >`1.03` in `>=4` runs) to fail only on persistent regressions.
-154. Benchmark smoke CI regression enforcement is now advisory on shared GitHub runners to reduce noise-driven red builds: threshold checks still run and publish warnings/artifacts, but transient performance variance no longer hard-fails the `benchmark-smoke` job.
-155. MAGMA/OpenBLAS hard-fact evidence export is now scripted for release-lto decomposition scope: `magma_proof_pack_job.sh` runs LTO provider decomposition comparisons and writes a publication-ready summary (`coverage/gpu-v2/magma/bench/decomposition/proof-pack-latest.md`) with strongest wins/losses and persistent-slowdown rows.
-156. K-005 monitor/proof-pack hardening is now landed and validated on RTX 4090: canonical decomposition compare uses `openblas-system` baseline vs `openblas-system+magma-system` overlay, stale benchmark summaries are rejected, run order is alternated per repeat, and persistent regressions require both ratio and effect-size gating (`ratio > 1.03` and `delta_ns > 5000`); latest LTO stability rerun reports `persistent_regression_count = 0` (`stability-20260309T130811Z.json`).
-157. K-005 lock-confirmation reruns on current `main` are now complete and green: monitor run (`stability-20260309T135201Z.json`, `REPEATS=5`) and LTO proof-pack run (`stability-20260309T140157Z.json`, `proof-pack-20260309T140157Z.md`) both report `persistent_regression_count = 0`, so K-005 remains monitor-only with no new optimization patch opened in this pass.
 
 ## Current Code Ownership
 
@@ -178,8 +141,9 @@ Workspace migration for library domains is complete.
    - ML/statistics-oriented domains:
      `iterative`, `jacobian`, `pca`, `regression`, `stats`.
 4. `crates/nabled/src/` (facade crate)
-   - facade `lib.rs`, optional facade-only interop modules (for example feature `arrow`), and
-     binary/reporting tools only.
+   - facade `lib.rs` and binary/reporting tools only.
+5. `crates/pynabled`
+   - PyO3-based Python bindings exposing nabled linear algebra and ML APIs; NumPy arrays as canonical data type.
 
 ## Constraints In Force
 
@@ -189,7 +153,6 @@ Workspace migration for library domains is complete.
 4. Quality gates remain strict (`just checks`, clippy `-D warnings`, tests, coverage >= 90%).
 5. Backend selection is compile-time only; no runtime backend dispatch.
 6. Public APIs should remain backend-agnostic.
-7. Arrow integration belongs only in the facade crate; lower crates remain Arrow-free.
 
 ## Operational Notes
 
@@ -202,9 +165,9 @@ Workspace migration for library domains is complete.
 
 GPU phase-2 continuation:
 
-1. Keep `K-005` in monitor mode with repeated same-host decomposition sweeps; reopen optimization only for persistent regressions.
-2. Tensor algebra post-v1 rubric (`D-179..D-182`) is complete; tensor expansion is now monitor-only unless explicit new tracker items are approved.
-3. Arrow interop is now at the current contract ceiling for implementable real-valued workflows; additional Arrow breadth requires an explicit new contract decision (for example complex Arrow representation or Arrow-native multi-output result structs).
+1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`).
+2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
+3. Execute remaining phase-2 follow-ons from `V2-008`/`V2-009` (sparse iterative/preconditioned solve acceleration and mixed-precision expansion beyond LU-only APIs).
 
 ## Completion Criteria For Migration
 

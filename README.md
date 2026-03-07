@@ -50,6 +50,28 @@ fn main() -> Result<(), nabled::linalg::svd::SVDError> {
 
 Review more examples in `crates/nabled/examples`.
 
+## Python
+
+Python bindings are available via the `pynabled` package. Install with [maturin](https://github.com/PyO3/maturin):
+
+```bash
+pip install maturin numpy
+maturin develop
+```
+
+Then use nabled from Python with NumPy arrays:
+
+```python
+import numpy as np
+import pynabled
+
+a = np.array([[1., 2.], [3., 4.]], dtype=np.float64)
+u, s, vt = pynabled.svd_decompose(a)
+print("singular values:", s)
+```
+
+The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, batched decompositions, tensor ops, regression, PCA, and statistics. See `python/pynabled/__init__.py` for the full API surface.
+
 ## Namespaced API
 
 1. `nabled::core`: shared errors, validation, and prelude exports.
