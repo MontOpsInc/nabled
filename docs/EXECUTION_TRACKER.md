@@ -194,12 +194,20 @@ Use this file to resume work quickly after context compaction without re-auditin
 152. `D-152`: `K-005` phase-3 is complete: batched decomposition routing for MAGMA-supported domains (`lu`, `cholesky`, `qr`) is now dynamic and policy-driven via batch-size + shape/work heuristics.
 153. `D-153`: `K-005` phase-4 (policy-caching portion) is complete: decomposition/batched routing env lookups are cached via `OnceLock` in `DenseKernelPolicy`; remaining phase-4 work is remote provider benchmark rerun and outlier refresh.
 154. `D-154`: MAGMA strict-verification harness landed: dense/batched MAGMA runtime failures now respect `NABLED_MAGMA_STRICT=1` (fail-fast instead of silent fallback), and remote workflow includes `magma-strict-verify` with forced decomposition-threshold overrides to exercise MAGMA code paths under test.
+155. `D-155`: `K-005` phase-4 strict verification is complete on remote RTX 4090 (`magma-verify` and `magma-strict-verify` both `rc=0`), and strict logs are clean for prior CUDA sparse context noise signatures (`cusparseCreate/cusparseSetStream`, `provider_alloc_failed`, and memory-free error lines).
+156. `D-156`: `K-005` phase-4 benchmark rerun/outlier refresh is complete on remote RTX 4090: provider compare (`openblas-system` vs `magma-system`) was rerun on current routing/caching code and refreshed outlier rankings are captured in `docs/BENCHMARK_TRACKER.md` plus `coverage/gpu-v2/magma/bench/*-summary.json`.
+157. `D-157`: MAGMA release-signoff ledger is now explicit in `docs/MAGMA_SIGNOFF.md` with stable API IDs, route conditions, execution-proof evidence hooks, and pending direct-proof closure rows structured for future expansion into full public API x feature matrix coverage.
+158. `D-158`: MAGMA signoff direct-proof closure is complete for previously pending rows (`MAG-D-017`, `MAG-D-021`, `MAG-D-026`, `MAG-D-027`, `MAG-D-028`, `MAG-D-029`) using remote strict+forced execution evidence; remaining MAGMA work is now tracked explicitly as implementation breadth/runtime-hygiene backlog (`MAG-L-*`) in `docs/MAGMA_SIGNOFF.md`.
+159. `D-159`: `MAG-L-004` is complete: forced strict sparse+dense execution matrices now pass under `NABLED_MAGMA_STRICT=1` with deterministic clean logs, and a full remote `magma-strict-verify` run (`job-20260307T195725Z.log`) is green without cuSPARSE context-noise lines.
+160. `D-160`: `MAG-L-005` is complete: MAGMA signoff is now expanded to one row per MAGMA-scope public function in `docs/MAGMA_PUBLIC_API_MATRIX.md`, with each row mapped to a verified canonical route ID.
+161. `D-161`: `MAG-L-003` is complete: composed-domain MAGMA signoff (`schur`, `polar`, matrix-functions) now has explicit routed execution rows (`MAG-D-030..MAG-D-043`) with strict remote verification evidence (`job-20260307T203307Z.log`, `rc=0`).
+162. `D-162`: `MAG-L-001` and `MAG-L-002` are complete: batched `svd`/`symmetric_eigen` now attempt MAGMA routes in `M*` builds under `DenseKernelPolicy::prefer_magma_batched_decomposition` with strict fail-fast behavior, and remote symbol-scan evidence confirms native batched SVD/eigen MAGMA kernels are absent in the current runtime (`coverage/gpu-v2/magma/capability-batched-symbols-20260307.log`), making per-slice MAGMA routing the explicit contract.
+163. `D-163`: MAGMA strict verification workflow is hardened and validated on RTX 4090: strict jobs now serialize tests (`RUST_TEST_THREADS=1`), split baseline correctness from forced execution-matrix strict checks, assert execution-matrix test presence, and pass cleanly (`coverage/gpu-v2/magma/job-20260307T205521Z.log`, `coverage/gpu-v2/magma/strict-verification-20260307.log`).
 
 ## Next
 
-1. `K-005` phase-4 (remaining): run strict MAGMA verification on remote NVIDIA host (`scripts/gpu_remote.sh one <host> magma-strict-verify`) and archive the log under `coverage/gpu-v2/magma/`.
-2. `K-005` phase-4 (remaining): rerun remote provider benchmark comparison (`openblas-system` vs `magma-system`) after routing/caching changes and refresh ranked MAGMA outlier table.
-3. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+1. `K-005` follow-on: execute targeted optimization passes from refreshed MAGMA outlier rankings (starting with tiny-shape complex `matrix_functions`/`svd` hotspots and decomposition-path regressions).
+2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.

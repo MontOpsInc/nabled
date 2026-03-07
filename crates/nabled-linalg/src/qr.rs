@@ -354,7 +354,7 @@ fn decompose_internal<T: NabledReal + magma::MagmaReal>(
         match magma::qr_decompose(matrix, tolerance) {
             Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
             Err(error) => {
-                if DenseKernelPolicy::magma_strict_mode() {
+                if DenseKernelPolicy::magma_fail_fast_mode() {
                     return Err(map_qr_magma_error(error));
                 }
             }
@@ -415,7 +415,7 @@ where
         match magma::qr_decompose(matrix, tolerance) {
             Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
             Err(error) => {
-                if DenseKernelPolicy::magma_strict_mode() {
+                if DenseKernelPolicy::magma_fail_fast_mode() {
                     return Err(map_qr_magma_error(error));
                 }
             }
@@ -516,7 +516,7 @@ fn decompose_complex_provider(
         match magma::qr_decompose_complex(matrix, tolerance) {
             Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
             Err(error) => {
-                if DenseKernelPolicy::magma_strict_mode() {
+                if DenseKernelPolicy::magma_fail_fast_mode() {
                     return Err(map_qr_magma_error(error));
                 }
             }

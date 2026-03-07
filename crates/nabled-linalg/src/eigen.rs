@@ -6,7 +6,7 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::{Complex, Complex64};
 
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 use crate::internal::jacobi_eigen_symmetric;
 use crate::internal::{DenseKernelPolicy, sort_eigenpairs_desc};
 #[cfg(feature = "magma-system")]
@@ -366,7 +366,7 @@ fn symmetric_internal<T: NabledReal + magma::MagmaReal>(
             return Ok(NdarrayEigenResult { eigenvalues, eigenvectors });
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_strict_mode() {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
                 return Err(map_eigen_magma_error(error));
             }
         }
@@ -643,7 +643,7 @@ fn nonsymmetric_complex_provider(
             Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_strict_mode() {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
                 return Err(map_eigen_magma_error(error));
             }
             #[cfg(not(feature = "lapack-provider"))]

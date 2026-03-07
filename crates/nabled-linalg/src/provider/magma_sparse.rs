@@ -2,6 +2,8 @@
 
 use std::ffi::{c_char, c_void};
 use std::sync::OnceLock;
+#[cfg(test)]
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ndarray::{Array1, Array2};
 
@@ -11,7 +13,6 @@ const MAGMA_DENSE: i32 = 614;
 const MAGMA_CPU: i32 = 571;
 const MAGMA_DEV: i32 = 572;
 const MAGMA_ROW_MAJOR: i32 = 101;
-const MAGMA_COL_MAJOR: i32 = 102;
 
 const CALLSITE_FUNC: &[u8] = b"nabled\0";
 const CALLSITE_FILE: &[u8] = b"provider/magma_sparse.rs\0";
@@ -19,6 +20,29 @@ const CALLSITE_FILE: &[u8] = b"provider/magma_sparse.rs\0";
 type MagmaQueue = *mut c_void;
 
 static MAGMA_SPARSE_INIT_STATUS: OnceLock<i32> = OnceLock::new();
+
+#[cfg(test)]
+static MAGMA_SPARSE_PROVIDER_CALLS: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+#[inline]
+fn mark_magma_sparse_provider_call() {
+    let _previous = MAGMA_SPARSE_PROVIDER_CALLS.fetch_add(1, Ordering::Relaxed);
+}
+
+#[cfg(not(test))]
+#[inline]
+fn mark_magma_sparse_provider_call() {}
+
+#[cfg(test)]
+pub(crate) fn reset_magma_sparse_provider_call_count() {
+    MAGMA_SPARSE_PROVIDER_CALLS.store(0, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+pub(crate) fn magma_sparse_provider_call_count() -> u64 {
+    MAGMA_SPARSE_PROVIDER_CALLS.load(Ordering::Relaxed)
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -193,20 +217,6 @@ unsafe extern "C" {
         y: MagmaSMatrix,
         queue: MagmaQueue,
     ) -> i32;
-    fn magma_d_spmm(
-        alpha: f64,
-        a: MagmaDMatrix,
-        b: MagmaDMatrix,
-        c: *mut MagmaDMatrix,
-        queue: MagmaQueue,
-    ) -> i32;
-    fn magma_s_spmm(
-        alpha: f32,
-        a: MagmaSMatrix,
-        b: MagmaSMatrix,
-        c: *mut MagmaSMatrix,
-        queue: MagmaQueue,
-    ) -> i32;
     fn magma_dmfree(a: *mut MagmaDMatrix, queue: MagmaQueue) -> i32;
     fn magma_smfree(a: *mut MagmaSMatrix, queue: MagmaQueue) -> i32;
 }
@@ -223,6 +233,7 @@ fn check_status(status: i32) -> Result<(), &'static str> {
 }
 
 fn ensure_magma_sparse_init() -> Result<(), &'static str> {
+    mark_magma_sparse_provider_call();
     let status = *MAGMA_SPARSE_INIT_STATUS.get_or_init(|| {
         // SAFETY: Process-global MAGMA initialization is idempotent on success paths.
         unsafe { magma_init() }
@@ -720,52 +731,11 @@ pub(crate) fn spmv_f32(
     Ok(Array1::from_vec(output))
 }
 
-fn dense_row_major_to_col_major_f64(dense: &Array2<f64>) -> Vec<f64> {
-    let mut converted = vec![0.0_f64; dense.len()];
-    for col in 0..dense.ncols() {
-        for row in 0..dense.nrows() {
-            converted[col * dense.nrows() + row] = dense[[row, col]];
-        }
-    }
-    converted
-}
-
-fn dense_row_major_to_col_major_f32(dense: &Array2<f32>) -> Vec<f32> {
-    let mut converted = vec![0.0_f32; dense.len()];
-    for col in 0..dense.ncols() {
-        for row in 0..dense.nrows() {
-            converted[col * dense.nrows() + row] = dense[[row, col]];
-        }
-    }
-    converted
-}
-
-fn dense_col_major_to_row_major_f64(col_major: &[f64], rows: usize, cols: usize) -> Vec<f64> {
-    let mut converted = vec![0.0_f64; rows * cols];
-    for col in 0..cols {
-        for row in 0..rows {
-            converted[row * cols + col] = col_major[col * rows + row];
-        }
-    }
-    converted
-}
-
-fn dense_col_major_to_row_major_f32(col_major: &[f32], rows: usize, cols: usize) -> Vec<f32> {
-    let mut converted = vec![0.0_f32; rows * cols];
-    for col in 0..cols {
-        for row in 0..rows {
-            converted[row * cols + col] = col_major[col * rows + row];
-        }
-    }
-    converted
-}
-
 /// Compute sparse-dense multiplication via MAGMA sparse (`f64`).
 ///
 /// # Errors
 /// Returns an error for invalid sparse structure, shape mismatch, non-finite inputs, or provider
 /// failures.
-#[allow(clippy::too_many_lines)]
 pub(crate) fn spmm_f64(
     nrows: usize,
     ncols: usize,
@@ -783,134 +753,13 @@ pub(crate) fn spmm_f64(
         return Err("non_finite");
     }
 
-    let nrows_i32 = as_i32(nrows)?;
-    let ncols_i32 = as_i32(ncols)?;
-    let rhs_cols_i32 = as_i32(dense.ncols())?;
-    let queue = MagmaQueueGuard::new()?;
-
-    let mut row = row_ptrs.to_vec();
-    let mut col = col_indices.to_vec();
-    let mut val = values.to_vec();
-    let mut b_host = dense_row_major_to_col_major_f64(dense);
-
-    let mut a_cpu = DMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Buffers and out-matrix pointer are valid for the duration of the call.
-        unsafe {
-            magma_dcsrset(
-                nrows_i32,
-                ncols_i32,
-                row.as_mut_ptr(),
-                col.as_mut_ptr(),
-                val.as_mut_ptr(),
-                a_cpu.as_mut_ptr(),
-                queue.as_raw(),
-            )
-        },
-    )?;
-    a_cpu.mark_initialized();
-    a_cpu.matrix.storage_type = MAGMA_CSR;
-
-    let mut a_dev = DMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Source matrix is valid and destination pointer is writable.
-        unsafe {
-            magma_dmtransfer(
-                a_cpu.value(),
-                a_dev.as_mut_ptr(),
-                MAGMA_CPU,
-                MAGMA_DEV,
-                queue.as_raw(),
-            )
-        },
-    )?;
-    a_dev.mark_initialized();
-
-    let mut b_cpu = DMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Host dense buffer and output matrix pointer are valid.
-        unsafe {
-            magma_dvset(
-                ncols_i32,
-                rhs_cols_i32,
-                b_host.as_mut_ptr(),
-                b_cpu.as_mut_ptr(),
-                queue.as_raw(),
-            )
-        },
-    )?;
-    b_cpu.mark_initialized();
-    b_cpu.matrix.storage_type = MAGMA_DENSE;
-    b_cpu.matrix.major = MAGMA_COL_MAJOR;
-
-    let mut b_dev = DMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Source matrix is valid and destination pointer is writable.
-        unsafe {
-            magma_dmtransfer(
-                b_cpu.value(),
-                b_dev.as_mut_ptr(),
-                MAGMA_CPU,
-                MAGMA_DEV,
-                queue.as_raw(),
-            )
-        },
-    )?;
-    b_dev.mark_initialized();
-
-    let mut c_dev = DMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Input matrices are valid and output pointer is writable.
-        unsafe {
-            magma_d_spmm(1.0, a_dev.value(), b_dev.value(), c_dev.as_mut_ptr(), queue.as_raw())
-        },
-    )?;
-    c_dev.mark_initialized();
-    queue.sync();
-
-    let mut c_cpu = DMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Source matrix is valid and destination pointer is writable.
-        unsafe {
-            magma_dmtransfer(
-                c_dev.value(),
-                c_cpu.as_mut_ptr(),
-                MAGMA_DEV,
-                MAGMA_CPU,
-                queue.as_raw(),
-            )
-        },
-    )?;
-    c_cpu.mark_initialized();
-
-    let mut out_rows = 0_i32;
-    let mut out_cols = 0_i32;
-    let mut out_ptr: *mut f64 = std::ptr::null_mut();
-    check_status(
-        // SAFETY: Output matrix is valid and out-pointers are writable.
-        unsafe {
-            magma_dvget(
-                c_cpu.value(),
-                &raw mut out_rows,
-                &raw mut out_cols,
-                &raw mut out_ptr,
-                queue.as_raw(),
-            )
-        },
-    )?;
-    if out_rows != nrows_i32 || out_cols != rhs_cols_i32 || out_ptr.is_null() {
-        return Err("provider_failure");
+    let mut output = Array2::<f64>::zeros((nrows, dense.ncols()));
+    for col in 0..dense.ncols() {
+        let rhs = dense.column(col).to_owned();
+        let y = spmv_f64(nrows, ncols, row_ptrs, col_indices, values, &rhs)?;
+        output.column_mut(col).assign(&y);
     }
-
-    // SAFETY: `out_ptr` is validated non-null and `out_rows*out_cols` elements are available.
-    let raw = unsafe {
-        std::slice::from_raw_parts(out_ptr, nrows.saturating_mul(dense.ncols())).to_vec()
-    };
-    let output = dense_col_major_to_row_major_f64(&raw, nrows, dense.ncols());
-    if output.iter().any(|value| !value.is_finite()) {
-        return Err("non_finite");
-    }
-    Array2::from_shape_vec((nrows, dense.ncols()), output).map_err(|_| "provider_failure")
+    Ok(output)
 }
 
 /// Compute sparse-dense multiplication via MAGMA sparse (`f32`).
@@ -918,7 +767,6 @@ pub(crate) fn spmm_f64(
 /// # Errors
 /// Returns an error for invalid sparse structure, shape mismatch, non-finite inputs, or provider
 /// failures.
-#[allow(clippy::too_many_lines)]
 pub(crate) fn spmm_f32(
     nrows: usize,
     ncols: usize,
@@ -936,132 +784,11 @@ pub(crate) fn spmm_f32(
         return Err("non_finite");
     }
 
-    let nrows_i32 = as_i32(nrows)?;
-    let ncols_i32 = as_i32(ncols)?;
-    let rhs_cols_i32 = as_i32(dense.ncols())?;
-    let queue = MagmaQueueGuard::new()?;
-
-    let mut row = row_ptrs.to_vec();
-    let mut col = col_indices.to_vec();
-    let mut val = values.to_vec();
-    let mut b_host = dense_row_major_to_col_major_f32(dense);
-
-    let mut a_cpu = SMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Buffers and out-matrix pointer are valid for the duration of the call.
-        unsafe {
-            magma_scsrset(
-                nrows_i32,
-                ncols_i32,
-                row.as_mut_ptr(),
-                col.as_mut_ptr(),
-                val.as_mut_ptr(),
-                a_cpu.as_mut_ptr(),
-                queue.as_raw(),
-            )
-        },
-    )?;
-    a_cpu.mark_initialized();
-    a_cpu.matrix.storage_type = MAGMA_CSR;
-
-    let mut a_dev = SMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Source matrix is valid and destination pointer is writable.
-        unsafe {
-            magma_smtransfer(
-                a_cpu.value(),
-                a_dev.as_mut_ptr(),
-                MAGMA_CPU,
-                MAGMA_DEV,
-                queue.as_raw(),
-            )
-        },
-    )?;
-    a_dev.mark_initialized();
-
-    let mut b_cpu = SMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Host dense buffer and output matrix pointer are valid.
-        unsafe {
-            magma_svset(
-                ncols_i32,
-                rhs_cols_i32,
-                b_host.as_mut_ptr(),
-                b_cpu.as_mut_ptr(),
-                queue.as_raw(),
-            )
-        },
-    )?;
-    b_cpu.mark_initialized();
-    b_cpu.matrix.storage_type = MAGMA_DENSE;
-    b_cpu.matrix.major = MAGMA_COL_MAJOR;
-
-    let mut b_dev = SMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Source matrix is valid and destination pointer is writable.
-        unsafe {
-            magma_smtransfer(
-                b_cpu.value(),
-                b_dev.as_mut_ptr(),
-                MAGMA_CPU,
-                MAGMA_DEV,
-                queue.as_raw(),
-            )
-        },
-    )?;
-    b_dev.mark_initialized();
-
-    let mut c_dev = SMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Input matrices are valid and output pointer is writable.
-        unsafe {
-            magma_s_spmm(1.0, a_dev.value(), b_dev.value(), c_dev.as_mut_ptr(), queue.as_raw())
-        },
-    )?;
-    c_dev.mark_initialized();
-    queue.sync();
-
-    let mut c_cpu = SMatrixHandle::new(queue.as_raw());
-    check_status(
-        // SAFETY: Source matrix is valid and destination pointer is writable.
-        unsafe {
-            magma_smtransfer(
-                c_dev.value(),
-                c_cpu.as_mut_ptr(),
-                MAGMA_DEV,
-                MAGMA_CPU,
-                queue.as_raw(),
-            )
-        },
-    )?;
-    c_cpu.mark_initialized();
-
-    let mut out_rows = 0_i32;
-    let mut out_cols = 0_i32;
-    let mut out_ptr: *mut f32 = std::ptr::null_mut();
-    check_status(
-        // SAFETY: Output matrix is valid and out-pointers are writable.
-        unsafe {
-            magma_svget(
-                c_cpu.value(),
-                &raw mut out_rows,
-                &raw mut out_cols,
-                &raw mut out_ptr,
-                queue.as_raw(),
-            )
-        },
-    )?;
-    if out_rows != nrows_i32 || out_cols != rhs_cols_i32 || out_ptr.is_null() {
-        return Err("provider_failure");
+    let mut output = Array2::<f32>::zeros((nrows, dense.ncols()));
+    for col in 0..dense.ncols() {
+        let rhs = dense.column(col).to_owned();
+        let y = spmv_f32(nrows, ncols, row_ptrs, col_indices, values, &rhs)?;
+        output.column_mut(col).assign(&y);
     }
-
-    // SAFETY: `out_ptr` is validated non-null and `out_rows*out_cols` elements are available.
-    let raw = unsafe {
-        std::slice::from_raw_parts(out_ptr, nrows.saturating_mul(dense.ncols())).to_vec()
-    };
-    let output = dense_col_major_to_row_major_f32(&raw, nrows, dense.ncols());
-    if output.iter().any(|value| !value.is_finite()) {
-        return Err("non_finite");
-    }
-    Array2::from_shape_vec((nrows, dense.ncols()), output).map_err(|_| "provider_failure")
+    Ok(output)
 }

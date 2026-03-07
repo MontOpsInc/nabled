@@ -45,6 +45,28 @@ MAGMA_SPARSE_LIB="${MAGMA_SPARSE_LIB:-$(ldconfig -p 2>/dev/null | awk '/libmagma
     echo "count=0"
   fi
   echo
+  echo "## Batched Decomposition Symbols"
+  if [[ -n "${MAGMA_LIB}" ]]; then
+    echo "### Present and used"
+    used_count="$(nm -D "${MAGMA_LIB}" 2>/dev/null | rg -c 'getrf_batched|potrf_batched|geqrf_batched' || true)"
+    echo "count=${used_count}"
+    nm -D "${MAGMA_LIB}" 2>/dev/null \
+      | rg 'getrf_batched|potrf_batched|geqrf_batched' -N \
+      | head -80 || true
+    echo
+    echo "### Desired (SVD / symmetric eigen)"
+    desired_count="$(
+      nm -D "${MAGMA_LIB}" 2>/dev/null \
+        | rg -c 'gesvd(_batched)?|gesdd(_batched)?|gesvdj(_batched)?|gesvdx(_batched)?|syevd(_batched)?|heevd(_batched)?' || true
+    )"
+    echo "count=${desired_count}"
+    nm -D "${MAGMA_LIB}" 2>/dev/null \
+      | rg 'gesvd(_batched)?|gesdd(_batched)?|gesvdj(_batched)?|gesvdx(_batched)?|syevd(_batched)?|heevd(_batched)?' -N \
+      | head -120 || true
+  else
+    echo "count=0"
+  fi
+  echo
   echo "## Headers"
   ls /usr/include/magma*.h /usr/include/magmasparse*.h 2>/dev/null | sort || true
 } | tee "${OUT_FILE}"

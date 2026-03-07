@@ -150,7 +150,7 @@ fn decompose_internal<T: NabledReal + magma::MagmaReal>(
                 return Ok(NdarraySVD { u, singular_values, vt });
             }
             Err(error) => {
-                if DenseKernelPolicy::magma_strict_mode() {
+                if DenseKernelPolicy::magma_fail_fast_mode() {
                     return Err(map_svd_magma_error(error));
                 }
             }
@@ -253,7 +253,7 @@ fn decompose_complex_provider(
     match magma::svd_decompose_complex(matrix) {
         Ok((u, singular_values, vt)) => Ok(NdarrayComplexSVD { u, singular_values, vt }),
         Err(error) => {
-            if DenseKernelPolicy::magma_strict_mode() {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
                 return Err(map_svd_magma_error(error));
             }
             decompose_complex_internal(matrix)

@@ -9,6 +9,7 @@ BASELINE_PROVIDER="${BASELINE_PROVIDER:-openblas-system}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-coverage/gpu-v2/magma}"
 BENCH_DIR="${ARTIFACT_DIR}/bench"
 VERIFY_LOG="${ARTIFACT_DIR}/verification.log"
+RUST_TEST_THREADS="${RUST_TEST_THREADS:-1}"
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -29,7 +30,13 @@ fi
   cargo +stable clippy --workspace --no-default-features --features magma-system --all-targets -- -D warnings
   echo
   echo "## Correctness Validation"
+  export RUST_TEST_THREADS
+  echo "RUST_TEST_THREADS=${RUST_TEST_THREADS}"
   cargo +stable test --workspace --no-default-features --features magma-system --lib -- --nocapture --show-output
+  echo
+  echo "## Forced MAGMA Execution Matrix (verify routing, allow fallback on provider errors)"
+  NABLED_MAGMA_STRICT=0 cargo +stable test -p nabled-linalg --no-default-features --features magma-system magma_verification::magma_dense_provider_execution_matrix -- --exact --ignored --nocapture --show-output
+  NABLED_MAGMA_STRICT=0 cargo +stable test -p nabled-linalg --no-default-features --features magma-system magma_verification::magma_sparse_provider_execution_matrix -- --exact --ignored --nocapture --show-output
   cargo +stable test -p nabled --no-default-features --features magma-system --tests -- --nocapture --show-output
   echo
   echo "## Capability Report"

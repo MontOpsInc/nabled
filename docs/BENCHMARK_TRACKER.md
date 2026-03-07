@@ -362,7 +362,7 @@ Artifacts:
 Summary:
 
 1. Both provider runs produced complete benchmark summaries (`289` common benchmark entries).
-2. Median ratio (`magma/openblas`) across all entries is near parity (`~0.997`), with domain-specific outliers concentrated in tiny-shape decomposition cases where fixed provider overhead dominates.
+2. Median ratio (`magma/openblas`) across all entries is near parity (`~1.001`), with domain-specific outliers concentrated in tiny-shape decomposition cases where fixed provider overhead dominates.
 3. For decomposition-heavy domains, MAGMA is mixed by operation/size and should be tuned via outlier-ranked follow-up (`K-005`) rather than treated as globally faster/slower.
 
 ### K-005 Phase-1 (small-shape MAGMA routing)
@@ -377,8 +377,38 @@ Summary:
 4. Intent:
    - avoid fixed MAGMA launch/transfer overhead on tiny decomposition shapes,
    - preserve MAGMA path for larger workloads where GPU/provider acceleration is beneficial.
-5. Follow-up required:
-   - rerun remote provider compare (`openblas-system` vs `magma-system`) and refresh ranked outlier tables after this routing pass.
+5. Follow-up rerun completed:
+   - remote provider compare (`openblas-system` vs `magma-system`) was rerun after routing/caching changes, and outlier tables were refreshed from current artifacts.
+
+### Post-routing Outlier Snapshot (Nabled Decomposition Domains)
+
+Scope:
+
+1. Entries filtered to nabled decomposition/matrix-function domains (`lu`, `cholesky`, `qr`, `svd`, `eigen`, `schur`, `polar`, `sylvester`, `matrix_functions`).
+2. Common entries in scope: `62`.
+3. Aggregate ratio (`magma/openblas`) in scope: median `~1.051`, p90 `~7.079`.
+
+Top regressions (highest `magma/openblas`):
+
+1. `matrix_functions_nabled_ndarray/matrix_log_eigen_complex/16` -> `30.685x`
+2. `matrix_functions_nabled_ndarray/matrix_power_half_complex/16` -> `30.630x`
+3. `matrix_functions_nabled_ndarray/matrix_log_eigen_complex/8` -> `26.645x`
+4. `matrix_functions_nabled_ndarray/matrix_power_half_complex/8` -> `26.531x`
+5. `svd_nabled_ndarray/full_svd_complex/32` -> `25.621x`
+6. `svd_nabled_ndarray/full_svd_complex/16` -> `23.546x`
+7. `sylvester_nabled_ndarray/solve_sylvester/square-16x16` -> `7.079x`
+8. `lu_nabled_ndarray/determinant/96` -> `3.725x`
+
+Top improvements (lowest `magma/openblas`):
+
+1. `svd_nabled_ndarray/truncated_svd/96` -> `0.145x`
+2. `qr_nabled_ndarray/least_squares/32` -> `0.208x`
+3. `svd_nabled_ndarray/full_svd/96` -> `0.285x`
+4. `qr_nabled_ndarray/least_squares/64` -> `0.367x`
+5. `qr_nabled_ndarray/least_squares/96` -> `0.411x`
+6. `schur_nabled_ndarray/compute_schur/square-16x16` -> `0.534x`
+7. `svd_nabled_ndarray/truncated_svd/64` -> `0.571x`
+8. `svd_nabled_ndarray/full_svd/64` -> `0.574x`
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

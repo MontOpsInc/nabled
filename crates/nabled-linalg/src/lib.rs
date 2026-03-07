@@ -58,6 +58,8 @@ use crate::vector::VectorError;
 pub mod accelerator;
 pub mod batched;
 mod internal;
+#[cfg(all(test, feature = "magma-system"))]
+mod magma_verification;
 mod provider;
 
 pub mod cholesky;

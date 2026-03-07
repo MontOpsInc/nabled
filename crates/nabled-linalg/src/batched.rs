@@ -52,6 +52,29 @@ fn map_magma_batched_cholesky_error(error: &'static str) -> cholesky::CholeskyEr
     }
 }
 
+#[cfg(feature = "magma-system")]
+fn map_magma_batched_svd_error(error: &'static str) -> svd::SVDError {
+    match error {
+        "empty" => svd::SVDError::EmptyMatrix,
+        "convergence_failed" => svd::SVDError::ConvergenceFailed,
+        "non_finite" => svd::SVDError::InvalidInput("matrix must be finite".to_string()),
+        _ => svd::SVDError::InvalidInput(error.to_string()),
+    }
+}
+
+#[cfg(feature = "magma-system")]
+fn map_magma_batched_eigen_error(error: &'static str) -> eigen::EigenError {
+    match error {
+        "empty" => eigen::EigenError::EmptyMatrix,
+        "not_square" => eigen::EigenError::NotSquare,
+        "not_symmetric" => eigen::EigenError::NotSymmetric,
+        "invalid_dimensions" | "bad_dimensions" => eigen::EigenError::InvalidDimensions,
+        "not_positive_definite" => eigen::EigenError::NotPositiveDefinite,
+        "convergence_failed" => eigen::EigenError::ConvergenceFailed,
+        _ => eigen::EigenError::NumericalInstability,
+    }
+}
+
 /// Compute QR decomposition for each matrix in a batch.
 ///
 /// Input shape is `(batch, rows, cols)`.
@@ -157,7 +180,7 @@ where
             Ok(output)
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_strict_mode() {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
                 return Err(map_magma_batched_qr_error(error));
             }
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
@@ -210,7 +233,7 @@ where
             Ok(output)
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_strict_mode() {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
                 return Err(map_magma_batched_qr_error(error));
             }
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
@@ -274,7 +297,34 @@ pub fn qr_view<T: qr::QrInternalScalar>(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+pub fn svd<T>(matrices: &Array3<T>) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError>
+where
+    T: NabledReal + magma::MagmaReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    svd_view(&matrices.view())
+}
+
+/// Compute SVD decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
+pub fn svd<T: svd::SvdInternalScalar>(
+    matrices: &Array3<T>,
+) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
+    svd_view(&matrices.view())
+}
+
+/// Compute SVD decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn svd<T>(matrices: &Array3<T>) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError>
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
@@ -288,7 +338,7 @@ where
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn svd<T: svd::SvdInternalScalar>(
     matrices: &Array3<T>,
 ) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
@@ -301,7 +351,98 @@ pub fn svd<T: svd::SvdInternalScalar>(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+pub fn svd_view<T>(matrices: &ArrayView3<'_, T>) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError>
+where
+    T: NabledReal + magma::MagmaReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(svd::SVDError::EmptyMatrix);
+    }
+    let (batch_count, rows, cols) = matrices.dim();
+
+    if DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols) {
+        let mut output = Vec::with_capacity(batch_count);
+        let mut provider_error = None;
+        for matrix in matrices.axis_iter(Axis(0)) {
+            match magma::svd_decompose(&matrix) {
+                Ok((u, singular_values, vt)) => {
+                    output.push(svd::NdarraySVD { u, singular_values, vt });
+                }
+                Err(error) => {
+                    provider_error = Some(error);
+                    break;
+                }
+            }
+        }
+        if let Some(error) = provider_error {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
+                return Err(map_magma_batched_svd_error(error));
+            }
+        } else {
+            return Ok(output);
+        }
+    }
+
+    let mut output = Vec::with_capacity(batch_count);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(svd::decompose_view(&matrix)?);
+    }
+    Ok(output)
+}
+
+/// Compute SVD decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
+pub fn svd_view<T: svd::SvdInternalScalar>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(svd::SVDError::EmptyMatrix);
+    }
+    let (batch_count, rows, cols) = matrices.dim();
+
+    if DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols) {
+        let mut output = Vec::with_capacity(batch_count);
+        let mut provider_error = None;
+        for matrix in matrices.axis_iter(Axis(0)) {
+            match magma::svd_decompose(&matrix) {
+                Ok((u, singular_values, vt)) => {
+                    output.push(svd::NdarraySVD { u, singular_values, vt });
+                }
+                Err(error) => {
+                    provider_error = Some(error);
+                    break;
+                }
+            }
+        }
+        if let Some(error) = provider_error {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
+                return Err(map_magma_batched_svd_error(error));
+            }
+        } else {
+            return Ok(output);
+        }
+    }
+
+    let mut output = Vec::with_capacity(batch_count);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(svd::decompose_view(&matrix)?);
+    }
+    Ok(output)
+}
+
+/// Compute SVD decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn svd_view<T>(matrices: &ArrayView3<'_, T>) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError>
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
@@ -322,7 +463,7 @@ where
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn svd_view<T: svd::SvdInternalScalar>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<svd::NdarraySVD<T>>, svd::SVDError> {
@@ -407,7 +548,7 @@ where
             Ok(output)
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_strict_mode() {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
                 return Err(map_magma_batched_lu_error(error));
             }
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
@@ -540,7 +681,7 @@ where
             Ok(output)
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_strict_mode() {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
                 return Err(map_magma_batched_cholesky_error(error));
             }
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
@@ -602,12 +743,12 @@ pub fn cholesky_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
 pub fn symmetric_eigen<T>(
     matrices: &Array3<T>,
 ) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: NabledReal + magma::MagmaReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
 {
     symmetric_eigen_view(&matrices.view())
 }
@@ -618,7 +759,36 @@ where
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
+pub fn symmetric_eigen<T: eigen::EigenInternalScalar>(
+    matrices: &Array3<T>,
+) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError> {
+    symmetric_eigen_view(&matrices.view())
+}
+
+/// Compute symmetric eigen decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, n, n)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+pub fn symmetric_eigen<T>(
+    matrices: &Array3<T>,
+) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    symmetric_eigen_view(&matrices.view())
+}
+
+/// Compute symmetric eigen decomposition for each matrix in a batch.
+///
+/// Input shape is `(batch, n, n)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn symmetric_eigen<T: eigen::EigenInternalScalar>(
     matrices: &Array3<T>,
 ) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError> {
@@ -631,12 +801,109 @@ pub fn symmetric_eigen<T: eigen::EigenInternalScalar>(
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
 pub fn symmetric_eigen_view<T>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+    T: NabledReal + magma::MagmaReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(eigen::EigenError::EmptyMatrix);
+    }
+    let (batch_count, rows, cols) = matrices.dim();
+
+    if rows == cols
+        && DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols)
+    {
+        let mut output = Vec::with_capacity(batch_count);
+        let mut provider_error = None;
+        for matrix in matrices.axis_iter(Axis(0)) {
+            match magma::symmetric_eigen(&matrix) {
+                Ok((eigenvalues, eigenvectors)) => {
+                    output.push(eigen::NdarrayEigenResult { eigenvalues, eigenvectors });
+                }
+                Err(error) => {
+                    provider_error = Some(error);
+                    break;
+                }
+            }
+        }
+        if let Some(error) = provider_error {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
+                return Err(map_magma_batched_eigen_error(error));
+            }
+        } else {
+            return Ok(output);
+        }
+    }
+
+    let mut output = Vec::with_capacity(batch_count);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(eigen::symmetric_view(&matrix)?);
+    }
+    Ok(output)
+}
+
+/// Compute symmetric eigen decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, n, n)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
+pub fn symmetric_eigen_view<T: eigen::EigenInternalScalar>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError> {
+    if matrices.is_empty() || matrices.dim().0 == 0 {
+        return Err(eigen::EigenError::EmptyMatrix);
+    }
+    let (batch_count, rows, cols) = matrices.dim();
+
+    if rows == cols
+        && DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols)
+    {
+        let mut output = Vec::with_capacity(batch_count);
+        let mut provider_error = None;
+        for matrix in matrices.axis_iter(Axis(0)) {
+            match magma::symmetric_eigen(&matrix) {
+                Ok((eigenvalues, eigenvectors)) => {
+                    output.push(eigen::NdarrayEigenResult { eigenvalues, eigenvectors });
+                }
+                Err(error) => {
+                    provider_error = Some(error);
+                    break;
+                }
+            }
+        }
+        if let Some(error) = provider_error {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
+                return Err(map_magma_batched_eigen_error(error));
+            }
+        } else {
+            return Ok(output);
+        }
+    }
+
+    let mut output = Vec::with_capacity(batch_count);
+    for matrix in matrices.axis_iter(Axis(0)) {
+        output.push(eigen::symmetric_view(&matrix)?);
+    }
+    Ok(output)
+}
+
+/// Compute symmetric eigen decomposition for each matrix in a batch view.
+///
+/// Input shape is `(batch, n, n)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+pub fn symmetric_eigen_view<T>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
 {
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(eigen::EigenError::EmptyMatrix);
@@ -654,7 +921,7 @@ where
 ///
 /// # Errors
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn symmetric_eigen_view<T: eigen::EigenInternalScalar>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<eigen::NdarrayEigenResult<T>>, eigen::EigenError> {

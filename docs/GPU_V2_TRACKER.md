@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-07 (V2-008 sparse phase-2 + V2-009 mixed-precision phase-2 + K-005 phase-1/2 complete + strict MAGMA verification harness)
+Last updated: 2026-03-07 (V2-008 sparse phase-2 + V2-009 mixed-precision phase-2 + K-005 phase-1..4 complete with benchmark rerun/outlier refresh + MAG-L-001/002/004 closure)
 
 ## Purpose
 
@@ -12,6 +12,7 @@ This tracker is focused on:
 2. Runtime GPU routing policy for small vs large workloads.
 3. MAGMA provider integration (CUDA first).
 4. Verification harness for rapid remote iteration.
+5. MAGMA signoff evidence at per-API granularity (`docs/MAGMA_SIGNOFF.md`).
 
 ## Scope Lock
 
@@ -31,7 +32,7 @@ This tracker is focused on:
 | `V2-004` | MAGMA CUDA provider integration (scaffold + domain wiring) | Completed | MAGMA provider paths are wired for LU/Cholesky/QR/SVD/symmetric eigen, with provider-safe scalar bounds propagated across dependent domains. |
 | `V2-005` | MAGMA verification matrix + benchmark parity report | Completed | Remote RTX 4090 run completed with correctness/capability artifacts and provider benchmark summaries captured locally. |
 | `V2-006` | MAGMA provider breadth expansion (complex + additional decomposition domains) | Completed | Complex MAGMA provider paths now cover LU, Cholesky, QR, SVD, and non-symmetric eigen decomposition, with compile-time dispatch preference (`magma-system` > `lapack-provider` > internal) and explicit shape/error contracts. |
-| `V2-007` | MAGMA-native batched decomposition kernels | Completed | `nabled-linalg::batched` now uses MAGMA-native batched LU/Cholesky/QR for real-valued provider paths under `magma-system`; SVD/symmetric-eigen remain per-slice provider loops due no equivalent MAGMA batched kernels for current API contracts. |
+| `V2-007` | MAGMA-native batched decomposition kernels | Completed | `nabled-linalg::batched` uses MAGMA-native batched LU/Cholesky/QR; `batched::svd*` and `batched::symmetric_eigen*` now attempt MAGMA per-slice routes in `M*` builds with policy/strict gating, while native batched SVD/eigen symbols are absent in current MAGMA runtime (captured in `coverage/gpu-v2/magma/capability-batched-symbols-20260307.log`). |
 | `V2-008` | MAGMA sparse path assessment and integration plan | Completed | Assessment is complete and both sparse phases are implemented: dedicated `provider::magma_sparse` FFI lifecycle, phase-1 sparse kernels (`matvec`, sparse-dense `matmat`), and phase-2 iterative/preconditioned solves (`CG`, `PCG-Jacobi`, `GMRES`, `BiCGSTAB`, plus `ILU0`-preconditioned `GMRES`/`BiCGSTAB`) for `f32`/`f64` `i32` CSR views. |
 | `V2-009` | MAGMA mixed-precision and iterative-refinement opportunities | Completed | Availability was verified and phase-1/phase-2 implementations are landed: opt-in mixed-precision LU solve APIs plus Sylvester/Lyapunov mixed APIs (`solve_sylvester_mixed_*`, `solve_lyapunov_mixed_*`) now delegate to MAGMA refinement paths with explicit refinement/error contracts. |
 
@@ -52,7 +53,7 @@ V2 is considered complete only when all items below are true:
 1. Phase-1 complete: centralized small-shape decomposition MAGMA cutoff (`DenseKernelPolicy::prefer_magma_decomposition`) with env override.
 2. Phase-2 complete: `lapack-provider + magma-system` combined feature matrix is compile/clippy clean for `nabled-linalg`, with cfg precedence conflicts resolved across decomposition-adjacent domains.
 3. Phase-3 complete: dynamic batched decomposition routing is active for MAGMA-supported domains (`lu`, `cholesky`, `qr`) via `DenseKernelPolicy::prefer_magma_batched_decomposition`.
-4. Phase-4 partial complete: policy/env resolution is cached (`OnceLock`) to avoid repeated hot-path parsing; remaining work is remote provider rerun and outlier-table refresh.
+4. Phase-4 complete: policy/env resolution is cached (`OnceLock`), remote strict/normal MAGMA verification both pass on RTX 4090, and provider benchmark rerun/outlier refresh is completed on the current routing snapshot.
 
 ## Batched Surface Snapshot (Current)
 
@@ -61,7 +62,7 @@ V2 is considered complete only when all items below are true:
 1. `qr`, `svd`, `lu`, `cholesky`, `symmetric_eigen`.
 2. Current implementation strategy:
    - MAGMA-native batched kernels are used where available (`lu`, `cholesky`, `qr` under `magma-system`).
-   - Remaining domains use per-slice provider loops (`svd`, `symmetric_eigen`).
+   - `svd` and `symmetric_eigen` attempt MAGMA via per-slice provider routes (policy-gated) because native batched SVD/eigen symbols are absent in current MAGMA runtime.
 3. Acceleration model:
    - `Provider` accelerates either batched decomposition kernels directly or each per-slice decomposition.
 
@@ -78,7 +79,7 @@ V2 is considered complete only when all items below are true:
    - tensor N-D batched last-two matmul kernels (dispatch-backed)
 2. **Provider-backed decomposition batch paths (current):**
    - Native MAGMA batched kernels: `batched::{lu, cholesky, qr}` (real-valued, `magma-system`)
-   - Per-slice provider loops: `batched::{svd, symmetric_eigen}`
+   - Policy-gated per-slice MAGMA routes: `batched::{svd, symmetric_eigen}` (`M*`, strict-fail aware)
 3. **Implication for V2:**
    - `V2-007` is complete for decomposition kernels currently available in MAGMA while preserving explicit contracts for non-batched domains.
 
@@ -231,7 +232,7 @@ Integration plan (locked):
    - LU mixed convergence/singularity outcomes map to `SylvesterError::SingularSystem`
    - missing MAGMA feature maps to explicit `SylvesterError::InvalidInput` message
 
-## K-005 Phase-1 Result Snapshot
+## K-005 Result Snapshot
 
 1. Root-cause class for dominant MAGMA provider outliers was confirmed as tiny-shape fixed overhead.
 2. A centralized MAGMA size policy gate is now applied before selecting MAGMA decomposition kernels:
@@ -242,14 +243,34 @@ Integration plan (locked):
    - `lu` solve/inverse/determinant (real + complex),
    - `qr` decomposition provider paths (real + complex),
    - `svd` decomposition provider paths (real + complex).
-4. Next validation step:
-   - rerun remote provider benchmark comparison (`openblas-system` vs `magma-system`) and refresh ranked outlier tables for post-routing deltas.
+4. Strict/normal validation is now complete on remote RTX 4090:
+   - `scripts/gpu_remote.sh one <host> magma-verify` -> `rc=0`
+   - `scripts/gpu_remote.sh one <host> magma-strict-verify` -> `rc=0`
+   - strict log is clean for prior sparse CUDA context-noise signatures (`provider_alloc_failed`, memory-free error lines),
+     and forced execution-matrix stderr hygiene (`cusparseCreate`, `cusparseSetStream`) is now closed in `docs/MAGMA_SIGNOFF.md`.
+   - strict workflow now runs serialized tests (`RUST_TEST_THREADS=1`) and splits baseline correctness
+     from forced strict execution-matrix checks to keep MAGMA signoff signal deterministic.
+5. Post-routing provider benchmark rerun is complete (`openblas-system` vs `magma-system`) with refreshed outlier ranking artifacts:
+   - `coverage/gpu-v2/magma/bench/openblas-system-summary.json`
+   - `coverage/gpu-v2/magma/bench/magma-system-summary.json`
+6. Refreshed decomposition-focused ratio snapshot (`magma/openblas`, nabled decomposition domains only):
+   - common entries: `62`
+   - median ratio: `~1.051`
+   - p90 ratio: `~7.079`
+   - worst regressions remain concentrated in tiny-shape complex decomposition/matrix-function paths (for example `matrix_log_eigen_complex/8|16`, `matrix_power_half_complex/8|16`, `full_svd_complex/16|32`)
+   - strongest wins remain in larger real decomposition workloads (for example `truncated_svd/96`, `full_svd/96`, `least_squares/32|64|96`)
+7. MAGMA signoff expansion is complete at function granularity:
+   - canonical route ledger: `docs/MAGMA_SIGNOFF.md`
+   - one-row-per-public-function matrix: `docs/MAGMA_PUBLIC_API_MATRIX.md`
+8. Composed-domain MAGMA signoff is now closed:
+   - routed rows `MAG-D-030..MAG-D-043` (`schur`, `polar`, matrix-functions) are verified,
+   - strict remote evidence: `job-20260307T203307Z.log` (`rc=0`).
 
 ## MAGMA Expansion Scope (Post V2-005)
 
 This is the explicit capture of MAGMA-oriented scope closed in v2:
 
-1. Introduce MAGMA-native batched decomposition paths to reduce per-slice overhead in `nabled-linalg::batched`.
+1. Introduce MAGMA-native batched decomposition paths where available in `nabled-linalg::batched`; for unavailable kernels (`svd`/`symmetric_eigen`), lock explicit per-slice MAGMA routing with symbol-scan evidence.
 2. Assess MAGMA sparse APIs for fit with nabled sparse domain contracts (`CSR/CSC/COO`, preconditioners, solve reuse).
 3. Evaluate mixed-precision + iterative-refinement paths as opt-in high-performance workflows.
 

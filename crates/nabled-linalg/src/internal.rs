@@ -2,6 +2,9 @@
 
 #[cfg(feature = "magma-system")]
 use std::sync::OnceLock;
+#[cfg(feature = "magma-system")]
+#[cfg(test)]
+use std::sync::atomic::{AtomicI8, Ordering};
 
 use nabled_core::scalar::NabledReal;
 #[cfg(any(not(feature = "lapack-provider"), feature = "magma-system"))]
@@ -14,17 +17,28 @@ pub(crate) type LuDecomposition<T> = (Array2<T>, Array2<T>, Vec<usize>, i8);
 /// Shared tolerance/iteration policy for dense ndarray kernels.
 pub(crate) struct DenseKernelPolicy;
 
+#[cfg(all(feature = "magma-system", test))]
+static MAGMA_VERIFY_FORCE_OVERRIDE: AtomicI8 = AtomicI8::new(-1);
+
 impl DenseKernelPolicy {
     pub(crate) const BASE_TOLERANCE: f64 = DEFAULT_TOLERANCE;
     pub(crate) const JACOBI_MAX_ITERATIONS: usize = 256;
     #[cfg(feature = "magma-system")]
     pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_COUNT: usize = 32;
     #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_COUNT_FLOOR: usize = 8;
+    #[cfg(feature = "magma-system")]
     pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_DIM: usize = 32;
+    #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_DIM_FLOOR: usize = 16;
     #[cfg(feature = "magma-system")]
     pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_WORK: usize = 524_288;
     #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_BATCH_MIN_DECOMPOSITION_WORK_FLOOR: usize = 8_192;
+    #[cfg(feature = "magma-system")]
     pub(crate) const MAGMA_MIN_DECOMPOSITION_DIM: usize = 128;
+    #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_MIN_DECOMPOSITION_DIM_FLOOR: usize = 16;
     pub(crate) const MATRIX_FUNCTION_SERIES_TERMS: usize = 128;
     #[cfg(not(feature = "lapack-provider"))]
     pub(crate) const POLAR_MAX_ITERATIONS: usize = 64;
@@ -73,11 +87,31 @@ impl DenseKernelPolicy {
 
     #[cfg(feature = "magma-system")]
     #[must_use]
+    pub(crate) fn magma_verify_force_mode() -> bool {
+        static VALUE: OnceLock<bool> = OnceLock::new();
+        #[cfg(test)]
+        {
+            match MAGMA_VERIFY_FORCE_OVERRIDE.load(Ordering::Relaxed) {
+                0 => return false,
+                1 => return true,
+                _ => {}
+            }
+        }
+        *VALUE.get_or_init(|| Self::env_truthy("NABLED_MAGMA_VERIFY_FORCE"))
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
+    pub(crate) fn magma_fail_fast_mode() -> bool { Self::magma_strict_mode() }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
     pub(crate) fn magma_min_decomposition_dim() -> usize {
         static VALUE: OnceLock<usize> = OnceLock::new();
         *VALUE.get_or_init(|| {
             Self::env_positive_usize("NABLED_MAGMA_MIN_DECOMPOSITION_DIM")
                 .unwrap_or(Self::MAGMA_MIN_DECOMPOSITION_DIM)
+                .max(Self::MAGMA_MIN_DECOMPOSITION_DIM_FLOOR)
         })
     }
 
@@ -88,6 +122,7 @@ impl DenseKernelPolicy {
         *VALUE.get_or_init(|| {
             Self::env_positive_usize("NABLED_MAGMA_BATCH_MIN_DECOMPOSITION_COUNT")
                 .unwrap_or(Self::MAGMA_BATCH_MIN_DECOMPOSITION_COUNT)
+                .max(Self::MAGMA_BATCH_MIN_DECOMPOSITION_COUNT_FLOOR)
         })
     }
 
@@ -98,6 +133,7 @@ impl DenseKernelPolicy {
         *VALUE.get_or_init(|| {
             Self::env_positive_usize("NABLED_MAGMA_BATCH_MIN_DECOMPOSITION_DIM")
                 .unwrap_or(Self::MAGMA_BATCH_MIN_DECOMPOSITION_DIM)
+                .max(Self::MAGMA_BATCH_MIN_DECOMPOSITION_DIM_FLOOR)
         })
     }
 
@@ -108,12 +144,16 @@ impl DenseKernelPolicy {
         *VALUE.get_or_init(|| {
             Self::env_positive_usize("NABLED_MAGMA_BATCH_MIN_DECOMPOSITION_WORK")
                 .unwrap_or(Self::MAGMA_BATCH_MIN_DECOMPOSITION_WORK)
+                .max(Self::MAGMA_BATCH_MIN_DECOMPOSITION_WORK_FLOOR)
         })
     }
 
     #[cfg(feature = "magma-system")]
     #[must_use]
     pub(crate) fn prefer_magma_decomposition(rows: usize, cols: usize) -> bool {
+        if Self::magma_verify_force_mode() {
+            return rows > 0 && cols > 0;
+        }
         rows.min(cols) >= Self::magma_min_decomposition_dim()
     }
 
@@ -126,6 +166,9 @@ impl DenseKernelPolicy {
     ) -> bool {
         if batch == 0 || rows == 0 || cols == 0 {
             return false;
+        }
+        if Self::magma_verify_force_mode() {
+            return true;
         }
 
         let min_dim = rows.min(cols);
@@ -140,6 +183,16 @@ impl DenseKernelPolicy {
         let batch_work_ok = work >= Self::magma_batch_min_decomposition_work();
 
         batch_count_ok && batch_dim_ok && batch_work_ok
+    }
+
+    #[cfg(all(feature = "magma-system", test))]
+    pub(crate) fn set_magma_verify_force_override(value: Option<bool>) {
+        let encoded = match value {
+            None => -1,
+            Some(false) => 0,
+            Some(true) => 1,
+        };
+        MAGMA_VERIFY_FORCE_OVERRIDE.store(encoded, Ordering::Relaxed);
     }
 }
 

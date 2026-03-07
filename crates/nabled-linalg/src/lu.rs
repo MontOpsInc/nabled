@@ -105,7 +105,7 @@ fn is_magma_runtime_failure(error: &LUError) -> bool {
 
 #[cfg(feature = "magma-system")]
 fn should_fallback_magma_runtime(error: &LUError) -> bool {
-    !DenseKernelPolicy::magma_strict_mode() && is_magma_runtime_failure(error)
+    !DenseKernelPolicy::magma_fail_fast_mode() && is_magma_runtime_failure(error)
 }
 
 #[cfg(feature = "magma-system")]

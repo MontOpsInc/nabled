@@ -132,6 +132,14 @@ Workspace migration for library domains is complete.
 124. `V2-009` phase-2 mixed-precision expansion is now landed: Sylvester/Lyapunov expose mixed/refinement APIs (`solve_sylvester_mixed_*`, `solve_lyapunov_mixed_*`) with explicit `refinement_iterations` metadata and typed error mapping from LU mixed solves.
 125. `K-005` phase-1 MAGMA outlier remediation is now landed: tiny decomposition workloads are routed away from MAGMA via centralized size policy (`DenseKernelPolicy::prefer_magma_decomposition`, default cutoff `min(rows, cols) >= 128`, env override `NABLED_MAGMA_MIN_DECOMPOSITION_DIM`) across LU solve/inverse/determinant and QR/SVD decomposition paths (including downstream `polar`/`schur` flows).
 126. MAGMA verification hardening now includes strict mode: `NABLED_MAGMA_STRICT=1` disables fallback-on-provider-runtime-failure in dense/batched MAGMA decomposition paths, and remote workflow now supports `scripts/gpu_remote.sh one <host> magma-strict-verify` with forced threshold overrides to prove MAGMA execution coverage.
+127. Remote MAGMA verification is now clean and reproducible in both normal and strict modes on RTX 4090 (`magma-verify` + `magma-strict-verify` exit successfully), and prior sparse CUDA context noise signatures are absent in strict logs.
+128. `K-005` phase-4 provider rerun/outlier refresh is complete on RTX 4090: post-routing benchmark comparison (`openblas-system` vs `magma-system`) was rerun on the current snapshot and ranked outlier deltas are now refreshed in `docs/BENCHMARK_TRACKER.md` with artifacts under `coverage/gpu-v2/magma/bench/`.
+129. MAGMA release signoff is now tracked in `docs/MAGMA_SIGNOFF.md` with stable per-API IDs, route-condition metadata, and direct execution-proof coverage for all currently routed MAGMA rows.
+130. `MAG-L-004` runtime-hygiene closure is complete: forced strict sparse+dense execution matrices and full `magma-strict-verify` are green on remote RTX 4090 with no cuSPARSE context-noise lines.
+131. `MAG-L-005` function-matrix expansion is complete: one row per MAGMA-scope public function now exists in `docs/MAGMA_PUBLIC_API_MATRIX.md`, mapped to canonical verified route IDs.
+132. `MAG-L-003` composed-domain closure is complete: `schur`, `polar`, and matrix-function routed MAGMA rows (`MAG-D-030..MAG-D-043`) are now explicitly verified with strict remote evidence (`job-20260307T203307Z.log`, `rc=0`).
+133. `MAG-L-001` and `MAG-L-002` are complete: `batched::svd*` and `batched::symmetric_eigen*` now attempt MAGMA routes in `M*` builds with batched policy + strict-fail semantics, and remote symbol-scan evidence confirms native batched SVD/eigen kernels are absent in the current MAGMA runtime (`coverage/gpu-v2/magma/capability-batched-symbols-20260307.log`), so per-slice MAGMA routing is now the explicit contract.
+134. MAGMA strict verification workflow is now hardened and validated on RTX 4090: strict jobs serialize tests (`RUST_TEST_THREADS=1`), separate baseline correctness from forced strict execution-matrix checks, assert matrix-test availability before execution, and pass cleanly (`job-20260307T205521Z.log`, `strict-verification-20260307.log`).
 
 ## Current Code Ownership
 
@@ -168,7 +176,7 @@ Workspace migration for library domains is complete.
 
 GPU phase-2 continuation:
 
-1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`), starting with remote provider benchmark rerun after phase-1 routing.
+1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`) using the refreshed outlier rankings from the latest remote rerun.
 2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
 
 ## Completion Criteria For Migration

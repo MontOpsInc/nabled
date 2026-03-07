@@ -127,7 +127,7 @@ fn is_magma_runtime_failure(error: &CholeskyError) -> bool {
 
 #[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
 fn should_fallback_magma_runtime(error: &CholeskyError) -> bool {
-    !DenseKernelPolicy::magma_strict_mode() && is_magma_runtime_failure(error)
+    !DenseKernelPolicy::magma_fail_fast_mode() && is_magma_runtime_failure(error)
 }
 
 #[cfg(not(feature = "lapack-provider"))]

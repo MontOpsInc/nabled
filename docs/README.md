@@ -16,16 +16,17 @@ This folder contains the current, authoritative direction for `nabled`.
 2. `docs/CAPABILITY_MATRIX.md`: capability inventory, gap analysis, and scope verdict.
 3. `docs/BENCHMARK_TRACKER.md`: chunked benchmark audit, current results, and optimization loop tracking.
 4. `docs/GPU_V2_TRACKER.md`: v2 GPU/provider expansion tracker (batch policy, MAGMA integration, remote verification).
-5. `docs/REMOTE_GPU_WORKFLOW.md`: canonical remote NVIDIA workflow (image + tmux-first execution scripts).
-6. `docs/KERNEL_CATALOG.md`: complete kernel contract inventory, wiring status, and done-state definition.
-7. `docs/PERFORMANCE_CONTRACTS.md`: allocation/copy contract and copy-elision audit status.
-8. `docs/V1_STABILITY.md`: explicit v1-stability contract (required tensor/GPU surface, feature matrix, no-surprises signoff).
-9. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
-10. `docs/architecture.md`: target package/module architecture.
-11. `docs/ROADMAP.md`: implementation sequencing and milestones.
-12. `docs/PUBLISH_CHECKLIST.md`: crates.io publish gate and release-day checklist.
-13. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
-14. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
+5. `docs/MAGMA_SIGNOFF.md`: MAGMA route signoff matrix with per-API execution evidence and pending closure rows.
+6. `docs/REMOTE_GPU_WORKFLOW.md`: canonical remote NVIDIA workflow (image + tmux-first execution scripts).
+7. `docs/KERNEL_CATALOG.md`: complete kernel contract inventory, wiring status, and done-state definition.
+8. `docs/PERFORMANCE_CONTRACTS.md`: allocation/copy contract and copy-elision audit status.
+9. `docs/V1_STABILITY.md`: explicit v1-stability contract (required tensor/GPU surface, feature matrix, no-surprises signoff).
+10. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
+11. `docs/architecture.md`: target package/module architecture.
+12. `docs/ROADMAP.md`: implementation sequencing and milestones.
+13. `docs/PUBLISH_CHECKLIST.md`: crates.io publish gate and release-day checklist.
+14. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+15. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
 
 ## Context Resume Protocol
 
@@ -36,15 +37,16 @@ When starting from a compacted/partial context, read documents in this order:
 3. `docs/CAPABILITY_MATRIX.md`
 4. `docs/BENCHMARK_TRACKER.md`
 5. `docs/GPU_V2_TRACKER.md`
-6. `docs/REMOTE_GPU_WORKFLOW.md`
-7. `docs/KERNEL_CATALOG.md`
-8. `docs/PERFORMANCE_CONTRACTS.md`
-9. `docs/V1_STABILITY.md`
-10. `docs/EXECUTION_TRACKER.md`
-11. `docs/architecture.md`
-12. `docs/ROADMAP.md`
-13. `docs/PUBLISH_CHECKLIST.md`
-14. `docs/STATUS.md`
+6. `docs/MAGMA_SIGNOFF.md`
+7. `docs/REMOTE_GPU_WORKFLOW.md`
+8. `docs/KERNEL_CATALOG.md`
+9. `docs/PERFORMANCE_CONTRACTS.md`
+10. `docs/V1_STABILITY.md`
+11. `docs/EXECUTION_TRACKER.md`
+12. `docs/architecture.md`
+13. `docs/ROADMAP.md`
+14. `docs/PUBLISH_CHECKLIST.md`
+15. `docs/STATUS.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 
