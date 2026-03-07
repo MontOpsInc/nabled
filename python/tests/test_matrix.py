@@ -48,3 +48,11 @@ def test_gram_schmidt():
     # Columns should be orthonormal
     qtq = q.T @ q
     np.testing.assert_allclose(qtq, np.eye(2), rtol=1e-10, atol=1e-14)
+
+
+def test_gram_schmidt_classic():
+    a = np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0]], dtype=np.float64)
+    q = pynabled.gram_schmidt_classic(a)
+    assert q.shape == a.shape
+    qtq = q.T @ q
+    np.testing.assert_allclose(qtq, np.eye(2), rtol=1e-10, atol=1e-14)
