@@ -125,6 +125,11 @@ fn is_magma_runtime_failure(error: &CholeskyError) -> bool {
     )
 }
 
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
+fn should_fallback_magma_runtime(error: &CholeskyError) -> bool {
+    !DenseKernelPolicy::magma_strict_mode() && is_magma_runtime_failure(error)
+}
+
 #[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
@@ -208,7 +213,7 @@ where
         Err(error) => {
             let mapped = map_cholesky_provider_error(error);
             #[cfg(not(feature = "lapack-provider"))]
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 return decompose_internal(matrix);
             }
             Err(mapped)
@@ -230,7 +235,7 @@ where
         Err(error) => {
             let mapped = map_cholesky_provider_error(error);
             #[cfg(not(feature = "lapack-provider"))]
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let lower = decompose_internal(matrix)?;
                 let mut output = Array1::<T>::zeros(rhs.len());
                 solve_from_factor(&lower, rhs, &mut output)?;
@@ -252,7 +257,7 @@ where
         Err(error) => {
             let mapped = map_cholesky_provider_error(error);
             #[cfg(not(feature = "lapack-provider"))]
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let lower = decompose_internal(matrix)?;
                 return inverse_from_factor(&lower);
             }
@@ -308,7 +313,7 @@ fn decompose_complex_provider(
         Err(error) => {
             let mapped = map_cholesky_provider_error(error);
             #[cfg(not(feature = "lapack-provider"))]
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 return decompose_complex_internal(matrix);
             }
             Err(mapped)
@@ -332,7 +337,7 @@ fn solve_complex_provider(
         Err(error) => {
             let mapped = map_cholesky_provider_error(error);
             #[cfg(not(feature = "lapack-provider"))]
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let lower = decompose_complex_internal(matrix)?;
                 return solve_complex_from_factor(&lower, rhs);
             }
@@ -351,7 +356,7 @@ fn inverse_complex_provider(
         Err(error) => {
             let mapped = map_cholesky_provider_error(error);
             #[cfg(not(feature = "lapack-provider"))]
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let lower = decompose_complex_internal(matrix)?;
                 let n = lower.nrows();
                 let mut inverse = Array2::<Complex64>::zeros((n, n));

@@ -76,6 +76,16 @@ impl fmt::Display for SVDError {
 
 impl std::error::Error for SVDError {}
 
+#[cfg(feature = "magma-system")]
+fn map_svd_magma_error(error: &'static str) -> SVDError {
+    match error {
+        "empty" => SVDError::EmptyMatrix,
+        "convergence_failed" => SVDError::ConvergenceFailed,
+        "non_finite" => SVDError::InvalidInput("matrix must be finite".to_string()),
+        _ => SVDError::InvalidInput(error.to_string()),
+    }
+}
+
 /// Configuration for pseudo-inverse computation.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PseudoInverseConfig<T: NabledReal> {
@@ -134,10 +144,17 @@ fn decompose_internal_fallback<T: NabledReal>(
 fn decompose_internal<T: NabledReal + magma::MagmaReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySVD<T>, SVDError> {
-    if DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
-        && let Ok((u, singular_values, vt)) = magma::svd_decompose(matrix)
-    {
-        return Ok(NdarraySVD { u, singular_values, vt });
+    if DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        match magma::svd_decompose(matrix) {
+            Ok((u, singular_values, vt)) => {
+                return Ok(NdarraySVD { u, singular_values, vt });
+            }
+            Err(error) => {
+                if DenseKernelPolicy::magma_strict_mode() {
+                    return Err(map_svd_magma_error(error));
+                }
+            }
+        }
     }
 
     decompose_internal_fallback(matrix)
@@ -235,7 +252,12 @@ fn decompose_complex_provider(
     }
     match magma::svd_decompose_complex(matrix) {
         Ok((u, singular_values, vt)) => Ok(NdarrayComplexSVD { u, singular_values, vt }),
-        Err(_) => decompose_complex_internal(matrix),
+        Err(error) => {
+            if DenseKernelPolicy::magma_strict_mode() {
+                return Err(map_svd_magma_error(error));
+            }
+            decompose_complex_internal(matrix)
+        }
     }
 }
 

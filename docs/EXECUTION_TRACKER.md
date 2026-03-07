@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-06
+Last updated: 2026-03-07
 
 ## Purpose
 
@@ -193,11 +193,13 @@ Use this file to resume work quickly after context compaction without re-auditin
 151. `D-151`: `K-005` phase-2 compile-matrix stabilization is complete in `nabled-linalg`: combined `lapack-provider + magma-system` builds now compile/clippy cleanly with normalized cfg gating across eigen/qr/schur/svd/lu/internal/batched paths.
 152. `D-152`: `K-005` phase-3 is complete: batched decomposition routing for MAGMA-supported domains (`lu`, `cholesky`, `qr`) is now dynamic and policy-driven via batch-size + shape/work heuristics.
 153. `D-153`: `K-005` phase-4 (policy-caching portion) is complete: decomposition/batched routing env lookups are cached via `OnceLock` in `DenseKernelPolicy`; remaining phase-4 work is remote provider benchmark rerun and outlier refresh.
+154. `D-154`: MAGMA strict-verification harness landed: dense/batched MAGMA runtime failures now respect `NABLED_MAGMA_STRICT=1` (fail-fast instead of silent fallback), and remote workflow includes `magma-strict-verify` with forced decomposition-threshold overrides to exercise MAGMA code paths under test.
 
 ## Next
 
-1. `K-005` phase-4 (remaining): rerun remote provider benchmark comparison (`openblas-system` vs `magma-system`) after routing/caching changes and refresh ranked MAGMA outlier table.
-2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+1. `K-005` phase-4 (remaining): run strict MAGMA verification on remote NVIDIA host (`scripts/gpu_remote.sh one <host> magma-strict-verify`) and archive the log under `coverage/gpu-v2/magma/`.
+2. `K-005` phase-4 (remaining): rerun remote provider benchmark comparison (`openblas-system` vs `magma-system`) after routing/caching changes and refresh ranked MAGMA outlier table.
+3. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.

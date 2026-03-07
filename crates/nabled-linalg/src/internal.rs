@@ -54,6 +54,24 @@ impl DenseKernelPolicy {
     }
 
     #[cfg(feature = "magma-system")]
+    fn env_truthy(name: &str) -> bool {
+        std::env::var(name).ok().is_some_and(|raw| {
+            let value = raw.trim();
+            value == "1"
+                || value.eq_ignore_ascii_case("true")
+                || value.eq_ignore_ascii_case("yes")
+                || value.eq_ignore_ascii_case("on")
+        })
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
+    pub(crate) fn magma_strict_mode() -> bool {
+        static VALUE: OnceLock<bool> = OnceLock::new();
+        *VALUE.get_or_init(|| Self::env_truthy("NABLED_MAGMA_STRICT"))
+    }
+
+    #[cfg(feature = "magma-system")]
     #[must_use]
     pub(crate) fn magma_min_decomposition_dim() -> usize {
         static VALUE: OnceLock<usize> = OnceLock::new();

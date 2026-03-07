@@ -60,6 +60,7 @@ For Vast template startup script:
 ```bash
 scripts/gpu_remote.sh up <host>
 scripts/gpu_remote.sh one <host> magma-verify
+scripts/gpu_remote.sh one <host> magma-strict-verify
 scripts/gpu_remote.sh one <host> magma-capability
 scripts/gpu_remote.sh one <host> magma-provider-bench
 scripts/gpu_remote.sh run <host> "just checks"
@@ -77,6 +78,7 @@ scripts/gpu_remote_tmux_session.sh <host>
 
 ```bash
 scripts/gpu_remote.sh one <host> magma-verify
+scripts/gpu_remote.sh one <host> magma-strict-verify
 scripts/gpu_remote.sh one <host> magma-capability
 scripts/gpu_remote.sh one <host> magma-provider-bench
 scripts/gpu_remote.sh one <host> gpu-probe
@@ -124,9 +126,10 @@ The run script writes:
 Reusable remote jobs (called by wrapper scripts and tmux run flow):
 
 1. `scripts/remote_jobs/magma_verify_job.sh`
-2. `scripts/remote_jobs/magma_capability_job.sh`
-3. `scripts/remote_jobs/magma_provider_bench_job.sh`
-4. `scripts/remote_jobs/gpu_probe_job.sh`
+2. `scripts/remote_jobs/magma_strict_verify_job.sh`
+3. `scripts/remote_jobs/magma_capability_job.sh`
+4. `scripts/remote_jobs/magma_provider_bench_job.sh`
+5. `scripts/remote_jobs/gpu_probe_job.sh`
 
 ## MAGMA expansion tracking
 

@@ -127,6 +127,19 @@ impl fmt::Display for EigenError {
 
 impl std::error::Error for EigenError {}
 
+#[cfg(feature = "magma-system")]
+fn map_eigen_magma_error(error: &'static str) -> EigenError {
+    match error {
+        "empty" => EigenError::EmptyMatrix,
+        "not_square" => EigenError::NotSquare,
+        "not_symmetric" => EigenError::NotSymmetric,
+        "invalid_dimensions" | "bad_dimensions" => EigenError::InvalidDimensions,
+        "not_positive_definite" => EigenError::NotPositiveDefinite,
+        "convergence_failed" => EigenError::ConvergenceFailed,
+        _ => EigenError::NumericalInstability,
+    }
+}
+
 fn validate_symmetric_input<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<(), EigenError> {
     if matrix.is_empty() {
         return Err(EigenError::EmptyMatrix);
@@ -347,9 +360,16 @@ fn symmetric_internal<T: NabledReal + magma::MagmaReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayEigenResult<T>, EigenError> {
     validate_symmetric_input(matrix)?;
-    if let Ok((eigenvalues, eigenvectors)) = magma::symmetric_eigen(matrix) {
-        let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
-        return Ok(NdarrayEigenResult { eigenvalues, eigenvectors });
+    match magma::symmetric_eigen(matrix) {
+        Ok((eigenvalues, eigenvectors)) => {
+            let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
+            return Ok(NdarrayEigenResult { eigenvalues, eigenvectors });
+        }
+        Err(error) => {
+            if DenseKernelPolicy::magma_strict_mode() {
+                return Err(map_eigen_magma_error(error));
+            }
+        }
     }
 
     let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
@@ -623,6 +643,9 @@ fn nonsymmetric_complex_provider(
             Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
         }
         Err(error) => {
+            if DenseKernelPolicy::magma_strict_mode() {
+                return Err(map_eigen_magma_error(error));
+            }
             #[cfg(not(feature = "lapack-provider"))]
             {
                 let _ = error;
@@ -630,12 +653,7 @@ fn nonsymmetric_complex_provider(
             }
             #[cfg(feature = "lapack-provider")]
             {
-                match error {
-                    "empty" => Err(EigenError::EmptyMatrix),
-                    "not_square" => Err(EigenError::NotSquare),
-                    "convergence_failed" => Err(EigenError::ConvergenceFailed),
-                    _ => Err(EigenError::NumericalInstability),
-                }
+                Err(map_eigen_magma_error(error))
             }
         }
     }

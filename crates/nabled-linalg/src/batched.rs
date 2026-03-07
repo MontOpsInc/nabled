@@ -10,6 +10,48 @@ use crate::internal::DenseKernelPolicy;
 use crate::provider::magma;
 use crate::{cholesky, eigen, lu, qr, svd};
 
+#[cfg(feature = "magma-system")]
+fn map_magma_batched_qr_error(error: &'static str) -> qr::QRError {
+    match error {
+        "empty" => qr::QRError::EmptyMatrix,
+        "convergence_failed" => qr::QRError::ConvergenceFailed,
+        "non_finite" => qr::QRError::NumericalInstability,
+        "bad_dimensions" | "invalid_dimensions" => {
+            qr::QRError::InvalidDimensions("RHS length must equal matrix rows".to_string())
+        }
+        _ => qr::QRError::InvalidInput(error.to_string()),
+    }
+}
+
+#[cfg(feature = "magma-system")]
+fn map_magma_batched_lu_error(error: &'static str) -> lu::LUError {
+    match error {
+        "empty" => lu::LUError::EmptyMatrix,
+        "not_square" => lu::LUError::NotSquare,
+        "singular" => lu::LUError::SingularMatrix,
+        "convergence_failed" => lu::LUError::ConvergenceFailed,
+        "non_finite" => lu::LUError::NumericalInstability,
+        "bad_dimensions" | "invalid_dimensions" => {
+            lu::LUError::InvalidInput("RHS length must match matrix dimensions".to_string())
+        }
+        _ => lu::LUError::InvalidInput(error.to_string()),
+    }
+}
+
+#[cfg(feature = "magma-system")]
+fn map_magma_batched_cholesky_error(error: &'static str) -> cholesky::CholeskyError {
+    match error {
+        "empty" => cholesky::CholeskyError::EmptyMatrix,
+        "not_square" => cholesky::CholeskyError::NotSquare,
+        "not_positive_definite" => cholesky::CholeskyError::NotPositiveDefinite,
+        "non_finite" => cholesky::CholeskyError::NumericalInstability,
+        "bad_dimensions" | "invalid_dimensions" => cholesky::CholeskyError::InvalidInput(
+            "RHS length must match matrix dimensions".to_string(),
+        ),
+        _ => cholesky::CholeskyError::InvalidInput(error.to_string()),
+    }
+}
+
 /// Compute QR decomposition for each matrix in a batch.
 ///
 /// Input shape is `(batch, rows, cols)`.
@@ -106,19 +148,25 @@ where
         return Ok(fallback);
     }
 
-    if let Ok(decompositions) = magma::qr_decompose_batched(matrices, config.rank_tolerance) {
-        let mut output = Vec::with_capacity(decompositions.len());
-        for (q, r, rank) in decompositions {
-            output.push(qr::QRResult { q, r, p: None, rank });
+    match magma::qr_decompose_batched(matrices, config.rank_tolerance) {
+        Ok(decompositions) => {
+            let mut output = Vec::with_capacity(decompositions.len());
+            for (q, r, rank) in decompositions {
+                output.push(qr::QRResult { q, r, p: None, rank });
+            }
+            Ok(output)
         }
-        Ok(output)
-    } else {
-        // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
-        let mut fallback = Vec::with_capacity(batch_count);
-        for matrix in matrices.axis_iter(Axis(0)) {
-            fallback.push(qr::decompose_view(&matrix, config)?);
+        Err(error) => {
+            if DenseKernelPolicy::magma_strict_mode() {
+                return Err(map_magma_batched_qr_error(error));
+            }
+            // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
+            let mut fallback = Vec::with_capacity(batch_count);
+            for matrix in matrices.axis_iter(Axis(0)) {
+                fallback.push(qr::decompose_view(&matrix, config)?);
+            }
+            Ok(fallback)
         }
-        Ok(fallback)
     }
 }
 
@@ -153,19 +201,25 @@ where
         return Ok(fallback);
     }
 
-    if let Ok(decompositions) = magma::qr_decompose_batched(matrices, config.rank_tolerance) {
-        let mut output = Vec::with_capacity(decompositions.len());
-        for (q, r, rank) in decompositions {
-            output.push(qr::QRResult { q, r, p: None, rank });
+    match magma::qr_decompose_batched(matrices, config.rank_tolerance) {
+        Ok(decompositions) => {
+            let mut output = Vec::with_capacity(decompositions.len());
+            for (q, r, rank) in decompositions {
+                output.push(qr::QRResult { q, r, p: None, rank });
+            }
+            Ok(output)
         }
-        Ok(output)
-    } else {
-        // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
-        let mut fallback = Vec::with_capacity(batch_count);
-        for matrix in matrices.axis_iter(Axis(0)) {
-            fallback.push(qr::decompose_view(&matrix, config)?);
+        Err(error) => {
+            if DenseKernelPolicy::magma_strict_mode() {
+                return Err(map_magma_batched_qr_error(error));
+            }
+            // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
+            let mut fallback = Vec::with_capacity(batch_count);
+            for matrix in matrices.axis_iter(Axis(0)) {
+                fallback.push(qr::decompose_view(&matrix, config)?);
+            }
+            Ok(fallback)
         }
-        Ok(fallback)
     }
 }
 
@@ -344,19 +398,25 @@ where
         return Ok(output);
     }
 
-    if let Ok(factors) = magma::lu_decompose_batched(matrices) {
-        let mut output = Vec::with_capacity(factors.len());
-        for (l, u) in factors {
-            output.push(lu::NdarrayLUResult { l, u });
+    match magma::lu_decompose_batched(matrices) {
+        Ok(factors) => {
+            let mut output = Vec::with_capacity(factors.len());
+            for (l, u) in factors {
+                output.push(lu::NdarrayLUResult { l, u });
+            }
+            Ok(output)
         }
-        Ok(output)
-    } else {
-        // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
-        let mut fallback = Vec::with_capacity(batch_count);
-        for matrix in matrices.axis_iter(Axis(0)) {
-            fallback.push(lu::decompose_view(&matrix)?);
+        Err(error) => {
+            if DenseKernelPolicy::magma_strict_mode() {
+                return Err(map_magma_batched_lu_error(error));
+            }
+            // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
+            let mut fallback = Vec::with_capacity(batch_count);
+            for matrix in matrices.axis_iter(Axis(0)) {
+                fallback.push(lu::decompose_view(&matrix)?);
+            }
+            Ok(fallback)
         }
-        Ok(fallback)
     }
 }
 
@@ -471,19 +531,25 @@ where
         return Ok(output);
     }
 
-    if let Ok(factors) = magma::cholesky_decompose_batched(matrices) {
-        let mut output = Vec::with_capacity(factors.len());
-        for l in factors {
-            output.push(cholesky::NdarrayCholeskyResult { l });
+    match magma::cholesky_decompose_batched(matrices) {
+        Ok(factors) => {
+            let mut output = Vec::with_capacity(factors.len());
+            for l in factors {
+                output.push(cholesky::NdarrayCholeskyResult { l });
+            }
+            Ok(output)
         }
-        Ok(output)
-    } else {
-        // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
-        let mut fallback = Vec::with_capacity(batch_count);
-        for matrix in matrices.axis_iter(Axis(0)) {
-            fallback.push(cholesky::decompose_view(&matrix)?);
+        Err(error) => {
+            if DenseKernelPolicy::magma_strict_mode() {
+                return Err(map_magma_batched_cholesky_error(error));
+            }
+            // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
+            let mut fallback = Vec::with_capacity(batch_count);
+            for matrix in matrices.axis_iter(Axis(0)) {
+                fallback.push(cholesky::decompose_view(&matrix)?);
+            }
+            Ok(fallback)
         }
-        Ok(fallback)
     }
 }
 

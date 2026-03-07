@@ -104,6 +104,11 @@ fn is_magma_runtime_failure(error: &LUError) -> bool {
 }
 
 #[cfg(feature = "magma-system")]
+fn should_fallback_magma_runtime(error: &LUError) -> bool {
+    !DenseKernelPolicy::magma_strict_mode() && is_magma_runtime_failure(error)
+}
+
+#[cfg(feature = "magma-system")]
 #[doc(hidden)]
 pub trait LuProviderScalar: NabledReal + magma::MagmaReal {}
 
@@ -305,7 +310,7 @@ where
         Ok(solution) => Ok(solution),
         Err(error) => {
             let mapped = map_lu_error(error);
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
                 return lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs)
                     .map_err(map_lu_error);
@@ -329,7 +334,7 @@ where
         Ok(inverse) => Ok(inverse),
         Err(error) => {
             let mapped = map_lu_error(error);
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
                 return inverse_from_lu(&decomposition.l, &decomposition.u, &pivots)
                     .map_err(map_lu_error);
@@ -360,7 +365,7 @@ where
         Ok(determinant) => Ok(determinant),
         Err(error) => {
             let mapped = map_lu_error(error);
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
                 let mut determinant = if sign >= 0 { T::one() } else { -T::one() };
                 for i in 0..decomposition.u.nrows() {
@@ -391,7 +396,7 @@ fn solve_mixed_f64_provider(
         }
         Err(error) => {
             let mapped = map_lu_error(error);
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
                 let solution = lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs)
                     .map_err(map_lu_error)?;
@@ -429,7 +434,7 @@ fn solve_mixed_complex_provider(
         }
         Err(error) => {
             let mapped = map_lu_error(error);
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
                 let solution = solve_complex_from_factors(&l, &u, &pivots, rhs)?;
                 return Ok(MixedSolveResult { solution, refinement_iterations: 0 });
@@ -504,7 +509,7 @@ fn solve_complex_provider(
         Ok(solution) => Ok(solution),
         Err(error) => {
             let mapped = map_lu_error(error);
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let (l, u, pivots, _) = decompose_complex_internal(matrix)?;
                 return solve_complex_from_factors(&l, &u, &pivots, rhs);
             }
@@ -539,7 +544,7 @@ fn inverse_complex_provider(
         Ok(inverse) => Ok(inverse),
         Err(error) => {
             let mapped = map_lu_error(error);
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 return inverse_complex_internal(matrix);
             }
             Err(mapped)
@@ -576,7 +581,7 @@ fn determinant_complex_provider(matrix: &ArrayView2<'_, Complex64>) -> Result<Co
         Ok(determinant) => Ok(determinant),
         Err(error) => {
             let mapped = map_lu_error(error);
-            if is_magma_runtime_failure(&mapped) {
+            if should_fallback_magma_runtime(&mapped) {
                 let (_l, u, _, sign) = decompose_complex_internal(matrix)?;
                 let mut determinant =
                     if sign >= 0 { Complex64::new(1.0, 0.0) } else { Complex64::new(-1.0, 0.0) };

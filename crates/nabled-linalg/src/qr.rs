@@ -85,6 +85,19 @@ impl fmt::Display for QRError {
 
 impl std::error::Error for QRError {}
 
+#[cfg(feature = "magma-system")]
+fn map_qr_magma_error(error: &'static str) -> QRError {
+    match error {
+        "empty" => QRError::EmptyMatrix,
+        "convergence_failed" => QRError::ConvergenceFailed,
+        "non_finite" => QRError::NumericalInstability,
+        "bad_dimensions" | "invalid_dimensions" => {
+            QRError::InvalidDimensions("RHS length must equal matrix rows".to_string())
+        }
+        _ => QRError::InvalidInput(error.to_string()),
+    }
+}
+
 /// Configuration for QR decomposition.
 #[derive(Debug, Clone)]
 pub struct QRConfig<T = f64> {
@@ -338,8 +351,13 @@ fn decompose_internal<T: NabledReal + magma::MagmaReal>(
         let tolerance = config
             .rank_tolerance
             .max(T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()));
-        if let Ok((q, r, rank)) = magma::qr_decompose(matrix, tolerance) {
-            return Ok(QRResult { q, r, p: None, rank });
+        match magma::qr_decompose(matrix, tolerance) {
+            Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
+            Err(error) => {
+                if DenseKernelPolicy::magma_strict_mode() {
+                    return Err(map_qr_magma_error(error));
+                }
+            }
         }
     }
 
@@ -394,8 +412,13 @@ where
         let tolerance = config
             .rank_tolerance
             .max(T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()));
-        if let Ok((q, r, rank)) = magma::qr_decompose(matrix, tolerance) {
-            return Ok(QRResult { q, r, p: None, rank });
+        match magma::qr_decompose(matrix, tolerance) {
+            Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
+            Err(error) => {
+                if DenseKernelPolicy::magma_strict_mode() {
+                    return Err(map_qr_magma_error(error));
+                }
+            }
         }
     }
 
@@ -490,8 +513,13 @@ fn decompose_complex_provider(
         && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
     {
         let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
-        if let Ok((q, r, rank)) = magma::qr_decompose_complex(matrix, tolerance) {
-            return Ok(QRResult { q, r, p: None, rank });
+        match magma::qr_decompose_complex(matrix, tolerance) {
+            Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
+            Err(error) => {
+                if DenseKernelPolicy::magma_strict_mode() {
+                    return Err(map_qr_magma_error(error));
+                }
+            }
         }
     }
 

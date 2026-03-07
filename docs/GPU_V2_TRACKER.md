@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-07 (V2-008 sparse phase-2 + V2-009 mixed-precision phase-2 + K-005 phase-1/2 complete)
+Last updated: 2026-03-07 (V2-008 sparse phase-2 + V2-009 mixed-precision phase-2 + K-005 phase-1/2 complete + strict MAGMA verification harness)
 
 ## Purpose
 
@@ -45,6 +45,7 @@ V2 is considered complete only when all items below are true:
 4. Feature-matrix behavior is validated for relevant combinations (`internal`, `lapack-provider`, `magma-system`, `lapack-provider + magma-system`, plus accelerator permutations where applicable).
 5. Post-routing provider benchmark comparison is rerun on remote NVIDIA host (`openblas-system` vs `magma-system`) and outlier tables are refreshed.
 6. Docs and trackers remain synchronized (`GPU_V2_TRACKER`, `EXECUTION_TRACKER`, `STATUS`, and benchmark notes) with no ambiguity in current routing behavior.
+7. Strict MAGMA verification exists and is reproducible (`scripts/gpu_remote.sh one <host> magma-strict-verify`), forcing decomposition thresholds low and failing fast on provider runtime errors (`NABLED_MAGMA_STRICT=1`).
 
 ## K-005 Progress Snapshot
 

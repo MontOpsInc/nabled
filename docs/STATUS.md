@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-06
+Last updated: 2026-03-07
 
 ## Summary
 
@@ -131,6 +131,7 @@ Workspace migration for library domains is complete.
 123. Complex tensor public APIs now route accelerator-backed single-axis contraction, batched last-two matmul, and last-axis summation through backend dispatch (`GpuBackend` when enabled, explicit CPU fallback otherwise), preserving deterministic output/error contracts.
 124. `V2-009` phase-2 mixed-precision expansion is now landed: Sylvester/Lyapunov expose mixed/refinement APIs (`solve_sylvester_mixed_*`, `solve_lyapunov_mixed_*`) with explicit `refinement_iterations` metadata and typed error mapping from LU mixed solves.
 125. `K-005` phase-1 MAGMA outlier remediation is now landed: tiny decomposition workloads are routed away from MAGMA via centralized size policy (`DenseKernelPolicy::prefer_magma_decomposition`, default cutoff `min(rows, cols) >= 128`, env override `NABLED_MAGMA_MIN_DECOMPOSITION_DIM`) across LU solve/inverse/determinant and QR/SVD decomposition paths (including downstream `polar`/`schur` flows).
+126. MAGMA verification hardening now includes strict mode: `NABLED_MAGMA_STRICT=1` disables fallback-on-provider-runtime-failure in dense/batched MAGMA decomposition paths, and remote workflow now supports `scripts/gpu_remote.sh one <host> magma-strict-verify` with forced threshold overrides to prove MAGMA execution coverage.
 
 ## Current Code Ownership
 

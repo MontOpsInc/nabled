@@ -12,11 +12,12 @@ commands:
   prepare <host>                Prepare host and sync repository
   session <host>                Ensure tmux session exists
   up <host>                     Prepare + ensure tmux session
-  one <host> [job]              Run named tmux job (magma-verify|magma-capability|magma-provider-bench|gpu-probe|checks)
+  one <host> [job]              Run named tmux job (magma-verify|magma-strict-verify|magma-capability|magma-provider-bench|gpu-probe|checks)
   run <host> <command...>       Run arbitrary command in tmux work pane
   attach <host>                 Attach to tmux session
   probe <host>                  Alias for: one <host> gpu-probe
   magma-verify <host>           Alias for: one <host> magma-verify
+  magma-strict-verify <host>    Alias for: one <host> magma-strict-verify
   magma-capability <host>       Alias for: one <host> magma-capability
 EOF
 }
@@ -40,6 +41,9 @@ run_named_job() {
     magma-capability)
       command="bash scripts/remote_jobs/magma_capability_job.sh"
       ;;
+    magma-strict-verify)
+      command="bash scripts/remote_jobs/magma_strict_verify_job.sh"
+      ;;
     magma-provider-bench)
       command="bash scripts/remote_jobs/magma_provider_bench_job.sh"
       ;;
@@ -51,7 +55,7 @@ run_named_job() {
       ;;
     *)
       echo "unknown job: ${job}" >&2
-      echo "supported jobs: magma-verify | magma-capability | magma-provider-bench | gpu-probe | checks" >&2
+      echo "supported jobs: magma-verify | magma-strict-verify | magma-capability | magma-provider-bench | gpu-probe | checks" >&2
       exit 1
       ;;
   esac
@@ -91,6 +95,9 @@ case "${COMMAND}" in
     ;;
   magma-verify)
     run_named_job "magma-verify"
+    ;;
+  magma-strict-verify)
+    run_named_job "magma-strict-verify"
     ;;
   magma-capability)
     run_named_job "magma-capability"
