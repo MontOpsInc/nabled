@@ -449,6 +449,12 @@ Summary:
 2. Run-level decomposition scope p90 values remained stable: `1.024`, `1.024`, `1.038`, `1.034`, `1.025`.
 3. With deterministic thread settings (`OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`), no decomposition case is persistently slower than `1.03x` across the recent rerun set.
 4. `K-005` optimization can be treated as stability-cleared for now; reopen only if a regression persists across repeated same-host batches.
+5. Persistent-regression gating is now scriptable via remote monitor job:
+   - `scripts/gpu_remote.sh one <host> magma-k005-monitor`
+   - defaults: fail only when slowdown ratio >`1.03x` persists in at least `4/5` runs.
+6. LTO-focused MAGMA proof-pack generation is now scripted for publication-ready evidence:
+   - `scripts/gpu_remote.sh one <host> magma-proof-pack`
+   - artifact: `coverage/gpu-v2/magma/bench/decomposition/proof-pack-latest.md`.
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

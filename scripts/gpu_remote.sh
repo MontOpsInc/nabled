@@ -12,13 +12,15 @@ commands:
   prepare <host>                Prepare host and sync repository
   session <host>                Ensure tmux session exists
   up <host>                     Prepare + ensure tmux session
-  one <host> [job]              Run named tmux job (magma-verify|magma-strict-verify|magma-capability|magma-provider-bench|magma-provider-bench-decomposition|gpu-probe|checks)
+  one <host> [job]              Run named tmux job (magma-verify|magma-strict-verify|magma-capability|magma-provider-bench|magma-provider-bench-decomposition|magma-k005-monitor|magma-proof-pack|gpu-probe|checks)
   run <host> <command...>       Run arbitrary command in tmux work pane
   attach <host>                 Attach to tmux session
   probe <host>                  Alias for: one <host> gpu-probe
   magma-verify <host>           Alias for: one <host> magma-verify
   magma-strict-verify <host>    Alias for: one <host> magma-strict-verify
   magma-capability <host>       Alias for: one <host> magma-capability
+  magma-k005-monitor <host>     Alias for: one <host> magma-k005-monitor
+  magma-proof-pack <host>       Alias for: one <host> magma-proof-pack
 EOF
 }
 
@@ -50,6 +52,12 @@ run_named_job() {
     magma-provider-bench-decomposition)
       command="bash scripts/remote_jobs/magma_provider_bench_decomposition_job.sh"
       ;;
+    magma-k005-monitor)
+      command="bash scripts/remote_jobs/magma_k005_monitor_job.sh"
+      ;;
+    magma-proof-pack)
+      command="bash scripts/remote_jobs/magma_proof_pack_job.sh"
+      ;;
     gpu-probe)
       command="bash scripts/remote_jobs/gpu_probe_job.sh"
       ;;
@@ -58,7 +66,7 @@ run_named_job() {
       ;;
     *)
       echo "unknown job: ${job}" >&2
-      echo "supported jobs: magma-verify | magma-strict-verify | magma-capability | magma-provider-bench | magma-provider-bench-decomposition | gpu-probe | checks" >&2
+      echo "supported jobs: magma-verify | magma-strict-verify | magma-capability | magma-provider-bench | magma-provider-bench-decomposition | magma-k005-monitor | magma-proof-pack | gpu-probe | checks" >&2
       exit 1
       ;;
   esac
@@ -104,6 +112,12 @@ case "${COMMAND}" in
     ;;
   magma-capability)
     run_named_job "magma-capability"
+    ;;
+  magma-k005-monitor)
+    run_named_job "magma-k005-monitor"
+    ;;
+  magma-proof-pack)
+    run_named_job "magma-proof-pack"
     ;;
   *)
     echo "unknown command: ${COMMAND}" >&2

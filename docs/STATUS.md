@@ -158,6 +158,9 @@ Workspace migration for library domains is complete.
 150. Production-readiness is now anchored by explicit external-reference rubric policy: `docs/REFERENCE_RUBRIC.md` defines domain anchors and objective done/v1-ready gates, and this rubric is linked from docs index/resume order and locked decisions.
 151. CP diagnostics/convergence depth is now explicit for rank-3 and N-D CP-ALS: report-returning decomposition APIs (`cp_als3_with_report`, `cp_als_nd_with_report`) and diagnostics helpers (`cp_als3_diagnostics*`, `cp_als_nd_diagnostics*`) provide fit/residual/relative-error metrics plus ALS convergence summaries across internal/provider compile matrices.
 152. Tucker ergonomics/utilities are now explicit for N-D workflows: projection/expansion APIs over explicit factor sets (`tucker_project*`, `tucker_expand*`) are implemented with owned/view/into variants and strict shape-validation contracts across internal/provider compile matrices.
+153. K-005 monitor automation is now first-class in remote workflow: `magma_provider_bench_decomposition_job.sh` now records persistent slowdown sets (threshold + run-count aware), and `magma_k005_monitor_job.sh` provides strict repeat-based gating (`REPEATS=5`, ratio >`1.03` in `>=4` runs) to fail only on persistent regressions.
+154. Benchmark smoke CI regression enforcement is now advisory on shared GitHub runners to reduce noise-driven red builds: threshold checks still run and publish warnings/artifacts, but transient performance variance no longer hard-fails the `benchmark-smoke` job.
+155. MAGMA/OpenBLAS hard-fact evidence export is now scripted for release-lto decomposition scope: `magma_proof_pack_job.sh` runs LTO provider decomposition comparisons and writes a publication-ready summary (`coverage/gpu-v2/magma/bench/decomposition/proof-pack-latest.md`) with strongest wins/losses and persistent-slowdown rows.
 
 ## Current Code Ownership
 

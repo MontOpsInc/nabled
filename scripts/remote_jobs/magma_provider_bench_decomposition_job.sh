@@ -9,6 +9,10 @@ MAGMA_PROVIDER="${MAGMA_PROVIDER:-magma-system}"
 REPEATS="${REPEATS:-3}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-coverage/gpu-v2/magma/bench/decomposition}"
 BATCH_TS="$(date -u +%Y%m%dT%H%M%SZ)"
+BENCH_COMMAND="${BENCH_COMMAND:-bench-smoke-report-provider-decomposition}"
+PERSISTENT_RATIO_THRESHOLD="${PERSISTENT_RATIO_THRESHOLD:-1.03}"
+PERSISTENT_MIN_RUNS="${PERSISTENT_MIN_RUNS:-${REPEATS}}"
+ENFORCE_PERSISTENT_REGRESSIONS="${ENFORCE_PERSISTENT_REGRESSIONS:-0}"
 
 # Keep decomposition stability runs deterministic: clear any ad hoc
 # threshold/strict overrides that may have been used by previous jobs.
@@ -28,7 +32,7 @@ run_provider_pass() {
   local out_json="$2"
 
   rm -rf target/criterion crates/nabled/target/criterion
-  NABLED_PROVIDER_BENCH_FEATURES="${provider}" just -f .justfile bench-smoke-report-provider-decomposition
+  NABLED_PROVIDER_BENCH_FEATURES="${provider}" just -f .justfile "${BENCH_COMMAND}"
   cp coverage/benchmarks/summary.json "${out_json}"
 }
 
@@ -138,7 +142,15 @@ for run in $(seq 1 "${REPEATS}"); do
   compare_pass "${BASELINE_JSON}" "${MAGMA_JSON}" "${REPORT_MD}"
 done
 
-python3 - <<'PY' "${ARTIFACT_DIR}" "${BATCH_TS}" "${REPEATS}" "${BASELINE_PROVIDER}" "${MAGMA_PROVIDER}"
+python3 - <<'PY' \
+  "${ARTIFACT_DIR}" \
+  "${BATCH_TS}" \
+  "${REPEATS}" \
+  "${BASELINE_PROVIDER}" \
+  "${MAGMA_PROVIDER}" \
+  "${PERSISTENT_RATIO_THRESHOLD}" \
+  "${PERSISTENT_MIN_RUNS}" \
+  "${ENFORCE_PERSISTENT_REGRESSIONS}"
 from __future__ import annotations
 
 import json
@@ -152,6 +164,9 @@ batch_ts = sys.argv[2]
 repeats = int(sys.argv[3])
 baseline_provider = sys.argv[4]
 magma_provider = sys.argv[5]
+persistent_ratio_threshold = float(sys.argv[6])
+persistent_min_runs = int(sys.argv[7])
+enforce_persistent = int(sys.argv[8]) != 0
 
 domains = {
     "lu",
@@ -230,14 +245,40 @@ stable_rows.sort(key=lambda row: row["median_ratio"], reverse=True)
 top_slow = stable_rows[:15]
 top_fast = sorted(stable_rows, key=lambda row: row["median_ratio"])[:15]
 
+if persistent_min_runs < 1:
+    persistent_min_runs = 1
+if persistent_min_runs > repeats:
+    persistent_min_runs = repeats
+
+persistent_regressions = []
+for row in stable_rows:
+    exceed_count = sum(1 for ratio in row["ratios"] if ratio > persistent_ratio_threshold)
+    if exceed_count >= persistent_min_runs:
+        persistent_regressions.append(
+            {
+                "full_id": row["full_id"],
+                "domain": row["domain"],
+                "operation": row["operation"],
+                "ratios": row["ratios"],
+                "median_ratio": row["median_ratio"],
+                "min_ratio": row["min_ratio"],
+                "max_ratio": row["max_ratio"],
+                "exceed_count": exceed_count,
+            }
+        )
+
 summary = {
     "batch_ts": batch_ts,
     "repeats": repeats,
+    "persistent_ratio_threshold": persistent_ratio_threshold,
+    "persistent_min_runs": persistent_min_runs,
     "run_scope_stats": [
         {"run": run, "median_ratio": med, "p90_ratio": p90}
         for run, med, p90 in run_scope_stats
     ],
     "stable_case_count": len(stable_rows),
+    "persistent_regression_count": len(persistent_regressions),
+    "persistent_regressions": persistent_regressions,
     "top_slowdowns": top_slow,
     "top_speedups": top_fast,
 }
@@ -251,6 +292,11 @@ lines = [
     f"- Batch: `{batch_ts}`",
     f"- Repeats: `{repeats}`",
     f"- Stable decomposition cases across all repeats: `{len(stable_rows)}`",
+    (
+        f"- Persistent slowdown threshold: ratio > `{persistent_ratio_threshold:.3f}` "
+        f"in at least `{persistent_min_runs}` / `{repeats}` runs"
+    ),
+    f"- Persistent slowdowns: `{len(persistent_regressions)}`",
     "",
     "## Per-run Scope Ratios (`magma/openblas`)",
     "",
@@ -259,6 +305,21 @@ lines = [
 ]
 for run, med, p90 in run_scope_stats:
     lines.append(f"| {run} | {med:.3f} | {p90:.3f} |")
+
+lines.extend(
+    [
+        "",
+        "## Persistent Slowdowns (threshold-gated)",
+        "",
+        "| exceeds | median | min | max | domain | operation | benchmark |",
+        "|---:|---:|---:|---:|---|---|---|",
+    ]
+)
+for row in persistent_regressions:
+    lines.append(
+        f"| {row['exceed_count']}/{repeats} | {row['median_ratio']:.3f} | {row['min_ratio']:.3f} | "
+        f"{row['max_ratio']:.3f} | {row['domain']} | {row['operation']} | `{row['full_id']}` |"
+    )
 
 lines.extend(
     [
@@ -292,11 +353,20 @@ for row in top_fast:
 
 md_path = artifact_dir / f"stability-{batch_ts}.md"
 md_path.write_text("\n".join(lines) + "\n")
+
+if enforce_persistent and persistent_regressions:
+    print(
+        "K-005 monitor failure: persistent MAGMA decomposition slowdowns detected "
+        f"({len(persistent_regressions)} case(s)); see {md_path}",
+        file=sys.stderr,
+    )
+    sys.exit(7)
 PY
 
 cp "${ARTIFACT_DIR}/comparison-${BATCH_TS}-r${REPEATS}.md" "${ARTIFACT_DIR}/comparison-latest.md"
 
 echo "decomposition provider benchmark artifacts generated:"
+echo "  bench command: ${BENCH_COMMAND}"
 echo "  ${ARTIFACT_DIR}/${BASELINE_PROVIDER}-summary-${BATCH_TS}-r1.json .. r${REPEATS}.json"
 echo "  ${ARTIFACT_DIR}/${MAGMA_PROVIDER}-summary-${BATCH_TS}-r1.json .. r${REPEATS}.json"
 echo "  ${ARTIFACT_DIR}/comparison-${BATCH_TS}-r1.md .. r${REPEATS}.md"

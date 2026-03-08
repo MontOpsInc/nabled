@@ -106,6 +106,8 @@ Policy is centralized in `accelerator::policy` and used by `GpuBackend` dispatch
    - `scripts/gpu_remote.sh one <host> gpu-probe`
 3. Run MAGMA correctness/perf verification bundle:
    - `scripts/gpu_remote.sh one <host> magma-verify`
+   - `scripts/gpu_remote.sh one <host> magma-k005-monitor`
+   - `scripts/gpu_remote.sh one <host> magma-proof-pack`
 4. Run MAGMA capability scan (sparse + mixed precision symbols/headers):
    - `scripts/gpu_remote.sh one <host> magma-capability`
 5. For headless Vulkan in containerized environments:
@@ -285,6 +287,10 @@ Integration plan (locked):
    - run medians remained near parity (`~0.997` to `~1.005`) with p90 in `~1.024` to `~1.038`,
    - no decomposition regression remains persistently >`1.03x` across recent repeated runs,
    - `K-005` is now in monitor mode; reopen targeted optimization only for regressions that persist across repeated batches.
+13. Persistent-regression monitor gate is now scripted:
+   - job: `scripts/remote_jobs/magma_k005_monitor_job.sh`
+   - defaults: `REPEATS=5`, `PERSISTENT_RATIO_THRESHOLD=1.03`, `PERSISTENT_MIN_RUNS=4`
+   - wrapper: `scripts/gpu_remote.sh one <host> magma-k005-monitor`
 
 ## MAGMA Expansion Scope (Post V2-005)
 

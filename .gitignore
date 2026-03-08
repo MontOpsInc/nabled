@@ -12,6 +12,8 @@ Cargo.lock
 *.swo
 *~
 
+.claude/
+
 # Compressed files
 /*.zip
 /*.tar.gz

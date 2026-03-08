@@ -64,6 +64,8 @@ scripts/gpu_remote.sh one <host> magma-verify
 scripts/gpu_remote.sh one <host> magma-strict-verify
 scripts/gpu_remote.sh one <host> magma-capability
 scripts/gpu_remote.sh one <host> magma-provider-bench
+scripts/gpu_remote.sh one <host> magma-k005-monitor
+scripts/gpu_remote.sh one <host> magma-proof-pack
 scripts/gpu_remote.sh run <host> "just checks"
 scripts/gpu_remote.sh attach <host>
 ```
@@ -82,6 +84,8 @@ scripts/gpu_remote.sh one <host> magma-verify
 scripts/gpu_remote.sh one <host> magma-strict-verify
 scripts/gpu_remote.sh one <host> magma-capability
 scripts/gpu_remote.sh one <host> magma-provider-bench
+scripts/gpu_remote.sh one <host> magma-k005-monitor
+scripts/gpu_remote.sh one <host> magma-proof-pack
 scripts/gpu_remote.sh one <host> gpu-probe
 scripts/gpu_remote.sh one <host> checks
 ```
@@ -130,7 +134,10 @@ Reusable remote jobs (called by wrapper scripts and tmux run flow):
 2. `scripts/remote_jobs/magma_strict_verify_job.sh`
 3. `scripts/remote_jobs/magma_capability_job.sh`
 4. `scripts/remote_jobs/magma_provider_bench_job.sh`
-5. `scripts/remote_jobs/gpu_probe_job.sh`
+5. `scripts/remote_jobs/magma_provider_bench_decomposition_job.sh`
+6. `scripts/remote_jobs/magma_k005_monitor_job.sh`
+7. `scripts/remote_jobs/magma_proof_pack_job.sh`
+8. `scripts/remote_jobs/gpu_probe_job.sh`
 
 ## MAGMA expansion tracking
 
