@@ -5,6 +5,7 @@ if [[ $# -lt 1 ]]; then
   echo "usage: $0 <host>"
   echo "example: SSH_USER=root SSH_PORT=18800 SSH_KEY=~/.ssh/nabled_vast_4090 $0 ssh9.vast.ai"
   echo "set NABLED_REMOTE_FORCE_BOOTSTRAP=1 to force apt/rust/bootstrap even on pre-baked images"
+  echo "set NABLED_REMOTE_AUTO_STASH=1 to stash dirty remote worktree before pull (default: 1)"
   exit 1
 fi
 
@@ -18,6 +19,7 @@ REMOTE_HOME="${REMOTE_HOME:-$([[ "${SSH_USER}" == "root" ]] && echo "/root" || e
 REMOTE_REPO_DIR="${REMOTE_REPO_DIR:-${REMOTE_HOME}/nabled}"
 SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-20}"
 NABLED_REMOTE_FORCE_BOOTSTRAP="${NABLED_REMOTE_FORCE_BOOTSTRAP:-0}"
+NABLED_REMOTE_AUTO_STASH="${NABLED_REMOTE_AUTO_STASH:-1}"
 SSH_OPTS=(
   -T
   -F /dev/null
@@ -102,6 +104,24 @@ if [[ -d '${REMOTE_REPO_DIR}/.git' ]]; then
   cd '${REMOTE_REPO_DIR}'
   git fetch origin
   git checkout '${REPO_BRANCH}'
+  is_dirty=0
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    is_dirty=1
+  fi
+  if [[ -n "\$(git ls-files --others --exclude-standard)" ]]; then
+    is_dirty=1
+  fi
+  if [[ "\${is_dirty}" == "1" ]]; then
+    if [[ '${NABLED_REMOTE_AUTO_STASH}' == '1' ]]; then
+      stash_label="nabled-auto-prepare \$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      git stash push --include-untracked -m "\${stash_label}" >/dev/null
+      echo "stashed dirty remote worktree: \${stash_label}"
+    else
+      echo "remote repository is dirty and auto-stash is disabled (NABLED_REMOTE_AUTO_STASH=0)." >&2
+      echo "commit/stash manually or rerun with NABLED_REMOTE_AUTO_STASH=1." >&2
+      exit 2
+    fi
+  fi
   git pull --ff-only origin '${REPO_BRANCH}'
 else
   git clone --branch '${REPO_BRANCH}' '${REPO_URL}' '${REMOTE_REPO_DIR}'

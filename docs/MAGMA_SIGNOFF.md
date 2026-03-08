@@ -1,6 +1,6 @@
 # MAGMA Signoff Matrix
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 
 ## Purpose
 
@@ -44,6 +44,8 @@ That matrix references canonical route IDs from this file and is part of release
    - `coverage/gpu-v2/magma/job-20260307T195725Z.log` (`magma-strict-verify`, `rc=0`)
    - `coverage/gpu-v2/magma/job-20260307T203307Z.log` (`magma-strict-verify`, composed-domain rows included, `rc=0`)
    - `coverage/gpu-v2/magma/job-20260307T205521Z.log` (`magma-strict-verify`, script-refined baseline+forced-matrix flow, `rc=0`)
+   - `coverage/gpu-v2/magma/job-20260308T140414Z.log` (`magma-strict-verify`, post-`D-165` rerun, `rc=0`)
+   - `coverage/gpu-v2/magma/bench/comparison-20260308T140517Z.md` (provider comparison rerun after `D-165`)
 3. Strict mode contract:
    - `NABLED_MAGMA_STRICT=1` must fail fast (no silent provider fallback).
 

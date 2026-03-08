@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 
 ## Purpose
 
@@ -205,10 +205,12 @@ Use this file to resume work quickly after context compaction without re-auditin
 163. `D-163`: MAGMA strict verification workflow is hardened and validated on RTX 4090: strict jobs now serialize tests (`RUST_TEST_THREADS=1`), split baseline correctness from forced execution-matrix strict checks, assert execution-matrix test presence, and pass cleanly (`coverage/gpu-v2/magma/job-20260307T205521Z.log`, `coverage/gpu-v2/magma/strict-verification-20260307.log`).
 164. `D-164`: `K-005` tiny-shape complex follow-on is complete: `magma-system` now composes with lapack-provider fallback (`openblas-system`), complex QR/SVD and real least-squares QR are MAGMA-first with lapack fallback in `magma+lapack` builds, strict MAGMA verification remains green (`job-20260307T221821Z.log`), and provider bench rerun (`comparison-20260307T221913Z.md`) shows prior complex hotspot class reduced to near parity (`~0.94x` to `~1.09x`).
 165. `D-165`: `K-005` small/medium decomposition follow-on is implemented locally: `DenseKernelPolicy::prefer_magma_decomposition` now includes both dimension and work gating (`NABLED_MAGMA_MIN_DECOMPOSITION_DIM`, `NABLED_MAGMA_MIN_DECOMPOSITION_WORK`), and `lu`/`cholesky` in `magma+lapack` builds are now MAGMA-first with lapack fallback for non-eligible and runtime-fallback paths; full local quality gates (`just checks`) remain green.
+166. `D-166`: `K-005` remote follow-on rerun is complete after `D-165`: RTX 4090 `magma-strict-verify` and provider comparison (`comparison-20260308T140517Z.md`) are green, and decomposition-domain outliers tightened materially (scope median `~1.000`, p90 `~1.056`).
+167. `D-167`: Remote workflow sync is now resilient for dirty remote checkouts: `gpu_remote_prepare.sh` defaults to `NABLED_REMOTE_AUTO_STASH=1`, stashing tracked/untracked changes before `git pull --ff-only` to keep `gpu_remote.sh up` deterministic after host restarts.
 
 ## Next
 
-1. `K-005` follow-on: rerun remote MAGMA provider comparison after `D-165` and refresh outlier tables/evidence (`sylvester` tiny-shape + remaining `lu`/`cholesky` small/medium regressions expected to tighten).
+1. `K-005` follow-on optimization: address current top decomposition regressions from `comparison-20260308T140517Z.md` (`cholesky::solve(64)`, `cholesky::inverse(32)`, `sylvester::solve_sylvester(24)`, and `eigen::generalized(16)`).
 2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
 
 Round scope lock:

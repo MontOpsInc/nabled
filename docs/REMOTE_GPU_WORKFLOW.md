@@ -1,6 +1,6 @@
 # Remote GPU Workflow
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 
 ## Purpose
 
@@ -49,6 +49,7 @@ SSH reproducibility guarantee:
 1. Scripts force `ssh -F /dev/null` and set explicit options (`ControlMaster=no`, `ControlPath=none`, `ControlPersist=no`, `IdentitiesOnly=yes`).
 2. Local `~/.ssh/config` cannot override workflow behavior.
 3. Non-interactive scripts use stdin-driven remote execution (`ssh ... <<EOF`) instead of `ssh host "..."` command mode to avoid host-wrapper drift (including Vast command-mode tmux interception).
+4. `scripts/gpu_remote_prepare.sh` defaults to `NABLED_REMOTE_AUTO_STASH=1`, so dirty remote worktrees are stashed automatically before `git pull --ff-only` (set `NABLED_REMOTE_AUTO_STASH=0` to fail-fast instead).
 
 For Vast template startup script:
 
