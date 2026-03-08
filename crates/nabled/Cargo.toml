@@ -23,7 +23,7 @@ openblas-system = ["blas", "nabled-linalg/openblas-system", "nabled-ml/openblas-
 openblas-static = ["blas", "nabled-linalg/openblas-static", "nabled-ml/openblas-static"]
 netlib-system = ["blas", "nabled-linalg/netlib-system", "nabled-ml/netlib-system"]
 netlib-static = ["blas", "nabled-linalg/netlib-static", "nabled-ml/netlib-static"]
-magma-system = ["nabled-linalg/magma-system", "nabled-ml/magma-system"]
+magma-system = ["lapack-provider", "nabled-linalg/magma-system", "nabled-ml/magma-system"]
 accelerator-rayon = ["nabled-linalg/accelerator-rayon"]
 accelerator-wgpu = ["nabled-linalg/accelerator-wgpu"]
 

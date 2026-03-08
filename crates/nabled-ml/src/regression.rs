@@ -74,75 +74,34 @@ fn map_lu_error(error: LUError) -> RegressionError {
     }
 }
 
-#[cfg(feature = "lapack-provider")]
-fn linear_regression_impl<T>(
-    x: &ArrayView2<'_, T>,
-    y: &ArrayView1<'_, T>,
-    add_intercept: bool,
-) -> Result<NdarrayRegressionResult<T>, RegressionError>
-where
-    T: NabledReal + ndarray_linalg::Lapack,
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+trait RegressionLinearScalar: NabledReal + ndarray_linalg::Lapack + lu::LuProviderScalar {}
+
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+impl<T> RegressionLinearScalar for T where
+    T: NabledReal + ndarray_linalg::Lapack + lu::LuProviderScalar
 {
-    if x.is_empty() || y.is_empty() {
-        return Err(RegressionError::EmptyInput);
-    }
-    if x.nrows() != y.len() {
-        return Err(RegressionError::DimensionMismatch);
-    }
-
-    let maybe_design = if add_intercept {
-        let mut with_intercept = Array2::<T>::zeros((x.nrows(), x.ncols() + 1));
-        for row in 0..x.nrows() {
-            with_intercept[[row, 0]] = T::one();
-            for col in 0..x.ncols() {
-                with_intercept[[row, col + 1]] = x[[row, col]];
-            }
-        }
-        Some(with_intercept)
-    } else {
-        None
-    };
-    let design = maybe_design.as_ref().map_or_else(|| x.view(), |owned| owned.view());
-
-    let xt = design.t();
-    let normal_matrix = xt.dot(&design);
-    let normal_rhs = xt.dot(y);
-    let coefficients = lu::solve(&normal_matrix, &normal_rhs).map_err(map_lu_error)?;
-
-    let fitted_values = design.dot(&coefficients);
-    let residuals = y - &fitted_values;
-
-    let y_sum = y.iter().copied().fold(T::zero(), |acc, value| acc + value);
-    let y_mean = y_sum / usize_to_scalar::<T>(y.len());
-
-    let ss_total = y
-        .iter()
-        .copied()
-        .map(|value| {
-            let centered = value - y_mean;
-            centered * centered
-        })
-        .fold(T::zero(), |acc, value| acc + value);
-
-    let ss_residual = residuals
-        .iter()
-        .copied()
-        .map(|value| value * value)
-        .fold(T::zero(), |acc, value| acc + value);
-    let r_squared =
-        if ss_total <= T::epsilon() { T::one() } else { T::one() - ss_residual / ss_total };
-
-    Ok(NdarrayRegressionResult { coefficients, fitted_values, residuals, r_squared })
 }
 
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+trait RegressionLinearScalar: NabledReal + ndarray_linalg::Lapack {}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+impl<T> RegressionLinearScalar for T where T: NabledReal + ndarray_linalg::Lapack {}
+
 #[cfg(not(feature = "lapack-provider"))]
+trait RegressionLinearScalar: lu::LuProviderScalar {}
+
+#[cfg(not(feature = "lapack-provider"))]
+impl<T> RegressionLinearScalar for T where T: lu::LuProviderScalar {}
+
 fn linear_regression_impl<T>(
     x: &ArrayView2<'_, T>,
     y: &ArrayView1<'_, T>,
     add_intercept: bool,
 ) -> Result<NdarrayRegressionResult<T>, RegressionError>
 where
-    T: lu::LuProviderScalar,
+    T: RegressionLinearScalar,
 {
     if x.is_empty() || y.is_empty() {
         return Err(RegressionError::EmptyInput);
@@ -200,14 +159,14 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
 pub fn linear_regression<T>(
     x: &Array2<T>,
     y: &Array1<T>,
     add_intercept: bool,
 ) -> Result<NdarrayRegressionResult<T>, RegressionError>
 where
-    T: lu::LuProviderScalar,
+    T: NabledReal + ndarray_linalg::Lapack + lu::LuProviderScalar,
 {
     linear_regression_impl(&x.view(), &y.view(), add_intercept)
 }
@@ -216,7 +175,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn linear_regression<T>(
     x: &Array2<T>,
     y: &Array1<T>,
@@ -224,6 +183,22 @@ pub fn linear_regression<T>(
 ) -> Result<NdarrayRegressionResult<T>, RegressionError>
 where
     T: NabledReal + ndarray_linalg::Lapack,
+{
+    linear_regression_impl(&x.view(), &y.view(), add_intercept)
+}
+
+/// Solve linear regression with optional intercept.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or singular design matrix.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn linear_regression<T>(
+    x: &Array2<T>,
+    y: &Array1<T>,
+    add_intercept: bool,
+) -> Result<NdarrayRegressionResult<T>, RegressionError>
+where
+    T: lu::LuProviderScalar,
 {
     linear_regression_impl(&x.view(), &y.view(), add_intercept)
 }
@@ -232,14 +207,14 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
 pub fn linear_regression_view<T>(
     x: &ArrayView2<'_, T>,
     y: &ArrayView1<'_, T>,
     add_intercept: bool,
 ) -> Result<NdarrayRegressionResult<T>, RegressionError>
 where
-    T: lu::LuProviderScalar,
+    T: NabledReal + ndarray_linalg::Lapack + lu::LuProviderScalar,
 {
     linear_regression_impl(x, y, add_intercept)
 }
@@ -248,7 +223,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular design matrix.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn linear_regression_view<T>(
     x: &ArrayView2<'_, T>,
     y: &ArrayView1<'_, T>,
@@ -256,6 +231,22 @@ pub fn linear_regression_view<T>(
 ) -> Result<NdarrayRegressionResult<T>, RegressionError>
 where
     T: NabledReal + ndarray_linalg::Lapack,
+{
+    linear_regression_impl(x, y, add_intercept)
+}
+
+/// Solve linear regression with optional intercept from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or singular design matrix.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn linear_regression_view<T>(
+    x: &ArrayView2<'_, T>,
+    y: &ArrayView1<'_, T>,
+    add_intercept: bool,
+) -> Result<NdarrayRegressionResult<T>, RegressionError>
+where
+    T: lu::LuProviderScalar,
 {
     linear_regression_impl(x, y, add_intercept)
 }

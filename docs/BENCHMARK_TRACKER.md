@@ -1,6 +1,6 @@
 # Benchmark Tracker
 
-Last updated: 2026-03-06
+Last updated: 2026-03-07
 
 ## Purpose
 
@@ -356,16 +356,19 @@ NABLED_PROVIDER_BENCH_FEATURES=magma-system    just -f .justfile bench-smoke-rep
 Artifacts:
 
 1. `coverage/gpu-v2/magma/verification-4090.log`
-2. `coverage/gpu-v2/magma/bench/openblas-system-summary-4090.json`
-3. `coverage/gpu-v2/magma/bench/magma-system-summary-4090.json`
+2. `coverage/gpu-v2/magma/bench/openblas-system-summary-20260307T221913Z.json`
+3. `coverage/gpu-v2/magma/bench/magma-system-summary-20260307T221913Z.json`
+4. `coverage/gpu-v2/magma/bench/comparison-20260307T221913Z.md`
+5. `coverage/gpu-v2/magma/bench/comparison-latest.md`
 
 Summary:
 
-1. Both provider runs produced complete benchmark summaries (`289` common benchmark entries).
-2. Median ratio (`magma/openblas`) across all entries is near parity (`~1.001`), with domain-specific outliers concentrated in tiny-shape decomposition cases where fixed provider overhead dominates.
-3. For decomposition-heavy domains, MAGMA is mixed by operation/size and should be tuned via outlier-ranked follow-up (`K-005`) rather than treated as globally faster/slower.
+1. Both provider runs produced complete benchmark summaries (`211` common nabled-provider entries in the comparison report).
+2. Median ratio (`magma/openblas`) across all compared entries is near parity (`~1.007`).
+3. Tiny-shape complex decomposition hotspots that previously dominated `K-005` outliers are now near parity in this run (`matrix_log_eigen_complex`/`matrix_power_half_complex` at size `8/16`, `full_svd_complex` at `16/32`).
+4. Remaining largest regressions are now concentrated in non-complex paths (`sylvester` tiny shapes and selected `lu`/`cholesky` small/medium cases), which become the next `K-005` optimization targets.
 
-### K-005 Phase-1 (small-shape MAGMA routing)
+### K-005 Routing + Fallback Composition
 
 1. MAGMA decomposition calls now use a centralized size gate (`DenseKernelPolicy::prefer_magma_decomposition`) before selecting MAGMA provider kernels in:
    - `lu` solve/inverse/determinant (real + complex),
@@ -374,41 +377,58 @@ Summary:
 2. Default cutoff is `min(rows, cols) >= 128`.
 3. Runtime override is available via:
    - `NABLED_MAGMA_MIN_DECOMPOSITION_DIM=<usize>`
+   - `NABLED_MAGMA_MIN_DECOMPOSITION_WORK=<usize>` (minimum `rows*cols` work gate)
 4. Intent:
    - avoid fixed MAGMA launch/transfer overhead on tiny decomposition shapes,
    - preserve MAGMA path for larger workloads where GPU/provider acceleration is beneficial.
-5. Follow-up rerun completed:
-   - remote provider compare (`openblas-system` vs `magma-system`) was rerun after routing/caching changes, and outlier tables were refreshed from current artifacts.
+5. Feature composition is now explicit for this run:
+   - `magma-system` implies `lapack-provider` through `openblas-system` feature wiring.
+   - For `magma + lapack-provider`, complex QR/SVD routes are MAGMA-first with lapack fallback, and real least-squares QR is MAGMA-first with lapack fallback.
+6. Follow-up rerun completed:
+   - remote provider compare (`openblas-system` vs `magma-system`) was rerun after routing/caching + fallback composition changes, and outlier tables were refreshed from current artifacts.
+7. Next rerun trigger (pending current local pass):
+   - `lu`/`cholesky` now route MAGMA-first with lapack fallback in `magma+lapack` builds,
+   - decomposition routing now also requires minimum work (`rows*cols`) in addition to min-dimension,
+   - rerun remote provider compare to quantify impact on the remaining `sylvester` + `lu`/`cholesky` outliers listed below.
 
 ### Post-routing Outlier Snapshot (Nabled Decomposition Domains)
 
 Scope:
 
 1. Entries filtered to nabled decomposition/matrix-function domains (`lu`, `cholesky`, `qr`, `svd`, `eigen`, `schur`, `polar`, `sylvester`, `matrix_functions`).
-2. Common entries in scope: `62`.
-3. Aggregate ratio (`magma/openblas`) in scope: median `~1.051`, p90 `~7.079`.
+2. Common entries in scope: `68`.
+3. Aggregate ratio (`magma/openblas`) in scope: median `~1.022`, p90 `~2.045`.
 
 Top regressions (highest `magma/openblas`):
 
-1. `matrix_functions_nabled_ndarray/matrix_log_eigen_complex/16` -> `30.685x`
-2. `matrix_functions_nabled_ndarray/matrix_power_half_complex/16` -> `30.630x`
-3. `matrix_functions_nabled_ndarray/matrix_log_eigen_complex/8` -> `26.645x`
-4. `matrix_functions_nabled_ndarray/matrix_power_half_complex/8` -> `26.531x`
-5. `svd_nabled_ndarray/full_svd_complex/32` -> `25.621x`
-6. `svd_nabled_ndarray/full_svd_complex/16` -> `23.546x`
-7. `sylvester_nabled_ndarray/solve_sylvester/square-16x16` -> `7.079x`
-8. `lu_nabled_ndarray/determinant/96` -> `3.725x`
+1. `sylvester_nabled_ndarray/solve_sylvester/square-16x16` -> `8.565x`
+2. `lu_nabled_ndarray/determinant/96` -> `3.727x`
+3. `lu_nabled_ndarray/solve/96` -> `3.601x`
+4. `cholesky_nabled_ndarray/inverse/16` -> `3.120x`
+5. `cholesky_nabled_ndarray/inverse/64` -> `2.520x`
+6. `cholesky_nabled_ndarray/decompose/16` -> `2.156x`
+7. `lu_nabled_ndarray/determinant/64` -> `2.074x`
+8. `lu_nabled_ndarray/solve/64` -> `2.033x`
 
 Top improvements (lowest `magma/openblas`):
 
-1. `svd_nabled_ndarray/truncated_svd/96` -> `0.145x`
-2. `qr_nabled_ndarray/least_squares/32` -> `0.208x`
-3. `svd_nabled_ndarray/full_svd/96` -> `0.285x`
-4. `qr_nabled_ndarray/least_squares/64` -> `0.367x`
-5. `qr_nabled_ndarray/least_squares/96` -> `0.411x`
-6. `schur_nabled_ndarray/compute_schur/square-16x16` -> `0.534x`
-7. `svd_nabled_ndarray/truncated_svd/64` -> `0.571x`
-8. `svd_nabled_ndarray/full_svd/64` -> `0.574x`
+1. `svd_nabled_ndarray/truncated_svd/96` -> `0.762x`
+2. `eigen_nabled_ndarray/generalized/48` -> `0.763x`
+3. `qr_nabled_ndarray/qr/96` -> `0.896x`
+4. `matrix_functions_nabled_ndarray/matrix_power_half_complex/16` -> `0.939x`
+5. `polar_nabled_ndarray/compute_polar/square-32x32` -> `0.943x`
+6. `matrix_functions_nabled_ndarray/matrix_log_eigen_complex/16` -> `0.950x`
+7. `svd_nabled_ndarray/truncated_svd/32` -> `0.950x`
+8. `lu_nabled_ndarray/determinant/32` -> `0.954x`
+
+Spot-check confirmation for prior tiny-shape complex hotspots:
+
+1. `matrix_log_eigen_complex/8`: `1.087x` (`11.420us` vs `10.506us`).
+2. `matrix_log_eigen_complex/16`: `0.950x` (`42.019us` vs `44.237us`).
+3. `matrix_power_half_complex/8`: `1.090x` (`11.519us` vs `10.566us`).
+4. `matrix_power_half_complex/16`: `0.939x` (`42.234us` vs `44.955us`).
+5. `full_svd_complex/16`: `1.026x` (`72.692us` vs `70.882us`).
+6. `full_svd_complex/32`: `1.026x` (`387.508us` vs `377.755us`).
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

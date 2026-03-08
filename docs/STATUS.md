@@ -140,6 +140,7 @@ Workspace migration for library domains is complete.
 132. `MAG-L-003` composed-domain closure is complete: `schur`, `polar`, and matrix-function routed MAGMA rows (`MAG-D-030..MAG-D-043`) are now explicitly verified with strict remote evidence (`job-20260307T203307Z.log`, `rc=0`).
 133. `MAG-L-001` and `MAG-L-002` are complete: `batched::svd*` and `batched::symmetric_eigen*` now attempt MAGMA routes in `M*` builds with batched policy + strict-fail semantics, and remote symbol-scan evidence confirms native batched SVD/eigen kernels are absent in the current MAGMA runtime (`coverage/gpu-v2/magma/capability-batched-symbols-20260307.log`), so per-slice MAGMA routing is now the explicit contract.
 134. MAGMA strict verification workflow is now hardened and validated on RTX 4090: strict jobs serialize tests (`RUST_TEST_THREADS=1`), separate baseline correctness from forced strict execution-matrix checks, assert matrix-test availability before execution, and pass cleanly (`job-20260307T205521Z.log`, `strict-verification-20260307.log`).
+135. K-005 small/medium decomposition routing has been tightened locally: MAGMA decomposition selection now requires both min-dimension and min-work (`rows*cols`) thresholds, and `lu`/`cholesky` now use MAGMA-first with lapack fallback in `magma+lapack` builds for non-eligible and runtime-fallback paths; full local quality gates remain green.
 
 ## Current Code Ownership
 
@@ -177,7 +178,8 @@ Workspace migration for library domains is complete.
 GPU phase-2 continuation:
 
 1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`) using the refreshed outlier rankings from the latest remote rerun.
-2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
+2. Rerun remote MAGMA provider comparison after the latest `K-005` routing changes and refresh outlier evidence (`sylvester` tiny shapes and `lu`/`cholesky` small/medium paths).
+3. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
 
 ## Completion Criteria For Migration
 

@@ -83,10 +83,22 @@ fn vector_norm_complex(vector: &Array1<Complex64>) -> f64 {
     vector.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+trait IterativeLinearScalar:
+    NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar
+{
+}
+
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+impl<T> IterativeLinearScalar for T where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar
+{
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 trait IterativeLinearScalar: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack {}
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 impl<T> IterativeLinearScalar for T where
     T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack
 {
@@ -225,7 +237,24 @@ where
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
 #[allow(clippy::many_single_char_names)]
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+pub fn gmres<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar,
+{
+    gmres_impl(matrix_a, matrix_b, config)
+}
+
+/// GMRES for general systems `Ax=b`.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[allow(clippy::many_single_char_names)]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
     matrix_b: &Array1<T>,

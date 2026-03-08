@@ -203,10 +203,12 @@ Use this file to resume work quickly after context compaction without re-auditin
 161. `D-161`: `MAG-L-003` is complete: composed-domain MAGMA signoff (`schur`, `polar`, matrix-functions) now has explicit routed execution rows (`MAG-D-030..MAG-D-043`) with strict remote verification evidence (`job-20260307T203307Z.log`, `rc=0`).
 162. `D-162`: `MAG-L-001` and `MAG-L-002` are complete: batched `svd`/`symmetric_eigen` now attempt MAGMA routes in `M*` builds under `DenseKernelPolicy::prefer_magma_batched_decomposition` with strict fail-fast behavior, and remote symbol-scan evidence confirms native batched SVD/eigen MAGMA kernels are absent in the current runtime (`coverage/gpu-v2/magma/capability-batched-symbols-20260307.log`), making per-slice MAGMA routing the explicit contract.
 163. `D-163`: MAGMA strict verification workflow is hardened and validated on RTX 4090: strict jobs now serialize tests (`RUST_TEST_THREADS=1`), split baseline correctness from forced execution-matrix strict checks, assert execution-matrix test presence, and pass cleanly (`coverage/gpu-v2/magma/job-20260307T205521Z.log`, `coverage/gpu-v2/magma/strict-verification-20260307.log`).
+164. `D-164`: `K-005` tiny-shape complex follow-on is complete: `magma-system` now composes with lapack-provider fallback (`openblas-system`), complex QR/SVD and real least-squares QR are MAGMA-first with lapack fallback in `magma+lapack` builds, strict MAGMA verification remains green (`job-20260307T221821Z.log`), and provider bench rerun (`comparison-20260307T221913Z.md`) shows prior complex hotspot class reduced to near parity (`~0.94x` to `~1.09x`).
+165. `D-165`: `K-005` small/medium decomposition follow-on is implemented locally: `DenseKernelPolicy::prefer_magma_decomposition` now includes both dimension and work gating (`NABLED_MAGMA_MIN_DECOMPOSITION_DIM`, `NABLED_MAGMA_MIN_DECOMPOSITION_WORK`), and `lu`/`cholesky` in `magma+lapack` builds are now MAGMA-first with lapack fallback for non-eligible and runtime-fallback paths; full local quality gates (`just checks`) remain green.
 
 ## Next
 
-1. `K-005` follow-on: execute targeted optimization passes from refreshed MAGMA outlier rankings (starting with tiny-shape complex `matrix_functions`/`svd` hotspots and decomposition-path regressions).
+1. `K-005` follow-on: rerun remote MAGMA provider comparison after `D-165` and refresh outlier tables/evidence (`sylvester` tiny-shape + remaining `lu`/`cholesky` small/medium regressions expected to tighten).
 2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
 
 Round scope lock:

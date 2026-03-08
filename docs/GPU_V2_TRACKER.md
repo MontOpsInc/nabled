@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-07 (V2-008 sparse phase-2 + V2-009 mixed-precision phase-2 + K-005 phase-1..4 complete with benchmark rerun/outlier refresh + MAG-L-001/002/004 closure)
+Last updated: 2026-03-07 (V2-008 sparse phase-2 + V2-009 mixed-precision phase-2 + K-005 phase-1..5 with follow-on benchmark rerun + MAG-L-001/002/004 closure)
 
 ## Purpose
 
@@ -251,20 +251,30 @@ Integration plan (locked):
    - strict workflow now runs serialized tests (`RUST_TEST_THREADS=1`) and splits baseline correctness
      from forced strict execution-matrix checks to keep MAGMA signoff signal deterministic.
 5. Post-routing provider benchmark rerun is complete (`openblas-system` vs `magma-system`) with refreshed outlier ranking artifacts:
-   - `coverage/gpu-v2/magma/bench/openblas-system-summary.json`
-   - `coverage/gpu-v2/magma/bench/magma-system-summary.json`
+   - `coverage/gpu-v2/magma/bench/openblas-system-summary-20260307T221913Z.json`
+   - `coverage/gpu-v2/magma/bench/magma-system-summary-20260307T221913Z.json`
+   - `coverage/gpu-v2/magma/bench/comparison-20260307T221913Z.md`
 6. Refreshed decomposition-focused ratio snapshot (`magma/openblas`, nabled decomposition domains only):
-   - common entries: `62`
-   - median ratio: `~1.051`
-   - p90 ratio: `~7.079`
-   - worst regressions remain concentrated in tiny-shape complex decomposition/matrix-function paths (for example `matrix_log_eigen_complex/8|16`, `matrix_power_half_complex/8|16`, `full_svd_complex/16|32`)
-   - strongest wins remain in larger real decomposition workloads (for example `truncated_svd/96`, `full_svd/96`, `least_squares/32|64|96`)
+   - common entries: `68`
+   - median ratio: `~1.022`
+   - p90 ratio: `~2.045`
+   - prior tiny-shape complex hotspot class is now near parity (`matrix_log_eigen_complex`, `matrix_power_half_complex`, `full_svd_complex` around `~0.94x` to `~1.09x`)
+   - largest remaining regressions are now mostly non-complex (`sylvester` tiny shapes and selected `lu`/`cholesky` small-medium cases)
 7. MAGMA signoff expansion is complete at function granularity:
    - canonical route ledger: `docs/MAGMA_SIGNOFF.md`
    - one-row-per-public-function matrix: `docs/MAGMA_PUBLIC_API_MATRIX.md`
 8. Composed-domain MAGMA signoff is now closed:
    - routed rows `MAG-D-030..MAG-D-043` (`schur`, `polar`, matrix-functions) are verified,
    - strict remote evidence: `job-20260307T203307Z.log` (`rc=0`).
+9. K-005 follow-on composition pass is complete:
+   - `magma-system` now composes with the lapack provider stack (`openblas-system`) for fallback quality,
+   - `qr::solve_least_squares` and complex QR/SVD provider routes are MAGMA-first with lapack fallback in `magma+lapack` builds,
+   - strict verification remains green after composition (`job-20260307T221821Z.log`, `rc=0`).
+10. K-005 follow-on small/medium routing pass is implemented locally:
+   - `DenseKernelPolicy::prefer_magma_decomposition` now requires both minimum dimension and minimum work (`rows*cols`) before routing to MAGMA,
+   - new env override is available: `NABLED_MAGMA_MIN_DECOMPOSITION_WORK=<usize>`,
+   - `lu` and `cholesky` provider routes now use MAGMA-first with lapack fallback in `magma+lapack` builds for non-eligible and runtime-fallback paths,
+   - local gate set (`just checks`) is green; remote provider benchmark refresh is the next evidence step.
 
 ## MAGMA Expansion Scope (Post V2-005)
 

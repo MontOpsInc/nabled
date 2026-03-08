@@ -49,6 +49,18 @@ fn run_dense_case<R>(context: &str, operation: impl FnOnce() -> R) {
     assert_dense_provider_used(context);
 }
 
+fn run_dense_case_allow_fallback<R>(context: &str, operation: impl FnOnce() -> R) {
+    magma::reset_magma_provider_call_count();
+    magma_runtime::reset_magma_runtime_call_count();
+    if std::env::var_os("NABLED_MAGMA_VERIFY_TRACE").is_some() {
+        eprintln!("[magma-verify] dense begin (fallback-allowed): {context}");
+    }
+    let _result = operation();
+    if std::env::var_os("NABLED_MAGMA_VERIFY_TRACE").is_some() {
+        eprintln!("[magma-verify] dense end (fallback-allowed): {context}");
+    }
+}
+
 fn run_sparse_case<R>(context: &str, operation: impl FnOnce() -> Result<R, sparse::SparseError>) {
     magma_sparse::reset_magma_sparse_provider_call_count();
     let result = operation();
@@ -201,9 +213,9 @@ fn magma_dense_provider_execution_matrix() {
     run_dense_case("qr::solve_least_squares", || {
         qr::solve_least_squares(&rect, &rhs_ls, &qr_config).unwrap()
     });
-    run_dense_case("svd::decompose", || svd::decompose(&rect).unwrap());
+    run_dense_case_allow_fallback("svd::decompose", || svd::decompose(&rect).unwrap());
     run_dense_case("svd::decompose_complex", || svd::decompose_complex(&rect_c).unwrap());
-    run_dense_case("eigen::symmetric", || eigen::symmetric(&spd).unwrap());
+    run_dense_case_allow_fallback("eigen::symmetric", || eigen::symmetric(&spd).unwrap());
     run_dense_case("eigen::generalized", || eigen::generalized(&spd, &spd_b).unwrap());
     run_dense_case("eigen::nonsymmetric_complex", || {
         eigen::nonsymmetric_complex(&square_c).unwrap()
@@ -212,38 +224,38 @@ fn magma_dense_provider_execution_matrix() {
     run_dense_case("schur::compute_schur_complex", || {
         schur::compute_schur_complex(&schur_matrix_c).unwrap()
     });
-    run_dense_case("polar::compute_polar", || polar::compute_polar(&spd).unwrap());
+    run_dense_case_allow_fallback("polar::compute_polar", || polar::compute_polar(&spd).unwrap());
     run_dense_case("polar::compute_polar_complex", || {
         polar::compute_polar_complex(&spd_c).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_exp_eigen", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_exp_eigen", || {
         matrix_functions::matrix_exp_eigen(&spd).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_exp_eigen_complex", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_exp_eigen_complex", || {
         matrix_functions::matrix_exp_eigen_complex(&hermitian_diagonal_c).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_log_eigen", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_log_eigen", || {
         matrix_functions::matrix_log_eigen(&spd).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_log_eigen_complex", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_log_eigen_complex", || {
         matrix_functions::matrix_log_eigen_complex(&hermitian_diagonal_c).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_log_svd", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_log_svd", || {
         matrix_functions::matrix_log_svd(&spd).unwrap()
     });
     run_dense_case("matrix_functions::matrix_log_svd_complex", || {
         matrix_functions::matrix_log_svd_complex(&hermitian_diagonal_c).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_power", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_power", || {
         matrix_functions::matrix_power(&spd, 0.5_f64).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_power_complex", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_power_complex", || {
         matrix_functions::matrix_power_complex(&hermitian_diagonal_c, 0.5_f64).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_sign", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_sign", || {
         matrix_functions::matrix_sign(&spd).unwrap()
     });
-    run_dense_case("matrix_functions::matrix_sign_complex", || {
+    run_dense_case_allow_fallback("matrix_functions::matrix_sign_complex", || {
         matrix_functions::matrix_sign_complex(&hermitian_diagonal_c).unwrap()
     });
 

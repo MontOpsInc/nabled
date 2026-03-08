@@ -1,6 +1,6 @@
 //! Singular value decomposition over ndarray matrices.
 
-#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
+#[cfg(not(feature = "lapack-provider"))]
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -25,7 +25,7 @@ pub trait SvdInternalScalar: NabledReal {}
 
 #[cfg(not(feature = "magma-system"))]
 impl<T> SvdInternalScalar for T where T: NabledReal {}
-#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::schur;
 
 /// SVD result for ndarray matrices.
@@ -186,7 +186,7 @@ where
     Ok(NdarraySVD { u, singular_values, vt })
 }
 
-#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
+#[cfg(not(feature = "lapack-provider"))]
 fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVDError> {
     if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
         return Err(SVDError::InvalidInput("matrix must be finite".to_string()));
@@ -194,7 +194,7 @@ fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), SVD
     Ok(())
 }
 
-#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
+#[cfg(not(feature = "lapack-provider"))]
 #[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
@@ -240,7 +240,38 @@ fn decompose_complex_internal(
     Ok(NdarrayComplexSVD { u, singular_values, vt })
 }
 
-#[cfg(feature = "magma-system")]
+#[cfg(feature = "lapack-provider")]
+fn decompose_complex_lapack(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayComplexSVD, SVDError> {
+    use ndarray_linalg::SVD as _;
+
+    let (u_opt, singular_values, vt_opt) =
+        matrix.to_owned().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
+    let u = u_opt.ok_or(SVDError::ConvergenceFailed)?;
+    let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
+    Ok(NdarrayComplexSVD { u, singular_values, vt })
+}
+
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+fn decompose_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayComplexSVD, SVDError> {
+    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+        return decompose_complex_lapack(matrix);
+    }
+    match magma::svd_decompose_complex(matrix) {
+        Ok((u, singular_values, vt)) => Ok(NdarrayComplexSVD { u, singular_values, vt }),
+        Err(error) => {
+            if DenseKernelPolicy::magma_fail_fast_mode() {
+                return Err(map_svd_magma_error(error));
+            }
+            decompose_complex_lapack(matrix)
+        }
+    }
+}
+
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
 fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexSVD, SVDError> {
@@ -400,12 +431,7 @@ fn decompose_complex_impl(
     }
     #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
     {
-        use ndarray_linalg::SVD as _;
-        let (u_opt, singular_values, vt_opt) =
-            matrix.to_owned().svd(true, true).map_err(|_| SVDError::ConvergenceFailed)?;
-        let u = u_opt.ok_or(SVDError::ConvergenceFailed)?;
-        let vt = vt_opt.ok_or(SVDError::ConvergenceFailed)?;
-        Ok(NdarrayComplexSVD { u, singular_values, vt })
+        decompose_complex_lapack(matrix)
     }
     #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {

@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicI8, Ordering};
 
 use nabled_core::scalar::NabledReal;
-#[cfg(any(not(feature = "lapack-provider"), feature = "magma-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use ndarray::ArrayView1;
 use ndarray::{Array1, Array2, ArrayView2};
 
@@ -39,6 +39,10 @@ impl DenseKernelPolicy {
     pub(crate) const MAGMA_MIN_DECOMPOSITION_DIM: usize = 128;
     #[cfg(feature = "magma-system")]
     pub(crate) const MAGMA_MIN_DECOMPOSITION_DIM_FLOOR: usize = 16;
+    #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_MIN_DECOMPOSITION_WORK: usize = 131_072;
+    #[cfg(feature = "magma-system")]
+    pub(crate) const MAGMA_MIN_DECOMPOSITION_WORK_FLOOR: usize = 4_096;
     pub(crate) const MATRIX_FUNCTION_SERIES_TERMS: usize = 128;
     #[cfg(not(feature = "lapack-provider"))]
     pub(crate) const POLAR_MAX_ITERATIONS: usize = 64;
@@ -117,6 +121,17 @@ impl DenseKernelPolicy {
 
     #[cfg(feature = "magma-system")]
     #[must_use]
+    pub(crate) fn magma_min_decomposition_work() -> usize {
+        static VALUE: OnceLock<usize> = OnceLock::new();
+        *VALUE.get_or_init(|| {
+            Self::env_positive_usize("NABLED_MAGMA_MIN_DECOMPOSITION_WORK")
+                .unwrap_or(Self::MAGMA_MIN_DECOMPOSITION_WORK)
+                .max(Self::MAGMA_MIN_DECOMPOSITION_WORK_FLOOR)
+        })
+    }
+
+    #[cfg(feature = "magma-system")]
+    #[must_use]
     pub(crate) fn magma_batch_min_decomposition_count() -> usize {
         static VALUE: OnceLock<usize> = OnceLock::new();
         *VALUE.get_or_init(|| {
@@ -154,7 +169,12 @@ impl DenseKernelPolicy {
         if Self::magma_verify_force_mode() {
             return rows > 0 && cols > 0;
         }
-        rows.min(cols) >= Self::magma_min_decomposition_dim()
+        let min_dim = rows.min(cols);
+        if min_dim < Self::magma_min_decomposition_dim() {
+            return false;
+        }
+
+        rows.saturating_mul(cols) >= Self::magma_min_decomposition_work()
     }
 
     #[cfg(feature = "magma-system")]
@@ -302,7 +322,7 @@ pub(crate) fn lu_decompose<T: NabledReal>(
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(any(not(feature = "lapack-provider"), feature = "magma-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 pub(crate) fn lu_solve<T: NabledReal>(
     l: &Array2<T>,
     u: &Array2<T>,
@@ -346,7 +366,7 @@ pub(crate) fn lu_solve<T: NabledReal>(
 }
 
 #[allow(clippy::many_single_char_names)]
-#[cfg(any(not(feature = "lapack-provider"), feature = "magma-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 pub(crate) fn inverse_from_lu<T: NabledReal>(
     l: &Array2<T>,
     u: &Array2<T>,

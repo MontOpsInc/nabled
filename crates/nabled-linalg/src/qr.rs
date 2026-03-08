@@ -435,7 +435,70 @@ where
     Ok(QRResult { q, r, p: None, rank })
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+#[allow(clippy::many_single_char_names)]
+fn solve_least_squares_provider<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, QRError>
+where
+    T: QrProviderScalar,
+{
+    use ndarray_linalg::LeastSquaresSvd as _;
+
+    if matrix.nrows() >= matrix.ncols()
+        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+    {
+        let tolerance =
+            T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or_else(|| T::epsilon());
+        match magma::qr_decompose(matrix, tolerance) {
+            Ok((q, r, rank)) => {
+                let n = matrix.ncols();
+                if rank < n {
+                    return Err(QRError::SingularMatrix);
+                }
+
+                let mut y = Array1::<T>::zeros(n);
+                for i in 0..n {
+                    let mut dot = T::zero();
+                    for row in 0..matrix.nrows() {
+                        dot += q[[row, i]] * rhs[row];
+                    }
+                    y[i] = dot;
+                }
+
+                let mut solution = Array1::<T>::zeros(n);
+                for i_rev in 0..n {
+                    let i = n - 1 - i_rev;
+                    let mut sum = y[i];
+                    for j in (i + 1)..n {
+                        sum -= r[[i, j]] * solution[j];
+                    }
+                    let diagonal = r[[i, i]];
+                    if num_traits::Float::abs(diagonal) <= tolerance {
+                        return Err(QRError::SingularMatrix);
+                    }
+                    solution[i] = sum / diagonal;
+                }
+                return Ok(solution);
+            }
+            Err(error) => {
+                if DenseKernelPolicy::magma_fail_fast_mode() {
+                    return Err(map_qr_magma_error(error));
+                }
+            }
+        }
+    }
+
+    let result = matrix.least_squares(rhs).map_err(|_| QRError::ConvergenceFailed)?;
+    let rank = usize::try_from(result.rank).map_err(|_| QRError::ConvergenceFailed)?;
+    if rank < matrix.ncols() {
+        return Err(QRError::SingularMatrix);
+    }
+    Ok(result.solution)
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 fn solve_least_squares_provider<T>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
@@ -453,7 +516,7 @@ where
     Ok(result.solution)
 }
 
-#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
+#[cfg(not(feature = "lapack-provider"))]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
@@ -499,7 +562,57 @@ fn decompose_complex_internal(
     Ok(QRResult { q, r, p: None, rank })
 }
 
-#[cfg(feature = "magma-system")]
+#[cfg(feature = "lapack-provider")]
+fn decompose_complex_lapack(
+    matrix: &ArrayView2<'_, Complex64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<Complex64>, QRError> {
+    use ndarray_linalg::QR as _;
+
+    if config.use_pivoting {
+        return decompose_complex_pivoted_internal(matrix, config);
+    }
+
+    validate_qr_complex_input(matrix)?;
+    let (q, r) = matrix.qr().map_err(|_| QRError::ConvergenceFailed)?;
+    let diagonal = r.nrows().min(r.ncols());
+    let rank = (0..diagonal)
+        .filter(|&index| {
+            r[[index, index]].norm() > DenseKernelPolicy::rank_tolerance(config.rank_tolerance)
+        })
+        .count();
+    Ok(QRResult { q, r, p: None, rank })
+}
+
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+fn decompose_complex_provider(
+    matrix: &ArrayView2<'_, Complex64>,
+    config: &QRConfig<f64>,
+) -> Result<QRResult<Complex64>, QRError> {
+    if config.use_pivoting {
+        return decompose_complex_pivoted_internal(matrix, config);
+    }
+
+    validate_qr_complex_input(matrix)?;
+    if matrix.nrows() >= matrix.ncols()
+        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+    {
+        let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
+        match magma::qr_decompose_complex(matrix, tolerance) {
+            Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
+            Err(error) => {
+                if DenseKernelPolicy::magma_fail_fast_mode() {
+                    return Err(map_qr_magma_error(error));
+                }
+                return decompose_complex_lapack(matrix, config);
+            }
+        }
+    }
+
+    decompose_complex_lapack(matrix, config)
+}
+
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
 fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
@@ -531,21 +644,7 @@ fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
     config: &QRConfig<f64>,
 ) -> Result<QRResult<Complex64>, QRError> {
-    use ndarray_linalg::QR as _;
-
-    if config.use_pivoting {
-        return decompose_complex_pivoted_internal(matrix, config);
-    }
-
-    validate_qr_complex_input(matrix)?;
-    let (q, r) = matrix.qr().map_err(|_| QRError::ConvergenceFailed)?;
-    let diagonal = r.nrows().min(r.ncols());
-    let rank = (0..diagonal)
-        .filter(|&index| {
-            r[[index, index]].norm() > DenseKernelPolicy::rank_tolerance(config.rank_tolerance)
-        })
-        .count();
-    Ok(QRResult { q, r, p: None, rank })
+    decompose_complex_lapack(matrix, config)
 }
 
 /// Compute full QR decomposition.
