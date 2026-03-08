@@ -7,9 +7,9 @@ use ndarray::{Array1, Array2};
 use thiserror::Error;
 
 #[cfg(feature = "magma-system")]
-use crate::internal::DenseKernelPolicy;
-#[cfg(feature = "magma-system")]
 use crate::provider::magma_sparse;
+#[cfg(feature = "magma-system")]
+use crate::provider::policy::MagmaProviderPolicy;
 
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
 
@@ -675,7 +675,7 @@ pub fn matvec_magma_f64_view(
     ) {
         Ok(result) => Ok(result),
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_sparse_error(error));
             }
             matvec_view(matrix, vector)
@@ -708,7 +708,7 @@ pub fn matvec_magma_f32_view(
     ) {
         Ok(result) => Ok(result),
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_sparse_error(error));
             }
             matvec_view(matrix, vector)
@@ -2278,7 +2278,7 @@ pub fn matmat_dense_magma_f64_view(
     if dense.nrows() != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
-    if !DenseKernelPolicy::magma_verify_force_mode()
+    if !MagmaProviderPolicy::verify_force_mode()
         && (matrix.nrows < 16 || matrix.ncols < 16 || dense.ncols() < 16)
     {
         return matmat_dense_view(matrix, dense);
@@ -2293,10 +2293,10 @@ pub fn matmat_dense_magma_f64_view(
     ) {
         Ok(result) => Ok(result),
         Err(error) => {
-            if error == "provider_failure" && !DenseKernelPolicy::magma_fail_fast_mode() {
+            if error == "provider_failure" && !MagmaProviderPolicy::fail_fast_mode() {
                 return matmat_dense_view(matrix, dense);
             }
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_sparse_error(error));
             }
             matmat_dense_view(matrix, dense)
@@ -2319,7 +2319,7 @@ pub fn matmat_dense_magma_f32_view(
     if dense.nrows() != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
-    if !DenseKernelPolicy::magma_verify_force_mode()
+    if !MagmaProviderPolicy::verify_force_mode()
         && (matrix.nrows < 16 || matrix.ncols < 16 || dense.ncols() < 16)
     {
         return matmat_dense_view(matrix, dense);
@@ -2334,10 +2334,10 @@ pub fn matmat_dense_magma_f32_view(
     ) {
         Ok(result) => Ok(result),
         Err(error) => {
-            if error == "provider_failure" && !DenseKernelPolicy::magma_fail_fast_mode() {
+            if error == "provider_failure" && !MagmaProviderPolicy::fail_fast_mode() {
                 return matmat_dense_view(matrix, dense);
             }
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_sparse_error(error));
             }
             matmat_dense_view(matrix, dense)

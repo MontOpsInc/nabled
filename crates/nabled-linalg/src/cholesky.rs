@@ -6,10 +6,12 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
-#[cfg(any(not(feature = "lapack-provider"), feature = "magma-system"))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::DenseKernelPolicy;
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
+#[cfg(feature = "magma-system")]
+use crate::provider::policy::MagmaProviderPolicy;
 
 /// Result of Cholesky decomposition.
 #[derive(Debug, Clone)]
@@ -140,7 +142,7 @@ fn is_magma_runtime_failure(error: &CholeskyError) -> bool {
 
 #[cfg(feature = "magma-system")]
 fn should_fallback_magma_runtime(error: &CholeskyError) -> bool {
-    !DenseKernelPolicy::magma_fail_fast_mode() && is_magma_runtime_failure(error)
+    !MagmaProviderPolicy::fail_fast_mode() && is_magma_runtime_failure(error)
 }
 
 #[cfg(not(feature = "lapack-provider"))]
@@ -282,7 +284,7 @@ where
     T: CholeskyProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return decompose_lapack_provider(matrix);
@@ -320,7 +322,7 @@ where
     T: CholeskyProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return solve_lapack_provider(matrix, rhs);
@@ -361,7 +363,7 @@ where
     T: CholeskyProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return inverse_lapack_provider(matrix);
@@ -434,7 +436,7 @@ fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
     validate_complex_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return decompose_complex_lapack_provider(matrix);
@@ -474,7 +476,7 @@ fn solve_complex_provider(
             "RHS length must match matrix dimensions".to_string(),
         ));
     }
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return solve_complex_lapack_provider(matrix, rhs);
@@ -510,7 +512,7 @@ fn inverse_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
     validate_complex_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return inverse_complex_lapack_provider(matrix);

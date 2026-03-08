@@ -11,6 +11,8 @@ use crate::internal::{DenseKernelPolicy, lu_decompose};
 use crate::internal::{inverse_from_lu, lu_solve};
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
+#[cfg(feature = "magma-system")]
+use crate::provider::policy::MagmaProviderPolicy;
 
 /// Result of LU decomposition.
 #[derive(Debug, Clone)]
@@ -102,7 +104,7 @@ fn is_magma_runtime_failure(error: &LUError) -> bool {
 
 #[cfg(feature = "magma-system")]
 fn should_fallback_magma_runtime(error: &LUError) -> bool {
-    !DenseKernelPolicy::magma_fail_fast_mode() && is_magma_runtime_failure(error)
+    !MagmaProviderPolicy::fail_fast_mode() && is_magma_runtime_failure(error)
 }
 
 #[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
@@ -373,7 +375,7 @@ where
     T: LuProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return solve_lapack_provider(matrix, rhs);
@@ -412,7 +414,7 @@ where
     T: LuProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return inverse_lapack_provider(matrix);
@@ -451,7 +453,7 @@ where
     T: LuProviderScalar,
 {
     validate_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return determinant_lapack_provider(matrix);
@@ -632,7 +634,7 @@ fn solve_complex_provider(
     if rhs.len() != matrix.nrows() {
         return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
     }
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return solve_complex_lapack_provider(matrix, rhs);
@@ -682,7 +684,7 @@ fn inverse_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, LUError> {
     validate_complex_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return inverse_complex_lapack_provider(matrix);
@@ -720,7 +722,7 @@ fn inverse_complex_provider(
 #[cfg(feature = "magma-system")]
 fn determinant_complex_provider(matrix: &ArrayView2<'_, Complex64>) -> Result<Complex64, LUError> {
     validate_complex_square_finite_view(matrix)?;
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         #[cfg(feature = "lapack-provider")]
         {
             return determinant_complex_lapack_provider(matrix);

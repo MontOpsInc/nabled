@@ -11,6 +11,8 @@ use crate::internal::DenseKernelPolicy;
 use crate::internal::qr_gram_schmidt;
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
+#[cfg(feature = "magma-system")]
+use crate::provider::policy::MagmaProviderPolicy;
 use crate::svd::{self, PseudoInverseConfig};
 
 #[cfg(feature = "magma-system")]
@@ -346,7 +348,7 @@ fn decompose_internal<T: NabledReal + magma::MagmaReal>(
     // overdetermined/square real matrices; underdetermined/small shapes
     // remain on the internal path to avoid fixed provider overhead.
     if matrix.nrows() >= matrix.ncols()
-        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+        && MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols())
     {
         let tolerance = config
             .rank_tolerance
@@ -354,7 +356,7 @@ fn decompose_internal<T: NabledReal + magma::MagmaReal>(
         match magma::qr_decompose(matrix, tolerance) {
             Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
             Err(error) => {
-                if DenseKernelPolicy::magma_fail_fast_mode() {
+                if MagmaProviderPolicy::fail_fast_mode() {
                     return Err(map_qr_magma_error(error));
                 }
             }
@@ -407,7 +409,7 @@ where
 
     #[cfg(feature = "magma-system")]
     if matrix.nrows() >= matrix.ncols()
-        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+        && MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols())
     {
         let tolerance = config
             .rank_tolerance
@@ -415,7 +417,7 @@ where
         match magma::qr_decompose(matrix, tolerance) {
             Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
             Err(error) => {
-                if DenseKernelPolicy::magma_fail_fast_mode() {
+                if MagmaProviderPolicy::fail_fast_mode() {
                     return Err(map_qr_magma_error(error));
                 }
             }
@@ -447,7 +449,7 @@ where
     use ndarray_linalg::LeastSquaresSvd as _;
 
     if matrix.nrows() >= matrix.ncols()
-        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+        && MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols())
     {
         let tolerance =
             T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or_else(|| T::epsilon());
@@ -483,7 +485,7 @@ where
                 return Ok(solution);
             }
             Err(error) => {
-                if DenseKernelPolicy::magma_fail_fast_mode() {
+                if MagmaProviderPolicy::fail_fast_mode() {
                     return Err(map_qr_magma_error(error));
                 }
             }
@@ -595,13 +597,13 @@ fn decompose_complex_provider(
 
     validate_qr_complex_input(matrix)?;
     if matrix.nrows() >= matrix.ncols()
-        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+        && MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols())
     {
         let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
         match magma::qr_decompose_complex(matrix, tolerance) {
             Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
             Err(error) => {
-                if DenseKernelPolicy::magma_fail_fast_mode() {
+                if MagmaProviderPolicy::fail_fast_mode() {
                     return Err(map_qr_magma_error(error));
                 }
                 return decompose_complex_lapack(matrix, config);
@@ -623,13 +625,13 @@ fn decompose_complex_provider(
 
     validate_qr_complex_input(matrix)?;
     if matrix.nrows() >= matrix.ncols()
-        && DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols())
+        && MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols())
     {
         let tolerance = DenseKernelPolicy::rank_tolerance(config.rank_tolerance);
         match magma::qr_decompose_complex(matrix, tolerance) {
             Ok((q, r, rank)) => return Ok(QRResult { q, r, p: None, rank }),
             Err(error) => {
-                if DenseKernelPolicy::magma_fail_fast_mode() {
+                if MagmaProviderPolicy::fail_fast_mode() {
                     return Err(map_qr_magma_error(error));
                 }
             }

@@ -7,7 +7,7 @@ use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, identity, is_symmetric};
-#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+#[cfg(feature = "magma-system")]
 use crate::provider::magma;
 #[cfg(not(feature = "lapack-provider"))]
 use crate::schur;
@@ -48,13 +48,26 @@ impl fmt::Display for MatrixFunctionError {
 impl std::error::Error for MatrixFunctionError {}
 
 /// Real scalar contract for matrix-function real-valued APIs.
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+pub trait MatrixFunctionScalar:
+    NabledReal + magma::MagmaReal + ndarray_linalg::Lapack<Real = Self> + std::ops::AddAssign
+{
+}
+
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+impl<T> MatrixFunctionScalar for T where
+    T: NabledReal + magma::MagmaReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign
+{
+}
+
+/// Real scalar contract for matrix-function real-valued APIs.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub trait MatrixFunctionScalar:
     NabledReal + ndarray_linalg::Lapack<Real = Self> + std::ops::AddAssign
 {
 }
 
-#[cfg(feature = "lapack-provider")]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 impl<T> MatrixFunctionScalar for T where
     T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign
 {

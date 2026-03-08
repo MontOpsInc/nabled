@@ -12,7 +12,7 @@ commands:
   prepare <host>                Prepare host and sync repository
   session <host>                Ensure tmux session exists
   up <host>                     Prepare + ensure tmux session
-  one <host> [job]              Run named tmux job (magma-verify|magma-strict-verify|magma-capability|magma-provider-bench|gpu-probe|checks)
+  one <host> [job]              Run named tmux job (magma-verify|magma-strict-verify|magma-capability|magma-provider-bench|magma-provider-bench-decomposition|gpu-probe|checks)
   run <host> <command...>       Run arbitrary command in tmux work pane
   attach <host>                 Attach to tmux session
   probe <host>                  Alias for: one <host> gpu-probe
@@ -47,6 +47,9 @@ run_named_job() {
     magma-provider-bench)
       command="bash scripts/remote_jobs/magma_provider_bench_job.sh"
       ;;
+    magma-provider-bench-decomposition)
+      command="bash scripts/remote_jobs/magma_provider_bench_decomposition_job.sh"
+      ;;
     gpu-probe)
       command="bash scripts/remote_jobs/gpu_probe_job.sh"
       ;;
@@ -55,7 +58,7 @@ run_named_job() {
       ;;
     *)
       echo "unknown job: ${job}" >&2
-      echo "supported jobs: magma-verify | magma-strict-verify | magma-capability | magma-provider-bench | gpu-probe | checks" >&2
+      echo "supported jobs: magma-verify | magma-strict-verify | magma-capability | magma-provider-bench | magma-provider-bench-decomposition | gpu-probe | checks" >&2
       exit 1
       ;;
   esac

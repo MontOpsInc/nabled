@@ -11,6 +11,8 @@ use num_complex::Complex64;
 use crate::internal::{DenseKernelPolicy, jacobi_eigen_symmetric, sort_eigenpairs_desc};
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
+#[cfg(feature = "magma-system")]
+use crate::provider::policy::MagmaProviderPolicy;
 
 #[cfg(feature = "magma-system")]
 #[doc(hidden)]
@@ -144,13 +146,13 @@ fn decompose_internal_fallback<T: NabledReal>(
 fn decompose_internal<T: NabledReal + magma::MagmaReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySVD<T>, SVDError> {
-    if DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         match magma::svd_decompose(matrix) {
             Ok((u, singular_values, vt)) => {
                 return Ok(NdarraySVD { u, singular_values, vt });
             }
             Err(error) => {
-                if DenseKernelPolicy::magma_fail_fast_mode() {
+                if MagmaProviderPolicy::fail_fast_mode() {
                     return Err(map_svd_magma_error(error));
                 }
             }
@@ -257,13 +259,13 @@ fn decompose_complex_lapack(
 fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexSVD, SVDError> {
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         return decompose_complex_lapack(matrix);
     }
     match magma::svd_decompose_complex(matrix) {
         Ok((u, singular_values, vt)) => Ok(NdarrayComplexSVD { u, singular_values, vt }),
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_svd_magma_error(error));
             }
             decompose_complex_lapack(matrix)
@@ -278,13 +280,13 @@ fn decompose_complex_provider(
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
-    if !DenseKernelPolicy::prefer_magma_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
         return decompose_complex_internal(matrix);
     }
     match magma::svd_decompose_complex(matrix) {
         Ok((u, singular_values, vt)) => Ok(NdarrayComplexSVD { u, singular_values, vt }),
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_svd_magma_error(error));
             }
             decompose_complex_internal(matrix)

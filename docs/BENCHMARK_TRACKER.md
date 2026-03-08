@@ -356,17 +356,18 @@ NABLED_PROVIDER_BENCH_FEATURES=magma-system    just -f .justfile bench-smoke-rep
 Artifacts:
 
 1. `coverage/gpu-v2/magma/verification-4090.log`
-2. `coverage/gpu-v2/magma/bench/openblas-system-summary-20260308T140517Z.json`
-3. `coverage/gpu-v2/magma/bench/magma-system-summary-20260308T140517Z.json`
-4. `coverage/gpu-v2/magma/bench/comparison-20260308T140517Z.md`
+2. `coverage/gpu-v2/magma/bench/openblas-system-summary-20260308T154226Z.json`
+3. `coverage/gpu-v2/magma/bench/magma-system-summary-20260308T154226Z.json`
+4. `coverage/gpu-v2/magma/bench/comparison-20260308T154226Z.md`
 5. `coverage/gpu-v2/magma/bench/comparison-latest.md`
 
 Summary:
 
 1. Both provider runs produced complete benchmark summaries (`211` common nabled-provider entries in the comparison report).
-2. Median ratio (`magma/openblas`) across all compared entries is near parity (`~1.007`).
-3. Tiny-shape complex decomposition hotspots that previously dominated `K-005` outliers are now near parity in this run (`matrix_log_eigen_complex`/`matrix_power_half_complex` at size `8/16`, `full_svd_complex` at `16/32`).
-4. Remaining largest regressions are now concentrated in non-complex paths (`sylvester` tiny shapes and selected `lu`/`cholesky` small/medium cases), which become the next `K-005` optimization targets.
+2. Median ratio (`magma/openblas`) across all compared entries is near parity (`~1.004`).
+3. `eigen::generalized(32)` moved to parity class in this rerun (`~0.983x`).
+4. Remaining decomposition-class regressions in this run are led by `cholesky::inverse(32|64)`, `cholesky::solve(64)`, and `eigen::generalized(48)`.
+5. Run-to-run variance is still visible on this shared host; persistent outliers should be judged from repeated reruns rather than a single compare snapshot.
 
 ### K-005 Routing + Fallback Composition
 
@@ -396,39 +397,58 @@ Summary:
 Scope:
 
 1. Entries filtered to nabled decomposition/matrix-function domains (`lu`, `cholesky`, `qr`, `svd`, `eigen`, `schur`, `polar`, `sylvester`, `matrix_functions`).
-2. Common entries in scope: `68`.
-3. Aggregate ratio (`magma/openblas`) in scope: median `~1.000`, p90 `~1.056`.
+2. Common entries in scope: `62`.
+3. Aggregate ratio (`magma/openblas`) in scope: median `~1.006`, p90 `~1.056`.
 
 Top regressions (highest `magma/openblas`):
 
-1. `cholesky_nabled_ndarray/solve/64` -> `1.465x`
-2. `cholesky_nabled_ndarray/inverse/32` -> `1.210x`
-3. `sylvester_nabled_ndarray/solve_sylvester/square-24x24` -> `1.170x`
-4. `eigen_nabled_ndarray/generalized/16` -> `1.129x`
-5. `qr_nabled_ndarray/least_squares/96` -> `1.079x`
-6. `matrix_functions_nabled_ndarray/matrix_power_half/32` -> `1.068x`
-7. `triangular_nabled_ndarray/solve_upper/square-16x16` -> `1.056x`
-8. `cholesky_nabled_ndarray/solve/16` -> `1.055x`
+1. `cholesky_nabled_ndarray/inverse/32` -> `1.282x`
+2. `eigen_nabled_ndarray/generalized/48` -> `1.265x`
+3. `cholesky_nabled_ndarray/inverse/64` -> `1.235x`
+4. `cholesky_nabled_ndarray/solve/64` -> `1.096x`
+5. `qr_nabled_ndarray/qr/96` -> `1.084x`
+6. `cholesky_nabled_ndarray/solve/32` -> `1.058x`
+7. `matrix_functions_nabled_ndarray/matrix_log_eigen/32` -> `1.057x`
+8. `cholesky_nabled_ndarray/solve/16` -> `1.046x`
 
 Top improvements (lowest `magma/openblas`):
 
-1. `eigen_nabled_ndarray/generalized/48` -> `0.823x`
-2. `cholesky_nabled_ndarray/inverse/64` -> `0.911x`
-3. `polar_nabled_ndarray/compute_polar_complex/complex-square-16x16` -> `0.921x`
-4. `polar_nabled_ndarray/compute_polar/square-16x16` -> `0.928x`
-5. `svd_nabled_ndarray/full_svd/32` -> `0.930x`
-6. `svd_nabled_ndarray/truncated_svd/32` -> `0.931x`
-7. `polar_nabled_ndarray/compute_polar_complex/complex-square-8x8` -> `0.932x`
-8. `polar_nabled_ndarray/compute_polar/square-32x32` -> `0.943x`
+1. `qr_nabled_ndarray/least_squares/96` -> `0.529x`
+2. `sylvester_nabled_ndarray/solve_sylvester/square-16x16` -> `0.777x`
+3. `sylvester_nabled_ndarray/solve_sylvester/square-8x8` -> `0.882x`
+4. `sylvester_nabled_ndarray/solve_sylvester/square-24x24` -> `0.896x`
+5. `svd_nabled_ndarray/full_svd_complex/32` -> `0.942x`
+6. `eigen_nabled_ndarray/symmetric/16` -> `0.965x`
+7. `matrix_functions_nabled_ndarray/matrix_exp_eigen/32` -> `0.978x`
+8. `lu_nabled_ndarray/determinant/32` -> `0.982x`
 
 Spot-check confirmation for prior tiny-shape complex hotspots:
 
-1. `matrix_log_eigen_complex/8`: `1.046x` (`11.010us` vs `10.531us`).
-2. `matrix_log_eigen_complex/16`: `1.041x` (`45.069us` vs `43.282us`).
-3. `matrix_power_half_complex/8`: `1.045x` (`11.095us` vs `10.615us`).
-4. `matrix_power_half_complex/16`: `1.040x` (`45.156us` vs `43.412us`).
-5. `full_svd_complex/16`: `1.044x` (`75.109us` vs `71.914us`).
-6. `full_svd_complex/32`: `1.023x` (`395.858us` vs `386.888us`).
+1. `eigen_nabled_ndarray/generalized/32`: `0.983x` (`276.040us` vs `280.802us`).
+2. `eigen_nabled_ndarray/symmetric/48`: `1.024x` (`349.699us` vs `341.655us`).
+3. `cholesky_nabled_ndarray/inverse/32`: `1.282x` (`29.691us` vs `23.153us`).
+4. `cholesky_nabled_ndarray/inverse/64`: `1.235x` (`170.076us` vs `137.737us`).
+5. `cholesky_nabled_ndarray/solve/64`: `1.096x` (`60.007us` vs `54.761us`).
+6. `sylvester_nabled_ndarray/solve_sylvester/square-24x24`: `0.896x` (`11235.964us` vs `12538.041us`).
+
+### K-005 Decomposition Stability Sweep (Repeat=5, Same Host)
+
+Artifacts:
+
+1. `coverage/gpu-v2/magma/bench/decomposition/stability-20260308T162602Z.json`
+2. `coverage/gpu-v2/magma/bench/decomposition/stability-20260308T162602Z.md`
+3. `coverage/gpu-v2/magma/bench/decomposition/comparison-20260308T162602Z-r1.md`
+4. `coverage/gpu-v2/magma/bench/decomposition/comparison-20260308T162602Z-r2.md`
+5. `coverage/gpu-v2/magma/bench/decomposition/comparison-20260308T162602Z-r3.md`
+6. `coverage/gpu-v2/magma/bench/decomposition/comparison-20260308T162602Z-r4.md`
+7. `coverage/gpu-v2/magma/bench/decomposition/comparison-20260308T162602Z-r5.md`
+
+Summary:
+
+1. Run-level decomposition scope medians (`magma/openblas`) stayed tightly around parity: `0.998`, `0.998`, `1.005`, `1.004`, `0.997`.
+2. Run-level decomposition scope p90 values remained stable: `1.024`, `1.024`, `1.038`, `1.034`, `1.025`.
+3. With deterministic thread settings (`OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`), no decomposition case is persistently slower than `1.03x` across the recent rerun set.
+4. `K-005` optimization can be treated as stability-cleared for now; reopen only if a regression persists across repeated same-host batches.
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

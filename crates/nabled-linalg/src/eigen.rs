@@ -6,20 +6,35 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::{Complex, Complex64};
 
-#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
+#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::jacobi_eigen_symmetric;
 use crate::internal::{DenseKernelPolicy, sort_eigenpairs_desc};
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
+#[cfg(feature = "magma-system")]
+use crate::provider::policy::MagmaProviderPolicy;
 #[cfg(not(feature = "lapack-provider"))]
 use crate::qr;
 use crate::{cholesky, schur};
 
-#[cfg(feature = "magma-system")]
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+#[doc(hidden)]
+pub trait EigenInternalScalar:
+    NabledReal + magma::MagmaReal + ndarray_linalg::Lapack<Real = Self> + std::ops::AddAssign
+{
+}
+
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+impl<T> EigenInternalScalar for T where
+    T: NabledReal + magma::MagmaReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign
+{
+}
+
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
 #[doc(hidden)]
 pub trait EigenInternalScalar: NabledReal + magma::MagmaReal {}
 
-#[cfg(feature = "magma-system")]
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
 impl<T> EigenInternalScalar for T where T: NabledReal + magma::MagmaReal {}
 
 #[cfg(not(feature = "magma-system"))]
@@ -355,31 +370,64 @@ fn match_left_eigenvectors<T: NabledReal>(
     matched
 }
 
-#[cfg(feature = "magma-system")]
-fn symmetric_internal<T: NabledReal + magma::MagmaReal>(
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+fn symmetric_internal<T: EigenInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayEigenResult<T>, EigenError> {
     validate_symmetric_input(matrix)?;
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
+        return symmetric_provider_impl(matrix, true);
+    }
+
     match magma::symmetric_eigen(matrix) {
         Ok((eigenvalues, eigenvectors)) => {
             let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
-            return Ok(NdarrayEigenResult { eigenvalues, eigenvectors });
+            Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_eigen_magma_error(error));
             }
+            symmetric_provider_impl(matrix, true)
         }
     }
+}
 
-    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
-        &matrix.to_owned(),
-        T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
-        DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
-    )
-    .map_err(|_| EigenError::ConvergenceFailed)?;
-    let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
-    Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
+fn symmetric_internal<T: EigenInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayEigenResult<T>, EigenError> {
+    validate_symmetric_input(matrix)?;
+    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
+        let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
+            &matrix.to_owned(),
+            T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
+            DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
+        )
+        .map_err(|_| EigenError::ConvergenceFailed)?;
+        let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
+        return Ok(NdarrayEigenResult { eigenvalues, eigenvectors });
+    }
+
+    match magma::symmetric_eigen(matrix) {
+        Ok((eigenvalues, eigenvectors)) => {
+            let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
+            Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
+        }
+        Err(error) => {
+            if MagmaProviderPolicy::fail_fast_mode() {
+                return Err(map_eigen_magma_error(error));
+            }
+            let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric(
+                &matrix.to_owned(),
+                T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
+                DenseKernelPolicy::JACOBI_MAX_ITERATIONS,
+            )
+            .map_err(|_| EigenError::ConvergenceFailed)?;
+            let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
+            Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
+        }
+    }
 }
 
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
@@ -399,20 +447,62 @@ fn symmetric_internal<T: NabledReal>(
 }
 
 #[cfg(feature = "lapack-provider")]
-fn symmetric_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarrayEigenResult<T>, EigenError>
+fn symmetric_provider_impl<T>(
+    matrix: &ArrayView2<'_, T>,
+    assume_validated: bool,
+) -> Result<NdarrayEigenResult<T>, EigenError>
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
 {
     use ndarray_linalg::{Eigh as _, UPLO};
 
-    validate_symmetric_input(matrix)?;
+    if !assume_validated {
+        validate_symmetric_input(matrix)?;
+    }
     let (eigenvalues, eigenvectors) =
         matrix.eigh(UPLO::Lower).map_err(|_| EigenError::ConvergenceFailed)?;
     let (eigenvalues, eigenvectors) = sort_eigenpairs_desc(&eigenvalues, &eigenvectors);
     Ok(NdarrayEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(feature = "magma-system")]
+#[cfg(feature = "lapack-provider")]
+fn symmetric_provider<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarrayEigenResult<T>, EigenError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+{
+    symmetric_provider_impl(matrix, false)
+}
+
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+fn generalized_internal<T: cholesky::CholeskyProviderScalar>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView2<'_, T>,
+) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError> {
+    validate_symmetric_input(matrix_a)?;
+    validate_symmetric_input(matrix_b)?;
+    if matrix_a.dim() != matrix_b.dim() {
+        return Err(EigenError::InvalidDimensions);
+    }
+    if !MagmaProviderPolicy::prefer_decomposition(matrix_a.nrows(), matrix_a.ncols()) {
+        return generalized_provider_impl(matrix_a, matrix_b, true);
+    }
+
+    let b_inverse = cholesky::inverse_view(matrix_b).map_err(|error| match error {
+        cholesky::CholeskyError::NotPositiveDefinite => EigenError::NotPositiveDefinite,
+        cholesky::CholeskyError::EmptyMatrix => EigenError::EmptyMatrix,
+        cholesky::CholeskyError::NotSquare => EigenError::NotSquare,
+        _ => EigenError::NumericalInstability,
+    })?;
+
+    let c = b_inverse.dot(matrix_a);
+    let symmetric_c = (&c + &c.t()) * T::from_f64(0.5).unwrap_or(T::one() / (T::one() + T::one()));
+
+    let NdarrayEigenResult { eigenvalues, eigenvectors } = symmetric_internal(&symmetric_c.view())?;
+
+    Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
+}
+
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
 fn generalized_internal<T: cholesky::CholeskyProviderScalar>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
@@ -470,16 +560,19 @@ fn generalized_internal<T: NabledReal>(
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
 }
 
-#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
-fn generalized_provider<T>(
+#[cfg(feature = "lapack-provider")]
+fn generalized_provider_impl<T>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView2<'_, T>,
+    assume_validated: bool,
 ) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError>
 where
-    T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
+    T: cholesky::CholeskyProviderScalar + std::ops::AddAssign,
 {
-    validate_symmetric_input(matrix_a)?;
-    validate_symmetric_input(matrix_b)?;
+    if !assume_validated {
+        validate_symmetric_input(matrix_a)?;
+        validate_symmetric_input(matrix_b)?;
+    }
     if matrix_a.dim() != matrix_b.dim() {
         return Err(EigenError::InvalidDimensions);
     }
@@ -496,6 +589,17 @@ where
     let symmetric_c = (&c + &c.t()) * T::from_f64(0.5).unwrap_or(T::one() / (T::one() + T::one()));
     let NdarrayEigenResult { eigenvalues, eigenvectors } = symmetric_provider(&symmetric_c.view())?;
     Ok(NdarrayGeneralizedEigenResult { eigenvalues, eigenvectors })
+}
+
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+fn generalized_provider<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView2<'_, T>,
+) -> Result<NdarrayGeneralizedEigenResult<T>, EigenError>
+where
+    T: cholesky::CholeskyProviderScalar + std::ops::AddAssign,
+{
+    generalized_provider_impl(matrix_a, matrix_b, false)
 }
 
 #[cfg(not(feature = "lapack-provider"))]
@@ -643,7 +747,7 @@ fn nonsymmetric_complex_provider(
             Ok(NdarrayNonsymmetricEigenResult { eigenvalues, schur_vectors: right_eigenvectors })
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_eigen_magma_error(error));
             }
             #[cfg(not(feature = "lapack-provider"))]
@@ -675,7 +779,18 @@ fn nonsymmetric_complex_provider(
 ///
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
+pub fn symmetric<T: EigenInternalScalar>(
+    matrix: &Array2<T>,
+) -> Result<NdarrayEigenResult<T>, EigenError> {
+    symmetric_internal(&matrix.view())
+}
+
+/// Compute symmetric eigen decomposition.
+///
+/// # Errors
+/// Returns an error for non-symmetric input or convergence failure.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn symmetric<T>(matrix: &Array2<T>) -> Result<NdarrayEigenResult<T>, EigenError>
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
@@ -687,7 +802,7 @@ where
 ///
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn symmetric<T: EigenInternalScalar>(
     matrix: &Array2<T>,
 ) -> Result<NdarrayEigenResult<T>, EigenError> {
@@ -698,7 +813,18 @@ pub fn symmetric<T: EigenInternalScalar>(
 ///
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
-#[cfg(feature = "lapack-provider")]
+#[cfg(feature = "magma-system")]
+pub fn symmetric_view<T: EigenInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+) -> Result<NdarrayEigenResult<T>, EigenError> {
+    symmetric_internal(matrix)
+}
+
+/// Compute symmetric eigen decomposition from a matrix view.
+///
+/// # Errors
+/// Returns an error for non-symmetric input or convergence failure.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn symmetric_view<T>(matrix: &ArrayView2<'_, T>) -> Result<NdarrayEigenResult<T>, EigenError>
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T> + std::ops::AddAssign,
@@ -710,7 +836,7 @@ where
 ///
 /// # Errors
 /// Returns an error for non-symmetric input or convergence failure.
-#[cfg(not(feature = "lapack-provider"))]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn symmetric_view<T: EigenInternalScalar>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayEigenResult<T>, EigenError> {

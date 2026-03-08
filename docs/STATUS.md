@@ -141,8 +141,17 @@ Workspace migration for library domains is complete.
 133. `MAG-L-001` and `MAG-L-002` are complete: `batched::svd*` and `batched::symmetric_eigen*` now attempt MAGMA routes in `M*` builds with batched policy + strict-fail semantics, and remote symbol-scan evidence confirms native batched SVD/eigen kernels are absent in the current MAGMA runtime (`coverage/gpu-v2/magma/capability-batched-symbols-20260307.log`), so per-slice MAGMA routing is now the explicit contract.
 134. MAGMA strict verification workflow is now hardened and validated on RTX 4090: strict jobs serialize tests (`RUST_TEST_THREADS=1`), separate baseline correctness from forced strict execution-matrix checks, assert matrix-test availability before execution, and pass cleanly (`job-20260307T205521Z.log`, `strict-verification-20260307.log`).
 135. K-005 small/medium decomposition routing has been tightened locally: MAGMA decomposition selection now requires both min-dimension and min-work (`rows*cols`) thresholds, and `lu`/`cholesky` now use MAGMA-first with lapack fallback in `magma+lapack` builds for non-eligible and runtime-fallback paths; full local quality gates remain green.
-136. K-005 remote follow-on rerun is complete after the latest routing pass: remote strict verification (`job-20260308T140414Z.log`) and provider comparison (`comparison-20260308T140517Z.md`) are green, and decomposition-scope MAGMA/openblas ratios now sit near parity (median `~1.000`, p90 `~1.056`).
+136. K-005 remote follow-on rerun is complete after the latest routing pass: remote strict verification (`job-20260308T143914Z.log`) and provider comparison (`comparison-20260308T144030Z.md`) are green, and decomposition-scope MAGMA/openblas ratios remain near parity (median `~0.982`, p90 `~1.024`).
 137. Remote GPU prepare now handles dirty remote checkouts deterministically: `gpu_remote_prepare.sh` defaults `NABLED_REMOTE_AUTO_STASH=1`, stashing tracked/untracked changes before fast-forward pull to keep `gpu_remote.sh up` reproducible after host restarts.
+138. K-005 decomposition follow-on routing/fallback refinement is now landed for `eigen` and `sylvester`: `eigen::symmetric` fallback composition is explicit per feature matrix, Sylvester real solve provider routing now keys off original `(n,m)` work instead of expanded Kronecker system size, and prior K-005 focus outliers (`cholesky::inverse(32)`, `sylvester::solve_sylvester(24)`, `eigen::generalized(16)`) are now all at or better than parity in the latest provider compare.
+139. K-005 compile-matrix parity is now fixed for `magma-system`: `eigen` MAGMA+lapack fallback routing no longer duplicates validation on non-eligible shapes, `matrix_functions` scalar bounds are aligned for `lapack-provider + magma-system`, and local clippy passes for `--no-default-features --features magma-system`.
+140. Remote RTX 4090 rerun after the K-005 parity patch is complete: strict verification is green (`job-20260308T155035Z.log`, `rc=0`) and provider compare was refreshed (`comparison-20260308T154226Z.md`), with `eigen::generalized(32)` now in parity class (`~0.983x`) and remaining decomposition regressions concentrated in `cholesky::{inverse,solve}` plus `eigen::generalized(48)` in this run (noting visible host-level run-to-run variance).
+141. K-005 decomposition stability sweep is complete with repeated same-host sampling (`REPEATS=5`, `stability-20260308T162602Z.md`): decomposition scope medians stay near parity (`~0.997` to `~1.005`) and no regression remains persistently >`1.03x` across the recent rerun set, so K-005 is now treated as monitor-only.
+142. `K-006` ownership-boundary lock is complete for MAGMA routing policy: provider-specific decomposition routing/strict/verify policy moved from `internal::DenseKernelPolicy` into `provider::policy::MagmaProviderPolicy`, with decomposition/batched/sparse callsites rewired and feature-matrix compile checks green.
+143. Tensor algebra depth beyond v1 has advanced: rank-3 CP decomposition via ALS is now implemented (`cp_als3`, view/reconstruct/into variants) with deterministic SVD initialization and dedicated `f32`/`f64` reconstruction/error tests.
+144. Tensor decomposition depth now includes higher-rank HOSVD/Tucker surfaces for real tensors: `hosvd_nd`, `hosvd_nd_view`, `hosvd_nd_reconstruct`, and `hosvd_nd_reconstruct_into`, with parity/error tests across internal/provider compile matrices.
+145. Tensor-network depth now includes TT-SVD for real tensors: `tt_svd`, `tt_svd_view`, `tt_svd_reconstruct`, and `tt_svd_reconstruct_into` are implemented with rank-truncation configuration and `f32`/`f64` parity/error tests across internal/provider compile matrices.
+146. Tensor decomposition depth now includes `N`-D HOOI Tucker refinement for real tensors: `hooi_nd` and `hooi_nd_view` are implemented with configurable convergence policy (`HooiConfig<T>`) and `f32`/`f64` parity/error tests across internal/provider compile matrices.
 
 ## Current Code Ownership
 
@@ -179,8 +188,8 @@ Workspace migration for library domains is complete.
 
 GPU phase-2 continuation:
 
-1. Continue `L-GPU-WGPU-F32` and MAGMA provider outlier optimization (`K-005`) using the refreshed outlier rankings from the latest remote rerun.
-2. Lock remaining Provider/Backend/Kernel ownership cleanup (`K-006`).
+1. Keep `K-005` in monitor mode with repeated same-host decomposition sweeps; reopen optimization only for persistent regressions.
+2. Continue tensor algebra depth expansion beyond v1 (additional tensor-network ergonomics and decomposition variants beyond `cp_als3`, `hosvd_nd`, `hooi_nd`, and `tt_svd`).
 
 ## Completion Criteria For Migration
 

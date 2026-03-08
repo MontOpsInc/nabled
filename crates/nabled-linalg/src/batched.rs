@@ -5,9 +5,9 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array3, ArrayView3, Axis};
 
 #[cfg(feature = "magma-system")]
-use crate::internal::DenseKernelPolicy;
-#[cfg(feature = "magma-system")]
 use crate::provider::magma;
+#[cfg(feature = "magma-system")]
+use crate::provider::policy::MagmaProviderPolicy;
 use crate::{cholesky, eigen, lu, qr, svd};
 
 #[cfg(feature = "magma-system")]
@@ -162,7 +162,7 @@ where
     // Pivoted and underdetermined QR stay on per-slice paths.
     if config.use_pivoting
         || rows < cols
-        || !DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols)
+        || !MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols)
     {
         let mut fallback = Vec::with_capacity(matrices.dim().0);
         for matrix in matrices.axis_iter(Axis(0)) {
@@ -180,7 +180,7 @@ where
             Ok(output)
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_batched_qr_error(error));
             }
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
@@ -215,7 +215,7 @@ where
     // Pivoted and underdetermined QR stay on per-slice paths.
     if config.use_pivoting
         || rows < cols
-        || !DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols)
+        || !MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols)
     {
         let mut fallback = Vec::with_capacity(matrices.dim().0);
         for matrix in matrices.axis_iter(Axis(0)) {
@@ -233,7 +233,7 @@ where
             Ok(output)
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_batched_qr_error(error));
             }
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
@@ -361,7 +361,7 @@ where
     }
     let (batch_count, rows, cols) = matrices.dim();
 
-    if DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols) {
+    if MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols) {
         let mut output = Vec::with_capacity(batch_count);
         let mut provider_error = None;
         for matrix in matrices.axis_iter(Axis(0)) {
@@ -376,7 +376,7 @@ where
             }
         }
         if let Some(error) = provider_error {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_batched_svd_error(error));
             }
         } else {
@@ -406,7 +406,7 @@ pub fn svd_view<T: svd::SvdInternalScalar>(
     }
     let (batch_count, rows, cols) = matrices.dim();
 
-    if DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols) {
+    if MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols) {
         let mut output = Vec::with_capacity(batch_count);
         let mut provider_error = None;
         for matrix in matrices.axis_iter(Axis(0)) {
@@ -421,7 +421,7 @@ pub fn svd_view<T: svd::SvdInternalScalar>(
             }
         }
         if let Some(error) = provider_error {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_batched_svd_error(error));
             }
         } else {
@@ -531,7 +531,7 @@ where
         return Err(lu::LUError::EmptyMatrix);
     }
     let (batch_count, rows, cols) = matrices.dim();
-    if !DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols) {
+    if !MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols) {
         let mut output = Vec::with_capacity(batch_count);
         for matrix in matrices.axis_iter(Axis(0)) {
             output.push(lu::decompose_view(&matrix)?);
@@ -548,7 +548,7 @@ where
             Ok(output)
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_batched_lu_error(error));
             }
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
@@ -664,7 +664,7 @@ where
         return Err(cholesky::CholeskyError::EmptyMatrix);
     }
     let (batch_count, rows, cols) = matrices.dim();
-    if !DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols) {
+    if !MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols) {
         let mut output = Vec::with_capacity(batch_count);
         for matrix in matrices.axis_iter(Axis(0)) {
             output.push(cholesky::decompose_view(&matrix)?);
@@ -681,7 +681,7 @@ where
             Ok(output)
         }
         Err(error) => {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_batched_cholesky_error(error));
             }
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
@@ -813,9 +813,7 @@ where
     }
     let (batch_count, rows, cols) = matrices.dim();
 
-    if rows == cols
-        && DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols)
-    {
+    if rows == cols && MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols) {
         let mut output = Vec::with_capacity(batch_count);
         let mut provider_error = None;
         for matrix in matrices.axis_iter(Axis(0)) {
@@ -830,7 +828,7 @@ where
             }
         }
         if let Some(error) = provider_error {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_batched_eigen_error(error));
             }
         } else {
@@ -860,9 +858,7 @@ pub fn symmetric_eigen_view<T: eigen::EigenInternalScalar>(
     }
     let (batch_count, rows, cols) = matrices.dim();
 
-    if rows == cols
-        && DenseKernelPolicy::prefer_magma_batched_decomposition(batch_count, rows, cols)
-    {
+    if rows == cols && MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols) {
         let mut output = Vec::with_capacity(batch_count);
         let mut provider_error = None;
         for matrix in matrices.axis_iter(Axis(0)) {
@@ -877,7 +873,7 @@ pub fn symmetric_eigen_view<T: eigen::EigenInternalScalar>(
             }
         }
         if let Some(error) = provider_error {
-            if DenseKernelPolicy::magma_fail_fast_mode() {
+            if MagmaProviderPolicy::fail_fast_mode() {
                 return Err(map_magma_batched_eigen_error(error));
             }
         } else {

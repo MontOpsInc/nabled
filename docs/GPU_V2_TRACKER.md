@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-08 (K-005 remote follow-on rerun after work-gate + LU/Cholesky fallback composition updates)
+Last updated: 2026-03-08 (K-005 repeated decomposition stability sweep on RTX 4090)
 
 ## Purpose
 
@@ -50,9 +50,9 @@ V2 is considered complete only when all items below are true:
 
 ## K-005 Progress Snapshot
 
-1. Phase-1 complete: centralized small-shape decomposition MAGMA cutoff (`DenseKernelPolicy::prefer_magma_decomposition`) with env override.
+1. Phase-1 complete: centralized small-shape decomposition MAGMA cutoff (`MagmaProviderPolicy::prefer_decomposition`) with env override.
 2. Phase-2 complete: `lapack-provider + magma-system` combined feature matrix is compile/clippy clean for `nabled-linalg`, with cfg precedence conflicts resolved across decomposition-adjacent domains.
-3. Phase-3 complete: dynamic batched decomposition routing is active for MAGMA-supported domains (`lu`, `cholesky`, `qr`) via `DenseKernelPolicy::prefer_magma_batched_decomposition`.
+3. Phase-3 complete: dynamic batched decomposition routing is active for MAGMA-supported domains (`lu`, `cholesky`, `qr`) via `MagmaProviderPolicy::prefer_batched_decomposition`.
 4. Phase-4 complete: policy/env resolution is cached (`OnceLock`), remote strict/normal MAGMA verification both pass on RTX 4090, and provider benchmark rerun/outlier refresh is completed on the current routing snapshot.
 
 ## Batched Surface Snapshot (Current)
@@ -236,7 +236,7 @@ Integration plan (locked):
 
 1. Root-cause class for dominant MAGMA provider outliers was confirmed as tiny-shape fixed overhead.
 2. A centralized MAGMA size policy gate is now applied before selecting MAGMA decomposition kernels:
-   - `DenseKernelPolicy::prefer_magma_decomposition(rows, cols)`
+   - `MagmaProviderPolicy::prefer_decomposition(rows, cols)`
    - default threshold: `min(rows, cols) >= 128`
    - runtime override: `NABLED_MAGMA_MIN_DECOMPOSITION_DIM=<usize>`
 3. Phase-1 routing is wired in:
@@ -251,15 +251,16 @@ Integration plan (locked):
    - strict workflow now runs serialized tests (`RUST_TEST_THREADS=1`) and splits baseline correctness
      from forced strict execution-matrix checks to keep MAGMA signoff signal deterministic.
 5. Post-routing provider benchmark rerun is complete (`openblas-system` vs `magma-system`) with refreshed outlier ranking artifacts:
-   - `coverage/gpu-v2/magma/bench/openblas-system-summary-20260308T140517Z.json`
-   - `coverage/gpu-v2/magma/bench/magma-system-summary-20260308T140517Z.json`
-   - `coverage/gpu-v2/magma/bench/comparison-20260308T140517Z.md`
+   - `coverage/gpu-v2/magma/bench/openblas-system-summary-20260308T154226Z.json`
+   - `coverage/gpu-v2/magma/bench/magma-system-summary-20260308T154226Z.json`
+   - `coverage/gpu-v2/magma/bench/comparison-20260308T154226Z.md`
 6. Refreshed decomposition-focused ratio snapshot (`magma/openblas`, nabled decomposition domains only):
-   - common entries: `68`
-   - median ratio: `~1.000`
+   - common entries: `62`
+   - median ratio: `~1.006`
    - p90 ratio: `~1.056`
-   - tiny-shape complex hotspot class remains near parity (`matrix_log_eigen_complex`, `matrix_power_half_complex`, `full_svd_complex` around `~1.02x` to `~1.05x`)
-   - largest remaining regressions are concentrated in `cholesky::solve(64)`, `cholesky::inverse(32)`, `sylvester::solve_sylvester(24)`, and `eigen::generalized(16)`.
+   - `eigen::generalized(32)` is now parity-class (`~0.983x`) in this rerun,
+   - largest remaining regressions in this run are concentrated in `cholesky::{inverse(32|64), solve(64)}` and `eigen::generalized(48)`.
+   - run-to-run host variance remains visible, so K-005 outlier decisions should be based on repeated reruns.
 7. MAGMA signoff expansion is complete at function granularity:
    - canonical route ledger: `docs/MAGMA_SIGNOFF.md`
    - one-row-per-public-function matrix: `docs/MAGMA_PUBLIC_API_MATRIX.md`
@@ -271,10 +272,19 @@ Integration plan (locked):
    - `qr::solve_least_squares` and complex QR/SVD provider routes are MAGMA-first with lapack fallback in `magma+lapack` builds,
    - strict verification remains green after composition (`job-20260307T221821Z.log`, `rc=0`).
 10. K-005 follow-on small/medium routing pass is implemented and remotely validated:
-   - `DenseKernelPolicy::prefer_magma_decomposition` now requires both minimum dimension and minimum work (`rows*cols`) before routing to MAGMA,
+   - `MagmaProviderPolicy::prefer_decomposition` now requires both minimum dimension and minimum work (`rows*cols`) before routing to MAGMA,
    - new env override is available: `NABLED_MAGMA_MIN_DECOMPOSITION_WORK=<usize>`,
    - `lu` and `cholesky` provider routes now use MAGMA-first with lapack fallback in `magma+lapack` builds for non-eligible and runtime-fallback paths,
-   - strict verification (`job-20260308T140414Z.log`, `rc=0`) and remote provider benchmark refresh (`comparison-20260308T140517Z.md`) are complete.
+   - strict verification (`job-20260308T155035Z.log`, `rc=0`) and remote provider benchmark refresh (`comparison-20260308T154226Z.md`) are complete.
+11. Latest pass fixed `magma-system` compile-matrix parity for eigen callers:
+   - `matrix_functions` scalar bounds now match `lapack-provider + magma-system` expectations,
+   - local clippy is green for `--no-default-features --features magma-system`,
+   - remote strict verification remains green on the patched tree.
+12. Decomposition-only repeated stability sweep is complete on the same host (`REPEATS=5`):
+   - artifacts: `stability-20260308T162602Z.{json,md}` plus per-run comparison reports,
+   - run medians remained near parity (`~0.997` to `~1.005`) with p90 in `~1.024` to `~1.038`,
+   - no decomposition regression remains persistently >`1.03x` across recent repeated runs,
+   - `K-005` is now in monitor mode; reopen targeted optimization only for regressions that persist across repeated batches.
 
 ## MAGMA Expansion Scope (Post V2-005)
 

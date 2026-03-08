@@ -3,7 +3,7 @@
 use ndarray::{Array1, Array2, Axis, stack};
 use num_complex::Complex64;
 
-use crate::internal::DenseKernelPolicy;
+use crate::provider::policy::MagmaProviderPolicy;
 use crate::provider::{magma, magma_runtime, magma_sparse};
 use crate::qr::{self, QRConfig};
 use crate::sparse::{self, CsrMatrixView};
@@ -13,13 +13,13 @@ struct VerifyForceGuard;
 
 impl VerifyForceGuard {
     fn new() -> Self {
-        DenseKernelPolicy::set_magma_verify_force_override(Some(true));
+        MagmaProviderPolicy::set_verify_force_override(Some(true));
         Self
     }
 }
 
 impl Drop for VerifyForceGuard {
-    fn drop(&mut self) { DenseKernelPolicy::set_magma_verify_force_override(None); }
+    fn drop(&mut self) { MagmaProviderPolicy::set_verify_force_override(None); }
 }
 
 fn assert_dense_provider_used(context: &str) {
@@ -67,7 +67,7 @@ fn run_sparse_case<R>(context: &str, operation: impl FnOnce() -> Result<R, spars
     assert_sparse_provider_used(context);
     if let Err(error) = result {
         assert!(
-            !DenseKernelPolicy::magma_fail_fast_mode(),
+            !MagmaProviderPolicy::fail_fast_mode(),
             "{context}: unexpected sparse provider failure in fail-fast mode: {error:?}"
         );
     }

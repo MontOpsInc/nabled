@@ -176,6 +176,22 @@ bench-smoke-report-provider:
     just -f {{ justfile() }} bench-smoke-provider
     just -f {{ justfile() }} bench-report
 
+bench-smoke-provider-decomposition:
+    rm -rf target/criterion crates/nabled/target/criterion
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench svd_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench qr_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench matrix_functions_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench lu_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench cholesky_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench eigen_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench schur_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sylvester_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench polar_benchmarks -- --quick
+
+bench-smoke-report-provider-decomposition:
+    just -f {{ justfile() }} bench-smoke-provider-decomposition
+    just -f {{ justfile() }} bench-report
+
 bench-smoke-check:
     just -f {{ justfile() }} bench-smoke
     just -f {{ justfile() }} bench-report-check

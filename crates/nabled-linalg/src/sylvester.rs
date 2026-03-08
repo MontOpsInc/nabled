@@ -6,7 +6,11 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayView2};
 use num_complex::Complex64;
 
+#[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
+use crate::internal::{lu_decompose, lu_solve};
 use crate::lu;
+#[cfg(feature = "magma-system")]
+use crate::provider::policy::MagmaProviderPolicy;
 
 /// Error type for Sylvester/Lyapunov solvers.
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +67,60 @@ fn map_lu_error_to_sylvester(error: lu::LUError) -> SylvesterError {
         | lu::LUError::ConvergenceFailed
         | lu::LUError::NumericalInstability => SylvesterError::SingularSystem,
     }
+}
+
+#[cfg(all(feature = "magma-system", feature = "lapack-provider"))]
+fn solve_linear_real_system<T>(
+    matrix_rows: usize,
+    matrix_cols: usize,
+    coefficient: &Array2<T>,
+    rhs: &Array1<T>,
+) -> Result<Array1<T>, SylvesterError>
+where
+    T: NabledReal + lu::LuProviderScalar,
+{
+    use ndarray_linalg::Solve as _;
+
+    if !MagmaProviderPolicy::verify_force_mode()
+        && !MagmaProviderPolicy::prefer_decomposition(matrix_rows, matrix_cols)
+    {
+        return coefficient.solve(rhs).map_err(|_| SylvesterError::SingularSystem);
+    }
+
+    lu::solve(coefficient, rhs).map_err(|_| SylvesterError::SingularSystem)
+}
+
+#[cfg(all(
+    any(feature = "lapack-provider", feature = "magma-system"),
+    not(all(feature = "magma-system", feature = "lapack-provider"))
+))]
+fn solve_linear_real_system<T>(
+    matrix_rows: usize,
+    matrix_cols: usize,
+    coefficient: &Array2<T>,
+    rhs: &Array1<T>,
+) -> Result<Array1<T>, SylvesterError>
+where
+    T: NabledReal + lu::LuProviderScalar,
+{
+    #[cfg(not(all(feature = "magma-system", not(feature = "lapack-provider"))))]
+    let _ = (matrix_rows, matrix_cols);
+
+    #[cfg(all(feature = "magma-system", not(feature = "lapack-provider")))]
+    {
+        // For Sylvester, provider routing should consider the original matrix
+        // size `(n, m)` rather than expanded Kronecker size `(n*m, n*m)`.
+        if !MagmaProviderPolicy::verify_force_mode()
+            && !MagmaProviderPolicy::prefer_decomposition(matrix_rows, matrix_cols)
+        {
+            let (lower, upper, pivots, _) =
+                lu_decompose(&coefficient.view()).map_err(|_| SylvesterError::SingularSystem)?;
+            return lu_solve(&lower, &upper, &pivots, &rhs.view())
+                .map_err(|_| SylvesterError::SingularSystem);
+        }
+    }
+
+    lu::solve(coefficient, rhs).map_err(|_| SylvesterError::SingularSystem)
 }
 
 impl<T: NabledReal> SylvesterWorkspace<T> {
@@ -391,8 +449,7 @@ where
         }
     }
 
-    workspace.solution = lu::solve(&workspace.coefficient, &workspace.rhs)
-        .map_err(|_| SylvesterError::SingularSystem)?;
+    workspace.solution = solve_linear_real_system(n, m, &workspace.coefficient, &workspace.rhs)?;
 
     for i in 0..n {
         for j in 0..m {

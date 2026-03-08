@@ -207,11 +207,20 @@ Use this file to resume work quickly after context compaction without re-auditin
 165. `D-165`: `K-005` small/medium decomposition follow-on is implemented locally: `DenseKernelPolicy::prefer_magma_decomposition` now includes both dimension and work gating (`NABLED_MAGMA_MIN_DECOMPOSITION_DIM`, `NABLED_MAGMA_MIN_DECOMPOSITION_WORK`), and `lu`/`cholesky` in `magma+lapack` builds are now MAGMA-first with lapack fallback for non-eligible and runtime-fallback paths; full local quality gates (`just checks`) remain green.
 166. `D-166`: `K-005` remote follow-on rerun is complete after `D-165`: RTX 4090 `magma-strict-verify` and provider comparison (`comparison-20260308T140517Z.md`) are green, and decomposition-domain outliers tightened materially (scope median `~1.000`, p90 `~1.056`).
 167. `D-167`: Remote workflow sync is now resilient for dirty remote checkouts: `gpu_remote_prepare.sh` defaults to `NABLED_REMOTE_AUTO_STASH=1`, stashing tracked/untracked changes before `git pull --ff-only` to keep `gpu_remote.sh up` deterministic after host restarts.
+168. `D-168`: `K-005` follow-on routing/fallback refinement is complete for current pass: `eigen::symmetric` now cleanly composes MAGMA with lapack/internal fallbacks per feature matrix, Sylvester linear solves route by original `(n,m)` work instead of expanded Kronecker size, remote strict verify is green (`job-20260308T143914Z.log`), and provider compare refresh (`comparison-20260308T144030Z.md`) shows prior focus outliers materially reduced (`cholesky::inverse(32)`, `sylvester::solve_sylvester(24)`, `eigen::generalized(16)` now <= parity).
+169. `D-169`: `K-005` compile-matrix and magma-feature parity fix is complete: `eigen` fallback/provider helpers now avoid duplicate validation in `magma+lapack` non-eligible paths, `matrix_functions` scalar bounds are normalized for `lapack-provider + magma-system`, and `magma-system` clippy now passes locally (`--no-default-features --features magma-system`).
+170. `D-170`: Remote RTX 4090 validation is refreshed on the patched tree: strict verification is green (`job-20260308T155035Z.log`, `rc=0`) and provider compare rerun artifacts are captured (`comparison-20260308T154226Z.md`); `eigen::generalized(32)` moved to parity-class (`~0.983x`) while remaining decomposition outliers are now concentrated in `cholesky::{inverse,solve}` and `eigen::generalized(48)` in the latest run.
+171. `D-171`: `K-005` decomposition stability sweep is now repeated on the same RTX 4090 host with deterministic settings (`OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`) and `REPEATS=5` (`job-20260308T162602Z.log`, `stability-20260308T162602Z.md`): no decomposition case remains persistently >`1.03x` slower across the recent rerun set, and run-level scope medians are stable near parity (`~0.997` to `~1.005`).
+172. `D-172`: `K-006` module-ownership boundary lock is complete for MAGMA routing policy: provider-specific decomposition routing/strict/verify policy moved from `internal::DenseKernelPolicy` into `provider::policy::MagmaProviderPolicy`, callsites were rewired across decomposition/batched/sparse domains, and feature-matrix compile checks are green (`no-default-features`, `openblas-system`, `magma-system`).
+173. `D-173`: Advanced tensor-depth expansion started beyond the locked v1 surface: rank-3 CP decomposition via ALS (`cp_als3`, `cp_als3_view`, `cp_als3_reconstruct`, `cp_als3_reconstruct_into`) is now implemented with deterministic SVD initialization and `f32`/`f64` parity/error tests.
+174. `D-174`: Higher-rank tensor decomposition depth is advanced beyond rank-3-only HOSVD: `nabled-linalg::tensor` now provides N-D HOSVD (`hosvd_nd`, `hosvd_nd_view`) and N-D reconstruction (`hosvd_nd_reconstruct`, `hosvd_nd_reconstruct_into`) with `f32`/`f64` parity/error tests under internal, LAPACK-provider, and MAGMA-enabled compile matrices.
+175. `D-175`: Tensor-network decomposition depth is advanced with TT-SVD: `nabled-linalg::tensor` now provides Tensor-Train decomposition (`tt_svd`, `tt_svd_view`) and reconstruction (`tt_svd_reconstruct`, `tt_svd_reconstruct_into`) with config-controlled rank truncation and `f32`/`f64` parity/error tests under internal and LAPACK-provider builds.
+176. `D-176`: Tensor decomposition depth is expanded with HOOI Tucker refinement for `N`-D tensors: `nabled-linalg::tensor` now provides `hooi_nd`/`hooi_nd_view` with configurable convergence policy (`HooiConfig<T>`), reusing the shared Tucker reconstruction surface and adding `f32`/`f64` parity/error tests under internal and LAPACK-provider compile matrices.
 
 ## Next
 
-1. `K-005` follow-on optimization: address current top decomposition regressions from `comparison-20260308T140517Z.md` (`cholesky::solve(64)`, `cholesky::inverse(32)`, `sylvester::solve_sylvester(24)`, and `eigen::generalized(16)`).
-2. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
+1. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
+2. Continue tensor-depth expansion beyond v1 (next: additional tensor-network ergonomics and decomposition variants beyond `cp_als3`, `hosvd3`, `hosvd_nd`, `hooi_nd`, and `tt_svd`).
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.
@@ -238,12 +247,11 @@ It means:
 
 ## Backlog (From Capability Matrix)
 
-1. `K-006`: Module ownership boundary lock for Provider/Backend/Kernel axes.
-2. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
-3. Advanced tensor algebra depth beyond the v1 baseline.
-4. AMD/HIP provider path once hardware is available.
-5. Metal-specific backend exploration beyond `wgpu`.
-6. SIMD opportunity pass for hand-rolled CPU kernels.
+1. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
+2. Advanced tensor algebra depth beyond the v1 baseline.
+3. AMD/HIP provider path once hardware is available.
+4. Metal-specific backend exploration beyond `wgpu`.
+5. SIMD opportunity pass for hand-rolled CPU kernels.
 
 ## Resume Protocol (Compaction-Friendly)
 
