@@ -149,6 +149,17 @@ pub struct CpAls3Result<T: NabledReal = f64> {
     pub factor_2: Array2<T>,
 }
 
+/// CP decomposition result for rank-`N` real tensors.
+#[derive(Debug, Clone)]
+pub struct CpAlsNdResult<T: NabledReal = f64> {
+    /// Rank weights (`R`).
+    pub weights: Array1<T>,
+    /// Per-mode factor matrices (`I_mode x R`), length `N`.
+    pub factors: Vec<Array2<T>>,
+    /// Original tensor shape `(I_0, ..., I_{N-1})`.
+    pub shape:   Vec<usize>,
+}
+
 /// HOSVD/Tucker decomposition result for rank-`N` real tensors.
 #[derive(Debug, Clone)]
 pub struct HosvdNdResult<T: NabledReal = f64> {
@@ -189,6 +200,23 @@ impl Default for TtSvdConfig<f64> {
 }
 
 impl Default for TtSvdConfig<f32> {
+    fn default() -> Self { Self { max_rank: None, tolerance: 1.0e-5 } }
+}
+
+/// Configuration for Tensor-Train rank truncation/rounding.
+#[derive(Debug, Clone)]
+pub struct TtRoundConfig<T: NabledReal = f64> {
+    /// Optional global maximum TT rank (`None` means unconstrained).
+    pub max_rank:  Option<usize>,
+    /// Relative singular-value cutoff used when truncating intermediate ranks.
+    pub tolerance: T,
+}
+
+impl Default for TtRoundConfig<f64> {
+    fn default() -> Self { Self { max_rank: None, tolerance: 1.0e-8 } }
+}
+
+impl Default for TtRoundConfig<f32> {
     fn default() -> Self { Self { max_rank: None, tolerance: 1.0e-5 } }
 }
 
@@ -1959,6 +1987,87 @@ fn mttkrp_mode2<T: NabledReal>(
     output
 }
 
+fn decode_row_major_index(mut index: usize, extents: &[usize], coordinates: &mut [usize]) {
+    for axis in (0..extents.len()).rev() {
+        let extent = extents[axis];
+        coordinates[axis] = index % extent;
+        index /= extent;
+    }
+}
+
+fn validate_cp_nd_factors<T: NabledReal>(factors: &[Array2<T>]) -> Result<usize, TensorError> {
+    if factors.is_empty() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let rank = factors[0].ncols();
+    if rank == 0 {
+        return Err(TensorError::DimensionMismatch);
+    }
+    for factor in factors {
+        if factor.nrows() == 0 || factor.ncols() != rank {
+            return Err(TensorError::DimensionMismatch);
+        }
+    }
+    Ok(rank)
+}
+
+fn khatri_rao_except_mode_nd<T: NabledReal>(
+    factors: &[Array2<T>],
+    mode: usize,
+) -> Result<Array2<T>, TensorError> {
+    let rank = validate_cp_nd_factors(factors)?;
+    if mode >= factors.len() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let order = mode_axes_order(factors.len(), mode)?;
+    let other_axes = &order[1..];
+    let other_extents = other_axes.iter().map(|axis| factors[*axis].nrows()).collect::<Vec<_>>();
+    let rows = shape_product(&other_extents);
+    let mut output = Array2::<T>::zeros((rows, rank));
+    let mut coordinates = vec![0_usize; other_extents.len()];
+
+    for row in 0..rows {
+        decode_row_major_index(row, &other_extents, &mut coordinates);
+        for component in 0..rank {
+            let mut value = T::one();
+            for (position, axis) in other_axes.iter().enumerate() {
+                value *= factors[*axis][[coordinates[position], component]];
+            }
+            output[[row, component]] = value;
+        }
+    }
+    Ok(output)
+}
+
+fn mttkrp_mode_nd<T: NabledReal>(
+    tensor: &ArrayViewD<'_, T>,
+    factors: &[Array2<T>],
+    mode: usize,
+) -> Result<Array2<T>, TensorError> {
+    let unfolded = unfold_mode_nd(tensor, mode)?;
+    let khatri_rao = khatri_rao_except_mode_nd(factors, mode)?;
+    matrix_times_unfolded(&unfolded, &khatri_rao)
+}
+
+fn cp_rhs_gram_except_mode_nd<T: NabledReal>(
+    factors: &[Array2<T>],
+    mode: usize,
+) -> Result<Array2<T>, TensorError> {
+    let rank = validate_cp_nd_factors(factors)?;
+    if mode >= factors.len() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let mut gram = Array2::<T>::from_elem((rank, rank), T::one());
+    for (axis, factor) in factors.iter().enumerate() {
+        if axis == mode {
+            continue;
+        }
+        let factor_gram = gram_matrix(factor);
+        gram = hadamard_product(&gram, &factor_gram);
+    }
+    Ok(gram)
+}
+
 fn invert_small_matrix<T: NabledReal>(
     matrix: &Array2<T>,
     regularization: T,
@@ -2089,6 +2198,29 @@ fn normalize_cp_columns<T: NabledReal>(
     }
 }
 
+fn normalize_cp_nd_columns<T: NabledReal>(
+    factors: &mut [Array2<T>],
+    weights: &mut Array1<T>,
+    tolerance: T,
+) -> Result<(), TensorError> {
+    let rank = validate_cp_nd_factors(factors)?;
+    if rank != weights.len() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    for component in 0..weights.len() {
+        let mut weight = T::one();
+        for factor in factors.iter_mut() {
+            let norm = normalize_factor_column(factor, component);
+            weight *= norm;
+        }
+        if weight.abs() <= tolerance {
+            weight = T::one();
+        }
+        weights[component] = weight;
+    }
+    Ok(())
+}
+
 fn factor_relative_change<T: NabledReal>(
     current: &Array2<T>,
     previous: &Array2<T>,
@@ -2104,6 +2236,27 @@ fn factor_relative_change<T: NabledReal>(
     let delta = delta_sq.sqrt();
     let baseline = baseline_sq.sqrt();
     if baseline <= tolerance { delta } else { delta / baseline }
+}
+
+fn cp_nd_relative_change<T: NabledReal>(
+    current: &[Array2<T>],
+    previous: &[Array2<T>],
+    tolerance: T,
+) -> Result<T, TensorError> {
+    if current.len() != previous.len() || current.is_empty() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let mut max_change = T::zero();
+    for (current_factor, previous_factor) in current.iter().zip(previous.iter()) {
+        if current_factor.dim() != previous_factor.dim() {
+            return Err(TensorError::DimensionMismatch);
+        }
+        let change = factor_relative_change(current_factor, previous_factor, tolerance);
+        if change > max_change {
+            max_change = change;
+        }
+    }
+    Ok(max_change)
 }
 
 fn cp_als3_impl<T: CpAlsScalar>(
@@ -2271,6 +2424,152 @@ pub fn cp_als3_reconstruct_into<T: NabledReal>(
                 output[[i, j, k]] = value;
             }
         }
+    }
+
+    Ok(())
+}
+
+fn validate_cp_als_nd_input<T: NabledReal>(
+    tensor: &ArrayViewD<'_, T>,
+    rank: usize,
+    config: &CpAlsConfig<T>,
+) -> Result<(), TensorError> {
+    validate_tensor_nd_non_empty(tensor)?;
+    if tensor.ndim() < 2 || rank == 0 || config.max_iterations == 0 || !config.tolerance.is_finite()
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let max_rank = tensor.shape().iter().copied().min().unwrap_or(0);
+    if rank > max_rank {
+        return Err(TensorError::DimensionMismatch);
+    }
+    Ok(())
+}
+
+fn cp_als_nd_impl<T: CpAlsScalar>(
+    tensor: &ArrayViewD<'_, T>,
+    rank: usize,
+    config: &CpAlsConfig<T>,
+) -> Result<CpAlsNdResult<T>, TensorError> {
+    validate_cp_als_nd_input(tensor, rank, config)?;
+    let regularization = config.tolerance.max(T::epsilon());
+    let shape = tensor.shape().to_vec();
+    let mut factors = Vec::<Array2<T>>::with_capacity(tensor.ndim());
+
+    for mode in 0..tensor.ndim() {
+        let unfolded = unfold_mode_nd(tensor, mode)?;
+        let u_full = svd::decompose(&unfolded).map_err(|_| TensorError::DimensionMismatch)?.u;
+        if rank > u_full.ncols() {
+            return Err(TensorError::DimensionMismatch);
+        }
+        factors.push(u_full.slice(s![.., 0..rank]).to_owned());
+    }
+
+    let mut weights = Array1::<T>::from_elem(rank, T::one());
+    normalize_cp_nd_columns(&mut factors, &mut weights, regularization)?;
+
+    for _ in 0..config.max_iterations {
+        let previous = factors.clone();
+        for mode in 0..tensor.ndim() {
+            let rhs_gram = cp_rhs_gram_except_mode_nd(&factors, mode)?;
+            let mttkrp = mttkrp_mode_nd(tensor, &factors, mode)?;
+            factors[mode] = solve_right_with_gram(&mttkrp, &rhs_gram, regularization)?;
+        }
+
+        normalize_cp_nd_columns(&mut factors, &mut weights, regularization)?;
+        let max_change = cp_nd_relative_change(&factors, &previous, regularization)?;
+        if max_change <= config.tolerance {
+            break;
+        }
+    }
+
+    Ok(CpAlsNdResult { weights, factors, shape })
+}
+
+fn validate_cp_als_nd_result<T: NabledReal>(result: &CpAlsNdResult<T>) -> Result<(), TensorError> {
+    if result.factors.is_empty() || result.shape.len() != result.factors.len() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let rank = result.weights.len();
+    if rank == 0 {
+        return Err(TensorError::DimensionMismatch);
+    }
+    for (axis, factor) in result.factors.iter().enumerate() {
+        if factor.nrows() != result.shape[axis] || factor.ncols() != rank || factor.nrows() == 0 {
+            return Err(TensorError::DimensionMismatch);
+        }
+    }
+    Ok(())
+}
+
+/// Compute rank-`R` CP decomposition for an `N`-D real tensor using ALS.
+///
+/// # Errors
+/// Returns an error if input is empty, rank/config are invalid, or ALS update systems are
+/// singular.
+pub fn cp_als_nd<T: CpAlsScalar>(
+    tensor: &ArrayD<T>,
+    rank: usize,
+    config: &CpAlsConfig<T>,
+) -> Result<CpAlsNdResult<T>, TensorError> {
+    cp_als_nd_impl(&tensor.view(), rank, config)
+}
+
+/// Compute rank-`R` CP decomposition for an `N`-D real tensor from a view.
+///
+/// # Errors
+/// Returns an error if input is empty, rank/config are invalid, or ALS update systems are
+/// singular.
+pub fn cp_als_nd_view<T: CpAlsScalar>(
+    tensor: &ArrayViewD<'_, T>,
+    rank: usize,
+    config: &CpAlsConfig<T>,
+) -> Result<CpAlsNdResult<T>, TensorError> {
+    cp_als_nd_impl(tensor, rank, config)
+}
+
+/// Reconstruct an `N`-D tensor from CP factors.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn cp_als_nd_reconstruct<T: NabledReal>(
+    result: &CpAlsNdResult<T>,
+) -> Result<ArrayD<T>, TensorError> {
+    validate_cp_als_nd_result(result)?;
+    let mut output = ArrayD::<T>::zeros(IxDyn(&result.shape));
+    cp_als_nd_reconstruct_into(result, &mut output)?;
+    Ok(output)
+}
+
+/// Reconstruct an `N`-D tensor from CP factors into `output`.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn cp_als_nd_reconstruct_into<T: NabledReal>(
+    result: &CpAlsNdResult<T>,
+    output: &mut ArrayD<T>,
+) -> Result<(), TensorError> {
+    validate_cp_als_nd_result(result)?;
+    if output.shape() != result.shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let rank = result.weights.len();
+    let total = shape_product(&result.shape);
+    let mut coordinates = vec![0_usize; result.shape.len()];
+    output.fill(T::zero());
+
+    for linear in 0..total {
+        decode_row_major_index(linear, &result.shape, &mut coordinates);
+        let mut value = T::zero();
+        for component in 0..rank {
+            let mut term = result.weights[component];
+            for (axis, coordinate) in coordinates.iter().enumerate() {
+                term *= result.factors[axis][[*coordinate, component]];
+            }
+            value += term;
+        }
+        output[IxDyn(&coordinates)] = value;
     }
 
     Ok(())
@@ -2775,6 +3074,187 @@ fn validate_tt_result<T: NabledReal>(result: &TensorTrainResult<T>) -> Result<()
     Ok(())
 }
 
+fn validate_tt_round_config<T: NabledReal>(config: &TtRoundConfig<T>) -> Result<(), TensorError> {
+    if !config.tolerance.is_finite() || config.tolerance < T::zero() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if let Some(max_rank) = config.max_rank
+        && max_rank == 0
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+    Ok(())
+}
+
+fn tt_factor_core_with_svd<T: TtSvdScalar>(
+    core: &Array3<T>,
+    truncation: Option<(T, usize)>,
+) -> Result<(Array3<T>, Array2<T>), TensorError> {
+    let (left_rank, mode_extent, right_rank) = core.dim();
+    let matrix = core
+        .view()
+        .into_shape_with_order((left_rank * mode_extent, right_rank))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+    let decomposition =
+        svd::decompose(&matrix.to_owned()).map_err(|_| TensorError::DimensionMismatch)?;
+    let available_rank = decomposition.singular_values.len();
+    if available_rank == 0 {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let kept_rank = match truncation {
+        Some((tolerance, max_rank)) => {
+            tt_svd_select_rank(&decomposition.singular_values, tolerance, max_rank)
+                .min(available_rank)
+        }
+        None => available_rank,
+    };
+    if kept_rank == 0 {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let q = decomposition
+        .u
+        .slice(s![.., 0..kept_rank])
+        .to_owned()
+        .into_shape_with_order((left_rank, mode_extent, kept_rank))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+
+    let mut transfer = decomposition.vt.slice(s![0..kept_rank, ..]).to_owned();
+    for row in 0..kept_rank {
+        let sigma = decomposition.singular_values[row];
+        for col in 0..right_rank {
+            transfer[[row, col]] *= sigma;
+        }
+    }
+
+    Ok((q, transfer))
+}
+
+fn tt_apply_transfer_to_next<T: NabledReal>(
+    transfer: &Array2<T>,
+    next: &Array3<T>,
+) -> Result<Array3<T>, TensorError> {
+    let (transfer_rows, transfer_cols) = transfer.dim();
+    let (next_left, next_mode, next_right) = next.dim();
+    if transfer_cols != next_left {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut output = Array3::<T>::zeros((transfer_rows, next_mode, next_right));
+    for row in 0..transfer_rows {
+        for left in 0..transfer_cols {
+            let weight = transfer[[row, left]];
+            for mode_index in 0..next_mode {
+                for right in 0..next_right {
+                    output[[row, mode_index, right]] += weight * next[[left, mode_index, right]];
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn tt_factor_core_right_with_svd<T: TtSvdScalar>(
+    core: &Array3<T>,
+) -> Result<(Array2<T>, Array3<T>), TensorError> {
+    let (left_rank, mode_extent, right_rank) = core.dim();
+    let matrix = core
+        .view()
+        .into_shape_with_order((left_rank, mode_extent * right_rank))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+    let decomposition =
+        svd::decompose(&matrix.to_owned()).map_err(|_| TensorError::DimensionMismatch)?;
+    let available_rank = decomposition.singular_values.len();
+    if available_rank == 0 {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut left_transfer = decomposition.u.slice(s![.., 0..available_rank]).to_owned();
+    for col in 0..available_rank {
+        let sigma = decomposition.singular_values[col];
+        for row in 0..left_rank {
+            left_transfer[[row, col]] *= sigma;
+        }
+    }
+
+    let right_core = decomposition
+        .vt
+        .slice(s![0..available_rank, ..])
+        .to_owned()
+        .into_shape_with_order((available_rank, mode_extent, right_rank))
+        .map_err(|_| TensorError::DimensionMismatch)?;
+
+    Ok((left_transfer, right_core))
+}
+
+fn tt_apply_transfer_to_previous<T: NabledReal>(
+    previous: &Array3<T>,
+    transfer: &Array2<T>,
+) -> Result<Array3<T>, TensorError> {
+    let (previous_left, previous_mode, previous_right) = previous.dim();
+    let (transfer_rows, transfer_cols) = transfer.dim();
+    if previous_right != transfer_rows {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut output = Array3::<T>::zeros((previous_left, previous_mode, transfer_cols));
+    for left in 0..previous_left {
+        for mode_index in 0..previous_mode {
+            for old_rank in 0..previous_right {
+                let value = previous[[left, mode_index, old_rank]];
+                for new_rank in 0..transfer_cols {
+                    output[[left, mode_index, new_rank]] += value * transfer[[old_rank, new_rank]];
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn tt_right_orthogonalize_impl<T: TtSvdScalar>(
+    result: &TensorTrainResult<T>,
+) -> Result<TensorTrainResult<T>, TensorError> {
+    validate_tt_result(result)?;
+    if result.cores.len() <= 1 {
+        return Ok(result.clone());
+    }
+
+    let mut cores = result.cores.clone();
+    for mode in (1..cores.len()).rev() {
+        let (left_transfer, orth_core) = tt_factor_core_right_with_svd(&cores[mode])?;
+        let updated_previous = tt_apply_transfer_to_previous(&cores[mode - 1], &left_transfer)?;
+        cores[mode] = orth_core;
+        cores[mode - 1] = updated_previous;
+    }
+
+    let transformed = TensorTrainResult { cores, shape: result.shape.clone() };
+    validate_tt_result(&transformed)?;
+    Ok(transformed)
+}
+
+fn tt_transform_impl<T: TtSvdScalar>(
+    result: &TensorTrainResult<T>,
+    truncation: Option<(T, usize)>,
+) -> Result<TensorTrainResult<T>, TensorError> {
+    validate_tt_result(result)?;
+    if result.cores.len() <= 1 {
+        return Ok(result.clone());
+    }
+
+    let mut cores = result.cores.clone();
+    for mode in 0..(cores.len() - 1) {
+        let (orth_core, transfer) = tt_factor_core_with_svd(&cores[mode], truncation)?;
+        let updated_next = tt_apply_transfer_to_next(&transfer, &cores[mode + 1])?;
+        cores[mode] = orth_core;
+        cores[mode + 1] = updated_next;
+    }
+
+    let transformed = TensorTrainResult { cores, shape: result.shape.clone() };
+    validate_tt_result(&transformed)?;
+    Ok(transformed)
+}
+
 /// Compute Tensor-Train decomposition for an `N`-D real tensor via TT-SVD.
 ///
 /// # Errors
@@ -2795,6 +3275,50 @@ pub fn tt_svd_view<T: TtSvdScalar>(
     config: &TtSvdConfig<T>,
 ) -> Result<TensorTrainResult<T>, TensorError> {
     tt_svd_impl(tensor, config)
+}
+
+/// Left-orthogonalize TT cores while preserving represented tensor values.
+///
+/// All cores except the last become left-orthonormal in matricized form
+/// (`(r_k * n_k) x r_{k+1}`), with scaling absorbed into trailing cores.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible.
+pub fn tt_orthogonalize_left<T: TtSvdScalar>(
+    result: &TensorTrainResult<T>,
+) -> Result<TensorTrainResult<T>, TensorError> {
+    tt_transform_impl(result, None)
+}
+
+/// Right-orthogonalize TT cores while preserving represented tensor values.
+///
+/// All cores except the first become right-orthonormal in matricized form
+/// (`r_k x (n_k * r_{k+1})`), with scaling absorbed into leading cores.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible.
+pub fn tt_orthogonalize_right<T: TtSvdScalar>(
+    result: &TensorTrainResult<T>,
+) -> Result<TensorTrainResult<T>, TensorError> {
+    tt_right_orthogonalize_impl(result)
+}
+
+/// Round/compress a TT decomposition with optional rank truncation.
+///
+/// This performs a right-orthogonalization sweep followed by a left truncation
+/// sweep, reducing intermediate TT ranks using singular-value tolerance and
+/// optional max rank.
+///
+/// # Errors
+/// Returns an error if TT core dimensions or configuration are invalid.
+pub fn tt_round<T: TtSvdScalar>(
+    result: &TensorTrainResult<T>,
+    config: &TtRoundConfig<T>,
+) -> Result<TensorTrainResult<T>, TensorError> {
+    validate_tt_round_config(config)?;
+    let orthogonalized = tt_right_orthogonalize_impl(result)?;
+    let max_rank = config.max_rank.unwrap_or(usize::MAX);
+    tt_transform_impl(&orthogonalized, Some((config.tolerance, max_rank)))
 }
 
 /// Reconstruct an `N`-D real tensor from Tensor-Train cores.
@@ -3767,6 +4291,196 @@ mod tests {
     }
 
     #[test]
+    fn tt_orthogonalize_left_preserves_reconstruction_and_columns() {
+        let reference = TensorTrainResult {
+            cores: vec![
+                Array3::from_shape_vec((1, 3, 2), vec![
+                    1.0_f64, 0.2_f64, 0.6_f64, -0.1_f64, 0.4_f64, 0.8_f64,
+                ])
+                .unwrap(),
+                Array3::from_shape_vec((2, 2, 3), vec![
+                    0.9_f64, -0.1_f64, 0.3_f64, 0.7_f64, -0.2_f64, 0.5_f64, 1.1_f64, 0.4_f64,
+                    0.2_f64, 0.3_f64, 0.8_f64, -0.6_f64,
+                ])
+                .unwrap(),
+                Array3::from_shape_vec((3, 4, 1), vec![
+                    1.0_f64, 0.3_f64, -0.2_f64, 0.5_f64, 0.6_f64, 0.8_f64, 0.1_f64, 1.2_f64,
+                    -0.3_f64, 0.2_f64, 0.7_f64, 0.4_f64,
+                ])
+                .unwrap(),
+            ],
+            shape: vec![3, 2, 4],
+        };
+
+        let baseline = tt_svd_reconstruct(&reference).unwrap();
+        let orth = tt_orthogonalize_left(&reference).unwrap();
+        let reconstructed = tt_svd_reconstruct(&orth).unwrap();
+
+        let mut diff_sq = 0.0_f64;
+        let mut base_sq = 0.0_f64;
+        for (lhs, rhs) in reconstructed.iter().zip(baseline.iter()) {
+            let delta = lhs - rhs;
+            diff_sq += delta * delta;
+            base_sq += rhs * rhs;
+        }
+        let relative_error = diff_sq.sqrt() / base_sq.sqrt();
+        assert!(relative_error < 1.0e-10_f64);
+
+        for core in orth.cores.iter().take(orth.cores.len() - 1) {
+            let (left, mode_extent, right) = core.dim();
+            let matrix = core.clone().into_shape_with_order((left * mode_extent, right)).unwrap();
+            for i in 0..right {
+                for j in 0..right {
+                    let mut dot = 0.0_f64;
+                    for row in 0..(left * mode_extent) {
+                        dot += matrix[[row, i]] * matrix[[row, j]];
+                    }
+                    if i == j {
+                        assert!((dot - 1.0_f64).abs() < 1.0e-8_f64);
+                    } else {
+                        assert!(dot.abs() < 1.0e-8_f64);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tt_orthogonalize_right_preserves_reconstruction_and_rows() {
+        let reference = TensorTrainResult {
+            cores: vec![
+                Array3::from_shape_vec((1, 3, 2), vec![
+                    1.0_f64, 0.2_f64, 0.6_f64, -0.1_f64, 0.4_f64, 0.8_f64,
+                ])
+                .unwrap(),
+                Array3::from_shape_vec((2, 2, 3), vec![
+                    0.9_f64, -0.1_f64, 0.3_f64, 0.7_f64, -0.2_f64, 0.5_f64, 1.1_f64, 0.4_f64,
+                    0.2_f64, 0.3_f64, 0.8_f64, -0.6_f64,
+                ])
+                .unwrap(),
+                Array3::from_shape_vec((3, 4, 1), vec![
+                    1.0_f64, 0.3_f64, -0.2_f64, 0.5_f64, 0.6_f64, 0.8_f64, 0.1_f64, 1.2_f64,
+                    -0.3_f64, 0.2_f64, 0.7_f64, 0.4_f64,
+                ])
+                .unwrap(),
+            ],
+            shape: vec![3, 2, 4],
+        };
+
+        let baseline = tt_svd_reconstruct(&reference).unwrap();
+        let orth = tt_orthogonalize_right(&reference).unwrap();
+        let reconstructed = tt_svd_reconstruct(&orth).unwrap();
+
+        let mut diff_sq = 0.0_f64;
+        let mut base_sq = 0.0_f64;
+        for (lhs, rhs) in reconstructed.iter().zip(baseline.iter()) {
+            let delta = lhs - rhs;
+            diff_sq += delta * delta;
+            base_sq += rhs * rhs;
+        }
+        let relative_error = diff_sq.sqrt() / base_sq.sqrt();
+        assert!(relative_error < 1.0e-10_f64);
+
+        for core in orth.cores.iter().skip(1) {
+            let (left, mode_extent, right) = core.dim();
+            let matrix = core.clone().into_shape_with_order((left, mode_extent * right)).unwrap();
+            for i in 0..left {
+                for j in 0..left {
+                    let mut dot = 0.0_f64;
+                    for col in 0..(mode_extent * right) {
+                        dot += matrix[[i, col]] * matrix[[j, col]];
+                    }
+                    if i == j {
+                        assert!((dot - 1.0_f64).abs() < 1.0e-8_f64);
+                    } else {
+                        assert!(dot.abs() < 1.0e-8_f64);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tt_round_reduces_ranks_with_small_reconstruction_error() {
+        let reference = TensorTrainResult {
+            cores: vec![
+                Array3::from_shape_vec((1, 3, 3), vec![
+                    1.0_f64,
+                    0.2_f64,
+                    1.0e-6_f64,
+                    0.6_f64,
+                    -0.1_f64,
+                    2.0e-6_f64,
+                    0.4_f64,
+                    0.8_f64,
+                    -1.0e-6_f64,
+                ])
+                .unwrap(),
+                Array3::from_shape_vec((3, 2, 3), vec![
+                    1.0_f64, 0.0_f64, 0.0_f64, 0.5_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0_f64,
+                    0.0_f64, 0.0_f64, 0.4_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0e-4_f64, 0.0_f64,
+                    0.0_f64, 2.0e-4_f64,
+                ])
+                .unwrap(),
+                Array3::from_shape_vec((3, 4, 1), vec![
+                    1.0_f64,
+                    0.3_f64,
+                    -0.2_f64,
+                    0.5_f64,
+                    0.6_f64,
+                    0.8_f64,
+                    0.1_f64,
+                    1.2_f64,
+                    1.0e-6_f64,
+                    -2.0e-6_f64,
+                    3.0e-6_f64,
+                    1.0e-6_f64,
+                ])
+                .unwrap(),
+            ],
+            shape: vec![3, 2, 4],
+        };
+
+        let baseline = tt_svd_reconstruct(&reference).unwrap();
+        let config = TtRoundConfig::<f64> { max_rank: Some(2), tolerance: 1.0e-8_f64 };
+        let rounded = tt_round(&reference, &config).unwrap();
+        let reconstructed = tt_svd_reconstruct(&rounded).unwrap();
+
+        for core in rounded.cores.iter().take(rounded.cores.len() - 1) {
+            assert!(core.dim().2 <= 2);
+        }
+        for core in rounded.cores.iter().skip(1) {
+            assert!(core.dim().0 <= 2);
+        }
+
+        let mut diff_sq = 0.0_f64;
+        let mut base_sq = 0.0_f64;
+        for (lhs, rhs) in reconstructed.iter().zip(baseline.iter()) {
+            let delta = lhs - rhs;
+            diff_sq += delta * delta;
+            base_sq += rhs * rhs;
+        }
+        let relative_error = diff_sq.sqrt() / base_sq.sqrt();
+        assert!(relative_error < 1.0e-4_f64);
+    }
+
+    #[test]
+    fn tt_round_rejects_invalid_config() {
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            (1..=12).map(|value| f64::from(value) * 0.5_f64).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let valid = tt_svd(&tensor, &TtSvdConfig::<f64>::default()).unwrap();
+
+        let bad_rank = TtRoundConfig::<f64> { max_rank: Some(0), tolerance: 1.0e-8_f64 };
+        assert!(matches!(tt_round(&valid, &bad_rank), Err(TensorError::DimensionMismatch)));
+
+        let bad_tolerance = TtRoundConfig::<f64> { max_rank: Some(2), tolerance: -1.0e-8_f64 };
+        assert!(matches!(tt_round(&valid, &bad_tolerance), Err(TensorError::DimensionMismatch)));
+    }
+
+    #[test]
     fn cp_als3_reconstructs_synthetic_rank2_tensor_f64() {
         let reference = CpAls3Result {
             weights:  Array1::from_vec(vec![1.5_f64, 0.8_f64]),
@@ -3851,6 +4565,116 @@ mod tests {
         };
         assert!(matches!(
             cp_als3_reconstruct(&invalid_factors),
+            Err(TensorError::DimensionMismatch)
+        ));
+    }
+
+    #[test]
+    fn cp_als_nd_reconstructs_synthetic_rank2_tensor_f64() {
+        let reference = CpAlsNdResult {
+            weights: Array1::from_vec(vec![1.5_f64, 0.8_f64]),
+            factors: vec![
+                Array2::from_shape_vec((3, 2), vec![
+                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
+                ])
+                .unwrap(),
+                Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
+                Array2::from_shape_vec((4, 2), vec![
+                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, -1.0_f64,
+                ])
+                .unwrap(),
+                Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
+            ],
+            shape:   vec![3, 2, 4, 2],
+        };
+        let tensor = cp_als_nd_reconstruct(&reference).unwrap();
+
+        let config = CpAlsConfig { max_iterations: 400, tolerance: 1.0e-6_f64 };
+        let estimated = cp_als_nd(&tensor, 2, &config).unwrap();
+        let reconstructed = cp_als_nd_reconstruct(&estimated).unwrap();
+
+        let mut diff_sq = 0.0_f64;
+        let mut base_sq = 0.0_f64;
+        for (lhs, rhs) in reconstructed.iter().zip(tensor.iter()) {
+            let delta = lhs - rhs;
+            diff_sq += delta * delta;
+            base_sq += rhs * rhs;
+        }
+        let relative_error = diff_sq.sqrt() / base_sq.sqrt();
+        assert!(relative_error < 1.0e-5_f64);
+    }
+
+    #[test]
+    fn cp_als_nd_view_and_into_variants_match_f32() {
+        let reference = CpAlsNdResult {
+            weights: Array1::from_vec(vec![1.0_f32, 0.6_f32]),
+            factors: vec![
+                Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
+                Array2::from_shape_vec((3, 2), vec![
+                    1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32,
+                ])
+                .unwrap(),
+                Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
+            ],
+            shape:   vec![2, 3, 2],
+        };
+        let tensor = cp_als_nd_reconstruct(&reference).unwrap();
+        let config = CpAlsConfig { max_iterations: 300, tolerance: 1.0e-6_f32 };
+
+        let owned = cp_als_nd(&tensor, 2, &config).unwrap();
+        let viewed = cp_als_nd_view(&tensor.view(), 2, &config).unwrap();
+        let owned_reconstructed = cp_als_nd_reconstruct(&owned).unwrap();
+        let viewed_reconstructed = cp_als_nd_reconstruct(&viewed).unwrap();
+        let mut viewed_into = ArrayD::<f32>::zeros(tensor.raw_dim());
+        cp_als_nd_reconstruct_into(&viewed, &mut viewed_into).unwrap();
+
+        let mut max_delta = 0.0_f32;
+        for ((owned_value, viewed_value), into_value) in
+            owned_reconstructed.iter().zip(viewed_reconstructed.iter()).zip(viewed_into.iter())
+        {
+            max_delta = max_delta.max((owned_value - viewed_value).abs());
+            max_delta = max_delta.max((owned_value - into_value).abs());
+        }
+        assert!(max_delta < 1.0e-4_f32);
+    }
+
+    #[test]
+    fn cp_als_nd_rejects_invalid_rank_and_reconstruction_shapes() {
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            (1..=12).map(|value| f64::from(value) * 0.5_f64).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let config = CpAlsConfig::<f64>::default();
+        assert!(matches!(cp_als_nd(&tensor, 0, &config), Err(TensorError::DimensionMismatch)));
+
+        let invalid_config =
+            CpAlsConfig::<f64> { max_iterations: 0, ..CpAlsConfig::<f64>::default() };
+        assert!(matches!(
+            cp_als_nd(&tensor, 1, &invalid_config),
+            Err(TensorError::DimensionMismatch)
+        ));
+
+        let scalar = ArrayD::from_shape_vec(IxDyn(&[]), vec![1.0_f64]).unwrap();
+        assert!(matches!(
+            cp_als_nd(&scalar, 1, &CpAlsConfig::<f64>::default()),
+            Err(TensorError::DimensionMismatch)
+        ));
+
+        let invalid_result = CpAlsNdResult {
+            weights: Array1::from_vec(vec![1.0_f64]),
+            factors: vec![Array2::<f64>::zeros((2, 2)), Array2::<f64>::zeros((3, 1))],
+            shape:   vec![2, 3],
+        };
+        assert!(matches!(
+            cp_als_nd_reconstruct(&invalid_result),
+            Err(TensorError::DimensionMismatch)
+        ));
+
+        let valid = cp_als_nd(&tensor, 1, &CpAlsConfig::<f64>::default()).unwrap();
+        let mut bad_output = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 2]));
+        assert!(matches!(
+            cp_als_nd_reconstruct_into(&valid, &mut bad_output),
             Err(TensorError::DimensionMismatch)
         ));
     }

@@ -152,6 +152,8 @@ Workspace migration for library domains is complete.
 144. Tensor decomposition depth now includes higher-rank HOSVD/Tucker surfaces for real tensors: `hosvd_nd`, `hosvd_nd_view`, `hosvd_nd_reconstruct`, and `hosvd_nd_reconstruct_into`, with parity/error tests across internal/provider compile matrices.
 145. Tensor-network depth now includes TT-SVD for real tensors: `tt_svd`, `tt_svd_view`, `tt_svd_reconstruct`, and `tt_svd_reconstruct_into` are implemented with rank-truncation configuration and `f32`/`f64` parity/error tests across internal/provider compile matrices.
 146. Tensor decomposition depth now includes `N`-D HOOI Tucker refinement for real tensors: `hooi_nd` and `hooi_nd_view` are implemented with configurable convergence policy (`HooiConfig<T>`) and `f32`/`f64` parity/error tests across internal/provider compile matrices.
+147. Tensor decomposition depth now includes `N`-D CP-ALS for real tensors: `cp_als_nd`, `cp_als_nd_view`, `cp_als_nd_reconstruct`, and `cp_als_nd_reconstruct_into` are implemented with shared N-D MTTKRP helpers and `f32`/`f64` parity/error tests across internal/provider compile matrices.
+148. Tensor-network ergonomics now include TT orthogonalization/rounding utilities: `tt_orthogonalize_left`, `tt_orthogonalize_right`, and `tt_round` (with `TtRoundConfig<T>`) are implemented with reconstruction-preservation and rank-compression parity tests across internal/provider compile matrices.
 
 ## Current Code Ownership
 
@@ -189,7 +191,7 @@ Workspace migration for library domains is complete.
 GPU phase-2 continuation:
 
 1. Keep `K-005` in monitor mode with repeated same-host decomposition sweeps; reopen optimization only for persistent regressions.
-2. Continue tensor algebra depth expansion beyond v1 (additional tensor-network ergonomics and decomposition variants beyond `cp_als3`, `hosvd_nd`, `hooi_nd`, and `tt_svd`).
+2. Continue tensor algebra depth expansion beyond v1 (tensor-network ergonomics and decomposition utilities beyond `cp_als3`, `cp_als_nd`, `hosvd_nd`, `hooi_nd`, and `tt_svd`).
 
 ## Completion Criteria For Migration
 

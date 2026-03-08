@@ -216,11 +216,13 @@ Use this file to resume work quickly after context compaction without re-auditin
 174. `D-174`: Higher-rank tensor decomposition depth is advanced beyond rank-3-only HOSVD: `nabled-linalg::tensor` now provides N-D HOSVD (`hosvd_nd`, `hosvd_nd_view`) and N-D reconstruction (`hosvd_nd_reconstruct`, `hosvd_nd_reconstruct_into`) with `f32`/`f64` parity/error tests under internal, LAPACK-provider, and MAGMA-enabled compile matrices.
 175. `D-175`: Tensor-network decomposition depth is advanced with TT-SVD: `nabled-linalg::tensor` now provides Tensor-Train decomposition (`tt_svd`, `tt_svd_view`) and reconstruction (`tt_svd_reconstruct`, `tt_svd_reconstruct_into`) with config-controlled rank truncation and `f32`/`f64` parity/error tests under internal and LAPACK-provider builds.
 176. `D-176`: Tensor decomposition depth is expanded with HOOI Tucker refinement for `N`-D tensors: `nabled-linalg::tensor` now provides `hooi_nd`/`hooi_nd_view` with configurable convergence policy (`HooiConfig<T>`), reusing the shared Tucker reconstruction surface and adding `f32`/`f64` parity/error tests under internal and LAPACK-provider compile matrices.
+177. `D-177`: Tensor decomposition depth is expanded with `N`-D CP-ALS: `nabled-linalg::tensor` now provides `cp_als_nd`/`cp_als_nd_view` and `cp_als_nd_reconstruct`/`cp_als_nd_reconstruct_into` via shared unfold/MTTKRP helpers, with `f32`/`f64` parity/error tests under internal and LAPACK-provider compile matrices.
+178. `D-178`: Tensor-network ergonomics are expanded on top of TT-SVD: `nabled-linalg::tensor` now provides TT orthogonalization/rounding utilities (`tt_orthogonalize_left`, `tt_orthogonalize_right`, `tt_round`, `TtRoundConfig<T>`) with reconstruction-preservation and rank-compression parity tests under internal and LAPACK-provider compile matrices.
 
 ## Next
 
 1. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
-2. Continue tensor-depth expansion beyond v1 (next: additional tensor-network ergonomics and decomposition variants beyond `cp_als3`, `hosvd3`, `hosvd_nd`, `hooi_nd`, and `tt_svd`).
+2. Continue tensor-depth expansion beyond v1 (next: tensor-network ergonomics and decomposition utilities on top of `cp_als3`, `cp_als_nd`, `hosvd3`, `hosvd_nd`, `hooi_nd`, and `tt_svd`).
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.
