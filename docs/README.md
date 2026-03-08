@@ -14,19 +14,20 @@ This folder contains the current, authoritative direction for `nabled`.
 
 1. `docs/DECISIONS.md`: locked decisions and constraints.
 2. `docs/CAPABILITY_MATRIX.md`: capability inventory, gap analysis, and scope verdict.
-3. `docs/BENCHMARK_TRACKER.md`: chunked benchmark audit, current results, and optimization loop tracking.
-4. `docs/GPU_V2_TRACKER.md`: v2 GPU/provider expansion tracker (batch policy, MAGMA integration, remote verification).
-5. `docs/MAGMA_SIGNOFF.md`: MAGMA route signoff matrix with per-API execution evidence and pending closure rows.
-6. `docs/REMOTE_GPU_WORKFLOW.md`: canonical remote NVIDIA workflow (image + tmux-first execution scripts).
-7. `docs/KERNEL_CATALOG.md`: complete kernel contract inventory, wiring status, and done-state definition.
-8. `docs/PERFORMANCE_CONTRACTS.md`: allocation/copy contract and copy-elision audit status.
-9. `docs/V1_STABILITY.md`: explicit v1-stability contract (required tensor/GPU surface, feature matrix, no-surprises signoff).
-10. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
-11. `docs/architecture.md`: target package/module architecture.
-12. `docs/ROADMAP.md`: implementation sequencing and milestones.
-13. `docs/PUBLISH_CHECKLIST.md`: crates.io publish gate and release-day checklist.
-14. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
-15. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
+3. `docs/REFERENCE_RUBRIC.md`: external-anchor parity rubric and objective "done"/production-readiness criteria.
+4. `docs/BENCHMARK_TRACKER.md`: chunked benchmark audit, current results, and optimization loop tracking.
+5. `docs/GPU_V2_TRACKER.md`: v2 GPU/provider expansion tracker (batch policy, MAGMA integration, remote verification).
+6. `docs/MAGMA_SIGNOFF.md`: MAGMA route signoff matrix with per-API execution evidence and pending closure rows.
+7. `docs/REMOTE_GPU_WORKFLOW.md`: canonical remote NVIDIA workflow (image + tmux-first execution scripts).
+8. `docs/KERNEL_CATALOG.md`: complete kernel contract inventory, wiring status, and done-state definition.
+9. `docs/PERFORMANCE_CONTRACTS.md`: allocation/copy contract and copy-elision audit status.
+10. `docs/V1_STABILITY.md`: explicit v1-stability contract (required tensor/GPU surface, feature matrix, no-surprises signoff).
+11. `docs/EXECUTION_TRACKER.md`: current `Done / Next / Needed` plan for compaction-safe continuation.
+12. `docs/architecture.md`: target package/module architecture.
+13. `docs/ROADMAP.md`: implementation sequencing and milestones.
+14. `docs/PUBLISH_CHECKLIST.md`: crates.io publish gate and release-day checklist.
+15. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+16. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
 
 ## Context Resume Protocol
 
@@ -35,18 +36,19 @@ When starting from a compacted/partial context, read documents in this order:
 1. `docs/README.md`
 2. `docs/DECISIONS.md`
 3. `docs/CAPABILITY_MATRIX.md`
-4. `docs/BENCHMARK_TRACKER.md`
-5. `docs/GPU_V2_TRACKER.md`
-6. `docs/MAGMA_SIGNOFF.md`
-7. `docs/REMOTE_GPU_WORKFLOW.md`
-8. `docs/KERNEL_CATALOG.md`
-9. `docs/PERFORMANCE_CONTRACTS.md`
-10. `docs/V1_STABILITY.md`
-11. `docs/EXECUTION_TRACKER.md`
-12. `docs/architecture.md`
-13. `docs/ROADMAP.md`
-14. `docs/PUBLISH_CHECKLIST.md`
-15. `docs/STATUS.md`
+4. `docs/REFERENCE_RUBRIC.md`
+5. `docs/BENCHMARK_TRACKER.md`
+6. `docs/GPU_V2_TRACKER.md`
+7. `docs/MAGMA_SIGNOFF.md`
+8. `docs/REMOTE_GPU_WORKFLOW.md`
+9. `docs/KERNEL_CATALOG.md`
+10. `docs/PERFORMANCE_CONTRACTS.md`
+11. `docs/V1_STABILITY.md`
+12. `docs/EXECUTION_TRACKER.md`
+13. `docs/architecture.md`
+14. `docs/ROADMAP.md`
+15. `docs/PUBLISH_CHECKLIST.md`
+16. `docs/STATUS.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 
@@ -70,6 +72,7 @@ After reading the docs above, a contributor should be able to answer:
 8. What is the backend feature contract? (`blas` baseline + provider feature policy; see `docs/DECISIONS.md`)
 9. What are the execution axes? (`Provider` vs `Backend` vs `Kernel`; see `docs/DECISIONS.md`)
 10. What is the complete kernel set and current wiring status? (See `docs/KERNEL_CATALOG.md`)
+11. What objective rubric defines "done" and "production-ready v1"? (See `docs/REFERENCE_RUBRIC.md`)
 
 ## Scope Boundary
 

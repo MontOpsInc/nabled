@@ -154,6 +154,10 @@ Workspace migration for library domains is complete.
 146. Tensor decomposition depth now includes `N`-D HOOI Tucker refinement for real tensors: `hooi_nd` and `hooi_nd_view` are implemented with configurable convergence policy (`HooiConfig<T>`) and `f32`/`f64` parity/error tests across internal/provider compile matrices.
 147. Tensor decomposition depth now includes `N`-D CP-ALS for real tensors: `cp_als_nd`, `cp_als_nd_view`, `cp_als_nd_reconstruct`, and `cp_als_nd_reconstruct_into` are implemented with shared N-D MTTKRP helpers and `f32`/`f64` parity/error tests across internal/provider compile matrices.
 148. Tensor-network ergonomics now include TT orthogonalization/rounding utilities: `tt_orthogonalize_left`, `tt_orthogonalize_right`, and `tt_round` (with `TtRoundConfig<T>`) are implemented with reconstruction-preservation and rank-compression parity tests across internal/provider compile matrices.
+149. Tensor-network algebra now includes TT binary/scalar utilities: `tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, and `tt_hadamard_round` are implemented with shape-safety/error contracts and `f32`/`f64` parity/reconstruction tests across internal/provider compile matrices.
+150. Production-readiness is now anchored by explicit external-reference rubric policy: `docs/REFERENCE_RUBRIC.md` defines domain anchors and objective done/v1-ready gates, and this rubric is linked from docs index/resume order and locked decisions.
+151. CP diagnostics/convergence depth is now explicit for rank-3 and N-D CP-ALS: report-returning decomposition APIs (`cp_als3_with_report`, `cp_als_nd_with_report`) and diagnostics helpers (`cp_als3_diagnostics*`, `cp_als_nd_diagnostics*`) provide fit/residual/relative-error metrics plus ALS convergence summaries across internal/provider compile matrices.
+152. Tucker ergonomics/utilities are now explicit for N-D workflows: projection/expansion APIs over explicit factor sets (`tucker_project*`, `tucker_expand*`) are implemented with owned/view/into variants and strict shape-validation contracts across internal/provider compile matrices.
 
 ## Current Code Ownership
 
@@ -191,7 +195,7 @@ Workspace migration for library domains is complete.
 GPU phase-2 continuation:
 
 1. Keep `K-005` in monitor mode with repeated same-host decomposition sweeps; reopen optimization only for persistent regressions.
-2. Continue tensor algebra depth expansion beyond v1 (tensor-network ergonomics and decomposition utilities beyond `cp_als3`, `cp_als_nd`, `hosvd_nd`, `hooi_nd`, and `tt_svd`).
+2. Tensor algebra post-v1 rubric (`D-179..D-182`) is complete; tensor expansion is now monitor-only unless explicit new tracker items are approved.
 
 ## Completion Criteria For Migration
 

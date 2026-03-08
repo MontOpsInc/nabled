@@ -28,6 +28,7 @@
 21. Kernel-family scope is explicitly cataloged (`docs/KERNEL_CATALOG.md`) and treated as finite/planned work, not ad hoc expansion.
 22. V1 tensor and GPU capability scope is explicitly bounded and version-locked in `docs/V1_STABILITY.md`; out-of-scope behavior must be explicit/typed, not implicit fallback.
 23. Runtime workload-size policy is allowed inside a selected backend implementation (for example, `GpuBackend` deciding not to attempt GPU for tiny workloads); this does not violate compile-time backend selection.
+24. Production-readiness and domain "done" state are governed by the external-anchor parity rubric in `docs/REFERENCE_RUBRIC.md` (multi-reference, domain-specific, finite scope).
 
 ## API Purity Model
 

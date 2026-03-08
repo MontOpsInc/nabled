@@ -218,11 +218,21 @@ Use this file to resume work quickly after context compaction without re-auditin
 176. `D-176`: Tensor decomposition depth is expanded with HOOI Tucker refinement for `N`-D tensors: `nabled-linalg::tensor` now provides `hooi_nd`/`hooi_nd_view` with configurable convergence policy (`HooiConfig<T>`), reusing the shared Tucker reconstruction surface and adding `f32`/`f64` parity/error tests under internal and LAPACK-provider compile matrices.
 177. `D-177`: Tensor decomposition depth is expanded with `N`-D CP-ALS: `nabled-linalg::tensor` now provides `cp_als_nd`/`cp_als_nd_view` and `cp_als_nd_reconstruct`/`cp_als_nd_reconstruct_into` via shared unfold/MTTKRP helpers, with `f32`/`f64` parity/error tests under internal and LAPACK-provider compile matrices.
 178. `D-178`: Tensor-network ergonomics are expanded on top of TT-SVD: `nabled-linalg::tensor` now provides TT orthogonalization/rounding utilities (`tt_orthogonalize_left`, `tt_orthogonalize_right`, `tt_round`, `TtRoundConfig<T>`) with reconstruction-preservation and rank-compression parity tests under internal and LAPACK-provider compile matrices.
+179. `D-179`: Tensor-network algebra utilities are expanded on top of TT-SVD: `nabled-linalg::tensor` now provides TT binary/scalar algebra (`tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, `tt_hadamard_round`) with shape-safety/error contracts plus `f32`/`f64` parity and reconstruction-preservation tests under internal and LAPACK-provider compile matrices.
+180. `D-180`: External-anchor production-readiness rubric is now explicit and repository-authoritative: `docs/REFERENCE_RUBRIC.md` defines multi-reference domain anchors and objective "done"/v1-ready gates, and docs index/resume order + locked decisions now reference this rubric directly.
+181. `D-181`: CP diagnostics and convergence reporting are now first-class for rank-3 and N-D CP-ALS: `nabled-linalg::tensor` now provides decomposition-report entrypoints (`cp_als3_with_report`, `cp_als_nd_with_report`) and reconstruction diagnostics helpers (`cp_als3_diagnostics*`, `cp_als_nd_diagnostics*`) with explicit fit/residual/relative-error metrics and ALS convergence summaries, covered by `f32`/`f64` tests under internal and LAPACK-provider compile matrices.
+182. `D-182`: Tucker ergonomics/utilities are now first-class for N-D workflows: `nabled-linalg::tensor` now provides projection/expansion helpers over explicit factor sets (`tucker_project*`, `tucker_expand*`) with strict shape-validation contracts, owned/view/into variants, and `f32`/`f64` parity/error tests under internal and LAPACK-provider compile matrices.
 
 ## Next
 
 1. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
-2. Continue tensor-depth expansion beyond v1 (next: tensor-network ergonomics and decomposition utilities on top of `cp_als3`, `cp_als_nd`, `hosvd3`, `hosvd_nd`, `hooi_nd`, and `tt_svd`).
+2. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
+
+Tensor-depth stop rubric (post-v1 finite target):
+1. `D-179` TT algebra utilities (`tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, `tt_hadamard_round`) with tests/feature-matrix parity. ✅
+2. `D-181` CP diagnostics (`fit`, residual/error metrics, convergence-report helpers) for rank-3 and N-D CP surfaces. ✅
+3. `D-182` Tucker ergonomics/utilities (core transforms/projections and bounded convenience helpers over HOSVD/HOOI outputs). ✅
+4. After `D-182`, tensor-depth expansion returns to monitor mode; new tensor items require explicit new tracker IDs.
 
 Round scope lock:
 1. This round is GPU and benchmark hardening.
@@ -242,7 +252,7 @@ It means:
 
 ## Needed
 
-1. Advanced tensor algebra depth beyond the v1 baseline.
+1. Tensor-depth expansion is monitor-only after `D-182`; additional tensor breadth requires explicit new tracker IDs.
 2. AMD/HIP provider path once hardware is available.
 3. Metal-specific backend exploration beyond `wgpu`.
 4. SIMD opportunity pass for hand-rolled CPU kernels.
@@ -250,7 +260,7 @@ It means:
 ## Backlog (From Capability Matrix)
 
 1. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
-2. Advanced tensor algebra depth beyond the v1 baseline.
+2. Tensor-depth post-v1 expansion (monitor-only; explicit new IDs required for additional breadth).
 3. AMD/HIP provider path once hardware is available.
 4. Metal-specific backend exploration beyond `wgpu`.
 5. SIMD opportunity pass for hand-rolled CPU kernels.
