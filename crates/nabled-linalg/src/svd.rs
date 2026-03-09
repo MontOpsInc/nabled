@@ -259,7 +259,7 @@ fn decompose_complex_lapack(
 fn decompose_complex_provider(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexSVD, SVDError> {
-    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_complex_svd_decomposition(matrix.nrows(), matrix.ncols()) {
         return decompose_complex_lapack(matrix);
     }
     match magma::svd_decompose_complex(matrix) {
@@ -280,7 +280,7 @@ fn decompose_complex_provider(
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
-    if !MagmaProviderPolicy::prefer_decomposition(matrix.nrows(), matrix.ncols()) {
+    if !MagmaProviderPolicy::prefer_complex_svd_decomposition(matrix.nrows(), matrix.ncols()) {
         return decompose_complex_internal(matrix);
     }
     match magma::svd_decompose_complex(matrix) {

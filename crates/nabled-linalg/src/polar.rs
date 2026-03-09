@@ -393,4 +393,31 @@ mod tests {
         assert_eq!(PolarError::DecompositionFailed.to_string(), "Polar decomposition failed");
         assert_eq!(PolarError::NumericalInstability.to_string(), "Numerical instability detected");
     }
+
+    #[cfg(feature = "magma-system")]
+    #[test]
+    fn tiny_complex_polar_shape_skips_magma_provider() {
+        use crate::provider::magma;
+
+        let n = 8_usize;
+        let mut matrix = Array2::<Complex64>::zeros((n, n));
+        let mut diagonal = 1.0_f64;
+        for i in 0..n {
+            matrix[[i, i]] = Complex64::new(diagonal, 0.0);
+            diagonal += 0.05;
+            if i + 1 < n {
+                matrix[[i, i + 1]] = Complex64::new(0.02, -0.01);
+                matrix[[i + 1, i]] = Complex64::new(-0.01, 0.02);
+            }
+        }
+
+        magma::reset_magma_provider_call_count();
+        let result = compute_polar_complex(&matrix);
+        assert!(result.is_ok(), "complex polar failed for tiny shape");
+        assert_eq!(
+            magma::magma_provider_call_count(),
+            0,
+            "expected CPU path for complex polar 8x8"
+        );
+    }
 }

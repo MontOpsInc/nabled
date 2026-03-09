@@ -68,8 +68,10 @@ job_script='__JOB_SCRIPT__'
 job_log='__JOB_LOG__'
 cd '__REMOTE_REPO_DIR__'
 echo "[START] \$(date -u)" | tee -a "\${job_log}"
+set +e
 bash "\${job_script}" 2>&1 | tee -a "\${job_log}"
 rc=\${PIPESTATUS[0]}
+set -e
 echo "[END rc=\${rc}] \$(date -u)" | tee -a "\${job_log}"
 exit \${rc}
 RUNNER

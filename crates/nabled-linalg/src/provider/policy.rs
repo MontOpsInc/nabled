@@ -17,6 +17,10 @@ impl MagmaProviderPolicy {
     const BATCH_MIN_DECOMPOSITION_DIM_FLOOR: usize = 16;
     const BATCH_MIN_DECOMPOSITION_WORK: usize = 524_288;
     const BATCH_MIN_DECOMPOSITION_WORK_FLOOR: usize = 8_192;
+    const MIN_CHOLESKY_DECOMPOSITION_DIM: usize = 96;
+    const MIN_CHOLESKY_DECOMPOSITION_DIM_FLOOR: usize = 16;
+    const MIN_COMPLEX_SVD_DECOMPOSITION_DIM: usize = 16;
+    const MIN_COMPLEX_SVD_DECOMPOSITION_DIM_FLOOR: usize = 8;
     const MIN_DECOMPOSITION_DIM: usize = 128;
     const MIN_DECOMPOSITION_DIM_FLOOR: usize = 16;
     const MIN_DECOMPOSITION_WORK: usize = 131_072;
@@ -37,6 +41,8 @@ impl MagmaProviderPolicy {
                 || value.eq_ignore_ascii_case("on")
         })
     }
+
+    fn env_present(name: &str) -> bool { std::env::var_os(name).is_some() }
 
     #[must_use]
     pub(crate) fn strict_mode() -> bool {
@@ -82,6 +88,47 @@ impl MagmaProviderPolicy {
     }
 
     #[must_use]
+    fn min_cholesky_decomposition_dim() -> usize {
+        static VALUE: OnceLock<usize> = OnceLock::new();
+        *VALUE.get_or_init(|| {
+            Self::env_positive_usize("NABLED_MAGMA_MIN_CHOLESKY_DECOMPOSITION_DIM")
+                .unwrap_or(Self::MIN_CHOLESKY_DECOMPOSITION_DIM)
+                .max(Self::MIN_CHOLESKY_DECOMPOSITION_DIM_FLOOR)
+        })
+    }
+
+    #[must_use]
+    fn min_complex_svd_decomposition_dim() -> usize {
+        static VALUE: OnceLock<usize> = OnceLock::new();
+        *VALUE.get_or_init(|| {
+            Self::env_positive_usize("NABLED_MAGMA_MIN_COMPLEX_SVD_DECOMPOSITION_DIM")
+                .unwrap_or(Self::MIN_COMPLEX_SVD_DECOMPOSITION_DIM)
+                .max(Self::MIN_COMPLEX_SVD_DECOMPOSITION_DIM_FLOOR)
+        })
+    }
+
+    #[must_use]
+    fn decomposition_threshold_overridden() -> bool {
+        static VALUE: OnceLock<bool> = OnceLock::new();
+        *VALUE.get_or_init(|| {
+            Self::env_present("NABLED_MAGMA_MIN_DECOMPOSITION_DIM")
+                || Self::env_present("NABLED_MAGMA_MIN_DECOMPOSITION_WORK")
+        })
+    }
+
+    #[must_use]
+    fn cholesky_threshold_overridden() -> bool {
+        static VALUE: OnceLock<bool> = OnceLock::new();
+        *VALUE.get_or_init(|| Self::env_present("NABLED_MAGMA_MIN_CHOLESKY_DECOMPOSITION_DIM"))
+    }
+
+    #[must_use]
+    fn complex_svd_threshold_overridden() -> bool {
+        static VALUE: OnceLock<bool> = OnceLock::new();
+        *VALUE.get_or_init(|| Self::env_present("NABLED_MAGMA_MIN_COMPLEX_SVD_DECOMPOSITION_DIM"))
+    }
+
+    #[must_use]
     fn batch_min_decomposition_count() -> usize {
         static VALUE: OnceLock<usize> = OnceLock::new();
         *VALUE.get_or_init(|| {
@@ -122,6 +169,46 @@ impl MagmaProviderPolicy {
         }
 
         rows.saturating_mul(cols) >= Self::min_decomposition_work()
+    }
+
+    #[must_use]
+    pub(crate) fn prefer_cholesky_decomposition(rows: usize, cols: usize) -> bool {
+        if Self::verify_force_mode() {
+            return rows > 0 && cols > 0;
+        }
+
+        let min_dim = rows.min(cols);
+        if !Self::cholesky_threshold_overridden()
+            && !Self::decomposition_threshold_overridden()
+            && min_dim < Self::MIN_CHOLESKY_DECOMPOSITION_DIM
+        {
+            return false;
+        }
+        if min_dim < Self::min_cholesky_decomposition_dim() {
+            return false;
+        }
+
+        Self::prefer_decomposition(rows, cols)
+    }
+
+    #[must_use]
+    pub(crate) fn prefer_complex_svd_decomposition(rows: usize, cols: usize) -> bool {
+        if Self::verify_force_mode() {
+            return rows > 0 && cols > 0;
+        }
+
+        let min_dim = rows.min(cols);
+        if !Self::complex_svd_threshold_overridden()
+            && !Self::decomposition_threshold_overridden()
+            && min_dim < Self::MIN_COMPLEX_SVD_DECOMPOSITION_DIM
+        {
+            return false;
+        }
+        if min_dim < Self::min_complex_svd_decomposition_dim() {
+            return false;
+        }
+
+        Self::prefer_decomposition(rows, cols)
     }
 
     #[must_use]
