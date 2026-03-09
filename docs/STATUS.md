@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-08
+Last updated: 2026-03-09
 
 ## Summary
 
@@ -161,6 +161,7 @@ Workspace migration for library domains is complete.
 153. K-005 monitor automation is now first-class in remote workflow: `magma_provider_bench_decomposition_job.sh` now records persistent slowdown sets (threshold + run-count aware), and `magma_k005_monitor_job.sh` provides strict repeat-based gating (`REPEATS=5`, ratio >`1.03` in `>=4` runs) to fail only on persistent regressions.
 154. Benchmark smoke CI regression enforcement is now advisory on shared GitHub runners to reduce noise-driven red builds: threshold checks still run and publish warnings/artifacts, but transient performance variance no longer hard-fails the `benchmark-smoke` job.
 155. MAGMA/OpenBLAS hard-fact evidence export is now scripted for release-lto decomposition scope: `magma_proof_pack_job.sh` runs LTO provider decomposition comparisons and writes a publication-ready summary (`coverage/gpu-v2/magma/bench/decomposition/proof-pack-latest.md`) with strongest wins/losses and persistent-slowdown rows.
+156. K-005 monitor/proof-pack hardening is now landed and validated on RTX 4090: canonical decomposition compare uses `openblas-system` baseline vs `openblas-system+magma-system` overlay, stale benchmark summaries are rejected, run order is alternated per repeat, and persistent regressions require both ratio and effect-size gating (`ratio > 1.03` and `delta_ns > 5000`); latest LTO stability rerun reports `persistent_regression_count = 0` (`stability-20260309T130811Z.json`).
 
 ## Current Code Ownership
 

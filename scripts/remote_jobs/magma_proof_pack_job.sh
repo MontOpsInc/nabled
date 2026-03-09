@@ -13,6 +13,7 @@ export BENCH_COMMAND="${BENCH_COMMAND:-bench-smoke-report-provider-decomposition
 export REPEATS
 export ENFORCE_PERSISTENT_REGRESSIONS="${ENFORCE_PERSISTENT_REGRESSIONS:-0}"
 export PERSISTENT_RATIO_THRESHOLD="${PERSISTENT_RATIO_THRESHOLD:-1.03}"
+export PERSISTENT_MIN_DELTA_NS="${PERSISTENT_MIN_DELTA_NS:-5000}"
 export PERSISTENT_MIN_RUNS="${PERSISTENT_MIN_RUNS:-${REPEATS}}"
 
 bash scripts/remote_jobs/magma_provider_bench_decomposition_job.sh
@@ -42,18 +43,25 @@ run_stats = data.get("run_scope_stats", [])
 top_slow = data.get("top_slowdowns", [])[:5]
 top_fast = data.get("top_speedups", [])[:5]
 persistent = data.get("persistent_regressions", [])[:5]
+baseline_provider = data.get("baseline_provider", "openblas-system")
+magma_provider = data.get("magma_provider", "magma-system")
+baseline_features = data.get("baseline_provider_features", baseline_provider)
+magma_features = data.get("magma_provider_features", magma_provider)
 
 lines = [
     "# MAGMA Proof Pack (LTO Decomposition Scope)",
     "",
     f"- Source stability artifact: `{stability_path.name}`",
     f"- Source comparison artifact: `{comparison_path.name if comparison_path else 'n/a'}`",
+    f"- Baseline provider label/features: `{baseline_provider}` / `{baseline_features}`",
+    f"- MAGMA provider label/features: `{magma_provider}` / `{magma_features}`",
     f"- Bench command: `{bench_command}`",
     f"- Repeats: `{data.get('repeats', 'n/a')}`",
     f"- Persistent threshold: ratio > `{data.get('persistent_ratio_threshold', 'n/a')}` "
+    f"and delta > `{data.get('persistent_min_delta_ns', 'n/a')}` ns "
     f"in at least `{data.get('persistent_min_runs', 'n/a')}` run(s)",
     "",
-    "## Run-level scope stats (`magma/openblas`)",
+    f"## Run-level scope stats (`{magma_provider}/{baseline_provider}`)",
     "",
     "| run | median | p90 |",
     "|---:|---:|---:|",
@@ -100,8 +108,8 @@ lines.extend(
         "",
         "## Persistent slowdowns (threshold-gated)",
         "",
-        "| exceed count | median ratio | domain | operation | benchmark |",
-        "|---:|---:|---|---|---|",
+        "| exceed count | median ratio | median delta ns | domain | operation | benchmark |",
+        "|---:|---:|---:|---|---|---|",
     ]
 )
 if persistent:
@@ -109,11 +117,11 @@ if persistent:
     for row in persistent:
         lines.append(
             f"| {int(row.get('exceed_count', 0))}/{repeats} | "
-            f"{float(row.get('median_ratio', 0.0)):.3f} | {row.get('domain', '')} | "
+            f"{float(row.get('median_ratio', 0.0)):.3f} | {float(row.get('median_delta_ns', 0.0)):.1f} | {row.get('domain', '')} | "
             f"{row.get('operation', '')} | `{row.get('full_id', '')}` |"
         )
 else:
-    lines.append("| 0 | n/a | n/a | n/a | n/a |")
+    lines.append("| 0 | n/a | n/a | n/a | n/a | n/a |")
 
 proof_path.write_text("\n".join(lines) + "\n")
 PY

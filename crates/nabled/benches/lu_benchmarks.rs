@@ -5,10 +5,15 @@ use faer::Mat;
 use faer::linalg::solvers::Solve as _;
 use nabled::linalg::lu;
 use ndarray::{Array1, Array2};
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
+
+fn seeded_rng(size: usize, salt: u64) -> rand::rngs::StdRng {
+    let seed = (size as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(salt);
+    rand::rngs::StdRng::seed_from_u64(seed)
+}
 
 fn generate_well_conditioned_matrix(size: usize) -> Array2<f64> {
-    let mut rng = rand::rng();
+    let mut rng = seeded_rng(size, 0x10F2_8A33);
     let data: Vec<f64> = (0..size * size).map(|_| rng.random_range(-1.0..1.0)).collect();
     let mut matrix =
         Array2::from_shape_vec((size, size), data).expect("shape should match data length");
@@ -20,7 +25,7 @@ fn generate_well_conditioned_matrix(size: usize) -> Array2<f64> {
 }
 
 fn generate_random_vector(size: usize) -> Array1<f64> {
-    let mut rng = rand::rng();
+    let mut rng = seeded_rng(size, 0x72D5_1149);
     let data: Vec<f64> = (0..size).map(|_| rng.random_range(-1.0..1.0)).collect();
     Array1::from_vec(data)
 }

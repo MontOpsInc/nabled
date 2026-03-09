@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-08
+Last updated: 2026-03-09
 
 ## Purpose
 
@@ -225,6 +225,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 183. `D-183`: `K-005` monitor automation is now explicit in remote tooling: decomposition provider repeat runs now compute threshold-gated persistent slowdown sets (`PERSISTENT_RATIO_THRESHOLD`, `PERSISTENT_MIN_RUNS`) and can fail only on persistent regressions; new job wrapper `magma_k005_monitor_job.sh` is wired through `gpu_remote.sh one <host> magma-k005-monitor`.
 184. `D-184`: Benchmark smoke CI gate is now advisory on shared GitHub runners: regression checks still execute and publish warnings/artifacts, but transient noisy-run regressions no longer hard-fail `benchmark-smoke`.
 185. `D-185`: MAGMA proof-pack automation is now wired for `release-lto` decomposition evidence: added LTO decomposition smoke recipes and remote `magma_proof_pack_job.sh`, producing `proof-pack-latest.md` with run-level ratios, strongest speedups/slowdowns, and threshold-gated persistent slowdown rows.
+186. `D-186`: K-005 monitor/proof-pack harness hardening is complete and validated on remote RTX 4090: canonical compare now uses `openblas-system` baseline vs `openblas-system+magma-system` overlay, stale-summary reuse is blocked, run order alternates per repeat, and persistent gating now requires both slowdown ratio and effect size (`ratio > 1.03`, `delta_ns > 5000`); latest LTO stability rerun (`stability-20260309T130811Z.json`) reports `persistent_regression_count = 0`.
 
 ## Next
 

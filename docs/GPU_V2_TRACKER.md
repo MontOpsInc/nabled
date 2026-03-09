@@ -1,6 +1,6 @@
 # GPU V2 Tracker
 
-Last updated: 2026-03-08 (K-005 repeated decomposition stability sweep on RTX 4090)
+Last updated: 2026-03-09 (K-005 LTO proof-pack overlay rerun on RTX 4090)
 
 ## Purpose
 
@@ -44,7 +44,7 @@ V2 is considered complete only when all items below are true:
 2. Batched decomposition routing is dynamic for MAGMA-supported domains (`lu`, `cholesky`, `qr`) and uses both batch cardinality and matrix-shape/work signals, with explicit env overrides for tuning.
 3. Routing-policy overhead is bounded: policy/env lookups are cached and do not repeatedly parse environment variables on hot paths.
 4. Feature-matrix behavior is validated for relevant combinations (`internal`, `lapack-provider`, `magma-system`, `lapack-provider + magma-system`, plus accelerator permutations where applicable).
-5. Post-routing provider benchmark comparison is rerun on remote NVIDIA host (`openblas-system` vs `magma-system`) and outlier tables are refreshed.
+5. Post-routing provider benchmark comparison is rerun on remote NVIDIA host using canonical route-quality overlay comparison (`openblas-system` baseline vs `openblas-system+magma-system` overlay), and outlier tables are refreshed.
 6. Docs and trackers remain synchronized (`GPU_V2_TRACKER`, `EXECUTION_TRACKER`, `STATUS`, and benchmark notes) with no ambiguity in current routing behavior.
 7. Strict MAGMA verification exists and is reproducible (`scripts/gpu_remote.sh one <host> magma-strict-verify`), forcing decomposition thresholds low and failing fast on provider runtime errors (`NABLED_MAGMA_STRICT=1`).
 
@@ -54,6 +54,7 @@ V2 is considered complete only when all items below are true:
 2. Phase-2 complete: `lapack-provider + magma-system` combined feature matrix is compile/clippy clean for `nabled-linalg`, with cfg precedence conflicts resolved across decomposition-adjacent domains.
 3. Phase-3 complete: dynamic batched decomposition routing is active for MAGMA-supported domains (`lu`, `cholesky`, `qr`) via `MagmaProviderPolicy::prefer_batched_decomposition`.
 4. Phase-4 complete: policy/env resolution is cached (`OnceLock`), remote strict/normal MAGMA verification both pass on RTX 4090, and provider benchmark rerun/outlier refresh is completed on the current routing snapshot.
+5. Phase-5 complete: decomposition monitor/proof-pack harness now enforces persistent slowdown by both ratio and effect size (`ratio > 1.03` and `delta_ns > 5000`), alternates run order per repeat, and the latest LTO overlay rerun reports `persistent_regression_count = 0` (`stability-20260309T130811Z.json`).
 
 ## Batched Surface Snapshot (Current)
 

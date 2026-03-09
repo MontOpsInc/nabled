@@ -1,6 +1,6 @@
 # Benchmark Tracker
 
-Last updated: 2026-03-08
+Last updated: 2026-03-09
 
 ## Purpose
 
@@ -451,10 +451,32 @@ Summary:
 4. `K-005` optimization can be treated as stability-cleared for now; reopen only if a regression persists across repeated same-host batches.
 5. Persistent-regression gating is now scriptable via remote monitor job:
    - `scripts/gpu_remote.sh one <host> magma-k005-monitor`
-   - defaults: fail only when slowdown ratio >`1.03x` persists in at least `4/5` runs.
+   - defaults: fail only when slowdown ratio >`1.03x` and slowdown delta >`5000ns` persist in at least `4/5` runs.
 6. LTO-focused MAGMA proof-pack generation is now scripted for publication-ready evidence:
    - `scripts/gpu_remote.sh one <host> magma-proof-pack`
    - artifact: `coverage/gpu-v2/magma/bench/decomposition/proof-pack-latest.md`.
+
+### K-005 LTO Proof-Pack Rerun (Overlay Baseline, 2026-03-09)
+
+Artifacts:
+
+1. `coverage/gpu-v2/magma/bench/decomposition/stability-20260309T130811Z.json`
+2. `coverage/gpu-v2/magma/bench/decomposition/proof-pack-latest.md`
+
+Summary:
+
+1. Canonical compare now uses route-quality overlay benchmarking:
+   - baseline label/features: `openblas-system` / `openblas-system`
+   - MAGMA label/features: `openblas-system+magma-system` / `openblas-system,magma-system`
+2. Harness safety is improved:
+   - stale summary reuse is prevented (`coverage/benchmarks/summary.json` is removed before each pass),
+   - benchmark pass order alternates per repeat to reduce ordering bias.
+3. Run-level decomposition scope medians (`overlay/baseline`) were: `1.004`, `1.001`, `1.000`.
+4. Run-level decomposition scope p90 ratios were: `1.034`, `1.039`, `1.042`.
+5. Persistent regression gate now requires both conditions:
+   - ratio >`1.03x` and delta >`5000ns`,
+   - in at least `PERSISTENT_MIN_RUNS` repeats.
+6. Latest stability artifact reports `persistent_regression_count = 0`.
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

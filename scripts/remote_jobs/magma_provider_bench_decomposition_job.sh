@@ -4,13 +4,22 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "${REPO_ROOT}"
 
+# Provider labels are used in artifact file names.
 BASELINE_PROVIDER="${BASELINE_PROVIDER:-openblas-system}"
-MAGMA_PROVIDER="${MAGMA_PROVIDER:-magma-system}"
+MAGMA_PROVIDER="${MAGMA_PROVIDER:-openblas-system+magma-system}"
+
+# Provider feature sets drive `cargo bench --features ...`.
+# Defaults compare baseline OpenBLAS vs OpenBLAS+MAGMA overlay so
+# persistent slowdowns represent MAGMA routing quality, not missing
+# provider coverage in a magma-only build.
+BASELINE_PROVIDER_FEATURES="${BASELINE_PROVIDER_FEATURES:-openblas-system}"
+MAGMA_PROVIDER_FEATURES="${MAGMA_PROVIDER_FEATURES:-openblas-system,magma-system}"
 REPEATS="${REPEATS:-3}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-coverage/gpu-v2/magma/bench/decomposition}"
 BATCH_TS="$(date -u +%Y%m%dT%H%M%SZ)"
 BENCH_COMMAND="${BENCH_COMMAND:-bench-smoke-report-provider-decomposition}"
 PERSISTENT_RATIO_THRESHOLD="${PERSISTENT_RATIO_THRESHOLD:-1.03}"
+PERSISTENT_MIN_DELTA_NS="${PERSISTENT_MIN_DELTA_NS:-5000}"
 PERSISTENT_MIN_RUNS="${PERSISTENT_MIN_RUNS:-${REPEATS}}"
 ENFORCE_PERSISTENT_REGRESSIONS="${ENFORCE_PERSISTENT_REGRESSIONS:-0}"
 
@@ -18,6 +27,7 @@ ENFORCE_PERSISTENT_REGRESSIONS="${ENFORCE_PERSISTENT_REGRESSIONS:-0}"
 # threshold/strict overrides that may have been used by previous jobs.
 unset NABLED_MAGMA_MIN_DECOMPOSITION_DIM || true
 unset NABLED_MAGMA_MIN_DECOMPOSITION_WORK || true
+unset NABLED_MAGMA_VERIFY_FORCE || true
 unset NABLED_MAGMA_STRICT || true
 
 # Keep provider comparisons on consistent BLAS/OpenMP threading.
@@ -28,11 +38,16 @@ export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 mkdir -p "${ARTIFACT_DIR}"
 
 run_provider_pass() {
-  local provider="$1"
+  local provider_features="$1"
   local out_json="$2"
 
   rm -rf target/criterion crates/nabled/target/criterion
-  NABLED_PROVIDER_BENCH_FEATURES="${provider}" just -f .justfile "${BENCH_COMMAND}"
+  rm -f coverage/benchmarks/summary.json
+  NABLED_PROVIDER_BENCH_FEATURES="${provider_features}" just -f .justfile "${BENCH_COMMAND}"
+  if [[ ! -s coverage/benchmarks/summary.json ]]; then
+    echo "missing benchmark summary after provider pass: ${provider_features}" >&2
+    exit 1
+  fi
   cp coverage/benchmarks/summary.json "${out_json}"
 }
 
@@ -137,8 +152,13 @@ for run in $(seq 1 "${REPEATS}"); do
   MAGMA_JSON="${ARTIFACT_DIR}/${MAGMA_PROVIDER}-summary-${RUN_TAG}.json"
   REPORT_MD="${ARTIFACT_DIR}/comparison-${RUN_TAG}.md"
 
-  run_provider_pass "${BASELINE_PROVIDER}" "${BASELINE_JSON}"
-  run_provider_pass "${MAGMA_PROVIDER}" "${MAGMA_JSON}"
+  if (( run % 2 == 1 )); then
+    run_provider_pass "${BASELINE_PROVIDER_FEATURES}" "${BASELINE_JSON}"
+    run_provider_pass "${MAGMA_PROVIDER_FEATURES}" "${MAGMA_JSON}"
+  else
+    run_provider_pass "${MAGMA_PROVIDER_FEATURES}" "${MAGMA_JSON}"
+    run_provider_pass "${BASELINE_PROVIDER_FEATURES}" "${BASELINE_JSON}"
+  fi
   compare_pass "${BASELINE_JSON}" "${MAGMA_JSON}" "${REPORT_MD}"
 done
 
@@ -148,7 +168,10 @@ python3 - <<'PY' \
   "${REPEATS}" \
   "${BASELINE_PROVIDER}" \
   "${MAGMA_PROVIDER}" \
+  "${BASELINE_PROVIDER_FEATURES}" \
+  "${MAGMA_PROVIDER_FEATURES}" \
   "${PERSISTENT_RATIO_THRESHOLD}" \
+  "${PERSISTENT_MIN_DELTA_NS}" \
   "${PERSISTENT_MIN_RUNS}" \
   "${ENFORCE_PERSISTENT_REGRESSIONS}"
 from __future__ import annotations
@@ -164,9 +187,12 @@ batch_ts = sys.argv[2]
 repeats = int(sys.argv[3])
 baseline_provider = sys.argv[4]
 magma_provider = sys.argv[5]
-persistent_ratio_threshold = float(sys.argv[6])
-persistent_min_runs = int(sys.argv[7])
-enforce_persistent = int(sys.argv[8]) != 0
+baseline_provider_features = sys.argv[6]
+magma_provider_features = sys.argv[7]
+persistent_ratio_threshold = float(sys.argv[8])
+persistent_min_delta_ns = float(sys.argv[9])
+persistent_min_runs = int(sys.argv[10])
+enforce_persistent = int(sys.argv[11]) != 0
 
 domains = {
     "lu",
@@ -181,6 +207,7 @@ domains = {
 }
 
 ratios_per_case: dict[str, list[float]] = defaultdict(list)
+deltas_per_case: dict[str, list[float]] = defaultdict(list)
 meta: dict[str, tuple[str, str]] = {}
 run_scope_stats: list[tuple[int, float, float]] = []
 
@@ -216,6 +243,7 @@ for run in range(1, repeats + 1):
         ratio = magma_ns / baseline_ns
         scope_ratios.append(ratio)
         ratios_per_case[full_id].append(ratio)
+        deltas_per_case[full_id].append(magma_ns - baseline_ns)
         meta[full_id] = (str(magma_entry.get("domain", "")), str(magma_entry.get("operation", "")))
 
     scope_ratios.sort()
@@ -225,7 +253,8 @@ for run in range(1, repeats + 1):
 
 stable_rows = []
 for full_id, values in ratios_per_case.items():
-    if len(values) != repeats:
+    deltas = deltas_per_case.get(full_id, [])
+    if len(values) != repeats or len(deltas) != repeats:
         continue
     stable_rows.append(
         {
@@ -233,10 +262,15 @@ for full_id, values in ratios_per_case.items():
             "domain": meta[full_id][0],
             "operation": meta[full_id][1],
             "ratios": values,
+            "deltas_ns": deltas,
             "median_ratio": statistics.median(values),
             "mean_ratio": statistics.fmean(values),
             "min_ratio": min(values),
             "max_ratio": max(values),
+            "median_delta_ns": statistics.median(deltas),
+            "mean_delta_ns": statistics.fmean(deltas),
+            "min_delta_ns": min(deltas),
+            "max_delta_ns": max(deltas),
         }
     )
 
@@ -252,7 +286,11 @@ if persistent_min_runs > repeats:
 
 persistent_regressions = []
 for row in stable_rows:
-    exceed_count = sum(1 for ratio in row["ratios"] if ratio > persistent_ratio_threshold)
+    exceed_count = sum(
+        1
+        for ratio, delta_ns in zip(row["ratios"], row["deltas_ns"])
+        if ratio > persistent_ratio_threshold and delta_ns > persistent_min_delta_ns
+    )
     if exceed_count >= persistent_min_runs:
         persistent_regressions.append(
             {
@@ -263,6 +301,9 @@ for row in stable_rows:
                 "median_ratio": row["median_ratio"],
                 "min_ratio": row["min_ratio"],
                 "max_ratio": row["max_ratio"],
+                "median_delta_ns": row["median_delta_ns"],
+                "min_delta_ns": row["min_delta_ns"],
+                "max_delta_ns": row["max_delta_ns"],
                 "exceed_count": exceed_count,
             }
         )
@@ -270,7 +311,12 @@ for row in stable_rows:
 summary = {
     "batch_ts": batch_ts,
     "repeats": repeats,
+    "baseline_provider": baseline_provider,
+    "magma_provider": magma_provider,
+    "baseline_provider_features": baseline_provider_features,
+    "magma_provider_features": magma_provider_features,
     "persistent_ratio_threshold": persistent_ratio_threshold,
+    "persistent_min_delta_ns": persistent_min_delta_ns,
     "persistent_min_runs": persistent_min_runs,
     "run_scope_stats": [
         {"run": run, "median_ratio": med, "p90_ratio": p90}
@@ -294,7 +340,7 @@ lines = [
     f"- Stable decomposition cases across all repeats: `{len(stable_rows)}`",
     (
         f"- Persistent slowdown threshold: ratio > `{persistent_ratio_threshold:.3f}` "
-        f"in at least `{persistent_min_runs}` / `{repeats}` runs"
+        f"and delta > `{persistent_min_delta_ns:.1f}` ns in at least `{persistent_min_runs}` / `{repeats}` runs"
     ),
     f"- Persistent slowdowns: `{len(persistent_regressions)}`",
     "",
@@ -311,14 +357,14 @@ lines.extend(
         "",
         "## Persistent Slowdowns (threshold-gated)",
         "",
-        "| exceeds | median | min | max | domain | operation | benchmark |",
-        "|---:|---:|---:|---:|---|---|---|",
+        "| exceeds | median ratio | median delta ns | min ratio | max ratio | domain | operation | benchmark |",
+        "|---:|---:|---:|---:|---:|---|---|---|",
     ]
 )
 for row in persistent_regressions:
     lines.append(
-        f"| {row['exceed_count']}/{repeats} | {row['median_ratio']:.3f} | {row['min_ratio']:.3f} | "
-        f"{row['max_ratio']:.3f} | {row['domain']} | {row['operation']} | `{row['full_id']}` |"
+        f"| {row['exceed_count']}/{repeats} | {row['median_ratio']:.3f} | {row['median_delta_ns']:.1f} | "
+        f"{row['min_ratio']:.3f} | {row['max_ratio']:.3f} | {row['domain']} | {row['operation']} | `{row['full_id']}` |"
     )
 
 lines.extend(
@@ -367,6 +413,8 @@ cp "${ARTIFACT_DIR}/comparison-${BATCH_TS}-r${REPEATS}.md" "${ARTIFACT_DIR}/comp
 
 echo "decomposition provider benchmark artifacts generated:"
 echo "  bench command: ${BENCH_COMMAND}"
+echo "  baseline provider label/features: ${BASELINE_PROVIDER} / ${BASELINE_PROVIDER_FEATURES}"
+echo "  magma provider label/features: ${MAGMA_PROVIDER} / ${MAGMA_PROVIDER_FEATURES}"
 echo "  ${ARTIFACT_DIR}/${BASELINE_PROVIDER}-summary-${BATCH_TS}-r1.json .. r${REPEATS}.json"
 echo "  ${ARTIFACT_DIR}/${MAGMA_PROVIDER}-summary-${BATCH_TS}-r1.json .. r${REPEATS}.json"
 echo "  ${ARTIFACT_DIR}/comparison-${BATCH_TS}-r1.md .. r${REPEATS}.md"
