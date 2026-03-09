@@ -55,6 +55,7 @@ V2 is considered complete only when all items below are true:
 3. Phase-3 complete: dynamic batched decomposition routing is active for MAGMA-supported domains (`lu`, `cholesky`, `qr`) via `MagmaProviderPolicy::prefer_batched_decomposition`.
 4. Phase-4 complete: policy/env resolution is cached (`OnceLock`), remote strict/normal MAGMA verification both pass on RTX 4090, and provider benchmark rerun/outlier refresh is completed on the current routing snapshot.
 5. Phase-5 complete: decomposition monitor/proof-pack harness now enforces persistent slowdown by both ratio and effect size (`ratio > 1.03` and `delta_ns > 5000`), alternates run order per repeat, and the latest LTO overlay rerun reports `persistent_regression_count = 0` (`stability-20260309T130811Z.json`).
+6. Phase-6 complete: follow-on lock confirmation reruns are green on current `main` (`magma-k005-monitor` -> `stability-20260309T135201Z.json`, `magma-proof-pack` -> `stability-20260309T140157Z.json`), both with `persistent_regression_count = 0`.
 
 ## Batched Surface Snapshot (Current)
 

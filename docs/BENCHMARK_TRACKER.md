@@ -478,6 +478,22 @@ Summary:
    - in at least `PERSISTENT_MIN_RUNS` repeats.
 6. Latest stability artifact reports `persistent_regression_count = 0`.
 
+### K-005 Lock Confirmation Pass (Monitor + LTO, 2026-03-09)
+
+Artifacts:
+
+1. `coverage/gpu-v2/magma/bench/decomposition/stability-20260309T135201Z.json` (monitor, `REPEATS=5`)
+2. `coverage/gpu-v2/magma/bench/decomposition/stability-20260309T140157Z.json` (LTO proof-pack source, `REPEATS=3`)
+3. `coverage/gpu-v2/magma/bench/decomposition/proof-pack-20260309T140157Z.md`
+4. `coverage/gpu-v2/magma/bench/decomposition/proof-pack-latest.md`
+
+Summary:
+
+1. Monitor pass is green on the pushed tree (`rc=0`) with `persistent_regression_count = 0`.
+2. LTO proof-pack pass is green (`rc=0`) with `persistent_regression_count = 0`.
+3. LTO run-level medians (`overlay/baseline`) are stable and near parity: `1.008`, `1.008`, `1.010`.
+4. Remaining top slowdowns are all below persistent effect-size gate (`delta_ns <= 5000`), so no new optimization patch is opened in this pass.
+
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 
 Use these notes when resuming point-by-point parity work.

@@ -226,6 +226,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 184. `D-184`: Benchmark smoke CI gate is now advisory on shared GitHub runners: regression checks still execute and publish warnings/artifacts, but transient noisy-run regressions no longer hard-fail `benchmark-smoke`.
 185. `D-185`: MAGMA proof-pack automation is now wired for `release-lto` decomposition evidence: added LTO decomposition smoke recipes and remote `magma_proof_pack_job.sh`, producing `proof-pack-latest.md` with run-level ratios, strongest speedups/slowdowns, and threshold-gated persistent slowdown rows.
 186. `D-186`: K-005 monitor/proof-pack harness hardening is complete and validated on remote RTX 4090: canonical compare now uses `openblas-system` baseline vs `openblas-system+magma-system` overlay, stale-summary reuse is blocked, run order alternates per repeat, and persistent gating now requires both slowdown ratio and effect size (`ratio > 1.03`, `delta_ns > 5000`); latest LTO stability rerun (`stability-20260309T130811Z.json`) reports `persistent_regression_count = 0`.
+187. `D-187`: K-005 lock-confirmation reruns on the current `main` tree are complete: remote monitor pass (`stability-20260309T135201Z.json`, `REPEATS=5`) and remote LTO proof-pack pass (`stability-20260309T140157Z.json`, `proof-pack-20260309T140157Z.md`) both exit green and report `persistent_regression_count = 0`, so K-005 remains monitor-only with no new hotspot patch opened in this pass.
 
 ## Next
 
