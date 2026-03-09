@@ -9,7 +9,7 @@
 Nabled is an ndarray-native Rust numerical library focused on production-grade
 linear algebra and ML-oriented matrix/vector operations.
 
-Important! Nabled is under active development right now, so the only way to be sure the public APIs don't break is to pin your version. When stabilizied, it will follow proper versioning, but for now it is guaranteed to change. 
+Important! Nabled is under active development right now, so the only way to be sure the public APIs don't break is to pin your version. When stabilized, it will follow proper versioning, but for now it is guaranteed to change.
 
 ## Install
 
@@ -59,8 +59,9 @@ Review more examples in `crates/nabled/examples`.
 3. `openblas-static`: enables provider-backed LAPACK paths via statically linked OpenBLAS.
 4. `netlib-system`: enables provider-backed LAPACK paths via system Netlib LAPACK.
 5. `netlib-static`: enables provider-backed LAPACK paths via statically linked Netlib LAPACK.
-6. `accelerator-rayon`: enables selected parallel CPU kernels.
-7. `accelerator-wgpu`: enables WGPU-backed dense/vector/tensor kernel paths (`f32` native, `f64` native when `SHADER_F64` is available).
+6. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths.
+7. `accelerator-rayon`: enables selected parallel CPU kernels.
+8. `accelerator-wgpu`: enables WGPU-backed dense/vector/tensor kernel paths (`f32` native, `f64` native when `SHADER_F64` is available).
 
 ```toml
 [dependencies]
@@ -71,10 +72,11 @@ Feature behavior:
 
 1. `openblas-system` implies `blas`.
 2. Provider feature selection (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`) is compile-time and internal to decomposition paths.
-3. Backend acceleration is compile-time and kernel-family-specific.
-4. GPU-backend-dispatched kernels use explicit CPU fallback when no usable GPU is available.
-5. `f64` native GPU execution depends on `wgpu::Features::SHADER_F64`; when unavailable, backend-dispatched `f64` calls fall back to CPU.
-5. Provider/toolchain requirements depend on backend choice; `openblas-static` and
+3. `magma-system` implies provider-backed decomposition routing and composes with the OpenBLAS/LAPACK provider stack.
+4. Backend acceleration is compile-time and kernel-family-specific.
+5. GPU-backend-dispatched kernels use explicit CPU fallback when no usable GPU is available.
+6. `f64` native GPU execution depends on `wgpu::Features::SHADER_F64`; when unavailable, backend-dispatched `f64` calls fall back to CPU.
+7. Provider/toolchain requirements depend on provider choice; `openblas-static` and
    `netlib-static` require native build toolchains (`gcc`/`gfortran`/`make`), and `netlib-system`
    requires a system `LAPACK`/Fortran runtime available to the linker.
 

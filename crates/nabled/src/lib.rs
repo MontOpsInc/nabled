@@ -17,8 +17,9 @@
 //! 4. `netlib-system`: enables provider-backed `LAPACK` paths via system `Netlib` `LAPACK`.
 //! 5. `netlib-static`: enables provider-backed `LAPACK` paths via statically linked `Netlib`
 //!    `LAPACK`.
-//! 6. `accelerator-rayon`: enables parallel CPU kernels where implemented.
-//! 7. `accelerator-wgpu`: enables WGPU-backed kernel paths where implemented.
+//! 6. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths.
+//! 7. `accelerator-rayon`: enables parallel CPU kernels where implemented.
+//! 8. `accelerator-wgpu`: enables WGPU-backed kernel paths where implemented.
 //!
 //! ## Execution Semantics
 //!

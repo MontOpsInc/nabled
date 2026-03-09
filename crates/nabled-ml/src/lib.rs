@@ -15,11 +15,13 @@
 //! # Feature Flags
 //!
 //! 1. `blas`: enables BLAS acceleration via `nabled-linalg/blas`.
-//! 2. `lapack-provider`: enables provider-dispatched decomposition paths.
-//! 3. `openblas-system`: enables provider-backed `LAPACK` paths via system `OpenBLAS`.
-//! 4. `openblas-static`: enables provider-backed `LAPACK` paths via statically linked `OpenBLAS`.
-//! 5. `netlib-system`: enables provider-backed `LAPACK` paths via system `Netlib` `LAPACK`.
-//! 6. `netlib-static`: enables provider-backed `LAPACK` paths via statically linked `Netlib`
+//! 2. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths where used through
+//!    `nabled-linalg`.
+//! 3. `lapack-provider`: enables provider-dispatched decomposition paths.
+//! 4. `openblas-system`: enables provider-backed `LAPACK` paths via system `OpenBLAS`.
+//! 5. `openblas-static`: enables provider-backed `LAPACK` paths via statically linked `OpenBLAS`.
+//! 6. `netlib-system`: enables provider-backed `LAPACK` paths via system `Netlib` `LAPACK`.
+//! 7. `netlib-static`: enables provider-backed `LAPACK` paths via statically linked `Netlib`
 //!    `LAPACK`.
 //!
 //! # Example

@@ -24,8 +24,9 @@ nabled-ml = "0.0.4"
 3. `openblas-static`: enables provider-backed LAPACK paths via statically linked OpenBLAS.
 4. `netlib-system`: enables provider-backed LAPACK paths via system Netlib LAPACK.
 5. `netlib-static`: enables provider-backed LAPACK paths via statically linked Netlib LAPACK.
+6. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths where used through `nabled-linalg`.
 
-Note: provider requirements depend on backend choice. Static features (`openblas-static`,
+Note: provider requirements depend on provider choice. Static features (`openblas-static`,
 `netlib-static`) require native build toolchains such as `gcc`, `gfortran`, and `make`, and
 `netlib-system` requires a system `LAPACK`/Fortran runtime available to the linker.
 
