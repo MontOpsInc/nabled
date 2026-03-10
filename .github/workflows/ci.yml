@@ -78,6 +78,9 @@ jobs:
     - name: Run clippy (lapack-provider wiring only)
       run: cargo +stable clippy --workspace --profile ci --no-default-features --features lapack-provider --all-targets -- -D warnings
 
+    - name: Run clippy (arrow interop only)
+      run: cargo +stable clippy --workspace --profile ci --no-default-features --features arrow --all-targets -- -D warnings
+
     - name: Run clippy (accelerator-rayon only)
       run: cargo +stable clippy --workspace --profile ci --no-default-features --features accelerator-rayon --all-targets -- -D warnings
 
@@ -98,6 +101,11 @@ jobs:
 
     - name: Verify additional provider path compiles
       run: cargo +stable check --workspace --profile ci --no-default-features --features netlib-system --all-targets
+
+    - name: Verify arrow feature matrix compiles
+      run: |
+        cargo +stable check --workspace --profile ci --no-default-features --features arrow --all-targets
+        cargo +stable check --workspace --profile ci --no-default-features --features "openblas-system arrow" --all-targets
 
     - name: Verify accelerator feature matrix compiles
       run: |
@@ -211,9 +219,17 @@ jobs:
       run: |
         cargo test -p nabled --profile ci --tests -- --nocapture --show-output
 
+    - name: Run arrow integration tests
+      run: |
+        cargo test -p nabled --profile ci --no-default-features --features arrow --test arrow_interop -- --nocapture --show-output
+
     - name: Run provider integration tests
       run: |
         cargo test -p nabled --profile ci --features openblas-system --tests -- --nocapture --show-output
+
+    - name: Run provider arrow integration tests
+      run: |
+        cargo test -p nabled --profile ci --no-default-features --features "openblas-system arrow" --test arrow_interop -- --nocapture --show-output
 
     # TODO: Convert doc test to tests and reenable
     # - name: Run doc tests

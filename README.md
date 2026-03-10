@@ -9,6 +9,10 @@
 Nabled is an ndarray-native Rust numerical library focused on production-grade
 linear algebra and ML-oriented matrix/vector operations.
 
+Optional Arrow interop is available behind feature `arrow`, using
+[ndarrow](https://crates.io/crates/ndarrow) as the zero-copy Arrow/ndarray bridge while keeping
+the core numerical crates ndarray-native.
+
 Important! Nabled is under active development right now, so the only way to be sure the public APIs don't break is to pin your version. When stabilized, it will follow proper versioning, but for now it is guaranteed to change.
 
 ## Install
@@ -62,11 +66,26 @@ Review more examples in `crates/nabled/examples`.
 6. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths.
 7. `accelerator-rayon`: enables selected parallel CPU kernels.
 8. `accelerator-wgpu`: enables WGPU-backed dense/vector/tensor kernel paths (`f32` native, `f64` native when `SHADER_F64` is available).
+9. `arrow`: enables facade-only Arrow/ndarray interop adapters backed by `ndarrow`.
 
 ```toml
 [dependencies]
 nabled = { version = "0.0.5", features = ["openblas-system"] }
 ```
+
+```toml
+[dependencies]
+nabled = { version = "0.0.5", features = ["arrow"] }
+```
+
+Arrow interop notes:
+
+1. Arrow awareness is isolated to facade crate `nabled`; lower crates remain ndarray-native.
+2. Direct Arrow ingress now spans the implementable real-valued dense, sparse, tensor, batched,
+   and ML/stat workflows under the current explicit contracts.
+3. Arrow wrappers delegate to the same ndarray-native execution paths, so provider backends,
+   GPU/backend routing, and MAGMA behavior are inherited rather than reimplemented.
+4. Exact direct-ingress coverage is tracked in `docs/ARROW_SUPPORT_MATRIX.md`.
 
 Feature behavior:
 
@@ -79,6 +98,24 @@ Feature behavior:
 7. Provider/toolchain requirements depend on provider choice; `openblas-static` and
    `netlib-static` require native build toolchains (`gcc`/`gfortran`/`make`), and `netlib-system`
    requires a system `LAPACK`/Fortran runtime available to the linker.
+
+## Arrow Interop
+
+`nabled` is now `ndarrow`-powered behind feature `arrow`.
+
+Current Arrow-ingress coverage includes:
+
+1. Dense/vector kernels
+2. LU, Cholesky, QR, SVD, Eigen, Schur, Polar, matrix-functions, triangular solves
+3. Sparse CSR primitives and solve workflows
+4. Batched decomposition helpers
+5. Tensor fixed-shape workflows
+6. Iterative solvers, Jacobian tools, optimization, PCA, regression, and stats
+
+For exact module-by-module coverage and intentional remaining gaps, see:
+
+1. `docs/NDARROW_INTEGRATION.md`
+2. `docs/ARROW_SUPPORT_MATRIX.md`
 
 ## Quality Gates
 

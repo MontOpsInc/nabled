@@ -227,11 +227,19 @@ Use this file to resume work quickly after context compaction without re-auditin
 185. `D-185`: MAGMA proof-pack automation is now wired for `release-lto` decomposition evidence: added LTO decomposition smoke recipes and remote `magma_proof_pack_job.sh`, producing `proof-pack-latest.md` with run-level ratios, strongest speedups/slowdowns, and threshold-gated persistent slowdown rows.
 186. `D-186`: K-005 monitor/proof-pack harness hardening is complete and validated on remote RTX 4090: canonical compare now uses `openblas-system` baseline vs `openblas-system+magma-system` overlay, stale-summary reuse is blocked, run order alternates per repeat, and persistent gating now requires both slowdown ratio and effect size (`ratio > 1.03`, `delta_ns > 5000`); latest LTO stability rerun (`stability-20260309T130811Z.json`) reports `persistent_regression_count = 0`.
 187. `D-187`: K-005 lock-confirmation reruns on the current `main` tree are complete: remote monitor pass (`stability-20260309T135201Z.json`, `REPEATS=5`) and remote LTO proof-pack pass (`stability-20260309T140157Z.json`, `proof-pack-20260309T140157Z.md`) both exit green and report `persistent_regression_count = 0`, so K-005 remains monitor-only with no new hotspot patch opened in this pass.
+188. `D-188`: Facade-level Arrow interop baseline is now landed behind feature `arrow`, backed by `ndarrow`: `nabled::arrow` currently covers real dense vector/matrix kernels, LU/Cholesky/QR adapters, CSR sparse primitives, and fixed-shape tensor reduction, while lower crates remain Arrow-free; `nabled-linalg::sparse` dense-operand signatures were also widened to generic ndarray storage so Arrow-backed sparse workflows stay zero-copy on the inbound dense side.
+189. `D-189`: Arrow interop governance is now explicit and compaction-safe: `docs/NDARROW_INTEGRATION.md` now locks admission/parity rules (`capability parity`, not `1:1` overload mirroring, and mandatory delegation to canonical ndarray-native execution paths), and `docs/ARROW_SUPPORT_MATRIX.md` is now the direct-ingress coverage ledger against the public API.
+190. `D-190`: Arrow interop expansion now covers the remaining implementable real-valued facade workflows under the current explicit contracts: `nabled::arrow` now includes SVD/eigen/schur/polar/matrix-functions/triangular/batched/tensor/iterative/PCA/regression/stats/jacobian/optimization adapters in addition to the earlier baseline, while lower crates remain Arrow-free and provider/backend/kernel behavior continues to flow through canonical ndarray-native entrypoints.
+191. `D-191`: Arrow contract hardening is complete for the current round: sparse Arrow solve wrappers no longer materialize owned RHS vectors at the facade boundary, `nabled-linalg::sparse`/`nabled-ml::{jacobian,optimization}` now accept generic ndarray storage where appropriate for direct Arrow ingress, and dedicated integration coverage passes in both `arrow` and `openblas-system + arrow` modes.
 
 ## Next
 
 1. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
 2. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
+3. Arrow interop is now at the current “implementable real-valued” ceiling under the locked contract. Further Arrow work requires an explicit decision about one of:
+   - canonical complex Arrow contracts,
+   - Arrow-native multi-output result structs, or
+   - additional wrappers with new explicit input/output contracts not yet admitted by `docs/NDARROW_INTEGRATION.md`.
 
 Tensor-depth stop rubric (post-v1 finite target):
 1. `D-179` TT algebra utilities (`tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, `tt_hadamard_round`) with tests/feature-matrix parity. ✅
@@ -240,7 +248,7 @@ Tensor-depth stop rubric (post-v1 finite target):
 4. After `D-182`, tensor-depth expansion returns to monitor mode; new tensor items require explicit new tracker IDs.
 
 Round scope lock:
-1. This round is GPU and benchmark hardening.
+1. This round is facade-level Arrow interop expansion plus ongoing benchmark monitor mode.
 2. Metal-specific work is deferred.
 3. SIMD optimization pass is deferred.
 
@@ -258,9 +266,10 @@ It means:
 ## Needed
 
 1. Tensor-depth expansion is monitor-only after `D-182`; additional tensor breadth requires explicit new tracker IDs.
-2. AMD/HIP provider path once hardware is available.
-3. Metal-specific backend exploration beyond `wgpu`.
-4. SIMD opportunity pass for hand-rolled CPU kernels.
+2. Canonical complex Arrow contract, if Arrow complex ingress is later required.
+3. AMD/HIP provider path once hardware is available.
+4. Metal-specific backend exploration beyond `wgpu`.
+5. SIMD opportunity pass for hand-rolled CPU kernels.
 
 ## Backlog (From Capability Matrix)
 
@@ -276,6 +285,8 @@ It means:
    - `docs/README.md`
    - `docs/DECISIONS.md`
    - `docs/CAPABILITY_MATRIX.md`
+   - `docs/NDARROW_INTEGRATION.md`
+   - `docs/ARROW_SUPPORT_MATRIX.md`
    - `docs/KERNEL_CATALOG.md`
    - `docs/PERFORMANCE_CONTRACTS.md`
    - `docs/V1_STABILITY.md`

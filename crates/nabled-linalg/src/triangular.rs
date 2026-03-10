@@ -1,13 +1,13 @@
 //! Ndarray-native triangular solve kernels.
 
 use nabled_core::errors::ShapeError;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix2};
 use num_complex::Complex64;
 use num_traits::Float;
 use thiserror::Error;
 
 use crate::accelerator::backends::AcceleratorError;
-use crate::accelerator::dispatch::{triangular_solve_mat_cpu, triangular_solve_vec_cpu};
+use crate::accelerator::dispatch::triangular_solve_vec_cpu;
 
 /// Error returned by triangular solve kernels.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -30,11 +30,12 @@ fn map_accelerator_error(error: AcceleratorError) -> TriangularError {
     }
 }
 
-fn validate_real_triangular_system<T>(
-    matrix: &Array2<T>,
+fn validate_real_triangular_system<T, S>(
+    matrix: &ArrayBase<S, Ix2>,
     rhs_length: usize,
 ) -> Result<(), TriangularError>
 where
+    S: Data<Elem = T>,
     T: Float,
 {
     if matrix.is_empty() || rhs_length == 0 {
@@ -49,11 +50,13 @@ where
     Ok(())
 }
 
-fn validate_real_triangular_matrix_system<T>(
-    matrix: &Array2<T>,
-    rhs: &Array2<T>,
+fn validate_real_triangular_matrix_system<T, S1, S2>(
+    matrix: &ArrayBase<S1, Ix2>,
+    rhs: &ArrayBase<S2, Ix2>,
 ) -> Result<(), TriangularError>
 where
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
     T: Float,
 {
     if matrix.is_empty() || rhs.is_empty() {
@@ -68,8 +71,9 @@ where
     Ok(())
 }
 
-fn validate_non_singular_diagonal<T>(matrix: &Array2<T>) -> Result<(), TriangularError>
+fn validate_non_singular_diagonal<T, S>(matrix: &ArrayBase<S, Ix2>) -> Result<(), TriangularError>
 where
+    S: Data<Elem = T>,
     T: Float,
 {
     for i in 0..matrix.nrows() {
@@ -329,9 +333,25 @@ pub fn solve_lower_matrix<T>(
 where
     T: Float,
 {
+    solve_lower_matrix_view(&matrix.view(), &rhs.view())
+}
+
+/// Solve `LX = B` with forward substitution from matrix views.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_matrix_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, TriangularError>
+where
+    T: Float,
+{
     validate_real_triangular_matrix_system(matrix, rhs)?;
     validate_non_singular_diagonal(matrix)?;
-    triangular_solve_mat_cpu(matrix, rhs, true, false).map_err(map_accelerator_error)
+    let mut output = Array2::<T>::zeros(rhs.dim());
+    solve_lower_matrix_view_into(matrix, rhs, &mut output)?;
+    Ok(output)
 }
 
 /// Solve `LX = B` with forward substitution into `output`.
@@ -341,6 +361,21 @@ where
 pub fn solve_lower_matrix_into<T>(
     matrix: &Array2<T>,
     rhs: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    solve_lower_matrix_view_into(&matrix.view(), &rhs.view(), output)
+}
+
+/// Solve `LX = B` with forward substitution from matrix views into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_matrix_view_into<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView2<'_, T>,
     output: &mut Array2<T>,
 ) -> Result<(), TriangularError>
 where
@@ -378,9 +413,25 @@ pub fn solve_upper_matrix<T>(
 where
     T: Float,
 {
+    solve_upper_matrix_view(&matrix.view(), &rhs.view())
+}
+
+/// Solve `UX = B` with back substitution from matrix views.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_matrix_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, TriangularError>
+where
+    T: Float,
+{
     validate_real_triangular_matrix_system(matrix, rhs)?;
     validate_non_singular_diagonal(matrix)?;
-    triangular_solve_mat_cpu(matrix, rhs, false, false).map_err(map_accelerator_error)
+    let mut output = Array2::<T>::zeros(rhs.dim());
+    solve_upper_matrix_view_into(matrix, rhs, &mut output)?;
+    Ok(output)
 }
 
 /// Solve `UX = B` with back substitution into `output`.
@@ -390,6 +441,21 @@ where
 pub fn solve_upper_matrix_into<T>(
     matrix: &Array2<T>,
     rhs: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+{
+    solve_upper_matrix_view_into(&matrix.view(), &rhs.view(), output)
+}
+
+/// Solve `UX = B` with back substitution from matrix views into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_matrix_view_into<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView2<'_, T>,
     output: &mut Array2<T>,
 ) -> Result<(), TriangularError>
 where

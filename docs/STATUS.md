@@ -8,10 +8,11 @@ Workspace migration for library domains is complete.
 
 1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`.
 2. `crates/nabled` is the facade package re-exporting workspace crates.
-3. `crates/nabled/src/` contains facade/library entrypoint and binary tooling only.
-4. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
-5. Public `*_lapack` compatibility wrappers have been removed.
-6. Dense-kernel APIs are normalized around `decompose`/domain-specific operation naming.
+3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.
+4. Facade crate `nabled` now exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; this now spans the implementable real-valued dense/sparse/tensor/batched/ML workflows under the current explicit contracts, while lower crates remain Arrow-free.
+5. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
+6. Public `*_lapack` compatibility wrappers have been removed.
+7. Dense-kernel APIs are normalized around `decompose`/domain-specific operation naming.
 7. Vector primitives are available in `nabled-linalg::vector` with pairwise and batched APIs.
 8. Explicit allocation paths (`*_into`) and reusable workspace pattern are in place for key hot paths.
 9. Tier-A benchmark surface expanded beyond four suites (LU/Cholesky/Eigen/Vector added).
@@ -177,7 +178,8 @@ Workspace migration for library domains is complete.
    - ML/statistics-oriented domains:
      `iterative`, `jacobian`, `pca`, `regression`, `stats`.
 4. `crates/nabled/src/` (facade crate)
-   - facade `lib.rs` and binary/reporting tools only.
+   - facade `lib.rs`, optional facade-only interop modules (for example feature `arrow`), and
+     binary/reporting tools only.
 
 ## Constraints In Force
 
@@ -187,6 +189,7 @@ Workspace migration for library domains is complete.
 4. Quality gates remain strict (`just checks`, clippy `-D warnings`, tests, coverage >= 90%).
 5. Backend selection is compile-time only; no runtime backend dispatch.
 6. Public APIs should remain backend-agnostic.
+7. Arrow integration belongs only in the facade crate; lower crates remain Arrow-free.
 
 ## Operational Notes
 
@@ -201,6 +204,7 @@ GPU phase-2 continuation:
 
 1. Keep `K-005` in monitor mode with repeated same-host decomposition sweeps; reopen optimization only for persistent regressions.
 2. Tensor algebra post-v1 rubric (`D-179..D-182`) is complete; tensor expansion is now monitor-only unless explicit new tracker items are approved.
+3. Arrow interop is now at the current contract ceiling for implementable real-valued workflows; additional Arrow breadth requires an explicit new contract decision (for example complex Arrow representation or Arrow-native multi-output result structs).
 
 ## Completion Criteria For Migration
 

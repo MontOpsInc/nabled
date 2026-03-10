@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayBase, Data, Ix1};
 
 /// Error type for Jacobian-related computations.
 #[derive(Debug, Clone, PartialEq)]
@@ -91,28 +91,29 @@ impl<T: NabledReal> JacobianConfig<T> {
 ///
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
-pub fn numerical_jacobian<T, F>(
+pub fn numerical_jacobian<T, F, S>(
     function: &F,
-    x: &Array1<T>,
+    x: &ArrayBase<S, Ix1>,
     config: &JacobianConfig<T>,
 ) -> Result<Array2<T>, JacobianError>
 where
     F: Fn(&Array1<T>) -> Result<Array1<T>, JacobianError>,
     T: NabledReal,
+    S: Data<Elem = T>,
 {
     config.validate()?;
     if x.is_empty() {
         return Err(JacobianError::EmptyInput);
     }
 
-    let fx = function(x)?;
+    let fx = function(&x.to_owned())?;
     if fx.is_empty() {
         return Err(JacobianError::EmptyInput);
     }
 
     let mut jacobian = Array2::<T>::zeros((fx.len(), x.len()));
     for j in 0..x.len() {
-        let mut perturbed = x.clone();
+        let mut perturbed = x.to_owned();
         perturbed[j] += config.step_size;
         let f_perturbed = function(&perturbed)?;
         if f_perturbed.len() != fx.len() {
@@ -130,21 +131,22 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
-pub fn numerical_jacobian_central<T, F>(
+pub fn numerical_jacobian_central<T, F, S>(
     function: &F,
-    x: &Array1<T>,
+    x: &ArrayBase<S, Ix1>,
     config: &JacobianConfig<T>,
 ) -> Result<Array2<T>, JacobianError>
 where
     F: Fn(&Array1<T>) -> Result<Array1<T>, JacobianError>,
     T: NabledReal,
+    S: Data<Elem = T>,
 {
     config.validate()?;
     if x.is_empty() {
         return Err(JacobianError::EmptyInput);
     }
 
-    let fx = function(x)?;
+    let fx = function(&x.to_owned())?;
     if fx.is_empty() {
         return Err(JacobianError::EmptyInput);
     }
@@ -153,8 +155,8 @@ where
     let step = config.step_size;
 
     for j in 0..x.len() {
-        let mut x_plus = x.clone();
-        let mut x_minus = x.clone();
+        let mut x_plus = x.to_owned();
+        let mut x_minus = x.to_owned();
         x_plus[j] += step;
         x_minus[j] -= step;
         let f_plus = function(&x_plus)?;
@@ -175,24 +177,25 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
-pub fn numerical_gradient<T, F>(
+pub fn numerical_gradient<T, F, S>(
     function: &F,
-    x: &Array1<T>,
+    x: &ArrayBase<S, Ix1>,
     config: &JacobianConfig<T>,
 ) -> Result<Array1<T>, JacobianError>
 where
     F: Fn(&Array1<T>) -> Result<T, JacobianError>,
     T: NabledReal,
+    S: Data<Elem = T>,
 {
     config.validate()?;
     if x.is_empty() {
         return Err(JacobianError::EmptyInput);
     }
 
-    let fx = function(x)?;
+    let fx = function(&x.to_owned())?;
     let mut gradient = Array1::<T>::zeros(x.len());
     for j in 0..x.len() {
-        let mut perturbed = x.clone();
+        let mut perturbed = x.to_owned();
         perturbed[j] += config.step_size;
         let f_perturbed = function(&perturbed)?;
         gradient[j] = (f_perturbed - fx) / config.step_size;
@@ -206,14 +209,15 @@ where
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
 #[allow(clippy::similar_names)]
-pub fn numerical_hessian<T, F>(
+pub fn numerical_hessian<T, F, S>(
     function: &F,
-    x: &Array1<T>,
+    x: &ArrayBase<S, Ix1>,
     config: &JacobianConfig<T>,
 ) -> Result<Array2<T>, JacobianError>
 where
     F: Fn(&Array1<T>) -> Result<T, JacobianError>,
     T: NabledReal,
+    S: Data<Elem = T>,
 {
     config.validate()?;
     if x.is_empty() {
@@ -226,10 +230,10 @@ where
 
     for i in 0..n {
         for j in 0..n {
-            let mut x_pp = x.clone();
-            let mut x_pm = x.clone();
-            let mut x_mp = x.clone();
-            let mut x_mm = x.clone();
+            let mut x_pp = x.to_owned();
+            let mut x_pm = x.to_owned();
+            let mut x_mp = x.to_owned();
+            let mut x_mm = x.to_owned();
 
             x_pp[i] += step;
             x_pp[j] += step;

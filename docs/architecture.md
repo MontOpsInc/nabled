@@ -43,6 +43,8 @@ This document describes the target architecture. The repository is currently in 
 4. `nabled`
    1. Stable user-facing API surface.
    2. Re-exports from `core`, `linalg`, `ml`.
+   3. Optional facade-only interop modules (for example Arrow via `ndarrow`) behind explicit
+      feature flags.
 
 ## API Design Rules
 

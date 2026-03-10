@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayBase, Data, Ix1};
 use num_complex::Complex64;
 
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
@@ -208,7 +208,7 @@ impl<T: NabledReal> Default for BFGSConfig<T> {
     }
 }
 
-fn l2_norm<T: NabledReal>(vector: &Array1<T>) -> T {
+fn l2_norm<T: NabledReal, S: Data<Elem = T>>(vector: &ArrayBase<S, Ix1>) -> T {
     vector
         .iter()
         .map(|value| *value * *value)
@@ -220,7 +220,9 @@ fn l2_norm_complex(vector: &Array1<Complex64>) -> f64 {
     vector.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
 }
 
-fn validate_vector<T: NabledReal>(vector: &Array1<T>) -> Result<(), OptimizationError> {
+fn validate_vector<T: NabledReal, S: Data<Elem = T>>(
+    vector: &ArrayBase<S, Ix1>,
+) -> Result<(), OptimizationError> {
     if vector.is_empty() {
         return Err(OptimizationError::EmptyInput);
     }
@@ -332,10 +334,10 @@ fn validate_bfgs_config<T: NabledReal>(config: &BFGSConfig<T>) -> Result<(), Opt
     Ok(())
 }
 
-fn validate_bounds<T: NabledReal>(
-    initial: &Array1<T>,
-    lower_bounds: &Array1<T>,
-    upper_bounds: &Array1<T>,
+fn validate_bounds<T: NabledReal, IS: Data<Elem = T>, LS: Data<Elem = T>, US: Data<Elem = T>>(
+    initial: &ArrayBase<IS, Ix1>,
+    lower_bounds: &ArrayBase<LS, Ix1>,
+    upper_bounds: &ArrayBase<US, Ix1>,
 ) -> Result<(), OptimizationError> {
     if initial.len() != lower_bounds.len() || initial.len() != upper_bounds.len() {
         return Err(OptimizationError::DimensionMismatch);
@@ -375,10 +377,10 @@ fn validate_bounds_complex(
     Ok(())
 }
 
-fn project_to_bounds<T: NabledReal>(
+fn project_to_bounds<T: NabledReal, LS: Data<Elem = T>, US: Data<Elem = T>>(
     point: &mut Array1<T>,
-    lower_bounds: &Array1<T>,
-    upper_bounds: &Array1<T>,
+    lower_bounds: &ArrayBase<LS, Ix1>,
+    upper_bounds: &ArrayBase<US, Ix1>,
 ) {
     for i in 0..point.len() {
         point[i] = if point[i] < lower_bounds[i] {
@@ -435,9 +437,9 @@ fn hermitian_dot(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Complex
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite objective evaluations.
-pub fn backtracking_line_search<T, F, G>(
-    point: &Array1<T>,
-    direction: &Array1<T>,
+pub fn backtracking_line_search<T, F, G, PS, DS>(
+    point: &ArrayBase<PS, Ix1>,
+    direction: &ArrayBase<DS, Ix1>,
     objective: F,
     gradient: G,
     config: &LineSearchConfig<T>,
@@ -446,6 +448,8 @@ where
     T: NabledReal,
     F: Fn(&Array1<T>) -> T,
     G: Fn(&Array1<T>) -> Array1<T>,
+    PS: Data<Elem = T>,
+    DS: Data<Elem = T>,
 {
     validate_vector(point)?;
     validate_vector(direction)?;
@@ -454,22 +458,24 @@ where
     }
     validate_line_search_config(config)?;
 
-    let grad = gradient(point);
+    let point = point.to_owned();
+    let direction = direction.to_owned();
+    let grad = gradient(&point);
     if grad.len() != point.len() || grad.iter().any(|value| !value.is_finite()) {
         return Err(OptimizationError::NonFiniteInput);
     }
 
-    let fx = objective(point);
+    let fx = objective(&point);
     if !fx.is_finite() {
         return Err(OptimizationError::NonFiniteInput);
     }
-    let directional_derivative = grad.dot(direction);
+    let directional_derivative = grad.dot(&direction);
 
     let mut alpha = config.initial_step;
     let contraction = config.contraction;
     let sufficient_decrease = config.sufficient_decrease;
     for _ in 0..config.max_iterations {
-        let candidate = point + &direction.mapv(|value| value * alpha);
+        let candidate = &point + &direction.mapv(|value| value * alpha);
         let candidate_value = objective(&candidate);
         if !candidate_value.is_finite() {
             return Err(OptimizationError::NonFiniteInput);
@@ -486,8 +492,8 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn gradient_descent<T, F, G>(
-    initial: &Array1<T>,
+pub fn gradient_descent<T, F, G, S>(
+    initial: &ArrayBase<S, Ix1>,
     objective: F,
     gradient: G,
     config: &SGDConfig<T>,
@@ -496,11 +502,12 @@ where
     T: NabledReal,
     F: Fn(&Array1<T>) -> T,
     G: Fn(&Array1<T>) -> Array1<T>,
+    S: Data<Elem = T>,
 {
     validate_vector(initial)?;
     validate_sgd_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let _ = objective(&x);
     let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
     let learning_rate = config.learning_rate;
@@ -523,8 +530,8 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn adam<T, F, G>(
-    initial: &Array1<T>,
+pub fn adam<T, F, G, S>(
+    initial: &ArrayBase<S, Ix1>,
     objective: F,
     gradient: G,
     config: &AdamConfig<T>,
@@ -533,11 +540,12 @@ where
     T: NabledReal,
     F: Fn(&Array1<T>) -> T,
     G: Fn(&Array1<T>) -> Array1<T>,
+    S: Data<Elem = T>,
 {
     validate_vector(initial)?;
     validate_adam_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let mut m = Array1::<T>::zeros(x.len());
     let mut v = Array1::<T>::zeros(x.len());
     let mut beta1_power = T::one();
@@ -578,8 +586,8 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn momentum_descent<T, F, G>(
-    initial: &Array1<T>,
+pub fn momentum_descent<T, F, G, S>(
+    initial: &ArrayBase<S, Ix1>,
     objective: F,
     gradient: G,
     config: &MomentumConfig<T>,
@@ -588,11 +596,12 @@ where
     T: NabledReal,
     F: Fn(&Array1<T>) -> T,
     G: Fn(&Array1<T>) -> Array1<T>,
+    S: Data<Elem = T>,
 {
     validate_vector(initial)?;
     validate_momentum_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let mut velocity = Array1::<T>::zeros(x.len());
     let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
     let learning_rate = config.learning_rate;
@@ -621,8 +630,8 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn rmsprop<T, F, G>(
-    initial: &Array1<T>,
+pub fn rmsprop<T, F, G, S>(
+    initial: &ArrayBase<S, Ix1>,
     objective: F,
     gradient: G,
     config: &RMSPropConfig<T>,
@@ -631,11 +640,12 @@ where
     T: NabledReal,
     F: Fn(&Array1<T>) -> T,
     G: Fn(&Array1<T>) -> Array1<T>,
+    S: Data<Elem = T>,
 {
     validate_vector(initial)?;
     validate_rmsprop_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let mut avg_sq = Array1::<T>::zeros(x.len());
     let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
     let learning_rate = config.learning_rate;
@@ -665,18 +675,21 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration, invalid bounds, or non-finite gradients.
-pub fn projected_gradient_descent_box<T, F, G>(
-    initial: &Array1<T>,
+pub fn projected_gradient_descent_box<T, F, G, IS, LS, US>(
+    initial: &ArrayBase<IS, Ix1>,
     objective: F,
     gradient: G,
-    lower_bounds: &Array1<T>,
-    upper_bounds: &Array1<T>,
+    lower_bounds: &ArrayBase<LS, Ix1>,
+    upper_bounds: &ArrayBase<US, Ix1>,
     config: &ProjectedGradientConfig<T>,
 ) -> Result<Array1<T>, OptimizationError>
 where
     T: NabledReal,
     F: Fn(&Array1<T>) -> T,
     G: Fn(&Array1<T>) -> Array1<T>,
+    IS: Data<Elem = T>,
+    LS: Data<Elem = T>,
+    US: Data<Elem = T>,
 {
     validate_vector(initial)?;
     validate_vector(lower_bounds)?;
@@ -684,7 +697,7 @@ where
     validate_projected_gradient_config(config)?;
     validate_bounds(initial, lower_bounds, upper_bounds)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     project_to_bounds(&mut x, lower_bounds, upper_bounds);
     let _ = objective(&x);
     let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
@@ -713,19 +726,20 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn stochastic_gradient_descent<T, G>(
-    initial: &Array1<T>,
+pub fn stochastic_gradient_descent<T, G, S>(
+    initial: &ArrayBase<S, Ix1>,
     stochastic_gradient: G,
     config: &SGDConfig<T>,
 ) -> Result<Array1<T>, OptimizationError>
 where
     T: NabledReal,
     G: Fn(&Array1<T>, usize) -> Array1<T>,
+    S: Data<Elem = T>,
 {
     validate_vector(initial)?;
     validate_sgd_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
     let learning_rate = config.learning_rate;
     for iteration in 0..config.max_iterations {
@@ -745,8 +759,8 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
-pub fn bfgs<T, F, G>(
-    initial: &Array1<T>,
+pub fn bfgs<T, F, G, S>(
+    initial: &ArrayBase<S, Ix1>,
     objective: F,
     gradient: G,
     config: &BFGSConfig<T>,
@@ -755,12 +769,13 @@ where
     T: NabledReal,
     F: Fn(&Array1<T>) -> T,
     G: Fn(&Array1<T>) -> Array1<T>,
+    S: Data<Elem = T>,
 {
     validate_vector(initial)?;
     validate_bfgs_config(config)?;
 
     let dimension = initial.len();
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let mut h_inv = Array2::<T>::eye(dimension);
     let tolerance = config.tolerance.max(T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon));
     let step = config.step_size;

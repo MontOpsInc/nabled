@@ -929,6 +929,16 @@ pub fn sum_last_axis_view_into<T: NabledReal>(
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
 pub fn l2_norm_last_axis<T: NabledReal>(tensor: &ArrayD<T>) -> Result<ArrayD<T>, TensorError> {
+    l2_norm_last_axis_view(&tensor.view())
+}
+
+/// Compute L2 norm along the last axis of a tensor view.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn l2_norm_last_axis_view<T: NabledReal>(
+    tensor: &ArrayViewD<'_, T>,
+) -> Result<ArrayD<T>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
 
@@ -952,10 +962,20 @@ pub fn l2_norm_last_axis<T: NabledReal>(tensor: &ArrayD<T>) -> Result<ArrayD<T>,
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
 pub fn normalize_last_axis<T: NabledReal>(tensor: &ArrayD<T>) -> Result<ArrayD<T>, TensorError> {
+    normalize_last_axis_view(&tensor.view())
+}
+
+/// Normalize tensor values along the last axis from a tensor view.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn normalize_last_axis_view<T: NabledReal>(
+    tensor: &ArrayViewD<'_, T>,
+) -> Result<ArrayD<T>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
 
-    let mut output = tensor.clone();
+    let mut output = tensor.to_owned();
     let axis = Axis(tensor_view.ndim() - 1);
     for mut lane in output.lanes_mut(axis) {
         let norm = lane
@@ -982,6 +1002,20 @@ pub fn normalize_last_axis<T: NabledReal>(tensor: &ArrayD<T>) -> Result<ArrayD<T
 pub fn batched_dot_last_axis<T: NabledReal>(
     left: &ArrayD<T>,
     right: &ArrayD<T>,
+) -> Result<ArrayD<T>, TensorError> {
+    batched_dot_last_axis_view(&left.view(), &right.view())
+}
+
+/// Compute batched dot products along the last axis of two tensor views.
+///
+/// The input tensors must have identical shape and `ndim >= 1`.
+/// Output shape is the input shape without the last axis.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_dot_last_axis_view<T: NabledReal>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
 ) -> Result<ArrayD<T>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
@@ -1014,6 +1048,17 @@ pub fn batched_dot_last_axis<T: NabledReal>(
 /// Returns an error if the tensor is empty, has zero dimensions, or permutation is invalid.
 pub fn permute_axes<T: NabledReal>(
     tensor: &ArrayD<T>,
+    permutation: &[usize],
+) -> Result<ArrayD<T>, TensorError> {
+    permute_axes_view(&tensor.view(), permutation)
+}
+
+/// Permute tensor axes from a tensor view using an explicit axis ordering.
+///
+/// # Errors
+/// Returns an error if the tensor is empty, has zero dimensions, or permutation is invalid.
+pub fn permute_axes_view<T: NabledReal>(
+    tensor: &ArrayViewD<'_, T>,
     permutation: &[usize],
 ) -> Result<ArrayD<T>, TensorError> {
     let tensor_view = tensor.view();

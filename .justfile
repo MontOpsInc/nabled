@@ -1,5 +1,5 @@
 LOG := env('RUST_LOG', '')
-features := 'blas lapack-provider openblas-system openblas-static netlib-system netlib-static accelerator-rayon accelerator-wgpu'
+features := 'arrow blas lapack-provider openblas-system openblas-static netlib-system netlib-static accelerator-rayon accelerator-wgpu'
 provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
 provider_features := env('NABLED_PROVIDER_FEATURES', 'openblas-system')
 provider_bench_features := env('NABLED_PROVIDER_BENCH_FEATURES', 'openblas-system')
@@ -313,16 +313,20 @@ checks:
     cargo +nightly fmt --all -- --check --config-path ./rustfmt.toml
     cargo +nightly clippy --workspace --no-default-features --all-targets -- -D warnings
     cargo +nightly clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
+    cargo +nightly clippy --workspace --no-default-features --features arrow --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +nightly clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
+    cargo +stable clippy --workspace --no-default-features --features arrow --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features accelerator-rayon --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features accelerator-wgpu --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     just -f {{ justfile() }} check-provider-clippy
     just -f {{ justfile() }} check-provider-netlib
+    just -f {{ justfile() }} check-arrow
     just -f {{ justfile() }} test
     just -f {{ justfile() }} test-provider
+    just -f {{ justfile() }} test-arrow
     just -f {{ justfile() }} check-accelerator
     just -f {{ justfile() }} test-accelerator
     just -f {{ justfile() }} coverage-check
@@ -332,6 +336,13 @@ checks:
 # Verify provider-gated lint paths are checked locally.
 check-provider-clippy:
     {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features {{ provider_features }} --all-targets -- -D warnings
+
+# Verify Arrow interop compiles and lints in internal/provider modes.
+check-arrow:
+    cargo +stable clippy --workspace --no-default-features --features arrow --all-targets -- -D warnings
+    cargo +stable check --workspace --no-default-features --features arrow --all-targets
+    {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} arrow" --all-targets -- -D warnings
+    {{ provider_env_prefix }} cargo +stable check --workspace --no-default-features --features "{{ provider_features }} arrow" --all-targets
 
 # Verify provider-enabled code paths compile under stable.
 check-provider:
@@ -364,6 +375,11 @@ test-accelerator:
     cargo +stable test -p nabled-linalg --no-default-features --features accelerator-rayon --lib accelerated_matmat_matches_serial -- --nocapture --show-output
     cargo +stable test -p nabled-linalg --no-default-features --features accelerator-wgpu --lib gpu_ -- --nocapture --show-output
     {{ provider_env_prefix }} cargo +stable test -p nabled-linalg --no-default-features --features "{{ provider_features }} accelerator-wgpu" --lib gpu_ -- --nocapture --show-output
+
+# Verify Arrow interop integration tests in internal/provider modes.
+test-arrow:
+    cargo +stable test -p nabled --no-default-features --features arrow --test arrow_interop -- --nocapture --show-output
+    {{ provider_env_prefix }} cargo +stable test -p nabled --no-default-features --features "{{ provider_features }} arrow" --test arrow_interop -- --nocapture --show-output
 
 # Initialize development environment for maintainers
 init-dev:

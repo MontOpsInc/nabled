@@ -4,7 +4,7 @@ use std::fmt;
 
 use nabled_core::scalar::NabledReal;
 use nabled_linalg::lu;
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1};
 use num_complex::Complex64;
 
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
@@ -71,7 +71,11 @@ fn default_tolerance<T: NabledReal>() -> T {
     T::from_f64(DEFAULT_TOLERANCE).unwrap_or_else(T::epsilon)
 }
 
-fn vector_norm<T: NabledReal>(vector: &Array1<T>) -> T {
+fn vector_norm<T, S>(vector: &ArrayBase<S, Ix1>) -> T
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     vector
         .iter()
         .map(|value| *value * *value)
@@ -128,6 +132,21 @@ pub fn conjugate_gradient<T>(
 where
     T: NabledReal,
 {
+    conjugate_gradient_view(&matrix_a.view(), &matrix_b.view(), config)
+}
+
+/// Conjugate Gradient for SPD systems `Ax=b` from matrix/vector views.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn conjugate_gradient_view<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal,
+{
     if matrix_a.is_empty() || matrix_b.is_empty() {
         return Err(IterativeError::EmptyMatrix);
     }
@@ -137,7 +156,7 @@ where
 
     let n = matrix_b.len();
     let mut x = Array1::<T>::zeros(n);
-    let mut r = matrix_b.clone();
+    let mut r = matrix_b.to_owned();
     let mut p = r.clone();
     let mut rs_old = r.dot(&r);
 
@@ -225,11 +244,14 @@ pub fn conjugate_gradient_complex(
     Err(IterativeError::MaxIterationsExceeded)
 }
 
-fn solve_linear<T>(matrix: &Array2<T>, rhs: &Array1<T>) -> Result<Array1<T>, IterativeError>
+fn solve_linear<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, IterativeError>
 where
     T: IterativeLinearScalar,
 {
-    lu::solve(matrix, rhs).map_err(|_| IterativeError::Breakdown)
+    lu::solve_view(matrix, rhs).map_err(|_| IterativeError::Breakdown)
 }
 
 /// GMRES for general systems `Ax=b`.
@@ -246,7 +268,7 @@ pub fn gmres<T>(
 where
     T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar,
 {
-    gmres_impl(matrix_a, matrix_b, config)
+    gmres_view(&matrix_a.view(), &matrix_b.view(), config)
 }
 
 /// GMRES for general systems `Ax=b`.
@@ -263,7 +285,7 @@ pub fn gmres<T>(
 where
     T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack,
 {
-    gmres_impl(matrix_a, matrix_b, config)
+    gmres_view(&matrix_a.view(), &matrix_b.view(), config)
 }
 
 /// GMRES for general systems `Ax=b`.
@@ -280,7 +302,7 @@ pub fn gmres<T>(
 where
     T: NabledReal + std::ops::SubAssign + lu::LuProviderScalar,
 {
-    gmres_impl(matrix_a, matrix_b, config)
+    gmres_view(&matrix_a.view(), &matrix_b.view(), config)
 }
 
 /// GMRES for general systems `Ax=b`.
@@ -297,13 +319,13 @@ pub fn gmres<T>(
 where
     T: NabledReal + std::ops::SubAssign,
 {
-    gmres_impl(matrix_a, matrix_b, config)
+    gmres_view(&matrix_a.view(), &matrix_b.view(), config)
 }
 
 #[allow(clippy::many_single_char_names)]
 fn gmres_impl<T>(
-    matrix_a: &Array2<T>,
-    matrix_b: &Array1<T>,
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
     config: &IterativeConfig<T>,
 ) -> Result<Array1<T>, IterativeError>
 where
@@ -363,7 +385,7 @@ where
     rhs_ls[0] = beta;
     let normal_rhs = ht.dot(&rhs_ls);
 
-    let y = solve_linear(&normal_matrix, &normal_rhs)?;
+    let y = solve_linear(&normal_matrix.view(), &normal_rhs.view())?;
     let x = basis.slice(ndarray::s![.., ..effective_m]).dot(&y);
 
     let residual = matrix_b - &matrix_a.dot(&x);
@@ -372,6 +394,74 @@ where
     } else {
         Err(IterativeError::MaxIterationsExceeded)
     }
+}
+
+/// GMRES for general systems `Ax=b` from matrix/vector views.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[allow(clippy::many_single_char_names)]
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+pub fn gmres_view<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar,
+{
+    gmres_impl(matrix_a, matrix_b, config)
+}
+
+/// GMRES for general systems `Ax=b` from matrix/vector views.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[allow(clippy::many_single_char_names)]
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+pub fn gmres_view<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack,
+{
+    gmres_impl(matrix_a, matrix_b, config)
+}
+
+/// GMRES for general systems `Ax=b` from matrix/vector views.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[allow(clippy::many_single_char_names)]
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+pub fn gmres_view<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + lu::LuProviderScalar,
+{
+    gmres_impl(matrix_a, matrix_b, config)
+}
+
+/// GMRES for general systems `Ax=b` from matrix/vector views.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[allow(clippy::many_single_char_names)]
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+pub fn gmres_view<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+) -> Result<Array1<T>, IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign,
+{
+    gmres_impl(matrix_a, matrix_b, config)
 }
 
 /// GMRES for complex general systems `Ax=b`.

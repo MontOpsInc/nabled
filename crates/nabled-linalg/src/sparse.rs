@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayBase, Data, Ix1, Ix2};
 use thiserror::Error;
 
 #[cfg(feature = "magma-system")]
@@ -17,7 +17,10 @@ fn default_tolerance<T: NabledReal>() -> T {
     T::from_f64(DEFAULT_TOLERANCE).unwrap_or(T::epsilon())
 }
 
-fn dot<T: NabledReal>(left: &Array1<T>, right: &Array1<T>) -> Result<T, SparseError> {
+fn dot<T: NabledReal, LS: Data<Elem = T>, RS: Data<Elem = T>>(
+    left: &ArrayBase<LS, Ix1>,
+    right: &ArrayBase<RS, Ix1>,
+) -> Result<T, SparseError> {
     if left.len() != right.len() {
         return Err(SparseError::DimensionMismatch);
     }
@@ -629,10 +632,13 @@ impl<T: NabledReal> CooMatrix<T> {
 ///
 /// # Errors
 /// Returns an error if vector length mismatches matrix columns.
-pub fn matvec<T: NabledReal>(
+pub fn matvec<T: NabledReal, S>(
     matrix: &CsrMatrix<T>,
-    vector: &Array1<T>,
-) -> Result<Array1<T>, SparseError> {
+    vector: &ArrayBase<S, Ix1>,
+) -> Result<Array1<T>, SparseError>
+where
+    S: Data<Elem = T>,
+{
     matvec_view(&matrix.as_view(), vector)
 }
 
@@ -640,10 +646,13 @@ pub fn matvec<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if vector length mismatches matrix columns.
-pub fn matvec_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn matvec_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    vector: &Array1<T>,
-) -> Result<Array1<T>, SparseError> {
+    vector: &ArrayBase<S, Ix1>,
+) -> Result<Array1<T>, SparseError>
+where
+    S: Data<Elem = T>,
+{
     matrix.validate()?;
     let mut output = Array1::<T>::zeros(matrix.nrows);
     matvec_view_into(matrix, vector, &mut output)?;
@@ -760,11 +769,14 @@ pub fn matvec_magma_f32_view_into(
 ///
 /// # Errors
 /// Returns an error if input/output dimensions are incompatible.
-pub fn matvec_into<T: NabledReal>(
+pub fn matvec_into<T: NabledReal, S>(
     matrix: &CsrMatrix<T>,
-    vector: &Array1<T>,
+    vector: &ArrayBase<S, Ix1>,
     output: &mut Array1<T>,
-) -> Result<(), SparseError> {
+) -> Result<(), SparseError>
+where
+    S: Data<Elem = T>,
+{
     matvec_view_into(&matrix.as_view(), vector, output)
 }
 
@@ -772,11 +784,14 @@ pub fn matvec_into<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if input/output dimensions are incompatible.
-pub fn matvec_view_into<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn matvec_view_into<T: NabledReal, R: CsrIndex, C: CsrIndex, S>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    vector: &Array1<T>,
+    vector: &ArrayBase<S, Ix1>,
     output: &mut Array1<T>,
-) -> Result<(), SparseError> {
+) -> Result<(), SparseError>
+where
+    S: Data<Elem = T>,
+{
     matrix.validate()?;
     if vector.len() != matrix.ncols || output.len() != matrix.nrows {
         return Err(SparseError::DimensionMismatch);
@@ -952,9 +967,9 @@ pub fn jacobi_preconditioner_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn apply_jacobi_preconditioner<T: NabledReal>(
+pub fn apply_jacobi_preconditioner<T: NabledReal, S: Data<Elem = T>>(
     preconditioner: &JacobiPreconditioner<T>,
-    vector: &Array1<T>,
+    vector: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     if preconditioner.inverse_diagonal.len() != vector.len() {
         return Err(SparseError::DimensionMismatch);
@@ -1669,9 +1684,9 @@ pub fn sparse_lu_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     Ok(SparseLUFactorization { l, u, permutation })
 }
 
-fn apply_sparse_row_permutation<T: NabledReal>(
+fn apply_sparse_row_permutation<T: NabledReal, S: Data<Elem = T>>(
     permutation: &[usize],
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     if permutation.len() != rhs.len() {
         return Err(SparseError::DimensionMismatch);
@@ -1698,9 +1713,9 @@ pub fn sparse_lu_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular systems.
-pub fn sparse_lu_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn sparse_lu_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     let factorization = sparse_lu_factor_view(matrix)?;
     sparse_lu_solve_with_factorization_view(matrix, rhs, &factorization)
@@ -1723,9 +1738,14 @@ pub fn sparse_lu_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular factors.
-pub fn sparse_lu_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn sparse_lu_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     factorization: &SparseLUFactorization<T>,
 ) -> Result<Array1<T>, SparseError> {
     matrix.validate()?;
@@ -1767,10 +1787,10 @@ pub fn sparse_lu_solve_multiple_with_factorization_view<T: NabledReal, R: CsrInd
     })
 }
 
-fn apply_lu_preconditioner<T: NabledReal>(
+fn apply_lu_preconditioner<T: NabledReal, S: Data<Elem = T>>(
     lower: &CsrMatrix<T>,
     upper: &CsrMatrix<T>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     if lower.nrows != lower.ncols || upper.nrows != upper.ncols || lower.nrows != upper.nrows {
         return Err(SparseError::DimensionMismatch);
@@ -2240,10 +2260,13 @@ pub fn apply_ildl0_preconditioner<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn matmat_dense<T: NabledReal>(
+pub fn matmat_dense<T: NabledReal, S>(
     matrix: &CsrMatrix<T>,
-    dense: &Array2<T>,
-) -> Result<Array2<T>, SparseError> {
+    dense: &ArrayBase<S, Ix2>,
+) -> Result<Array2<T>, SparseError>
+where
+    S: Data<Elem = T>,
+{
     matmat_dense_view(&matrix.as_view(), dense)
 }
 
@@ -2253,10 +2276,13 @@ pub fn matmat_dense<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn matmat_dense_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn matmat_dense_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    dense: &Array2<T>,
-) -> Result<Array2<T>, SparseError> {
+    dense: &ArrayBase<S, Ix2>,
+) -> Result<Array2<T>, SparseError>
+where
+    S: Data<Elem = T>,
+{
     matrix.validate()?;
     let mut output = Array2::<T>::zeros((matrix.nrows, dense.ncols()));
     matmat_dense_view_into(matrix, dense, &mut output)?;
@@ -2415,7 +2441,7 @@ fn conjugate_gradient_with_operator<T: NabledReal>(
     let n = rhs.len();
     let tolerance = tolerance.max(default_tolerance::<T>());
     let mut solution = Array1::<T>::zeros(n);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let mut direction = residual.clone();
     let mut residual_norm_sq = dot(&residual, &residual)?;
 
@@ -2463,7 +2489,7 @@ fn pcg_with_operator<T: NabledReal>(
     let n = rhs.len();
     let tolerance = tolerance.max(default_tolerance::<T>());
     let mut solution = Array1::<T>::zeros(n);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let mut preconditioned_residual = precondition(&residual)?;
     expect_vector_len(&preconditioned_residual, n)?;
     let mut direction = preconditioned_residual.clone();
@@ -2606,7 +2632,7 @@ fn bicgstab_with_operator<T: NabledReal>(
     let tolerance = tolerance.max(default_tolerance::<T>());
     let n = rhs.len();
     let mut solution = Array1::<T>::zeros(n);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -2942,11 +2968,14 @@ pub fn bicgstab_ilu0_magma_f32_view(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn matmat_dense_into<T: NabledReal>(
+pub fn matmat_dense_into<T: NabledReal, S>(
     matrix: &CsrMatrix<T>,
-    dense: &Array2<T>,
+    dense: &ArrayBase<S, Ix2>,
     output: &mut Array2<T>,
-) -> Result<(), SparseError> {
+) -> Result<(), SparseError>
+where
+    S: Data<Elem = T>,
+{
     matmat_dense_view_into(&matrix.as_view(), dense, output)
 }
 
@@ -2954,11 +2983,14 @@ pub fn matmat_dense_into<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn matmat_dense_view_into<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn matmat_dense_view_into<T: NabledReal, R: CsrIndex, C: CsrIndex, S>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    dense: &Array2<T>,
+    dense: &ArrayBase<S, Ix2>,
     output: &mut Array2<T>,
-) -> Result<(), SparseError> {
+) -> Result<(), SparseError>
+where
+    S: Data<Elem = T>,
+{
     matrix.validate()?;
     if dense.nrows() != matrix.ncols || output.dim() != (matrix.nrows, dense.ncols()) {
         return Err(SparseError::DimensionMismatch);
@@ -3130,9 +3162,9 @@ pub fn jacobi_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, singular diagonals, or non-convergence.
-pub fn jacobi_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn jacobi_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
 ) -> Result<Array1<T>, SparseError> {
@@ -3211,9 +3243,9 @@ pub fn gauss_seidel_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, singular diagonals, or non-convergence.
-pub fn gauss_seidel_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gauss_seidel_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
 ) -> Result<Array1<T>, SparseError> {
@@ -3289,9 +3321,9 @@ pub fn conjugate_gradient_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, singular breakdown, or non-convergence.
-pub fn conjugate_gradient_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn conjugate_gradient_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
 ) -> Result<Array1<T>, SparseError> {
@@ -3308,7 +3340,7 @@ pub fn conjugate_gradient_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 
     let tolerance = tolerance.max(default_tolerance::<T>());
     let mut x = Array1::<T>::zeros(matrix.ncols);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let mut direction = residual.clone();
     let mut residual_norm_sq = dot(&residual, &residual)?;
 
@@ -3366,9 +3398,9 @@ pub fn pcg_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, singular breakdown, or non-convergence.
-pub fn pcg_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn pcg_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
 ) -> Result<Array1<T>, SparseError> {
@@ -3386,7 +3418,7 @@ pub fn pcg_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     let preconditioner = jacobi_preconditioner_view(matrix)?;
     let tolerance = tolerance.max(default_tolerance::<T>());
     let mut solution = Array1::<T>::zeros(matrix.ncols);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let mut preconditioned_residual = apply_jacobi_preconditioner(&preconditioner, &residual)?;
     let mut direction = preconditioned_residual.clone();
     let mut rho = dot(&residual, &preconditioned_residual)?;

@@ -20,6 +20,7 @@
 //! 6. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths.
 //! 7. `accelerator-rayon`: enables parallel CPU kernels where implemented.
 //! 8. `accelerator-wgpu`: enables WGPU-backed kernel paths where implemented.
+//! 9. `arrow`: enables facade-only Arrow/ndarray interop adapters backed by `ndarrow`.
 //!
 //! ## Execution Semantics
 //!
@@ -65,6 +66,13 @@ pub mod linalg {
 pub mod ml {
     pub use nabled_ml::*;
 }
+
+/// Optional Arrow/ndarray interop adapters that delegate into ndarray-native `nabled` domains.
+///
+/// This module exists only behind feature `arrow`. Core numerical domains remain ndarray-native;
+/// Arrow knowledge is isolated to this facade-level integration surface.
+#[cfg(feature = "arrow")]
+pub mod arrow;
 
 /// Common ndarray and complex-number prelude exports.
 pub mod prelude {

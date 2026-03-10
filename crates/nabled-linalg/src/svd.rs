@@ -308,7 +308,7 @@ fn rank_estimation_tolerance<T: NabledReal>(max_sv: T, dimension: usize) -> T {
 }
 
 fn null_space_internal<T: NabledReal>(
-    matrix: &Array2<T>,
+    matrix: &ArrayView2<'_, T>,
     tolerance: Option<T>,
 ) -> Result<Array2<T>, SVDError> {
     if matrix.is_empty() {
@@ -463,13 +463,7 @@ pub fn decompose_with_tolerance<T>(
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T>,
 {
-    let mut svd = decompose(matrix)?;
-    for value in &mut svd.singular_values {
-        if *value < tolerance {
-            *value = T::zero();
-        }
-    }
-    Ok(svd)
+    decompose_with_tolerance_view(&matrix.view(), tolerance)
 }
 
 /// Compute SVD and zero out singular values below `tolerance`.
@@ -481,7 +475,40 @@ pub fn decompose_with_tolerance<T: SvdInternalScalar>(
     matrix: &Array2<T>,
     tolerance: T,
 ) -> Result<NdarraySVD<T>, SVDError> {
-    let mut svd = decompose(matrix)?;
+    decompose_with_tolerance_view(&matrix.view(), tolerance)
+}
+
+/// Compute SVD from a matrix view and zero out singular values below `tolerance`.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+#[cfg(feature = "lapack-provider")]
+pub fn decompose_with_tolerance_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    tolerance: T,
+) -> Result<NdarraySVD<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    let mut svd = decompose_view(matrix)?;
+    for value in &mut svd.singular_values {
+        if *value < tolerance {
+            *value = T::zero();
+        }
+    }
+    Ok(svd)
+}
+
+/// Compute SVD from a matrix view and zero out singular values below `tolerance`.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose_with_tolerance_view<T: SvdInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+    tolerance: T,
+) -> Result<NdarraySVD<T>, SVDError> {
+    let mut svd = decompose_view(matrix)?;
     for value in &mut svd.singular_values {
         if *value < tolerance {
             *value = T::zero();
@@ -499,11 +526,26 @@ pub fn decompose_truncated<T>(matrix: &Array2<T>, k: usize) -> Result<NdarraySVD
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T>,
 {
+    decompose_truncated_view(&matrix.view(), k)
+}
+
+/// Compute truncated SVD from a matrix view by keeping only the `k` largest singular values.
+///
+/// # Errors
+/// Returns an error if `k == 0` or decomposition fails.
+#[cfg(feature = "lapack-provider")]
+pub fn decompose_truncated_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    k: usize,
+) -> Result<NdarraySVD<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     if k == 0 {
         return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
     }
 
-    let full_svd = decompose(matrix)?;
+    let full_svd = decompose_view(matrix)?;
     let keep = k.min(full_svd.singular_values.len());
 
     Ok(NdarraySVD {
@@ -522,11 +564,23 @@ pub fn decompose_truncated<T: SvdInternalScalar>(
     matrix: &Array2<T>,
     k: usize,
 ) -> Result<NdarraySVD<T>, SVDError> {
+    decompose_truncated_view(&matrix.view(), k)
+}
+
+/// Compute truncated SVD from a matrix view by keeping only the `k` largest singular values.
+///
+/// # Errors
+/// Returns an error if `k == 0` or decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose_truncated_view<T: SvdInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+    k: usize,
+) -> Result<NdarraySVD<T>, SVDError> {
     if k == 0 {
         return Err(SVDError::InvalidInput("k must be greater than 0".to_string()));
     }
 
-    let full_svd = decompose(matrix)?;
+    let full_svd = decompose_view(matrix)?;
     let keep = k.min(full_svd.singular_values.len());
 
     Ok(NdarraySVD {
@@ -636,13 +690,7 @@ pub fn pseudo_inverse<T>(
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T>,
 {
-    if matrix.is_empty() {
-        return Err(SVDError::EmptyMatrix);
-    }
-
-    let mut output = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
-    pseudo_inverse_into(matrix, config, &mut output)?;
-    Ok(output)
+    pseudo_inverse_view(&matrix.view(), config)
 }
 
 /// Compute Moore-Penrose pseudo-inverse.
@@ -654,12 +702,45 @@ pub fn pseudo_inverse<T: SvdInternalScalar>(
     matrix: &Array2<T>,
     config: &PseudoInverseConfig<T>,
 ) -> Result<Array2<T>, SVDError> {
+    pseudo_inverse_view(&matrix.view(), config)
+}
+
+/// Compute Moore-Penrose pseudo-inverse from a matrix view.
+///
+/// # Errors
+/// Returns an error if input is invalid or decomposition fails.
+#[cfg(feature = "lapack-provider")]
+pub fn pseudo_inverse_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    config: &PseudoInverseConfig<T>,
+) -> Result<Array2<T>, SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
 
     let mut output = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
-    pseudo_inverse_into(matrix, config, &mut output)?;
+    pseudo_inverse_view_into(matrix, config, &mut output)?;
+    Ok(output)
+}
+
+/// Compute Moore-Penrose pseudo-inverse from a matrix view.
+///
+/// # Errors
+/// Returns an error if input is invalid or decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn pseudo_inverse_view<T: SvdInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+    config: &PseudoInverseConfig<T>,
+) -> Result<Array2<T>, SVDError> {
+    if matrix.is_empty() {
+        return Err(SVDError::EmptyMatrix);
+    }
+
+    let mut output = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
+    pseudo_inverse_view_into(matrix, config, &mut output)?;
     Ok(output)
 }
 
@@ -676,6 +757,22 @@ pub fn pseudo_inverse_into<T>(
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T>,
 {
+    pseudo_inverse_view_into(&matrix.view(), config, output)
+}
+
+/// Compute Moore-Penrose pseudo-inverse from a matrix view into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid or decomposition fails.
+#[cfg(feature = "lapack-provider")]
+pub fn pseudo_inverse_view_into<T>(
+    matrix: &ArrayView2<'_, T>,
+    config: &PseudoInverseConfig<T>,
+    output: &mut Array2<T>,
+) -> Result<(), SVDError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
@@ -685,7 +782,7 @@ where
         ));
     }
 
-    let svd = decompose(matrix)?;
+    let svd = decompose_view(matrix)?;
     let (rows, cols) = matrix.dim();
     let max_sv = svd.singular_values.iter().copied().fold(T::zero(), T::max);
     let tolerance = config.tolerance.unwrap_or(svd_relative_tolerance(max_sv, rows.max(cols)));
@@ -718,6 +815,19 @@ pub fn pseudo_inverse_into<T: SvdInternalScalar>(
     config: &PseudoInverseConfig<T>,
     output: &mut Array2<T>,
 ) -> Result<(), SVDError> {
+    pseudo_inverse_view_into(&matrix.view(), config, output)
+}
+
+/// Compute Moore-Penrose pseudo-inverse from a matrix view into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are invalid or decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn pseudo_inverse_view_into<T: SvdInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+    config: &PseudoInverseConfig<T>,
+    output: &mut Array2<T>,
+) -> Result<(), SVDError> {
     if matrix.is_empty() {
         return Err(SVDError::EmptyMatrix);
     }
@@ -727,7 +837,7 @@ pub fn pseudo_inverse_into<T: SvdInternalScalar>(
         ));
     }
 
-    let svd = decompose(matrix)?;
+    let svd = decompose_view(matrix)?;
     let (rows, cols) = matrix.dim();
     let max_sv = svd.singular_values.iter().copied().fold(T::zero(), T::max);
     let tolerance = config.tolerance.unwrap_or(svd_relative_tolerance(max_sv, rows.max(cols)));
@@ -756,6 +866,17 @@ pub fn pseudo_inverse_into<T: SvdInternalScalar>(
 /// Returns an error if decomposition fails.
 pub fn null_space<T: NabledReal>(
     matrix: &Array2<T>,
+    tolerance: Option<T>,
+) -> Result<Array2<T>, SVDError> {
+    null_space_view(&matrix.view(), tolerance)
+}
+
+/// Compute a basis for the right null-space of a matrix view.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+pub fn null_space_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
     tolerance: Option<T>,
 ) -> Result<Array2<T>, SVDError> {
     null_space_internal(matrix, tolerance)

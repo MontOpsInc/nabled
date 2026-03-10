@@ -28,6 +28,8 @@ This folder contains the current, authoritative direction for `nabled`.
 14. `docs/PUBLISH_CHECKLIST.md`: crates.io publish gate and release-day checklist.
 15. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
 16. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
+17. `docs/NDARROW_INTEGRATION.md`: facade-level Arrow interop contract and current adapter surface.
+18. `docs/ARROW_SUPPORT_MATRIX.md`: direct Arrow-ingress coverage against the current public API.
 
 ## Context Resume Protocol
 
@@ -49,6 +51,8 @@ When starting from a compacted/partial context, read documents in this order:
 14. `docs/ROADMAP.md`
 15. `docs/PUBLISH_CHECKLIST.md`
 16. `docs/STATUS.md`
+17. `docs/NDARROW_INTEGRATION.md`
+18. `docs/ARROW_SUPPORT_MATRIX.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 
@@ -76,6 +80,7 @@ After reading the docs above, a contributor should be able to answer:
 
 ## Scope Boundary
 
-`nabled` has no Arrow knowledge. It operates on ndarray data structures.
+`nabled` core numerical crates remain Arrow-free and operate on ndarray data structures.
 
-Arrow-facing interop and execution belong in downstream libraries (for example, `narrow`).
+Optional Arrow-facing interop may exist only in facade-level feature-gated modules (currently the
+`arrow` feature backed by `ndarrow`).

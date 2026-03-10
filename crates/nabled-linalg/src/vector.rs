@@ -114,7 +114,13 @@ pub fn dot_hermitian(
 ///
 /// # Errors
 /// Returns an error if the vector is empty.
-pub fn l2_norm<T: NabledReal>(v: &Array1<T>) -> Result<T, VectorError> {
+pub fn l2_norm<T: NabledReal>(v: &Array1<T>) -> Result<T, VectorError> { l2_norm_view(&v.view()) }
+
+/// Compute L2 norm of a vector view.
+///
+/// # Errors
+/// Returns an error if the vector is empty.
+pub fn l2_norm_view<T: NabledReal>(v: &ArrayView1<'_, T>) -> Result<T, VectorError> {
     if v.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -126,6 +132,14 @@ pub fn l2_norm<T: NabledReal>(v: &Array1<T>) -> Result<T, VectorError> {
 /// # Errors
 /// Returns an error if the vector is empty.
 pub fn l2_norm_complex(v: &Array1<Complex64>) -> Result<f64, VectorError> {
+    l2_norm_complex_view(&v.view())
+}
+
+/// Compute L2 norm of a complex vector view.
+///
+/// # Errors
+/// Returns an error if the vector is empty.
+pub fn l2_norm_complex_view(v: &ArrayView1<'_, Complex64>) -> Result<f64, VectorError> {
     if v.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -194,6 +208,17 @@ pub fn cosine_distance<T: NabledReal>(a: &Array1<T>, b: &Array1<T>) -> Result<T,
     Ok(T::one() - cosine_similarity(a, b)?)
 }
 
+/// Compute cosine distance (`1 - cosine_similarity`) from vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, empty inputs, or zero-norm vectors.
+pub fn cosine_distance_view<T: NabledReal>(
+    a: &ArrayView1<'_, T>,
+    b: &ArrayView1<'_, T>,
+) -> Result<T, VectorError> {
+    Ok(T::one() - cosine_similarity_view(a, b)?)
+}
+
 /// Compute pairwise L2 distances between row vectors in `left` and `right`.
 ///
 /// # Errors
@@ -205,6 +230,26 @@ pub fn pairwise_l2_distance<T: NabledReal>(
     validate_pairwise_inputs(left, right)?;
     let mut output = Array2::<T>::zeros((left.nrows(), right.nrows()));
     pairwise_l2_distance_view_into(&left.view(), &right.view(), &mut output)?;
+    Ok(output)
+}
+
+/// Compute pairwise L2 distances between row vectors from matrix views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or empty inputs.
+pub fn pairwise_l2_distance_view<T: NabledReal>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, VectorError> {
+    if left.is_empty() || right.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if left.ncols() != right.ncols() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    let mut output = Array2::<T>::zeros((left.nrows(), right.nrows()));
+    pairwise_l2_distance_view_into(left, right, &mut output)?;
     Ok(output)
 }
 
@@ -261,6 +306,64 @@ pub fn pairwise_cosine_similarity<T: NabledReal>(
     validate_pairwise_inputs(left, right)?;
     let mut output = Array2::<T>::zeros((left.nrows(), right.nrows()));
     pairwise_cosine_similarity_into(left, right, &mut output)?;
+    Ok(output)
+}
+
+/// Compute pairwise cosine similarity between row vectors from matrix views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
+pub fn pairwise_cosine_similarity_view<T: NabledReal>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, VectorError> {
+    if left.is_empty() || right.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if left.ncols() != right.ncols() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    let mut left_norms = Array1::<T>::zeros(left.nrows());
+    let mut right_norms = Array1::<T>::zeros(right.nrows());
+    let mut output = Array2::<T>::zeros((left.nrows(), right.nrows()));
+
+    for i in 0..left.nrows() {
+        let mut sq_sum = T::zero();
+        for k in 0..left.ncols() {
+            let value = left[[i, k]];
+            sq_sum += value * value;
+        }
+        let norm = sq_sum.sqrt();
+        if norm <= T::epsilon() {
+            return Err(VectorError::ZeroNorm);
+        }
+        left_norms[i] = norm;
+    }
+
+    for j in 0..right.nrows() {
+        let mut sq_sum = T::zero();
+        for k in 0..right.ncols() {
+            let value = right[[j, k]];
+            sq_sum += value * value;
+        }
+        let norm = sq_sum.sqrt();
+        if norm <= T::epsilon() {
+            return Err(VectorError::ZeroNorm);
+        }
+        right_norms[j] = norm;
+    }
+
+    for i in 0..left.nrows() {
+        for j in 0..right.nrows() {
+            let mut dot = T::zero();
+            for k in 0..left.ncols() {
+                dot += left[[i, k]] * right[[j, k]];
+            }
+            output[[i, j]] = dot / (left_norms[i] * right_norms[j]);
+        }
+    }
+
     Ok(output)
 }
 
@@ -345,6 +448,18 @@ pub fn pairwise_cosine_distance<T: NabledReal>(
     Ok(similarity.mapv(|value| T::one() - value))
 }
 
+/// Compute pairwise cosine distances between row vectors from matrix views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
+pub fn pairwise_cosine_distance_view<T: NabledReal>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, VectorError> {
+    let similarity = pairwise_cosine_similarity_view(left, right)?;
+    Ok(similarity.mapv(|value| T::one() - value))
+}
+
 /// Compute row-wise dot products for two matrices of equal shape.
 ///
 /// # Errors
@@ -355,6 +470,37 @@ pub fn batched_dot<T: NabledReal>(
 ) -> Result<Array1<T>, VectorError> {
     let mut output = Array1::<T>::zeros(left.nrows());
     batched_dot_into(left, right, &mut output)?;
+    Ok(output)
+}
+
+/// Compute row-wise dot products for two matrix views of equal shape.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or empty inputs.
+pub fn batched_dot_view<T: NabledReal>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<Array1<T>, VectorError> {
+    if left.is_empty() || right.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if left.dim() != right.dim() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    let mut output = Array1::<T>::zeros(left.nrows());
+    if output.len() != left.nrows() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    for i in 0..left.nrows() {
+        let mut sum = T::zero();
+        for j in 0..left.ncols() {
+            sum += left[[i, j]] * right[[i, j]];
+        }
+        output[i] = sum;
+    }
+
     Ok(output)
 }
 

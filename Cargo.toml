@@ -31,10 +31,14 @@ nabled-linalg = { path = "crates/nabled-linalg", version = "=0.0.5" }
 nabled-ml = { path = "crates/nabled-ml", version = "=0.0.5" }
 
 approx = "0.5"
+arrow-array = "58"
+arrow-buffer = "58"
+arrow-schema = { version = "58", features = ["canonical_extension_types"] }
 criterion = "0.8"
 faer = { version = "0.24", default-features = false, features = ["std", "linalg"] }
 ndarray = { version = "0.17", features = ["serde"] }
 ndarray-linalg = { version = "0.18", default-features = false }
+ndarrow = "0.0.2"
 num-complex = "0.4"
 num-traits = "0.2"
 rand = "0.10"
