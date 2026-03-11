@@ -229,17 +229,19 @@ Use this file to resume work quickly after context compaction without re-auditin
 187. `D-187`: K-005 lock-confirmation reruns on the current `main` tree are complete: remote monitor pass (`stability-20260309T135201Z.json`, `REPEATS=5`) and remote LTO proof-pack pass (`stability-20260309T140157Z.json`, `proof-pack-20260309T140157Z.md`) both exit green and report `persistent_regression_count = 0`, so K-005 remains monitor-only with no new hotspot patch opened in this pass.
 188. `D-188`: Facade-level Arrow interop baseline is now landed behind feature `arrow`, backed by `ndarrow`: `nabled::arrow` currently covers real dense vector/matrix kernels, LU/Cholesky/QR adapters, CSR sparse primitives, and fixed-shape tensor reduction, while lower crates remain Arrow-free; `nabled-linalg::sparse` dense-operand signatures were also widened to generic ndarray storage so Arrow-backed sparse workflows stay zero-copy on the inbound dense side.
 189. `D-189`: Arrow interop governance is now explicit and compaction-safe: `docs/NDARROW_INTEGRATION.md` now locks admission/parity rules (`capability parity`, not `1:1` overload mirroring, and mandatory delegation to canonical ndarray-native execution paths), and `docs/ARROW_SUPPORT_MATRIX.md` is now the direct-ingress coverage ledger against the public API.
-190. `D-190`: Arrow interop expansion now covers the remaining implementable real-valued facade workflows under the current explicit contracts: `nabled::arrow` now includes SVD/eigen/schur/polar/matrix-functions/triangular/batched/tensor/iterative/PCA/regression/stats/jacobian/optimization adapters in addition to the earlier baseline, while lower crates remain Arrow-free and provider/backend/kernel behavior continues to flow through canonical ndarray-native entrypoints.
+190. `D-190`: Arrow interop expansion now covers the remaining admitted facade workflows under the current explicit contracts: `nabled::arrow` now includes SVD/eigen/schur/polar/matrix-functions/triangular/batched/tensor/iterative/PCA/regression/stats/jacobian/optimization adapters in addition to the earlier baseline, while lower crates remain Arrow-free and provider/backend/kernel behavior continues to flow through canonical ndarray-native entrypoints.
 191. `D-191`: Arrow contract hardening is complete for the current round: sparse Arrow solve wrappers no longer materialize owned RHS vectors at the facade boundary, `nabled-linalg::sparse`/`nabled-ml::{jacobian,optimization}` now accept generic ndarray storage where appropriate for direct Arrow ingress, and dedicated integration coverage passes in both `arrow` and `openblas-system + arrow` modes.
+192. `D-192`: Arrow direct-ingress coverage is now full under the current explicit contract: every domain row in `docs/ARROW_SUPPORT_MATRIX.md` is `Full`, including complex workflows where the Arrow boundary is explicit and natural, while lower crates remain Arrow-free and multi-output result structs stay ndarray-native where that is still the correct contract.
+193. `D-193`: Arrow facade boundary copy-elision is complete for the current admitted surface: remaining complex QR/iterative/vector/tensor/optimization wrappers now delegate through view-native lower APIs, `nabled-ml::optimization` complex routines now accept generic ndarray storage, and `nabled::arrow` no longer materializes owned arrays at the interop boundary.
 
 ## Next
 
 1. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
 2. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
-3. Arrow interop is now at the current “implementable real-valued” ceiling under the locked contract. Further Arrow work requires an explicit decision about one of:
-   - canonical complex Arrow contracts,
-   - Arrow-native multi-output result structs, or
-   - additional wrappers with new explicit input/output contracts not yet admitted by `docs/NDARROW_INTEGRATION.md`.
+3. Arrow interop direct-ingress coverage is complete under the locked contract. Further Arrow work requires an explicit decision about one of:
+   - broader Arrow-native result contracts for multi-output workflows,
+   - new admitted Arrow boundary shapes or storage contracts, or
+   - additional explicit interop contracts not yet admitted by `docs/NDARROW_INTEGRATION.md`.
 
 Tensor-depth stop rubric (post-v1 finite target):
 1. `D-179` TT algebra utilities (`tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, `tt_hadamard_round`) with tests/feature-matrix parity. ✅

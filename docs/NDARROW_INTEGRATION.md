@@ -1,6 +1,6 @@
 # Ndarrow Integration
 
-Last updated: 2026-03-09
+Last updated: 2026-03-11
 
 ## Purpose
 
@@ -56,138 +56,31 @@ This means:
 
 The current facade-level Arrow adapter module is `nabled::arrow` behind feature `arrow`.
 
-Implemented surface:
+Direct Arrow ingress is now complete under the current admitted contract for these public domains:
 
-1. `nabled::arrow::vector`
-   - `dot`
-   - `cosine_similarity`
-   - `l2_norm`
-   - `cosine_distance`
-   - `pairwise_l2_distance`
-   - `pairwise_cosine_similarity`
-   - `pairwise_cosine_distance`
-   - `batched_dot`
-2. `nabled::arrow::matrix`
-   - `matvec`
-   - `matmat`
-   - `batched_row_matvec`
-3. `nabled::arrow::lu`
-   - `decompose_f32`
-   - `decompose_f64`
-   - `solve_f32`
-   - `solve_f64`
-   - `inverse_f32`
-   - `inverse_f64`
-   - `determinant_f32`
-   - `determinant_f64`
-   - `log_determinant_f32`
-   - `log_determinant_f64`
-4. `nabled::arrow::cholesky`
-   - `decompose_f32`
-   - `decompose_f64`
-   - `solve_f32`
-   - `solve_f64`
-   - `inverse_f32`
-   - `inverse_f64`
-5. `nabled::arrow::qr`
-   - `decompose_f32`
-   - `decompose_f64`
-   - `solve_least_squares_f32`
-   - `solve_least_squares_f64`
-   - `reconstruct_f32`
-   - `reconstruct_f64`
-6. `nabled::arrow::svd`
-   - `decompose_f32`
-   - `decompose_f64`
-   - `decompose_truncated_f32`
-   - `decompose_truncated_f64`
-   - `decompose_with_tolerance_f32`
-   - `decompose_with_tolerance_f64`
-   - `pseudo_inverse_f32`
-   - `pseudo_inverse_f64`
-   - `null_space_f32`
-   - `null_space_f64`
-7. `nabled::arrow::eigen`
-   - `symmetric_f32`
-   - `symmetric_f64`
-   - `generalized_f32`
-   - `generalized_f64`
-   - `nonsymmetric_f32`
-   - `nonsymmetric_f64`
-   - `balance_nonsymmetric_f32`
-   - `balance_nonsymmetric_f64`
-   - `nonsymmetric_bi_f32`
-   - `nonsymmetric_bi_f64`
-8. `nabled::arrow::schur`
-   - `compute_f32`
-   - `compute_f64`
-9. `nabled::arrow::polar`
-   - `compute_f32`
-   - `compute_f64`
-10. `nabled::arrow::matrix_functions`
-   - `exp_*`
-   - `exp_eigen_*`
-   - `log_taylor_*`
-   - `log_eigen_*`
-   - `log_svd_*`
-   - `power_*`
-   - `sign_*`
-11. `nabled::arrow::orthogonalization`
-   - `gram_schmidt_*`
-   - `gram_schmidt_classic_*`
-12. `nabled::arrow::triangular`
-   - lower/upper vector solve (`f32`, `f64`)
-   - lower/upper dense-matrix RHS solve (`f32`, `f64`)
-13. `nabled::arrow::sparse`
-   - CSR columns/extension -> dense `matvec`
-   - CSR columns/extension -> dense `matmat`
-   - CSR columns/extension -> direct sparse LU factorization
-   - CSR columns/extension -> direct sparse LU solve
-   - CSR columns/extension -> Jacobi/Gauss-Seidel/CG/PCG solves
-14. `nabled::arrow::iterative`
-   - dense `conjugate_gradient_*`
-   - dense `gmres_*`
-15. `nabled::arrow::jacobian`
-   - `numerical_jacobian`
-   - `numerical_jacobian_central`
-   - `numerical_gradient`
-   - `numerical_hessian`
-16. `nabled::arrow::optimization`
-   - `backtracking_line_search`
-   - `gradient_descent`
-   - `adam`
-   - `momentum_descent`
-   - `rmsprop`
-   - `projected_gradient_descent_box`
-   - `stochastic_gradient_descent`
-   - `bfgs`
-17. `nabled::arrow::pca`
-   - `compute_*`
-   - `transform_*`
-   - `inverse_transform_*`
-18. `nabled::arrow::regression`
-   - `linear_regression_*`
-19. `nabled::arrow::stats`
-   - `column_means_*`
-   - `center_columns_*`
-   - `covariance_matrix_*`
-   - `correlation_matrix_*`
-20. `nabled::arrow::tensor`
-   - canonical fixed-shape tensor `sum_last_axis`
-   - `l2_norm_last_axis`
-   - `normalize_last_axis`
-   - `batched_dot_last_axis`
-   - `permute_axes`
-   - `contract_axes`
-   - `batched_matmul_last_two`
-   - `cube_matvec`
-   - `cube_matmat`
-21. `nabled::arrow::batched`
-   - batched `qr_*`
-   - batched `svd_*`
-   - batched `lu_*`
-   - batched `cholesky_*`
-   - batched `symmetric_eigen_*`
+1. `vector`
+2. `matrix`
+3. `lu`
+4. `cholesky`
+5. `qr`
+6. `svd`
+7. `eigen`
+8. `schur`
+9. `polar`
+10. `matrix_functions`
+11. `orthogonalization`
+12. `triangular`
+13. `sparse`
+14. `batched`
+15. `tensor`
+16. `iterative`
+17. `jacobian`
+18. `optimization`
+19. `pca`
+20. `regression`
+21. `stats`
+
+Detailed function-level coverage and result-contract notes live in `docs/ARROW_SUPPORT_MATRIX.md`.
 
 ## Current Data Mapping Rules
 
@@ -203,13 +96,11 @@ Implemented surface:
 
 This integration does not currently provide:
 
-1. Complex Arrow facade adapters; under the current contract there is no native Arrow complex type
-   or locked canonical complex extension contract for `nabled`.
-2. Arrow-native decomposition result structs for multi-output workflows; many results remain
+1. Arrow-native decomposition result structs for multi-output workflows; many results remain
    ndarray-native when that is the natural contract.
-3. Arrow integration inside lower crates.
-4. Additional Arrow wrappers only where the boundary/result contract is still not yet explicit or
-   worth shipping.
+2. Arrow integration inside lower crates.
+3. Automatic admission of new Arrow boundary shapes or result contracts beyond the currently locked
+   ones.
 
 ## Expansion Rules
 
@@ -225,4 +116,6 @@ Future Arrow surface should expand only when:
 ## Tracking
 
 1. `docs/ARROW_SUPPORT_MATRIX.md` is the direct-ingress coverage ledger for the current public API.
-2. Add Arrow wrappers by closing the highest-value `None` or `Partial` rows in that matrix first.
+2. Current direct-ingress coverage is complete under the locked contract; future Arrow work must
+   start by introducing an explicit new boundary or result-contract decision, not by ad hoc
+   wrapper growth.

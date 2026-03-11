@@ -4,7 +4,9 @@ use arrow_array::types::{Float32Type, Float64Type};
 use arrow_array::{FixedSizeListArray, PrimitiveArray};
 
 use super::{
-    ArrowInteropError, fixed_size_list_from_owned, fixed_size_list_view, primitive_array_from_owned,
+    ArrowInteropError, complex64_matrix_from_owned, complex64_matrix_view,
+    complex64_vector_from_owned, fixed_size_list_from_owned, fixed_size_list_view,
+    primitive_array_from_owned,
 };
 
 /// Compute `f32` column means directly from Arrow dense input.
@@ -103,4 +105,51 @@ pub fn correlation_matrix_f64(
     let matrix_view = fixed_size_list_view::<Float64Type>(matrix)?;
     let output = crate::ml::stats::correlation_matrix_view(&matrix_view)?;
     fixed_size_list_from_owned::<Float64Type>(output)
+}
+
+/// Compute complex column means directly from Arrow complex dense input.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls or shape conversion fails.
+pub fn column_means_complex(
+    matrix: &FixedSizeListArray,
+) -> Result<(arrow_schema::Field, FixedSizeListArray), ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    complex64_vector_from_owned(
+        "column_means_complex",
+        crate::ml::stats::column_means_complex_view(&matrix_view),
+    )
+}
+
+/// Center complex columns directly from Arrow complex dense input.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls or shape conversion fails.
+pub fn center_columns_complex(
+    matrix: &FixedSizeListArray,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    complex64_matrix_from_owned(crate::ml::stats::center_columns_complex_view(&matrix_view))
+}
+
+/// Compute the complex covariance matrix directly from Arrow complex dense input.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or covariance fails.
+pub fn covariance_matrix_complex(
+    matrix: &FixedSizeListArray,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    complex64_matrix_from_owned(crate::ml::stats::covariance_matrix_complex_view(&matrix_view)?)
+}
+
+/// Compute the complex correlation matrix directly from Arrow complex dense input.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or correlation fails.
+pub fn correlation_matrix_complex(
+    matrix: &FixedSizeListArray,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    complex64_matrix_from_owned(crate::ml::stats::correlation_matrix_complex_view(&matrix_view)?)
 }

@@ -3,7 +3,10 @@
 use arrow_array::FixedSizeListArray;
 use arrow_array::types::{Float32Type, Float64Type};
 
-use super::{ArrowInteropError, fixed_size_list_from_owned, fixed_size_list_view};
+use super::{
+    ArrowInteropError, complex64_matrix_from_owned, complex64_matrix_view,
+    fixed_size_list_from_owned, fixed_size_list_view,
+};
 
 /// Compute `f32` SVD directly from an Arrow dense matrix.
 ///
@@ -125,4 +128,60 @@ pub fn null_space_f64(
     let matrix_view = fixed_size_list_view::<Float64Type>(matrix)?;
     let output = crate::linalg::svd::null_space_view(&matrix_view, tolerance)?;
     fixed_size_list_from_owned::<Float64Type>(output)
+}
+
+/// Compute complex SVD directly from an Arrow complex dense matrix.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or decomposition fails.
+pub fn decompose_complex(
+    matrix: &FixedSizeListArray,
+) -> Result<crate::linalg::svd::NdarrayComplexSVD, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    Ok(crate::linalg::svd::decompose_complex_view(&matrix_view)?)
+}
+
+/// Reconstruct a dense `f32` matrix from an ndarray-native SVD result into Arrow form.
+///
+/// # Errors
+/// Returns an error when the reconstructed matrix cannot be represented as Arrow dense data.
+pub fn reconstruct_f32(
+    svd: &crate::linalg::svd::NdarraySVD<f32>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    fixed_size_list_from_owned::<Float32Type>(crate::linalg::svd::reconstruct_matrix(svd))
+}
+
+/// Reconstruct a dense `f64` matrix from an ndarray-native SVD result into Arrow form.
+///
+/// # Errors
+/// Returns an error when the reconstructed matrix cannot be represented as Arrow dense data.
+pub fn reconstruct_f64(
+    svd: &crate::linalg::svd::NdarraySVD<f64>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    fixed_size_list_from_owned::<Float64Type>(crate::linalg::svd::reconstruct_matrix(svd))
+}
+
+/// Reconstruct a dense complex matrix from an ndarray-native SVD result into Arrow form.
+///
+/// # Errors
+/// Returns an error when the reconstructed matrix cannot be represented as Arrow dense data.
+pub fn reconstruct_complex(
+    svd: &crate::linalg::svd::NdarrayComplexSVD,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    complex64_matrix_from_owned(crate::linalg::svd::reconstruct_matrix_complex(svd))
+}
+
+/// Compute the condition number from an ndarray-native real SVD result.
+pub fn condition_number<T: nabled_core::scalar::NabledReal>(
+    svd: &crate::linalg::svd::NdarraySVD<T>,
+) -> T {
+    crate::linalg::svd::condition_number(svd)
+}
+
+/// Compute the numerical rank from an ndarray-native real SVD result.
+pub fn rank<T: nabled_core::scalar::NabledReal>(
+    svd: &crate::linalg::svd::NdarraySVD<T>,
+    tolerance: Option<T>,
+) -> usize {
+    crate::linalg::svd::rank(svd, tolerance)
 }

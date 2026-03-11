@@ -101,6 +101,17 @@ pub fn dot_hermitian(
     a: &Array1<Complex64>,
     b: &Array1<Complex64>,
 ) -> Result<Complex64, VectorError> {
+    dot_hermitian_view(&a.view(), &b.view())
+}
+
+/// Compute Hermitian dot product `a^H b` for complex vector views.
+///
+/// # Errors
+/// Returns an error when vector lengths mismatch or either input is empty.
+pub fn dot_hermitian_view(
+    a: &ArrayView1<'_, Complex64>,
+    b: &ArrayView1<'_, Complex64>,
+) -> Result<Complex64, VectorError> {
     if a.is_empty() || b.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -190,9 +201,20 @@ pub fn cosine_similarity_complex(
     a: &Array1<Complex64>,
     b: &Array1<Complex64>,
 ) -> Result<Complex64, VectorError> {
-    let dot_value = dot_hermitian(a, b)?;
-    let norm_a = l2_norm_complex(a)?;
-    let norm_b = l2_norm_complex(b)?;
+    cosine_similarity_complex_view(&a.view(), &b.view())
+}
+
+/// Compute cosine similarity for complex vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, empty inputs, or zero-norm vectors.
+pub fn cosine_similarity_complex_view(
+    a: &ArrayView1<'_, Complex64>,
+    b: &ArrayView1<'_, Complex64>,
+) -> Result<Complex64, VectorError> {
+    let dot_value = dot_hermitian_view(a, b)?;
+    let norm_a = l2_norm_complex_view(a)?;
+    let norm_b = l2_norm_complex_view(b)?;
     let denominator = norm_a * norm_b;
     if denominator <= f64::EPSILON {
         return Err(VectorError::ZeroNorm);

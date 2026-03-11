@@ -868,8 +868,19 @@ pub fn cube_matmat_complex_view_into(
 /// # Errors
 /// Returns an error if input is empty.
 pub fn flatten_cubes<T: NabledReal>(cube: &Array3<T>) -> Result<Array2<T>, TensorError> {
-    let cube_view = cube.view();
-    validate_cube_non_empty(&cube_view)?;
+    flatten_cubes_view(&cube.view())
+}
+
+/// Flatten each cube slice `(rows, cols)` into one row from a view.
+///
+/// Input `(batch, rows, cols)` becomes `(batch, rows * cols)`.
+///
+/// # Errors
+/// Returns an error if input is empty.
+pub fn flatten_cubes_view<T: NabledReal>(
+    cube: &ArrayView3<'_, T>,
+) -> Result<Array2<T>, TensorError> {
+    validate_cube_non_empty(cube)?;
 
     let (batch, rows, cols) = cube.dim();
     let mut output = Array2::<T>::zeros((batch, rows * cols));
@@ -1290,6 +1301,16 @@ pub fn sum_last_axis_complex_view_into(
 /// # Errors
 /// Returns an error if tensor is empty or has zero dimensions.
 pub fn l2_norm_last_axis_complex(tensor: &ArrayD<Complex64>) -> Result<ArrayD<f64>, TensorError> {
+    l2_norm_last_axis_complex_view(&tensor.view())
+}
+
+/// Compute L2 norm along the last axis of a complex tensor view.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn l2_norm_last_axis_complex_view(
+    tensor: &ArrayViewD<'_, Complex64>,
+) -> Result<ArrayD<f64>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
 
@@ -1311,10 +1332,20 @@ pub fn l2_norm_last_axis_complex(tensor: &ArrayD<Complex64>) -> Result<ArrayD<f6
 pub fn normalize_last_axis_complex(
     tensor: &ArrayD<Complex64>,
 ) -> Result<ArrayD<Complex64>, TensorError> {
+    normalize_last_axis_complex_view(&tensor.view())
+}
+
+/// Normalize complex tensor values along the last axis from a tensor view.
+///
+/// # Errors
+/// Returns an error if tensor is empty or has zero dimensions.
+pub fn normalize_last_axis_complex_view(
+    tensor: &ArrayViewD<'_, Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
 
-    let mut output = tensor.clone();
+    let mut output = tensor_view.to_owned();
     let axis = Axis(tensor_view.ndim() - 1);
     for mut lane in output.lanes_mut(axis) {
         let norm = lane.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
@@ -1336,6 +1367,20 @@ pub fn normalize_last_axis_complex(
 pub fn batched_dot_last_axis_complex(
     left: &ArrayD<Complex64>,
     right: &ArrayD<Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
+    batched_dot_last_axis_complex_view(&left.view(), &right.view())
+}
+
+/// Compute batched complex dot products along the last axis of two tensor views.
+///
+/// The input tensors must have identical shape and `ndim >= 1`.
+/// Output shape is the input shape without the last axis.
+///
+/// # Errors
+/// Returns an error if inputs are empty or dimensions are incompatible.
+pub fn batched_dot_last_axis_complex_view(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
 ) -> Result<ArrayD<Complex64>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
@@ -1368,6 +1413,17 @@ pub fn batched_dot_last_axis_complex(
 /// Returns an error if the tensor is empty, has zero dimensions, or permutation is invalid.
 pub fn permute_axes_complex(
     tensor: &ArrayD<Complex64>,
+    permutation: &[usize],
+) -> Result<ArrayD<Complex64>, TensorError> {
+    permute_axes_complex_view(&tensor.view(), permutation)
+}
+
+/// Permute complex tensor axes from a tensor view using an explicit axis ordering.
+///
+/// # Errors
+/// Returns an error if the tensor is empty, has zero dimensions, or permutation is invalid.
+pub fn permute_axes_complex_view(
+    tensor: &ArrayViewD<'_, Complex64>,
     permutation: &[usize],
 ) -> Result<ArrayD<Complex64>, TensorError> {
     let tensor_view = tensor.view();
@@ -1843,6 +1899,21 @@ pub fn einsum<T: NabledReal>(
     left: &ArrayD<T>,
     right: &ArrayD<T>,
 ) -> Result<ArrayD<T>, TensorError> {
+    einsum_view(expression, &left.view(), &right.view())
+}
+
+/// Evaluate two-operand Einstein summation over real tensor views.
+///
+/// Expression format: `"labels_left,labels_right->labels_out"`, for example
+/// `"bij,bjk->bik"` or `"ab,bc->ac"`.
+///
+/// # Errors
+/// Returns an error if expression syntax is invalid or dimensions are incompatible.
+pub fn einsum_view<T: NabledReal>(
+    expression: &str,
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
+) -> Result<ArrayD<T>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
@@ -1862,6 +1933,21 @@ pub fn einsum_complex(
     expression: &str,
     left: &ArrayD<Complex64>,
     right: &ArrayD<Complex64>,
+) -> Result<ArrayD<Complex64>, TensorError> {
+    einsum_complex_view(expression, &left.view(), &right.view())
+}
+
+/// Evaluate two-operand Einstein summation over complex tensor views.
+///
+/// Expression format: `"labels_left,labels_right->labels_out"`, for example
+/// `"bij,bjk->bik"` or `"ab,bc->ac"`.
+///
+/// # Errors
+/// Returns an error if expression syntax is invalid or dimensions are incompatible.
+pub fn einsum_complex_view(
+    expression: &str,
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
 ) -> Result<ArrayD<Complex64>, TensorError> {
     let left_view = left.view();
     let right_view = right.view();

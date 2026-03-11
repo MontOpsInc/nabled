@@ -2,11 +2,15 @@
 
 use arrow_array::types::ArrowPrimitiveType;
 use arrow_array::{FixedSizeListArray, PrimitiveArray};
+use arrow_schema::Field;
 use nabled_core::scalar::NabledReal;
+use ndarray::Array1;
 use ndarrow::NdarrowElement;
+use num_complex::Complex64;
 
 use super::{
-    ArrowInteropError, fixed_size_list_from_owned, fixed_size_list_view, primitive_array_view,
+    ArrowInteropError, complex64_vector_from_owned, complex64_vector_view,
+    fixed_size_list_from_owned, fixed_size_list_view, primitive_array_view,
 };
 
 /// Compute dot product directly from Arrow primitive arrays.
@@ -155,4 +159,47 @@ where
     let right_view = fixed_size_list_view::<T>(right)?;
     let output = crate::linalg::vector::batched_dot_view(&left_view, &right_view)?;
     Ok(super::primitive_array_from_owned::<T>(output))
+}
+
+/// Compute Hermitian dot product directly from Arrow complex extension vectors.
+///
+/// # Errors
+/// Returns an error when either complex vector contains nulls, is empty, or lengths mismatch.
+pub fn dot_hermitian(
+    left_field: &Field,
+    left: &FixedSizeListArray,
+    right_field: &Field,
+    right: &FixedSizeListArray,
+) -> Result<Complex64, ArrowInteropError> {
+    let left_view = complex64_vector_view(left_field, left)?;
+    let right_view = complex64_vector_view(right_field, right)?;
+    Ok(crate::linalg::vector::dot_hermitian_view(&left_view, &right_view)?)
+}
+
+/// Compute complex-vector L2 norm directly from an Arrow complex extension vector.
+///
+/// # Errors
+/// Returns an error when the vector contains nulls or is empty.
+pub fn l2_norm_complex(
+    field: &Field,
+    vector: &FixedSizeListArray,
+) -> Result<f64, ArrowInteropError> {
+    let vector_view = complex64_vector_view(field, vector)?;
+    Ok(crate::linalg::vector::l2_norm_complex_view(&vector_view)?)
+}
+
+/// Compute complex cosine similarity directly from Arrow complex extension vectors.
+///
+/// # Errors
+/// Returns an error when inputs contain nulls, are empty, lengths mismatch, or norms vanish.
+pub fn cosine_similarity_complex(
+    left_field: &Field,
+    left: &FixedSizeListArray,
+    right_field: &Field,
+    right: &FixedSizeListArray,
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError> {
+    let left_view = complex64_vector_view(left_field, left)?;
+    let right_view = complex64_vector_view(right_field, right)?;
+    let value = crate::linalg::vector::cosine_similarity_complex_view(&left_view, &right_view)?;
+    complex64_vector_from_owned("cosine_similarity", Array1::from_vec(vec![value]))
 }

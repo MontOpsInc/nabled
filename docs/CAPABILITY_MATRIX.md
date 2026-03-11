@@ -96,7 +96,7 @@ Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATA
 |---|---|---|
 | Tensor/cube-focused higher-rank APIs | Implemented | Required v1 tensor surface is complete; future expansion targets broader tensor algebra depth (for example higher-order decompositions/networks). |
 | GPU and future multi-node kernels | Implemented | Required v1 GPU surface is complete with dense/vector/tensor, sparse (`matvec`, sparse-dense, sparse-sparse), triangular solve kernels, and complex tensor kernels (via decomposition) (`f32` native, `f64` conditional on `SHADER_F64`); future expansion targets broader dtype/op coverage and explicit multi-node orchestration. |
-| Arrow-aware facade interop surface | Partial | `nabled::arrow` is landed behind feature `arrow`, backed by `ndarrow`; current coverage now spans the implementable real-valued dense/sparse/tensor/batched/ML facade workflows under the current explicit contracts, while core crates remain Arrow-free. Direct-ingress domain coverage and remaining intentional gaps are tracked in `docs/ARROW_SUPPORT_MATRIX.md`. |
+| Arrow-aware facade interop surface | Implemented | `nabled::arrow` is landed behind feature `arrow`, backed by `ndarrow`; direct-ingress coverage is now full under the current explicit contract while core crates remain Arrow-free. Domain-by-domain coverage, result-contract boundaries, and future-expansion decisions are tracked in `docs/ARROW_SUPPORT_MATRIX.md` and `docs/NDARROW_INTEGRATION.md`. |
 
 ## Sufficiency Verdict
 

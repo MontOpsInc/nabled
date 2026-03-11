@@ -81,8 +81,8 @@ nabled = { version = "0.0.5", features = ["arrow"] }
 Arrow interop notes:
 
 1. Arrow awareness is isolated to facade crate `nabled`; lower crates remain ndarray-native.
-2. Direct Arrow ingress now spans the implementable real-valued dense, sparse, tensor, batched,
-   and ML/stat workflows under the current explicit contracts.
+2. Direct Arrow ingress now spans the full currently admitted facade surface across dense, sparse,
+   decomposition, tensor, batched, and ML/stat workflows under the current explicit contracts.
 3. Arrow wrappers delegate to the same ndarray-native execution paths, so provider backends,
    GPU/backend routing, and MAGMA behavior are inherited rather than reimplemented.
 4. Exact direct-ingress coverage is tracked in `docs/ARROW_SUPPORT_MATRIX.md`.
@@ -111,6 +111,7 @@ Current Arrow-ingress coverage includes:
 4. Batched decomposition helpers
 5. Tensor fixed-shape workflows
 6. Iterative solvers, Jacobian tools, optimization, PCA, regression, and stats
+7. Real and complex workflows where the Arrow boundary contract is explicit and natural
 
 For exact module-by-module coverage and intentional remaining gaps, see:
 
