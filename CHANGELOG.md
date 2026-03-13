@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Refactor
+
+- Expands ndarrow interface to cover advanced and row-based cases ([4b12dbe](https://github.com/MontOpsInc/nabled/commit/4b12dbe3c9c7d6519a0691fb9a89cb9f4eb40b07))
+
+## [0.0.6] - 2026-03-11
+
 ### Bug Fixes
 
 - Finishes the ndarrow facade surface ([ff53071](https://github.com/MontOpsInc/nabled/commit/ff530714774f8e9b13f609c2b65aba08bc2a8600))
@@ -14,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 
 - Introduces arrow apis through ndarrow ([e077e1d](https://github.com/MontOpsInc/nabled/commit/e077e1d1e95d3f83eb8de6da62e86c6162cbf068))
+
+### Miscellaneous Tasks
+
+- Prepare release v0.0.6 ([#20](https://github.com/MontOpsInc/nabled/issues/20)) ([6839724](https://github.com/MontOpsInc/nabled/commit/68397244efd281b254afc0c9d7b1dafc46270253))
 
 ## [0.0.5] - 2026-03-09
 

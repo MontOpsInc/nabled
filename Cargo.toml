@@ -14,7 +14,7 @@ default-members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.0.6"
+version = "0.0.7"
 edition = "2024"
 rust-version = "1.92"
 authors = ["Niklaus Parcell <nik.parcell@gmail.com>", "George Lee Patterson <patterson.george@gmail.com>"]
@@ -25,10 +25,10 @@ documentation = "https://docs.rs/nabled"
 publish = true
 
 [workspace.dependencies]
-nabled = { path = "crates/nabled", version = "=0.0.6" }
-nabled-core = { path = "crates/nabled-core", version = "=0.0.6" }
-nabled-linalg = { path = "crates/nabled-linalg", version = "=0.0.6" }
-nabled-ml = { path = "crates/nabled-ml", version = "=0.0.6" }
+nabled = { path = "crates/nabled", version = "=0.0.7" }
+nabled-core = { path = "crates/nabled-core", version = "=0.0.7" }
+nabled-linalg = { path = "crates/nabled-linalg", version = "=0.0.7" }
+nabled-ml = { path = "crates/nabled-ml", version = "=0.0.7" }
 
 approx = "0.5"
 arrow-array = "58"
