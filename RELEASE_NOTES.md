@@ -1,11 +1,7 @@
-## [0.0.6] - 2026-03-11
+## [0.0.7] - 2026-03-13
 
-### Bug Fixes
+### Refactor
 
-- Finishes the ndarrow facade surface ([ff53071](https://github.com/MontOpsInc/nabled/commit/ff530714774f8e9b13f609c2b65aba08bc2a8600))
-
-### Features
-
-- Introduces arrow apis through ndarrow ([e077e1d](https://github.com/MontOpsInc/nabled/commit/e077e1d1e95d3f83eb8de6da62e86c6162cbf068))
+- Expands ndarrow interface to cover advanced and row-based cases ([4b12dbe](https://github.com/MontOpsInc/nabled/commit/4b12dbe3c9c7d6519a0691fb9a89cb9f4eb40b07))
 
 
