@@ -1,6 +1,6 @@
 # Capability Matrix
 
-Last updated: 2026-03-09
+Last updated: 2026-03-12
 
 ## Purpose
 
@@ -96,17 +96,19 @@ Canonical kernel-family scope and wiring status are tracked in `docs/KERNEL_CATA
 |---|---|---|
 | Tensor/cube-focused higher-rank APIs | Implemented | Required v1 tensor surface is complete; future expansion targets broader tensor algebra depth (for example higher-order decompositions/networks). |
 | GPU and future multi-node kernels | Implemented | Required v1 GPU surface is complete with dense/vector/tensor, sparse (`matvec`, sparse-dense, sparse-sparse), triangular solve kernels, and complex tensor kernels (via decomposition) (`f32` native, `f64` conditional on `SHADER_F64`); future expansion targets broader dtype/op coverage and explicit multi-node orchestration. |
-| Arrow-aware facade interop surface | Implemented | `nabled::arrow` is landed behind feature `arrow`, backed by `ndarrow`; direct-ingress coverage is now full under the current explicit contract while core crates remain Arrow-free. Domain-by-domain coverage, result-contract boundaries, and future-expansion decisions are tracked in `docs/ARROW_SUPPORT_MATRIX.md` and `docs/NDARROW_INTEGRATION.md`. |
+| Arrow-aware facade interop surface | Implemented | `nabled::arrow` is landed behind feature `arrow`, backed by `ndarrow`, and checkpoint 2 is now complete under the concept-first standalone / `rows-of-X` contract. Domain-by-domain entrypoints exist broadly and concept-family release readiness is tracked in `docs/ARROW_SUPPORT_MATRIX.md` and `docs/NDARROW_INTEGRATION.md`. |
 
 ## Sufficiency Verdict
 
-`nabled` now satisfies the declared v1 capability scope in this matrix.
+`nabled` satisfies the declared ndarray-native v1 capability scope in this matrix, including the
+current concept-first Arrow façade checkpoint.
 
 Primary remaining work:
 1. Benchmark-driven optimization and outlier remediation.
 2. `K-*` cleanup/normalization passes (provider/backend/kernel ownership boundaries and remaining orchestration cleanup).
 3. Advanced tensor algebra depth beyond the v1 contract.
 4. Advanced GPU and multi-node breadth beyond the bounded v1 GPU contract.
+5. Downstream validation of the stabilized Arrow contract in `ndatafusion` and later consumers.
 
 ## Execution Order Driven by This Matrix
 

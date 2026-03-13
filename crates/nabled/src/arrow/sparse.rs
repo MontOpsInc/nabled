@@ -1,7 +1,7 @@
 //! Arrow adapters for sparse CSR primitives.
 
 use arrow_array::types::ArrowPrimitiveType;
-use arrow_array::{FixedSizeListArray, ListArray, PrimitiveArray, StructArray};
+use arrow_array::{Array, FixedSizeListArray, ListArray, PrimitiveArray, StructArray};
 use arrow_schema::Field;
 use nabled_core::scalar::NabledReal;
 use ndarrow::NdarrowElement;
@@ -11,6 +11,8 @@ use super::{
     fixed_size_list_from_owned, fixed_size_list_view, primitive_array_from_owned,
     primitive_array_view,
 };
+
+type CsrBatchRowParts<T> = ([usize; 2], Vec<i32>, Vec<u32>, Vec<T>);
 
 macro_rules! sparse_iterative_solver_wrappers {
     ($columns_name:ident, $extension_name:ident, $call:path) => {
@@ -60,6 +62,30 @@ macro_rules! sparse_iterative_solver_wrappers {
             Ok(primitive_array_from_owned::<T>(output))
         }
     };
+}
+
+fn csr_matrix_to_batch_parts<T: NabledReal>(
+    matrix: crate::linalg::sparse::CsrMatrix<T>,
+) -> Result<CsrBatchRowParts<T>, ArrowInteropError> {
+    let row_ptrs = matrix
+        .indptr
+        .into_iter()
+        .map(|index| {
+            i32::try_from(index).map_err(|_| ndarrow::NdarrowError::ShapeMismatch {
+                message: format!("CSR row pointer {index} exceeds i32 limits for batch output"),
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let col_indices = matrix
+        .indices
+        .into_iter()
+        .map(|index| {
+            u32::try_from(index).map_err(|_| ndarrow::NdarrowError::ShapeMismatch {
+                message: format!("CSR column index {index} exceeds u32 limits for batch output"),
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(([matrix.nrows, matrix.ncols], row_ptrs, col_indices, matrix.data))
 }
 
 /// Compute sparse-dense `y = A x` directly from Arrow CSR columns and an Arrow dense vector.
@@ -343,6 +369,210 @@ where
     let left_view = csr_matrix_view_from_extension::<T>(left_field, left)?;
     let right_view = csr_matrix_view_from_extension::<T>(right_field, right)?;
     Ok(crate::linalg::sparse::matmat_sparse_view(&left_view, &right_view)?)
+}
+
+/// Compute row-wise sparse-dense `y_i = A_i x_i` from an Arrow `ndarrow.csr_matrix_batch`
+/// extension and a variable-shape tensor batch of dense vectors.
+///
+/// # Errors
+/// Returns an error when either extension is invalid, contains nulls, batch lengths mismatch, or
+/// per-row dimensions are incompatible.
+pub fn matvec_csr_batch_extension<T>(
+    field: &Field,
+    matrices: &StructArray,
+    vectors_field: &Field,
+    vectors: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    if matrices.len() != vectors.len() {
+        return Err(ArrowInteropError::InvalidShape(format!(
+            "sparse matrix batch row count mismatch: {} vs {}",
+            matrices.len(),
+            vectors.len()
+        )));
+    }
+
+    let mut outputs = Vec::with_capacity(matrices.len());
+    let mut vector_iter = ndarrow::variable_shape_tensor_iter::<T>(vectors_field, vectors)?;
+    for matrix_row in ndarrow::csr_matrix_batch_iter::<T>(field, matrices)? {
+        let (_, matrix_view) = matrix_row?;
+        let (_, vector_view) = vector_iter.next().ok_or_else(|| {
+            ArrowInteropError::InvalidShape("dense vector batch iterator ended early".to_owned())
+        })??;
+        let vector_view = vector_view
+            .into_dimensionality::<ndarray::Ix1>()
+            .map_err(|error| ArrowInteropError::InvalidShape(error.to_string()))?;
+        let matrix_view = crate::linalg::sparse::CsrMatrixView::new(
+            matrix_view.nrows,
+            matrix_view.ncols,
+            matrix_view.row_ptrs,
+            matrix_view.col_indices,
+            matrix_view.values,
+        )?;
+        outputs.push(crate::linalg::sparse::matvec_view(&matrix_view, &vector_view)?.into_dyn());
+    }
+
+    Ok(ndarrow::arrays_to_variable_shape_tensor(field.name(), outputs, Some(vec![None]))?)
+}
+
+/// Compute row-wise sparse-dense `C_i = A_i B_i` from an Arrow `ndarrow.csr_matrix_batch`
+/// extension and a variable-shape tensor batch of dense matrices.
+///
+/// # Errors
+/// Returns an error when either extension is invalid, contains nulls, batch lengths mismatch, or
+/// per-row dimensions are incompatible.
+pub fn matmat_dense_csr_batch_extension<T>(
+    field: &Field,
+    matrices: &StructArray,
+    right_field: &Field,
+    right: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    if matrices.len() != right.len() {
+        return Err(ArrowInteropError::InvalidShape(format!(
+            "sparse matrix batch row count mismatch: {} vs {}",
+            matrices.len(),
+            right.len()
+        )));
+    }
+
+    let mut outputs = Vec::with_capacity(matrices.len());
+    let mut right_iter = ndarrow::variable_shape_tensor_iter::<T>(right_field, right)?;
+    for matrix_row in ndarrow::csr_matrix_batch_iter::<T>(field, matrices)? {
+        let (_, matrix_view) = matrix_row?;
+        let (_, right_view) = right_iter.next().ok_or_else(|| {
+            ArrowInteropError::InvalidShape("dense matrix batch iterator ended early".to_owned())
+        })??;
+        let right_view = right_view
+            .into_dimensionality::<ndarray::Ix2>()
+            .map_err(|error| ArrowInteropError::InvalidShape(error.to_string()))?;
+        let matrix_view = crate::linalg::sparse::CsrMatrixView::new(
+            matrix_view.nrows,
+            matrix_view.ncols,
+            matrix_view.row_ptrs,
+            matrix_view.col_indices,
+            matrix_view.values,
+        )?;
+        outputs
+            .push(crate::linalg::sparse::matmat_dense_view(&matrix_view, &right_view)?.into_dyn());
+    }
+
+    Ok(ndarrow::arrays_to_variable_shape_tensor(field.name(), outputs, Some(vec![None, None]))?)
+}
+
+/// Transpose each sparse matrix in an Arrow `ndarrow.csr_matrix_batch` extension.
+///
+/// # Errors
+/// Returns an error when extension metadata is invalid or any row violates CSR invariants.
+pub fn transpose_csr_batch_extension<T>(
+    field: &Field,
+    matrices: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    let mut shapes = Vec::with_capacity(matrices.len());
+    let mut row_ptrs = Vec::with_capacity(matrices.len());
+    let mut col_indices = Vec::with_capacity(matrices.len());
+    let mut values = Vec::with_capacity(matrices.len());
+
+    for matrix_row in ndarrow::csr_matrix_batch_iter::<T>(field, matrices)? {
+        let (_, matrix_view) = matrix_row?;
+        let matrix_view = crate::linalg::sparse::CsrMatrixView::new(
+            matrix_view.nrows,
+            matrix_view.ncols,
+            matrix_view.row_ptrs,
+            matrix_view.col_indices,
+            matrix_view.values,
+        )?;
+        let transposed = crate::linalg::sparse::transpose_view(&matrix_view)?;
+        let (shape, row_ptr, cols, row_values) = csr_matrix_to_batch_parts(transposed)?;
+        shapes.push(shape);
+        row_ptrs.push(row_ptr);
+        col_indices.push(cols);
+        values.push(row_values);
+    }
+
+    Ok(ndarrow::csr_batch_to_extension_array(
+        field.name(),
+        shapes,
+        row_ptrs,
+        col_indices,
+        values,
+    )?)
+}
+
+/// Compute row-wise sparse-sparse matrix products from Arrow `ndarrow.csr_matrix_batch`
+/// extensions.
+///
+/// # Errors
+/// Returns an error when either extension is invalid, contains nulls, batch lengths mismatch, or
+/// per-row dimensions are incompatible.
+pub fn matmat_sparse_csr_batch_extension<T>(
+    left_field: &Field,
+    left: &StructArray,
+    right_field: &Field,
+    right: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    if left.len() != right.len() {
+        return Err(ArrowInteropError::InvalidShape(format!(
+            "sparse matrix batch row count mismatch: {} vs {}",
+            left.len(),
+            right.len()
+        )));
+    }
+
+    let mut shapes = Vec::with_capacity(left.len());
+    let mut row_ptrs = Vec::with_capacity(left.len());
+    let mut col_indices = Vec::with_capacity(left.len());
+    let mut values = Vec::with_capacity(left.len());
+    let mut right_iter = ndarrow::csr_matrix_batch_iter::<T>(right_field, right)?;
+
+    for left_row in ndarrow::csr_matrix_batch_iter::<T>(left_field, left)? {
+        let (_, left_view) = left_row?;
+        let (_, right_view) = right_iter.next().ok_or_else(|| {
+            ArrowInteropError::InvalidShape("right sparse batch iterator ended early".to_owned())
+        })??;
+        let left_view = crate::linalg::sparse::CsrMatrixView::new(
+            left_view.nrows,
+            left_view.ncols,
+            left_view.row_ptrs,
+            left_view.col_indices,
+            left_view.values,
+        )?;
+        let right_view = crate::linalg::sparse::CsrMatrixView::new(
+            right_view.nrows,
+            right_view.ncols,
+            right_view.row_ptrs,
+            right_view.col_indices,
+            right_view.values,
+        )?;
+        let product = crate::linalg::sparse::matmat_sparse_view(&left_view, &right_view)?;
+        let (shape, row_ptr, cols, row_values) = csr_matrix_to_batch_parts(product)?;
+        shapes.push(shape);
+        row_ptrs.push(row_ptr);
+        col_indices.push(cols);
+        values.push(row_values);
+    }
+
+    Ok(ndarrow::csr_batch_to_extension_array(
+        left_field.name(),
+        shapes,
+        row_ptrs,
+        col_indices,
+        values,
+    )?)
 }
 
 /// Compute batched sparse matrix-vector products from Arrow CSR columns and an Arrow dense matrix.

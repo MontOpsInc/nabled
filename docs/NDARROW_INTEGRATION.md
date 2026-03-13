@@ -1,6 +1,6 @@
 # Ndarrow Integration
 
-Last updated: 2026-03-11
+Last updated: 2026-03-12
 
 ## Purpose
 
@@ -21,6 +21,10 @@ Define how `nabled` collaborates with `ndarrow` without compromising `nabled`'s 
 8. Arrow adapters must delegate to the canonical ndarray-native public/view entrypoint for the
    operation so providers, backends, kernels, routing, and fallback policy remain shared with
    normal ndarray users.
+9. Arrow interop is concept-first: each mathematical object family should have one canonical
+   standalone ingress and one canonical `rows-of-X` batch carrier.
+10. Standalone batching should prefer the same canonical `rows-of-X` carriers that `ndatafusion`
+    will use later; ad hoc collections of standalone Arrow objects are not canonical batch forms.
 
 ## Admission Rules
 
@@ -56,7 +60,7 @@ This means:
 
 The current facade-level Arrow adapter module is `nabled::arrow` behind feature `arrow`.
 
-Direct Arrow ingress is now complete under the current admitted contract for these public domains:
+Direct Arrow ingress exists broadly across these public domains:
 
 1. `vector`
 2. `matrix`
@@ -82,6 +86,27 @@ Direct Arrow ingress is now complete under the current admitted contract for the
 
 Detailed function-level coverage and result-contract notes live in `docs/ARROW_SUPPORT_MATRIX.md`.
 
+Checkpoint 2 under the concept-first contract is now complete. The remaining question is no longer
+"does each concept family have a canonical standalone and `rows-of-X` ingress?" but how
+downstream consumers such as `ndatafusion` compose over the now-stabilized Arrow contracts.
+
+## Concept-First Ingress Matrix
+
+This matrix is the release-checkpoint view of `nabled::arrow`:
+
+| Concept family | Standalone ingress | Canonical `rows-of-X` ingress | Current state |
+|---|---|---|---|
+| Dense vector | one vector object | `FixedSizeList<T>(D)` | Full |
+| Ragged vector / multivector | curated through variable-shape tensor workflows | `arrow.variable_shape_tensor` | Full |
+| Sparse vector | one sparse vector object | CSR rows | Full |
+| Dense matrix | one matrix object | fixed-shape tensor rank-2 carrier | Full |
+| Sparse matrix | one sparse matrix object | `ndarrow.csr_matrix_batch` | Full |
+| Fixed-shape tensor | one tensor object | `arrow.fixed_shape_tensor` | Full |
+| Variable-shape tensor | one ragged tensor object | `arrow.variable_shape_tensor` | Full |
+| Complex vector | one complex vector object | first-class complex vector batch carrier | Full |
+| Complex matrix | one complex matrix object | first-class complex matrix batch carrier | Full |
+| Complex tensor | one complex tensor object | first-class complex tensor batch carrier | Full |
+
 ## Current Data Mapping Rules
 
 1. Dense vectors: `PrimitiveArray<T>` -> `ArrayView1<T>`
@@ -89,8 +114,17 @@ Detailed function-level coverage and result-contract notes live in `docs/ARROW_S
 3. Sparse CSR:
    - Arrow columns (`List<UInt32>` + `List<T>`) -> `ndarrow::CsrView<T>` -> `nabled::sparse::CsrMatrixView`
    - `ndarrow.csr_matrix` extension -> same route
+   - `ndarrow.csr_matrix_batch` extension -> per-row `ndarrow::CsrView<T>` -> per-row `nabled::sparse::CsrMatrixView`
 4. Fixed-shape tensors:
    - canonical `arrow.fixed_shape_tensor` storage -> `ArrayViewD<T>`
+5. Variable-shape tensors:
+   - canonical `arrow.variable_shape_tensor` storage -> per-row `ArrayViewD<T>`
+6. Complex dense matrices:
+   - nested `FixedSizeList<ndarrow.complex64>(D)` -> `ArrayView2<Complex64>`
+7. Complex fixed-shape tensors:
+   - `arrow.fixed_shape_tensor<ndarrow.complex64>` -> `ArrayViewD<Complex64>`
+8. Complex variable-shape tensors:
+   - `arrow.variable_shape_tensor<ndarrow.complex64>` -> per-row `ArrayViewD<Complex64>`
 
 ## Scope Boundaries
 
@@ -116,6 +150,5 @@ Future Arrow surface should expand only when:
 ## Tracking
 
 1. `docs/ARROW_SUPPORT_MATRIX.md` is the direct-ingress coverage ledger for the current public API.
-2. Current direct-ingress coverage is complete under the locked contract; future Arrow work must
-   start by introducing an explicit new boundary or result-contract decision, not by ad hoc
-   wrapper growth.
+2. Checkpoint 2 is complete under the concept-first standalone / `rows-of-X` matrix above.
+3. Future Arrow work should preserve this matrix explicitly instead of expanding wrappers ad hoc.

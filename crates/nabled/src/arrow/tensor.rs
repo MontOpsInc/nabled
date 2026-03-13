@@ -1,18 +1,25 @@
 //! Arrow adapters for fixed-shape tensor workflows.
 
-use arrow_array::FixedSizeListArray;
 use arrow_array::types::{ArrowPrimitiveType, Float64Type};
+use arrow_array::{Array, FixedSizeListArray, StructArray};
 use arrow_schema::Field;
 use nabled_core::scalar::NabledReal;
-use ndarray::Ix3;
+use ndarray::{ArrayD, Ix3};
 use ndarrow::NdarrowElement;
 use num_complex::Complex64;
+use serde::Deserialize;
 
 use super::{
     ArrowInteropError, complex64_fixed_shape_tensor_from_owned, complex64_fixed_shape_tensor_viewd,
     complex64_matrix_from_owned, complex64_matrix_view, fixed_shape_tensor_from_owned,
     fixed_shape_tensor_viewd, fixed_size_list_from_owned, fixed_size_list_view,
 };
+
+#[derive(Debug, Deserialize)]
+struct VariableShapeTensorWireMetadata {
+    #[serde(default)]
+    uniform_shape: Option<Vec<Option<i32>>>,
+}
 
 fn fixed_shape_tensor_view3<'a, T>(
     field: &'a Field,
@@ -34,6 +41,82 @@ fn complex64_fixed_shape_tensor_view3<'a>(
     let view = complex64_fixed_shape_tensor_viewd(field, array)?;
     view.into_dimensionality::<Ix3>()
         .map_err(|error: ndarray::ShapeError| ArrowInteropError::InvalidShape(error.to_string()))
+}
+
+fn variable_shape_uniform_shape(
+    field: &Field,
+) -> Result<Option<Vec<Option<i32>>>, ArrowInteropError> {
+    let raw_metadata =
+        field.extension_type_metadata().ok_or_else(|| ndarrow::NdarrowError::InvalidMetadata {
+            message: "arrow.variable_shape_tensor metadata missing".to_owned(),
+        })?;
+    let metadata: VariableShapeTensorWireMetadata =
+        serde_json::from_str(raw_metadata).map_err(|error| {
+            ndarrow::NdarrowError::InvalidMetadata {
+                message: format!("arrow.variable_shape_tensor metadata parse failed: {error}"),
+            }
+        })?;
+    Ok(metadata.uniform_shape)
+}
+
+fn reduced_uniform_shape(mut uniform_shape: Option<Vec<Option<i32>>>) -> Option<Vec<Option<i32>>> {
+    if let Some(shape) = &mut uniform_shape {
+        let _ = shape.pop();
+    }
+    uniform_shape
+}
+
+fn collect_variable_shape_real_rows<T, F>(
+    field: &Field,
+    array: &StructArray,
+    uniform_shape: Option<Vec<Option<i32>>>,
+    mut op: F,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+    F: FnMut(&ndarray::ArrayViewD<'_, T::Native>) -> Result<ArrayD<T::Native>, ArrowInteropError>,
+{
+    let mut outputs = Vec::with_capacity(array.len());
+    for row in ndarrow::variable_shape_tensor_iter::<T>(field, array)? {
+        let (_, tensor_view) = row?;
+        outputs.push(op(&tensor_view)?);
+    }
+    Ok(ndarrow::arrays_to_variable_shape_tensor(field.name(), outputs, uniform_shape)?)
+}
+
+fn collect_variable_shape_complex_rows<F>(
+    field: &Field,
+    array: &StructArray,
+    uniform_shape: Option<Vec<Option<i32>>>,
+    mut op: F,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    F: FnMut(&ndarray::ArrayViewD<'_, Complex64>) -> Result<ArrayD<Complex64>, ArrowInteropError>,
+{
+    let mut outputs = Vec::with_capacity(array.len());
+    for row in ndarrow::complex64_variable_shape_tensor_iter(field, array)? {
+        let (_, tensor_view) = row?;
+        outputs.push(op(&tensor_view)?);
+    }
+    Ok(ndarrow::arrays_complex64_to_variable_shape_tensor(field.name(), outputs, uniform_shape)?)
+}
+
+fn collect_variable_shape_complex_norm_rows<F>(
+    field: &Field,
+    array: &StructArray,
+    uniform_shape: Option<Vec<Option<i32>>>,
+    mut op: F,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    F: FnMut(&ndarray::ArrayViewD<'_, Complex64>) -> Result<ArrayD<f64>, ArrowInteropError>,
+{
+    let mut outputs = Vec::with_capacity(array.len());
+    for row in ndarrow::complex64_variable_shape_tensor_iter(field, array)? {
+        let (_, tensor_view) = row?;
+        outputs.push(op(&tensor_view)?);
+    }
+    Ok(ndarrow::arrays_to_variable_shape_tensor(field.name(), outputs, uniform_shape)?)
 }
 
 /// Arrow-facing rank-3 CP-ALS result paired with convergence diagnostics.
@@ -244,6 +327,101 @@ where
     fixed_size_list_from_owned::<T>(output)
 }
 
+/// Sum over the last axis of a canonical `arrow.variable_shape_tensor` batch.
+///
+/// # Errors
+/// Returns an error when the input field/array do not represent a valid variable-shape tensor
+/// batch, contain nulls, or the tensor reduction fails.
+pub fn sum_last_axis_variable<T>(
+    field: &Field,
+    array: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement + Default,
+{
+    let uniform_shape = reduced_uniform_shape(variable_shape_uniform_shape(field)?);
+    collect_variable_shape_real_rows::<T, _>(field, array, uniform_shape, |tensor_view| {
+        Ok(crate::linalg::tensor::sum_last_axis_view(tensor_view)?)
+    })
+}
+
+/// Compute L2 norms over the last axis of a variable-shape tensor batch.
+///
+/// # Errors
+/// Returns an error when the input field/array do not represent a valid variable-shape tensor
+/// batch, contain nulls, or the tensor reduction fails.
+pub fn l2_norm_last_axis_variable<T>(
+    field: &Field,
+    array: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    let uniform_shape = reduced_uniform_shape(variable_shape_uniform_shape(field)?);
+    collect_variable_shape_real_rows::<T, _>(field, array, uniform_shape, |tensor_view| {
+        Ok(crate::linalg::tensor::l2_norm_last_axis_view(tensor_view)?)
+    })
+}
+
+/// Normalize a variable-shape tensor batch over the last axis.
+///
+/// # Errors
+/// Returns an error when the input field/array do not represent a valid variable-shape tensor
+/// batch, contain nulls, or normalization fails.
+pub fn normalize_last_axis_variable<T>(
+    field: &Field,
+    array: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    let uniform_shape = variable_shape_uniform_shape(field)?;
+    collect_variable_shape_real_rows::<T, _>(field, array, uniform_shape, |tensor_view| {
+        Ok(crate::linalg::tensor::normalize_last_axis_view(tensor_view)?)
+    })
+}
+
+/// Compute batched dot products over the last axis of two variable-shape tensor batches.
+///
+/// # Errors
+/// Returns an error when inputs do not represent valid variable-shape tensors, contain nulls, or
+/// dimensions are incompatible.
+pub fn batched_dot_last_axis_variable<T>(
+    left_field: &Field,
+    left: &StructArray,
+    right_field: &Field,
+    right: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    if left.len() != right.len() {
+        return Err(ArrowInteropError::InvalidShape(format!(
+            "variable-shape tensor batch row count mismatch: {} vs {}",
+            left.len(),
+            right.len()
+        )));
+    }
+
+    let uniform_shape = reduced_uniform_shape(variable_shape_uniform_shape(left_field)?);
+    let mut outputs = Vec::with_capacity(left.len());
+    let mut right_iter = ndarrow::variable_shape_tensor_iter::<T>(right_field, right)?;
+    for left_row in ndarrow::variable_shape_tensor_iter::<T>(left_field, left)? {
+        let (_, left_view) = left_row?;
+        let (_, right_view) = right_iter.next().ok_or_else(|| {
+            ArrowInteropError::InvalidShape(
+                "variable-shape tensor batch iterator ended early".to_owned(),
+            )
+        })??;
+        outputs.push(crate::linalg::tensor::batched_dot_last_axis_view(&left_view, &right_view)?);
+    }
+    Ok(ndarrow::arrays_to_variable_shape_tensor(left_field.name(), outputs, uniform_shape)?)
+}
+
 /// Sum over the last axis of a complex fixed-shape tensor batch.
 ///
 /// # Errors
@@ -255,6 +433,20 @@ pub fn sum_last_axis_complex(
     let tensor_view = complex64_fixed_shape_tensor_viewd(field, array)?;
     let output = crate::linalg::tensor::sum_last_axis_complex_view(&tensor_view)?;
     complex64_fixed_shape_tensor_from_owned(field.name(), output)
+}
+
+/// Sum over the last axis of a complex variable-shape tensor batch.
+///
+/// # Errors
+/// Returns an error when the tensor metadata is invalid, contains nulls, or the reduction fails.
+pub fn sum_last_axis_variable_complex(
+    field: &Field,
+    array: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError> {
+    let uniform_shape = reduced_uniform_shape(variable_shape_uniform_shape(field)?);
+    collect_variable_shape_complex_rows(field, array, uniform_shape, |tensor_view| {
+        Ok(crate::linalg::tensor::sum_last_axis_complex_view(tensor_view)?)
+    })
 }
 
 /// Compute L2 norms over the last axis of a complex fixed-shape tensor batch.
@@ -270,6 +462,20 @@ pub fn l2_norm_last_axis_complex(
     fixed_shape_tensor_from_owned::<Float64Type>(field.name(), output)
 }
 
+/// Compute L2 norms over the last axis of a complex variable-shape tensor batch.
+///
+/// # Errors
+/// Returns an error when the tensor metadata is invalid, contains nulls, or the reduction fails.
+pub fn l2_norm_last_axis_variable_complex(
+    field: &Field,
+    array: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError> {
+    let uniform_shape = reduced_uniform_shape(variable_shape_uniform_shape(field)?);
+    collect_variable_shape_complex_norm_rows(field, array, uniform_shape, |tensor_view| {
+        Ok(crate::linalg::tensor::l2_norm_last_axis_complex_view(tensor_view)?)
+    })
+}
+
 /// Normalize a complex fixed-shape tensor batch over the last axis.
 ///
 /// # Errors
@@ -281,6 +487,20 @@ pub fn normalize_last_axis_complex(
     let tensor_view = complex64_fixed_shape_tensor_viewd(field, array)?;
     let output = crate::linalg::tensor::normalize_last_axis_complex_view(&tensor_view)?;
     complex64_fixed_shape_tensor_from_owned(field.name(), output)
+}
+
+/// Normalize a complex variable-shape tensor batch over the last axis.
+///
+/// # Errors
+/// Returns an error when the tensor metadata is invalid, contains nulls, or normalization fails.
+pub fn normalize_last_axis_variable_complex(
+    field: &Field,
+    array: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError> {
+    let uniform_shape = variable_shape_uniform_shape(field)?;
+    collect_variable_shape_complex_rows(field, array, uniform_shape, |tensor_view| {
+        Ok(crate::linalg::tensor::normalize_last_axis_complex_view(tensor_view)?)
+    })
 }
 
 /// Compute batched complex dot products over the last axis of two fixed-shape tensor batches.
@@ -298,6 +518,46 @@ pub fn batched_dot_last_axis_complex(
     let output =
         crate::linalg::tensor::batched_dot_last_axis_complex_view(&left_view, &right_view)?;
     complex64_fixed_shape_tensor_from_owned(left_field.name(), output)
+}
+
+/// Compute batched complex dot products over the last axis of two variable-shape tensor batches.
+///
+/// # Errors
+/// Returns an error when either tensor is invalid, contains nulls, or shapes are incompatible.
+pub fn batched_dot_last_axis_variable_complex(
+    left_field: &Field,
+    left: &StructArray,
+    right_field: &Field,
+    right: &StructArray,
+) -> Result<(Field, StructArray), ArrowInteropError> {
+    if left.len() != right.len() {
+        return Err(ArrowInteropError::InvalidShape(format!(
+            "variable-shape tensor batch row count mismatch: {} vs {}",
+            left.len(),
+            right.len()
+        )));
+    }
+
+    let uniform_shape = reduced_uniform_shape(variable_shape_uniform_shape(left_field)?);
+    let mut outputs = Vec::with_capacity(left.len());
+    let mut right_iter = ndarrow::complex64_variable_shape_tensor_iter(right_field, right)?;
+    for left_row in ndarrow::complex64_variable_shape_tensor_iter(left_field, left)? {
+        let (_, left_view) = left_row?;
+        let (_, right_view) = right_iter.next().ok_or_else(|| {
+            ArrowInteropError::InvalidShape(
+                "variable-shape tensor batch iterator ended early".to_owned(),
+            )
+        })??;
+        outputs.push(crate::linalg::tensor::batched_dot_last_axis_complex_view(
+            &left_view,
+            &right_view,
+        )?);
+    }
+    Ok(ndarrow::arrays_complex64_to_variable_shape_tensor(
+        left_field.name(),
+        outputs,
+        uniform_shape,
+    )?)
 }
 
 /// Permute the axes of a complex fixed-shape tensor batch.

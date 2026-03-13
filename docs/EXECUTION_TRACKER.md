@@ -233,15 +233,14 @@ Use this file to resume work quickly after context compaction without re-auditin
 191. `D-191`: Arrow contract hardening is complete for the current round: sparse Arrow solve wrappers no longer materialize owned RHS vectors at the facade boundary, `nabled-linalg::sparse`/`nabled-ml::{jacobian,optimization}` now accept generic ndarray storage where appropriate for direct Arrow ingress, and dedicated integration coverage passes in both `arrow` and `openblas-system + arrow` modes.
 192. `D-192`: Arrow direct-ingress coverage is now full under the current explicit contract: every domain row in `docs/ARROW_SUPPORT_MATRIX.md` is `Full`, including complex workflows where the Arrow boundary is explicit and natural, while lower crates remain Arrow-free and multi-output result structs stay ndarray-native where that is still the correct contract.
 193. `D-193`: Arrow facade boundary copy-elision is complete for the current admitted surface: remaining complex QR/iterative/vector/tensor/optimization wrappers now delegate through view-native lower APIs, `nabled-ml::optimization` complex routines now accept generic ndarray storage, and `nabled::arrow` no longer materializes owned arrays at the interop boundary.
+194. `D-194`: Arrow interop has been re-baselined under the concept-first standalone / `rows-of-X` contract. Broad domain entrypoints remain landed, but checkpoint 2 is now explicitly tracked as incomplete until each concept family has a coherent canonical batch carrier and workflow surface.
+195. `D-195`: Arrow checkpoint 2 is complete under the concept-first contract: `nabled` now depends on `ndarrow 0.0.3`, dense vector batches have row-wise real/complex norms/cosine/distance/normalize over canonical `rows-of-vectors`, custom complex matrix/fixed-shape tensor codecs were replaced with `ndarrow` carriers, variable-shape tensor real/complex last-axis and batched-dot facades are landed, and sparse matrix batch workflows now admit row-wise dense matvec/matmat plus sparse transpose/matmat over `ndarrow.csr_matrix_batch`.
 
 ## Next
 
 1. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
-2. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
-3. Arrow interop direct-ingress coverage is complete under the locked contract. Further Arrow work requires an explicit decision about one of:
-   - broader Arrow-native result contracts for multi-output workflows,
-   - new admitted Arrow boundary shapes or storage contracts, or
-   - additional explicit interop contracts not yet admitted by `docs/NDARROW_INTEGRATION.md`.
+2. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
+3. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
 
 Tensor-depth stop rubric (post-v1 finite target):
 1. `D-179` TT algebra utilities (`tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, `tt_hadamard_round`) with tests/feature-matrix parity. ✅
@@ -250,7 +249,7 @@ Tensor-depth stop rubric (post-v1 finite target):
 4. After `D-182`, tensor-depth expansion returns to monitor mode; new tensor items require explicit new tracker IDs.
 
 Round scope lock:
-1. This round is facade-level Arrow interop expansion plus ongoing benchmark monitor mode.
+1. This round closed checkpoint 2 Arrow contract completion and returns the repository to ongoing benchmark monitor mode.
 2. Metal-specific work is deferred.
 3. SIMD optimization pass is deferred.
 

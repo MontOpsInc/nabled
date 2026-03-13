@@ -1,7 +1,7 @@
 //! Vector-first primitives for embedding-style workloads.
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Axis};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -62,6 +62,25 @@ fn validate_pairwise_inputs<T: NabledReal>(
         return Err(VectorError::EmptyInput);
     }
     if left.ncols() != right.ncols() {
+        return Err(VectorError::DimensionMismatch);
+    }
+    Ok(())
+}
+
+fn validate_batched_row_inputs<T: NabledReal>(rows: &ArrayView2<'_, T>) -> Result<(), VectorError> {
+    if rows.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    Ok(())
+}
+
+fn validate_batched_row_pair_inputs<T: NabledReal>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<(), VectorError> {
+    validate_batched_row_inputs(left)?;
+    validate_batched_row_inputs(right)?;
+    if left.dim() != right.dim() {
         return Err(VectorError::DimensionMismatch);
     }
     Ok(())
@@ -553,6 +572,488 @@ pub fn batched_dot_into<T: NabledReal>(
     Ok(())
 }
 
+/// Compute row-wise L2 norms for a matrix interpreted as a batch of vectors.
+///
+/// # Errors
+/// Returns an error for empty input.
+pub fn batched_l2_norm<T: NabledReal>(rows: &Array2<T>) -> Result<Array1<T>, VectorError> {
+    batched_l2_norm_view(&rows.view())
+}
+
+/// Compute row-wise L2 norms for matrix views interpreted as a batch of vectors.
+///
+/// # Errors
+/// Returns an error for empty input.
+pub fn batched_l2_norm_view<T: NabledReal>(
+    rows: &ArrayView2<'_, T>,
+) -> Result<Array1<T>, VectorError> {
+    validate_batched_row_inputs(rows)?;
+
+    let mut output = Array1::<T>::zeros(rows.nrows());
+    for (index, row) in rows.axis_iter(Axis(0)).enumerate() {
+        let sum_sq = row
+            .iter()
+            .copied()
+            .map(|value| value * value)
+            .fold(T::zero(), |acc, value| acc + value);
+        output[index] = sum_sq.sqrt();
+    }
+    Ok(output)
+}
+
+/// Compute row-wise L2 norms into `output`.
+///
+/// # Errors
+/// Returns an error for empty input or mismatched output dimensions.
+pub fn batched_l2_norm_into<T: NabledReal>(
+    rows: &Array2<T>,
+    output: &mut Array1<T>,
+) -> Result<(), VectorError> {
+    if rows.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if output.len() != rows.nrows() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    for (index, row) in rows.axis_iter(Axis(0)).enumerate() {
+        let sum_sq = row
+            .iter()
+            .copied()
+            .map(|value| value * value)
+            .fold(T::zero(), |acc, value| acc + value);
+        output[index] = sum_sq.sqrt();
+    }
+    Ok(())
+}
+
+/// Compute row-wise cosine similarities for paired batches of vectors.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_similarity<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array1<T>, VectorError> {
+    batched_cosine_similarity_view(&left.view(), &right.view())
+}
+
+/// Compute row-wise cosine similarities for paired matrix views.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_similarity_view<T: NabledReal>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<Array1<T>, VectorError> {
+    validate_batched_row_pair_inputs(left, right)?;
+
+    let mut output = Array1::<T>::zeros(left.nrows());
+    for (index, (left_row, right_row)) in
+        left.axis_iter(Axis(0)).zip(right.axis_iter(Axis(0))).enumerate()
+    {
+        let mut dot_value = T::zero();
+        let mut left_sq_sum = T::zero();
+        let mut right_sq_sum = T::zero();
+
+        for (lhs, rhs) in left_row.iter().zip(right_row.iter()) {
+            dot_value += *lhs * *rhs;
+            left_sq_sum += *lhs * *lhs;
+            right_sq_sum += *rhs * *rhs;
+        }
+
+        let denominator = left_sq_sum.sqrt() * right_sq_sum.sqrt();
+        if denominator <= T::epsilon() {
+            return Err(VectorError::ZeroNorm);
+        }
+
+        output[index] = dot_value / denominator;
+    }
+    Ok(output)
+}
+
+/// Compute row-wise cosine similarities into `output`.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_similarity_into<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+    output: &mut Array1<T>,
+) -> Result<(), VectorError> {
+    if left.is_empty() || right.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if left.dim() != right.dim() || output.len() != left.nrows() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    for (index, (left_row, right_row)) in
+        left.axis_iter(Axis(0)).zip(right.axis_iter(Axis(0))).enumerate()
+    {
+        let mut dot_value = T::zero();
+        let mut left_sq_sum = T::zero();
+        let mut right_sq_sum = T::zero();
+
+        for (lhs, rhs) in left_row.iter().zip(right_row.iter()) {
+            dot_value += *lhs * *rhs;
+            left_sq_sum += *lhs * *lhs;
+            right_sq_sum += *rhs * *rhs;
+        }
+
+        let denominator = left_sq_sum.sqrt() * right_sq_sum.sqrt();
+        if denominator <= T::epsilon() {
+            return Err(VectorError::ZeroNorm);
+        }
+
+        output[index] = dot_value / denominator;
+    }
+    Ok(())
+}
+
+/// Compute row-wise cosine distances for paired batches of vectors.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_distance<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+) -> Result<Array1<T>, VectorError> {
+    let similarity = batched_cosine_similarity(left, right)?;
+    Ok(similarity.mapv(|value| T::one() - value))
+}
+
+/// Compute row-wise cosine distances for paired matrix views.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_distance_view<T: NabledReal>(
+    left: &ArrayView2<'_, T>,
+    right: &ArrayView2<'_, T>,
+) -> Result<Array1<T>, VectorError> {
+    let similarity = batched_cosine_similarity_view(left, right)?;
+    Ok(similarity.mapv(|value| T::one() - value))
+}
+
+/// Compute row-wise cosine distances into `output`.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_distance_into<T: NabledReal>(
+    left: &Array2<T>,
+    right: &Array2<T>,
+    output: &mut Array1<T>,
+) -> Result<(), VectorError> {
+    batched_cosine_similarity_into(left, right, output)?;
+    output.mapv_inplace(|value| T::one() - value);
+    Ok(())
+}
+
+/// Normalize each row in a matrix interpreted as a batch of vectors.
+///
+/// # Errors
+/// Returns an error for empty input.
+pub fn batched_normalize<T: NabledReal>(rows: &Array2<T>) -> Result<Array2<T>, VectorError> {
+    batched_normalize_view(&rows.view())
+}
+
+/// Normalize each row in a matrix view interpreted as a batch of vectors.
+///
+/// # Errors
+/// Returns an error for empty input.
+pub fn batched_normalize_view<T: NabledReal>(
+    rows: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, VectorError> {
+    validate_batched_row_inputs(rows)?;
+
+    let mut output = rows.to_owned();
+    for mut row in output.axis_iter_mut(Axis(0)) {
+        let norm = row
+            .iter()
+            .copied()
+            .map(|value| value * value)
+            .fold(T::zero(), |acc, value| acc + value)
+            .sqrt();
+        let denominator = norm.max(T::epsilon());
+        for value in &mut row {
+            *value /= denominator;
+        }
+    }
+    Ok(output)
+}
+
+/// Normalize each row into `output`.
+///
+/// # Errors
+/// Returns an error for empty input or mismatched output dimensions.
+pub fn batched_normalize_into<T: NabledReal>(
+    rows: &Array2<T>,
+    output: &mut Array2<T>,
+) -> Result<(), VectorError> {
+    if rows.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if output.dim() != rows.dim() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    output.assign(rows);
+    for mut row in output.axis_iter_mut(Axis(0)) {
+        let norm = row
+            .iter()
+            .copied()
+            .map(|value| value * value)
+            .fold(T::zero(), |acc, value| acc + value)
+            .sqrt();
+        let denominator = norm.max(T::epsilon());
+        for value in &mut row {
+            *value /= denominator;
+        }
+    }
+    Ok(())
+}
+
+/// Compute row-wise Hermitian dot products for paired batches of complex vectors.
+///
+/// # Errors
+/// Returns an error for empty input or mismatched dimensions.
+pub fn batched_dot_hermitian(
+    left: &Array2<Complex64>,
+    right: &Array2<Complex64>,
+) -> Result<Array1<Complex64>, VectorError> {
+    batched_dot_hermitian_view(&left.view(), &right.view())
+}
+
+/// Compute row-wise Hermitian dot products for paired complex matrix views.
+///
+/// # Errors
+/// Returns an error for empty input or mismatched dimensions.
+pub fn batched_dot_hermitian_view(
+    left: &ArrayView2<'_, Complex64>,
+    right: &ArrayView2<'_, Complex64>,
+) -> Result<Array1<Complex64>, VectorError> {
+    if left.is_empty() || right.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if left.dim() != right.dim() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    let mut output = Array1::<Complex64>::zeros(left.nrows());
+    for (index, (left_row, right_row)) in
+        left.axis_iter(Axis(0)).zip(right.axis_iter(Axis(0))).enumerate()
+    {
+        output[index] =
+            left_row.iter().zip(right_row.iter()).map(|(lhs, rhs)| lhs.conj() * *rhs).sum();
+    }
+    Ok(output)
+}
+
+/// Compute row-wise Hermitian dot products into `output`.
+///
+/// # Errors
+/// Returns an error for empty input or mismatched dimensions.
+pub fn batched_dot_hermitian_into(
+    left: &Array2<Complex64>,
+    right: &Array2<Complex64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), VectorError> {
+    if left.is_empty() || right.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if left.dim() != right.dim() || output.len() != left.nrows() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    for (index, (left_row, right_row)) in
+        left.axis_iter(Axis(0)).zip(right.axis_iter(Axis(0))).enumerate()
+    {
+        output[index] =
+            left_row.iter().zip(right_row.iter()).map(|(lhs, rhs)| lhs.conj() * *rhs).sum();
+    }
+    Ok(())
+}
+
+/// Compute row-wise complex L2 norms for a matrix interpreted as a batch of vectors.
+///
+/// # Errors
+/// Returns an error for empty input.
+pub fn batched_l2_norm_complex(rows: &Array2<Complex64>) -> Result<Array1<f64>, VectorError> {
+    batched_l2_norm_complex_view(&rows.view())
+}
+
+/// Compute row-wise complex L2 norms for matrix views interpreted as a batch of vectors.
+///
+/// # Errors
+/// Returns an error for empty input.
+pub fn batched_l2_norm_complex_view(
+    rows: &ArrayView2<'_, Complex64>,
+) -> Result<Array1<f64>, VectorError> {
+    if rows.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+
+    let mut output = Array1::<f64>::zeros(rows.nrows());
+    for (index, row) in rows.axis_iter(Axis(0)).enumerate() {
+        output[index] = row.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+    }
+    Ok(output)
+}
+
+/// Compute row-wise complex L2 norms into `output`.
+///
+/// # Errors
+/// Returns an error for empty input or mismatched output dimensions.
+pub fn batched_l2_norm_complex_into(
+    rows: &Array2<Complex64>,
+    output: &mut Array1<f64>,
+) -> Result<(), VectorError> {
+    if rows.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if output.len() != rows.nrows() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    for (index, row) in rows.axis_iter(Axis(0)).enumerate() {
+        output[index] = row.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+    }
+    Ok(())
+}
+
+/// Compute row-wise complex cosine similarities for paired batches of vectors.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_similarity_complex(
+    left: &Array2<Complex64>,
+    right: &Array2<Complex64>,
+) -> Result<Array1<Complex64>, VectorError> {
+    batched_cosine_similarity_complex_view(&left.view(), &right.view())
+}
+
+/// Compute row-wise complex cosine similarities for paired complex matrix views.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_similarity_complex_view(
+    left: &ArrayView2<'_, Complex64>,
+    right: &ArrayView2<'_, Complex64>,
+) -> Result<Array1<Complex64>, VectorError> {
+    if left.is_empty() || right.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if left.dim() != right.dim() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    let mut output = Array1::<Complex64>::zeros(left.nrows());
+    for (index, (left_row, right_row)) in
+        left.axis_iter(Axis(0)).zip(right.axis_iter(Axis(0))).enumerate()
+    {
+        let dot_value: Complex64 =
+            left_row.iter().zip(right_row.iter()).map(|(lhs, rhs)| lhs.conj() * *rhs).sum();
+        let left_norm = left_row.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+        let right_norm = right_row.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+        let denominator = left_norm * right_norm;
+        if denominator <= f64::EPSILON {
+            return Err(VectorError::ZeroNorm);
+        }
+        output[index] = dot_value / denominator;
+    }
+    Ok(output)
+}
+
+/// Compute row-wise complex cosine similarities into `output`.
+///
+/// # Errors
+/// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
+pub fn batched_cosine_similarity_complex_into(
+    left: &Array2<Complex64>,
+    right: &Array2<Complex64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), VectorError> {
+    if left.is_empty() || right.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if left.dim() != right.dim() || output.len() != left.nrows() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    for (index, (left_row, right_row)) in
+        left.axis_iter(Axis(0)).zip(right.axis_iter(Axis(0))).enumerate()
+    {
+        let dot_value: Complex64 =
+            left_row.iter().zip(right_row.iter()).map(|(lhs, rhs)| lhs.conj() * *rhs).sum();
+        let left_norm = left_row.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+        let right_norm = right_row.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+        let denominator = left_norm * right_norm;
+        if denominator <= f64::EPSILON {
+            return Err(VectorError::ZeroNorm);
+        }
+        output[index] = dot_value / denominator;
+    }
+    Ok(())
+}
+
+/// Normalize each row in a complex matrix interpreted as a batch of vectors.
+///
+/// # Errors
+/// Returns an error for empty input.
+pub fn batched_normalize_complex(
+    rows: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, VectorError> {
+    batched_normalize_complex_view(&rows.view())
+}
+
+/// Normalize each row in a complex matrix view interpreted as a batch of vectors.
+///
+/// # Errors
+/// Returns an error for empty input.
+pub fn batched_normalize_complex_view(
+    rows: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, VectorError> {
+    if rows.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+
+    let mut output = rows.to_owned();
+    for mut row in output.axis_iter_mut(Axis(0)) {
+        let norm = row.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+        let denominator = norm.max(f64::EPSILON);
+        for value in &mut row {
+            *value /= denominator;
+        }
+    }
+    Ok(output)
+}
+
+/// Normalize each complex row into `output`.
+///
+/// # Errors
+/// Returns an error for empty input or mismatched output dimensions.
+pub fn batched_normalize_complex_into(
+    rows: &Array2<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), VectorError> {
+    if rows.is_empty() {
+        return Err(VectorError::EmptyInput);
+    }
+    if output.dim() != rows.dim() {
+        return Err(VectorError::DimensionMismatch);
+    }
+
+    output.assign(rows);
+    for mut row in output.axis_iter_mut(Axis(0)) {
+        let norm = row.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+        let denominator = norm.max(f64::EPSILON);
+        for value in &mut row {
+            *value /= denominator;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::{arr1, arr2};
@@ -697,5 +1198,71 @@ mod tests {
                 assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-12);
             }
         }
+    }
+
+    #[test]
+    fn batched_rowwise_real_vector_kernels_match_expected() {
+        let left = arr2(&[[3.0_f64, 4.0], [1.0, 1.0]]);
+        let right = arr2(&[[4.0_f64, 3.0], [1.0, -1.0]]);
+
+        let norms = batched_l2_norm(&left).unwrap();
+        let cosine = batched_cosine_similarity(&left, &right).unwrap();
+        let distance = batched_cosine_distance(&left, &right).unwrap();
+        let normalized = batched_normalize(&left).unwrap();
+
+        assert!((norms[0] - 5.0).abs() < 1e-12);
+        assert!((norms[1] - (2.0_f64).sqrt()).abs() < 1e-12);
+        assert!((cosine[0] - 24.0_f64 / 25.0_f64).abs() < 1e-12);
+        assert!(cosine[1].abs() < 1e-12);
+        assert!((distance[0] - (1.0_f64 - 24.0_f64 / 25.0_f64)).abs() < 1e-12);
+        assert!((distance[1] - 1.0).abs() < 1e-12);
+        assert!((normalized[[0, 0]] - 0.6).abs() < 1e-12);
+        assert!((normalized[[0, 1]] - 0.8).abs() < 1e-12);
+    }
+
+    #[test]
+    fn batched_rowwise_real_vector_into_paths_work() {
+        let left = arr2(&[[3.0_f64, 4.0], [1.0, 1.0]]);
+        let right = arr2(&[[4.0_f64, 3.0], [1.0, -1.0]]);
+
+        let mut norms = Array1::<f64>::zeros(2);
+        let mut cosine = Array1::<f64>::zeros(2);
+        let mut distance = Array1::<f64>::zeros(2);
+        let mut normalized = Array2::<f64>::zeros((2, 2));
+
+        batched_l2_norm_into(&left, &mut norms).unwrap();
+        batched_cosine_similarity_into(&left, &right, &mut cosine).unwrap();
+        batched_cosine_distance_into(&left, &right, &mut distance).unwrap();
+        batched_normalize_into(&left, &mut normalized).unwrap();
+
+        assert!((norms[0] - 5.0).abs() < 1e-12);
+        assert!((cosine[0] - 24.0_f64 / 25.0_f64).abs() < 1e-12);
+        assert!((distance[1] - 1.0).abs() < 1e-12);
+        assert!((normalized[[0, 0]] - 0.6).abs() < 1e-12);
+    }
+
+    #[test]
+    fn batched_rowwise_complex_vector_kernels_match_expected() {
+        let left = arr2(&[[Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)], [
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, 2.0),
+        ]]);
+        let right = arr2(&[[Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)], [
+            Complex64::new(0.0, 2.0),
+            Complex64::new(2.0, 0.0),
+        ]]);
+
+        let dots = batched_dot_hermitian(&left, &right).unwrap();
+        let norms = batched_l2_norm_complex(&left).unwrap();
+        let cosine = batched_cosine_similarity_complex(&left, &right).unwrap();
+        let normalized = batched_normalize_complex(&left).unwrap();
+
+        assert!((dots[0] - Complex64::new(0.0, -6.0)).norm() < 1e-12);
+        assert!((dots[1] - Complex64::new(0.0, 0.0)).norm() < 1e-12);
+        assert!((norms[0] - (6.0_f64).sqrt()).abs() < 1e-12);
+        assert!(cosine[0].norm() <= 1.0 + 1e-12);
+        assert!(
+            (normalized.row(0).iter().map(Complex64::norm_sqr).sum::<f64>() - 1.0).abs() < 1e-12
+        );
     }
 }

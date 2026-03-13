@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-11
+Last updated: 2026-03-12
 
 ## Summary
 
@@ -9,7 +9,7 @@ Workspace migration for library domains is complete.
 1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`.
 2. `crates/nabled` is the facade package re-exporting workspace crates.
 3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.
-4. Facade crate `nabled` now exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; direct-ingress coverage is now full under the current explicit contract across dense, sparse, decomposition, tensor, batched, and ML/stat workflows, including complex workflows where the Arrow boundary is explicit and natural, while lower crates remain Arrow-free.
+4. Facade crate `nabled` exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; domain entrypoints exist broadly across dense, sparse, decomposition, tensor, batched, and ML/stat workflows, and checkpoint 2 is now complete under the concept-first standalone / `rows-of-X` contract.
 5. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 6. Public `*_lapack` compatibility wrappers have been removed.
 7. Dense-kernel APIs are normalized around `decompose`/domain-specific operation naming.
@@ -204,7 +204,9 @@ GPU phase-2 continuation:
 
 1. Keep `K-005` in monitor mode with repeated same-host decomposition sweeps; reopen optimization only for persistent regressions.
 2. Tensor algebra post-v1 rubric (`D-179..D-182`) is complete; tensor expansion is now monitor-only unless explicit new tracker items are approved.
-3. Arrow interop direct-ingress coverage is complete under the current contract; future Arrow work is now contract-expansion only (for example broader Arrow-native result contracts or new admitted boundary shapes), not missing surface coverage.
+3. Arrow interop checkpoint 2 is complete:
+   - the concept-family standalone / `rows-of-X` matrix is now authoritative and green
+   - downstream `ndatafusion` integration can resume against the stabilized Arrow carriers
 
 ## Completion Criteria For Migration
 
