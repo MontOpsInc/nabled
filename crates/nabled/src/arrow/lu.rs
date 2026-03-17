@@ -2,10 +2,13 @@
 
 use arrow_array::types::{Float32Type, Float64Type};
 use arrow_array::{FixedSizeListArray, PrimitiveArray};
+use arrow_schema::Field;
+use num_complex::Complex64;
 
 use super::{
-    ArrowInteropError, fixed_size_list_from_owned, fixed_size_list_view,
-    primitive_array_from_owned, primitive_array_view,
+    ArrowInteropError, complex64_matrix_from_owned, complex64_matrix_view,
+    complex64_vector_from_owned, complex64_vector_view, fixed_size_list_from_owned,
+    fixed_size_list_view, primitive_array_from_owned, primitive_array_view,
 };
 
 /// Compute `f32` LU decomposition directly from an Arrow dense matrix.
@@ -130,4 +133,41 @@ pub fn log_determinant_f64(
 ) -> Result<crate::linalg::lu::LogDetResult<f64>, ArrowInteropError> {
     let matrix_view = fixed_size_list_view::<Float64Type>(matrix)?;
     Ok(crate::linalg::lu::log_determinant_view(&matrix_view)?)
+}
+
+/// Solve a complex dense linear system directly from Arrow complex inputs.
+///
+/// # Errors
+/// Returns an error when inputs contain nulls, are empty, dimensions mismatch, or the matrix is
+/// singular.
+pub fn solve_complex(
+    matrix: &FixedSizeListArray,
+    rhs_field: &Field,
+    rhs: &FixedSizeListArray,
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    let rhs_view = complex64_vector_view(rhs_field, rhs)?;
+    let output = crate::linalg::lu::solve_complex_view(&matrix_view, &rhs_view)?;
+    complex64_vector_from_owned("lu_solve_complex", output)
+}
+
+/// Compute the complex inverse directly from Arrow complex dense input.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or is singular.
+pub fn inverse_complex(
+    matrix: &FixedSizeListArray,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    let output = crate::linalg::lu::inverse_complex_view(&matrix_view)?;
+    complex64_matrix_from_owned(output)
+}
+
+/// Compute the complex determinant directly from Arrow complex dense input.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or is singular.
+pub fn determinant_complex(matrix: &FixedSizeListArray) -> Result<Complex64, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    Ok(crate::linalg::lu::determinant_complex_view(&matrix_view)?)
 }

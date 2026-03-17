@@ -83,7 +83,10 @@ where
         .sqrt()
 }
 
-fn vector_norm_complex(vector: &Array1<Complex64>) -> f64 {
+fn vector_norm_complex<S>(vector: &ArrayBase<S, Ix1>) -> f64
+where
+    S: Data<Elem = Complex64>,
+{
     vector.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
 }
 
@@ -198,6 +201,18 @@ pub fn conjugate_gradient_complex(
     matrix_b: &Array1<Complex64>,
     config: &IterativeConfig<f64>,
 ) -> Result<Array1<Complex64>, IterativeError> {
+    conjugate_gradient_complex_view(&matrix_a.view(), &matrix_b.view(), config)
+}
+
+/// Conjugate Gradient for Hermitian positive-definite systems `Ax=b` from views.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn conjugate_gradient_complex_view(
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView1<'_, Complex64>,
+    config: &IterativeConfig<f64>,
+) -> Result<Array1<Complex64>, IterativeError> {
     if matrix_a.is_empty() || matrix_b.is_empty() {
         return Err(IterativeError::EmptyMatrix);
     }
@@ -207,7 +222,7 @@ pub fn conjugate_gradient_complex(
 
     let n = matrix_b.len();
     let mut x = Array1::<Complex64>::zeros(n);
-    let mut r = matrix_b.clone();
+    let mut r = matrix_b.to_owned();
     let mut p = r.clone();
     let mut rs_old = r.iter().zip(r.iter()).map(|(lhs, rhs)| lhs.conj() * rhs).sum::<Complex64>();
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
@@ -474,6 +489,18 @@ pub fn gmres_complex(
     matrix_b: &Array1<Complex64>,
     config: &IterativeConfig<f64>,
 ) -> Result<Array1<Complex64>, IterativeError> {
+    gmres_complex_view(&matrix_a.view(), &matrix_b.view(), config)
+}
+
+/// GMRES for general complex systems `Ax=b` from views.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn gmres_complex_view(
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView1<'_, Complex64>,
+    config: &IterativeConfig<f64>,
+) -> Result<Array1<Complex64>, IterativeError> {
     if matrix_a.is_empty() || matrix_b.is_empty() {
         return Err(IterativeError::EmptyMatrix);
     }
@@ -481,60 +508,66 @@ pub fn gmres_complex(
         return Err(IterativeError::DimensionMismatch);
     }
 
-    let n = matrix_b.len();
-    let m = n.min(config.max_iterations.max(1));
-    let mut basis = Array2::<Complex64>::zeros((n, m + 1));
-    let mut hessenberg = Array2::<Complex64>::zeros((m + 1, m));
+    let dimension = matrix_b.len();
+    let krylov_dim = dimension.min(config.max_iterations.max(1));
+    let mut basis = Array2::<Complex64>::zeros((dimension, krylov_dim + 1));
+    let mut hessenberg = Array2::<Complex64>::zeros((krylov_dim + 1, krylov_dim));
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
 
     let beta = vector_norm_complex(matrix_b);
     if beta <= tolerance {
-        return Ok(Array1::<Complex64>::zeros(n));
+        return Ok(Array1::<Complex64>::zeros(dimension));
     }
 
-    for row in 0..n {
+    for row in 0..dimension {
         basis[[row, 0]] = matrix_b[row] / beta;
     }
 
-    let mut effective_m = m;
-    for j in 0..m {
-        let mut w = matrix_a.dot(&basis.column(j));
+    let mut effective_krylov_dim = krylov_dim;
+    for column in 0..krylov_dim {
+        let mut arnoldi_vector = matrix_a.dot(&basis.column(column));
 
-        for i in 0..=j {
-            let vi = basis.column(i);
-            let hij = vi.iter().zip(w.iter()).map(|(lhs, rhs)| lhs.conj() * rhs).sum::<Complex64>();
-            hessenberg[[i, j]] = hij;
-            for row in 0..n {
-                w[row] -= hij * basis[[row, i]];
+        for basis_col in 0..=column {
+            let basis_vector = basis.column(basis_col);
+            let hessenberg_entry = basis_vector
+                .iter()
+                .zip(arnoldi_vector.iter())
+                .map(|(lhs, rhs)| lhs.conj() * rhs)
+                .sum::<Complex64>();
+            hessenberg[[basis_col, column]] = hessenberg_entry;
+            for row in 0..dimension {
+                arnoldi_vector[row] -= hessenberg_entry * basis[[row, basis_col]];
             }
         }
 
-        let norm_w = vector_norm_complex(&w);
-        hessenberg[[j + 1, j]] = Complex64::new(norm_w, 0.0);
-        if norm_w <= tolerance {
-            effective_m = j + 1;
+        let arnoldi_norm = vector_norm_complex(&arnoldi_vector);
+        hessenberg[[column + 1, column]] = Complex64::new(arnoldi_norm, 0.0);
+        if arnoldi_norm <= tolerance {
+            effective_krylov_dim = column + 1;
             break;
         }
-        for row in 0..n {
-            basis[[row, j + 1]] = w[row] / norm_w;
+        for row in 0..dimension {
+            basis[[row, column + 1]] = arnoldi_vector[row] / arnoldi_norm;
         }
     }
 
-    let h = hessenberg.slice(ndarray::s![..(effective_m + 1), ..effective_m]);
-    let h_conj_t = h.mapv(|value| value.conj()).reversed_axes();
-    let normal_matrix = h_conj_t.dot(&h);
+    let hessenberg_block =
+        hessenberg.slice(ndarray::s![..(effective_krylov_dim + 1), ..effective_krylov_dim]);
+    let hessenberg_conj_t = hessenberg_block.mapv(|value| value.conj()).reversed_axes();
+    let normal_matrix = hessenberg_conj_t.dot(&hessenberg_block);
 
-    let mut rhs_ls = Array1::<Complex64>::zeros(effective_m + 1);
-    rhs_ls[0] = Complex64::new(beta, 0.0);
-    let normal_rhs = h_conj_t.dot(&rhs_ls);
+    let mut least_squares_rhs = Array1::<Complex64>::zeros(effective_krylov_dim + 1);
+    least_squares_rhs[0] = Complex64::new(beta, 0.0);
+    let normal_rhs = hessenberg_conj_t.dot(&least_squares_rhs);
 
-    let y =
+    let least_squares_solution =
         lu::solve_complex(&normal_matrix, &normal_rhs).map_err(|_| IterativeError::Breakdown)?;
-    let x = basis.slice(ndarray::s![.., ..effective_m]).dot(&y);
+    let solution =
+        basis.slice(ndarray::s![.., ..effective_krylov_dim]).dot(&least_squares_solution);
 
-    let residual = matrix_b - &matrix_a.dot(&x);
+    let residual = matrix_b - &matrix_a.dot(&solution);
     if vector_norm_complex(&residual) <= tolerance {
-        Ok(x)
+        Ok(solution)
     } else {
         Err(IterativeError::MaxIterationsExceeded)
     }

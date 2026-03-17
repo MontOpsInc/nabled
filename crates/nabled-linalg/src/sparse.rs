@@ -1764,9 +1764,9 @@ pub fn sparse_lu_solve_with_factorization_view<
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular factors.
-pub fn sparse_lu_solve_multiple_with_factorization<T: NabledReal>(
+pub fn sparse_lu_solve_multiple_with_factorization<T: NabledReal, S: Data<Elem = T>>(
     matrix: &CsrMatrix<T>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     factorization: &SparseLUFactorization<T>,
 ) -> Result<Array2<T>, SparseError> {
     sparse_lu_solve_multiple_with_factorization_view(&matrix.as_view(), rhs, factorization)
@@ -1777,9 +1777,14 @@ pub fn sparse_lu_solve_multiple_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular factors.
-pub fn sparse_lu_solve_multiple_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn sparse_lu_solve_multiple_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     factorization: &SparseLUFactorization<T>,
 ) -> Result<Array2<T>, SparseError> {
     solve_multiple_rhs_with_solver_view(matrix, rhs, |rhs_column| {
@@ -1845,9 +1850,9 @@ fn apply_lu_preconditioner<T: NabledReal, S: Data<Elem = T>>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factors are singular.
-pub fn apply_ilu0_preconditioner<T: NabledReal>(
+pub fn apply_ilu0_preconditioner<T: NabledReal, S: Data<Elem = T>>(
     factorization: &ILU0Factorization<T>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     apply_lu_preconditioner(&factorization.l, &factorization.u, rhs)
 }
@@ -1858,9 +1863,9 @@ pub fn apply_ilu0_preconditioner<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factors are singular.
-pub fn apply_ilut_preconditioner<T: NabledReal>(
+pub fn apply_ilut_preconditioner<T: NabledReal, S: Data<Elem = T>>(
     factorization: &ILUTFactorization<T>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     apply_lu_preconditioner(&factorization.l, &factorization.u, rhs)
 }
@@ -1871,9 +1876,9 @@ pub fn apply_ilut_preconditioner<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factors are singular.
-pub fn apply_iluk_preconditioner<T: NabledReal>(
+pub fn apply_iluk_preconditioner<T: NabledReal, S: Data<Elem = T>>(
     factorization: &ILUKFactorization<T>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     apply_lu_preconditioner(&factorization.l, &factorization.u, rhs)
 }
@@ -1993,9 +1998,9 @@ pub fn ic0_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factors are singular.
-pub fn apply_ic0_preconditioner<T: NabledReal>(
+pub fn apply_ic0_preconditioner<T: NabledReal, S: Data<Elem = T>>(
     factorization: &IC0Factorization<T>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     if factorization.l.nrows != factorization.l.ncols
         || factorization.l_transpose.nrows != factorization.l_transpose.ncols
@@ -2180,9 +2185,9 @@ pub fn ildl0_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factors are singular.
-pub fn apply_ildl0_preconditioner<T: NabledReal>(
+pub fn apply_ildl0_preconditioner<T: NabledReal, S: Data<Elem = T>>(
     factorization: &ILDL0Factorization<T>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
 ) -> Result<Array1<T>, SparseError> {
     if factorization.l.nrows != factorization.l.ncols
         || factorization.l_transpose.nrows != factorization.l_transpose.ncols
@@ -3078,9 +3083,9 @@ pub fn matmat_sparse_view<T: NabledReal, LR: CsrIndex, LC: CsrIndex, RR: CsrInde
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn batched_matvec<T: NabledReal>(
+pub fn batched_matvec<T: NabledReal, S: Data<Elem = T>>(
     matrix: &CsrMatrix<T>,
-    batch_vectors: &Array2<T>,
+    batch_vectors: &ArrayBase<S, Ix2>,
 ) -> Result<Array2<T>, SparseError> {
     let mut output = Array2::<T>::zeros((batch_vectors.nrows(), matrix.nrows));
     batched_matvec_view_into(&matrix.as_view(), batch_vectors, &mut output)?;
@@ -3093,9 +3098,9 @@ pub fn batched_matvec<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn batched_matvec_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn batched_matvec_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    batch_vectors: &Array2<T>,
+    batch_vectors: &ArrayBase<S, Ix2>,
 ) -> Result<Array2<T>, SparseError> {
     let mut output = Array2::<T>::zeros((batch_vectors.nrows(), matrix.nrows));
     batched_matvec_view_into(matrix, batch_vectors, &mut output)?;
@@ -3106,9 +3111,9 @@ pub fn batched_matvec_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn batched_matvec_into<T: NabledReal>(
+pub fn batched_matvec_into<T: NabledReal, S: Data<Elem = T>>(
     matrix: &CsrMatrix<T>,
-    batch_vectors: &Array2<T>,
+    batch_vectors: &ArrayBase<S, Ix2>,
     output: &mut Array2<T>,
 ) -> Result<(), SparseError> {
     batched_matvec_view_into(&matrix.as_view(), batch_vectors, output)
@@ -3118,9 +3123,9 @@ pub fn batched_matvec_into<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
-pub fn batched_matvec_view_into<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn batched_matvec_view_into<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    batch_vectors: &Array2<T>,
+    batch_vectors: &ArrayBase<S, Ix2>,
     output: &mut Array2<T>,
 ) -> Result<(), SparseError> {
     matrix.validate()?;
@@ -4266,9 +4271,14 @@ pub fn gmres_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: 
     }
 }
 
-fn solve_multiple_rhs_with_solver_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+fn solve_multiple_rhs_with_solver_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     mut solve_column: impl FnMut(&Array1<T>) -> Result<Array1<T>, SparseError>,
 ) -> Result<Array2<T>, SparseError> {
     matrix.validate()?;

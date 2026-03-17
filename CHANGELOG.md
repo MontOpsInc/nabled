@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Refactor
+
+- Expands ndarrow interface to cover advanced and row-based cases ([4b12dbe](https://github.com/MontOpsInc/nabled/commit/4b12dbe3c9c7d6519a0691fb9a89cb9f4eb40b07))
+
+## [0.0.6] - 2026-03-11
+
+### Bug Fixes
+
+- Finishes the ndarrow facade surface ([ff53071](https://github.com/MontOpsInc/nabled/commit/ff530714774f8e9b13f609c2b65aba08bc2a8600))
+
+### Features
+
+- Introduces arrow apis through ndarrow ([e077e1d](https://github.com/MontOpsInc/nabled/commit/e077e1d1e95d3f83eb8de6da62e86c6162cbf068))
+
+### Miscellaneous Tasks
+
+- Prepare release v0.0.6 ([#20](https://github.com/MontOpsInc/nabled/issues/20)) ([6839724](https://github.com/MontOpsInc/nabled/commit/68397244efd281b254afc0c9d7b1dafc46270253))
+
+## [0.0.5] - 2026-03-09
+
 ### Bug Fixes
 
 - Expands gpu support for f32 ([adda852](https://github.com/MontOpsInc/nabled/commit/adda852b10ef214e095f2c4e7e508bff71867ec6))
@@ -39,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cleans up gpu remote execution scripts and dockerfile ([a139eb5](https://github.com/MontOpsInc/nabled/commit/a139eb511606805c43ed2108b5f4c4b4ebdda799))
 - Addresses bench in ci ([2531f26](https://github.com/MontOpsInc/nabled/commit/2531f26a20c231b080d326a1e7a4fac1b45dade8))
 - Stabilizing benches ([f566754](https://github.com/MontOpsInc/nabled/commit/f566754f860bdd96c180fd53279c9c9987bc8aae))
+- Prepare release v0.0.5 ([#18](https://github.com/MontOpsInc/nabled/issues/18)) ([d4bbf6b](https://github.com/MontOpsInc/nabled/commit/d4bbf6b9a81360e2de450ed8aef6ceb52704fcb2))
 
 ### Testing
 

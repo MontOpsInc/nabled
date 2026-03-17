@@ -22,6 +22,7 @@ use arrow_schema::Field;
 use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD};
 use ndarrow::{AsNdarray, NdarrowElement};
+use num_complex::Complex64;
 use thiserror::Error;
 
 pub mod batched;
@@ -203,6 +204,46 @@ where
         Arc::new(values),
         None,
     ))
+}
+
+pub(crate) fn complex64_vector_view<'a>(
+    field: &Field,
+    array: &'a FixedSizeListArray,
+) -> Result<ArrayView1<'a, Complex64>, ArrowInteropError> {
+    Ok(ndarrow::complex64_as_array_view1(field, array)?)
+}
+
+pub(crate) fn complex64_vector_from_owned(
+    field_name: &str,
+    array: Array1<Complex64>,
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError> {
+    Ok(ndarrow::array1_complex64_to_extension(field_name, array)?)
+}
+
+pub(crate) fn complex64_matrix_view(
+    array: &FixedSizeListArray,
+) -> Result<ArrayView2<'_, Complex64>, ArrowInteropError> {
+    Ok(ndarrow::complex64_as_array_view2(array)?)
+}
+
+pub(crate) fn complex64_matrix_from_owned(
+    array: Array2<Complex64>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    Ok(ndarrow::array2_complex64_to_fixed_size_list(array)?)
+}
+
+pub(crate) fn complex64_fixed_shape_tensor_viewd<'a>(
+    field: &Field,
+    array: &'a FixedSizeListArray,
+) -> Result<ArrayViewD<'a, Complex64>, ArrowInteropError> {
+    Ok(ndarrow::complex64_fixed_shape_tensor_as_array_viewd(field, array)?)
+}
+
+pub(crate) fn complex64_fixed_shape_tensor_from_owned(
+    field_name: &str,
+    array: ArrayD<Complex64>,
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError> {
+    Ok(ndarrow::arrayd_complex64_to_fixed_shape_tensor(field_name, array)?)
 }
 
 pub(crate) fn fixed_shape_tensor_from_owned<T>(

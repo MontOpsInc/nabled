@@ -752,7 +752,22 @@ pub fn decompose_reduced<T>(
 where
     T: QrProviderScalar,
 {
-    let full = decompose_view(&matrix.view(), config)?;
+    decompose_reduced_view(&matrix.view(), config)
+}
+
+/// Compute reduced (economy) QR decomposition from a view.
+///
+/// # Errors
+/// Returns an error if the matrix is empty or non-finite.
+#[cfg(feature = "lapack-provider")]
+pub fn decompose_reduced_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<QRResult<T>, QRError>
+where
+    T: QrProviderScalar,
+{
+    let full = decompose_view(matrix, config)?;
     let keep = matrix.nrows().min(matrix.ncols());
     Ok(QRResult {
         q:    full.q.slice(s![.., ..keep]).to_owned(),
@@ -771,7 +786,19 @@ pub fn decompose_reduced<T: QrInternalScalar>(
     matrix: &Array2<T>,
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError> {
-    let full = decompose_view(&matrix.view(), config)?;
+    decompose_reduced_view(&matrix.view(), config)
+}
+
+/// Compute reduced (economy) QR decomposition from a view.
+///
+/// # Errors
+/// Returns an error if the matrix is empty or non-finite.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose_reduced_view<T: QrInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<QRResult<T>, QRError> {
+    let full = decompose_view(matrix, config)?;
     let keep = matrix.nrows().min(matrix.ncols());
     Ok(QRResult {
         q:    full.q.slice(s![.., ..keep]).to_owned(),
@@ -793,9 +820,24 @@ pub fn decompose_with_pivoting<T>(
 where
     T: QrProviderScalar,
 {
+    decompose_with_pivoting_view(&matrix.view(), config)
+}
+
+/// Compute QR decomposition with column pivoting from a view.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+#[cfg(feature = "lapack-provider")]
+pub fn decompose_with_pivoting_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<QRResult<T>, QRError>
+where
+    T: QrProviderScalar,
+{
     let mut adjusted = config.clone();
     adjusted.use_pivoting = true;
-    decompose(matrix, &adjusted)
+    decompose_view(matrix, &adjusted)
 }
 
 /// Compute QR decomposition with column pivoting.
@@ -807,9 +849,21 @@ pub fn decompose_with_pivoting<T: QrInternalScalar>(
     matrix: &Array2<T>,
     config: &QRConfig<T>,
 ) -> Result<QRResult<T>, QRError> {
+    decompose_with_pivoting_view(&matrix.view(), config)
+}
+
+/// Compute QR decomposition with column pivoting from a view.
+///
+/// # Errors
+/// Returns an error if decomposition fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn decompose_with_pivoting_view<T: QrInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<QRResult<T>, QRError> {
     let mut adjusted = config.clone();
     adjusted.use_pivoting = true;
-    decompose(matrix, &adjusted)
+    decompose_view(matrix, &adjusted)
 }
 
 /// Solve least squares `argmin ||Ax - b||_2`.

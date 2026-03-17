@@ -11,6 +11,7 @@ use nabled::arrow::{
 use nabled::linalg::eigen::NonsymmetricEigenConfig;
 use nabled::linalg::qr::QRConfig;
 use nabled::linalg::svd::PseudoInverseConfig;
+use nabled::linalg::tensor::{CpAlsConfig, TtRoundConfig, TtSvdConfig};
 use nabled::ml::iterative::IterativeConfig;
 use nabled::ml::jacobian::{JacobianConfig, JacobianError};
 use nabled::ml::optimization::{
@@ -19,9 +20,13 @@ use nabled::ml::optimization::{
 };
 use ndarray::{Array1, ArrayD, IxDyn, array};
 use ndarrow::{
-    AsNdarray, IntoArrow, arrayd_to_fixed_shape_tensor, csr_to_extension_array,
-    fixed_shape_tensor_as_array_viewd, fixed_size_list_as_array2,
+    AsNdarray, IntoArrow, array2_complex64_to_fixed_size_list, arrayd_to_fixed_shape_tensor,
+    arrays_complex64_to_variable_shape_tensor, arrays_to_variable_shape_tensor,
+    complex64_as_array_view1, complex64_as_array_view2, complex64_variable_shape_tensor_iter,
+    csr_batch_to_extension_array, csr_matrix_batch_iter, csr_to_extension_array,
+    fixed_shape_tensor_as_array_viewd, fixed_size_list_as_array2, variable_shape_tensor_iter,
 };
+use num_complex::Complex64;
 
 fn tensor_arrow_f64(
     name: &str,
@@ -72,6 +77,67 @@ fn arrow_vector_workflows_cover_real_surface() {
     let batched_dot_view = batched_dot.as_ndarray().unwrap();
     assert_abs_diff_eq!(batched_dot_view[0], 0.0_f64, epsilon = 1.0e-12);
     assert_abs_diff_eq!(batched_dot_view[1], 2.0_f64, epsilon = 1.0e-12);
+
+    let batched_norms = vector::batched_l2_norm::<Float64Type>(&left_batch).unwrap();
+    let batched_norms_view = batched_norms.as_ndarray().unwrap();
+    assert_abs_diff_eq!(batched_norms_view[0], 1.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(batched_norms_view[1], (2.0_f64).sqrt(), epsilon = 1.0e-12);
+
+    let batched_cosine =
+        vector::batched_cosine_similarity::<Float64Type>(&left_batch, &right_batch).unwrap();
+    let batched_cosine_view = batched_cosine.as_ndarray().unwrap();
+    assert_abs_diff_eq!(batched_cosine_view[0], 0.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(batched_cosine_view[1], 1.0_f64, epsilon = 1.0e-12);
+
+    let batched_cosine_distance =
+        vector::batched_cosine_distance::<Float64Type>(&left_batch, &right_batch).unwrap();
+    let batched_cosine_distance_view = batched_cosine_distance.as_ndarray().unwrap();
+    assert_abs_diff_eq!(batched_cosine_distance_view[0], 1.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(batched_cosine_distance_view[1], 0.0_f64, epsilon = 1.0e-12);
+
+    let batched_normalized = vector::batched_normalize::<Float64Type>(
+        &array![[3.0_f64, 4.0], [1.0, 1.0]].into_arrow().unwrap(),
+    )
+    .unwrap();
+    let batched_normalized_view =
+        fixed_size_list_as_array2::<Float64Type>(&batched_normalized).unwrap();
+    assert_abs_diff_eq!(batched_normalized_view[[0, 0]], 0.6_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(batched_normalized_view[[0, 1]], 0.8_f64, epsilon = 1.0e-12);
+}
+
+#[test]
+fn arrow_vector_workflows_cover_complex_batch_surface() {
+    let left = array![[Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)], [
+        Complex64::new(2.0, 0.0),
+        Complex64::new(0.0, 2.0)
+    ],];
+    let right = array![[Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)], [
+        Complex64::new(0.0, 2.0),
+        Complex64::new(2.0, 0.0)
+    ],];
+
+    let left_arrow = array2_complex64_to_fixed_size_list(left.clone()).unwrap();
+    let right_arrow = array2_complex64_to_fixed_size_list(right.clone()).unwrap();
+
+    let (dot_field, dot_array) = vector::batched_dot_hermitian(&left_arrow, &right_arrow).unwrap();
+    let dot_view = complex64_as_array_view1(&dot_field, &dot_array).unwrap();
+    assert_abs_diff_eq!(dot_view[0].re, 0.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(dot_view[0].im, -6.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(dot_view[1].norm(), 0.0_f64, epsilon = 1.0e-12);
+
+    let norms = vector::batched_l2_norm_complex(&left_arrow).unwrap();
+    let norms_view = norms.as_ndarray().unwrap();
+    assert_abs_diff_eq!(norms_view[0], (6.0_f64).sqrt(), epsilon = 1.0e-12);
+
+    let (cos_field, cos_array) =
+        vector::batched_cosine_similarity_complex(&left_arrow, &right_arrow).unwrap();
+    let cosine_view = complex64_as_array_view1(&cos_field, &cos_array).unwrap();
+    assert!(cosine_view[0].norm() <= 1.0 + 1.0e-12);
+
+    let normalized = vector::batched_normalize_complex(&left_arrow).unwrap();
+    let normalized_view = complex64_as_array_view2(&normalized).unwrap();
+    let first_norm = normalized_view.row(0).iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
+    assert_abs_diff_eq!(first_norm, 1.0_f64, epsilon = 1.0e-12);
 }
 
 #[test]
@@ -649,4 +715,337 @@ fn arrow_batched_decomposition_wrappers_work() {
 
     let eigen_results = batched::symmetric_eigen_f64(&field, &array).unwrap();
     assert_eq!(eigen_results.len(), 2);
+}
+
+#[test]
+fn arrow_sparse_extended_factorization_and_reuse_workflows_work() {
+    let (field, extension) =
+        csr_to_extension_array("sparse", 4, vec![0_i32, 2, 3, 5], vec![0_u32, 2, 1, 0, 3], vec![
+            1.0_f64, 5.0, 2.0, 3.0, 4.0,
+        ])
+        .unwrap();
+    let transpose = sparse::transpose_csr_extension::<Float64Type>(&field, &extension).unwrap();
+    assert_eq!(transpose.nrows, 4);
+    assert_eq!(transpose.ncols, 3);
+
+    let csc = sparse::csr_to_csc_csr_extension::<Float64Type>(&field, &extension).unwrap();
+    assert_eq!(csc.nrows, 3);
+    assert_eq!(csc.ncols, 4);
+
+    let dense_batch = array![[1.0_f64, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]].into_arrow().unwrap();
+    let batched =
+        sparse::batched_matvec_csr_extension::<Float64Type>(&field, &extension, &dense_batch)
+            .unwrap();
+    let batched_view = fixed_size_list_as_array2::<Float64Type>(&batched).unwrap();
+    assert_eq!(batched_view.dim(), (2, 3));
+    assert_abs_diff_eq!(batched_view[[0, 0]], 1.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(batched_view[[1, 2]], 7.0_f64, epsilon = 1.0e-12);
+
+    let spd_rhs = Float64Array::from(vec![1.0, 2.0]);
+    let rhs_multi = array![[1.0_f64, 0.0], [2.0, 1.0]].into_arrow().unwrap();
+    let (spd_field, spd_extension) =
+        csr_to_extension_array("spd", 2, vec![0_i32, 2, 4], vec![0_u32, 1, 0, 1], vec![
+            4.0_f64, 1.0, 1.0, 3.0,
+        ])
+        .unwrap();
+    let jacobi =
+        sparse::jacobi_preconditioner_csr_extension::<Float64Type>(&spd_field, &spd_extension)
+            .unwrap();
+    let jacobi_applied =
+        sparse::apply_jacobi_preconditioner::<Float64Type>(&jacobi, &spd_rhs).unwrap();
+    let jacobi_view = jacobi_applied.as_ndarray().unwrap();
+    assert_abs_diff_eq!(jacobi_view[0], 0.25_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(jacobi_view[1], 2.0_f64 / 3.0_f64, epsilon = 1.0e-12);
+
+    let lu_factor =
+        sparse::sparse_lu_factor_csr_extension::<Float64Type>(&spd_field, &spd_extension).unwrap();
+    let solved = sparse::sparse_lu_solve_with_factorization_csr_extension::<Float64Type>(
+        &spd_field,
+        &spd_extension,
+        &spd_rhs,
+        &lu_factor,
+    )
+    .unwrap();
+    let solved_view = solved.as_ndarray().unwrap();
+    assert_abs_diff_eq!(solved_view[0], 1.0_f64 / 11.0, epsilon = 1.0e-10);
+    assert_abs_diff_eq!(solved_view[1], 7.0_f64 / 11.0, epsilon = 1.0e-10);
+
+    let solved_multi = sparse::sparse_lu_solve_multiple_with_factorization_csr_extension::<
+        Float64Type,
+    >(&spd_field, &spd_extension, &rhs_multi, &lu_factor)
+    .unwrap();
+    let solved_multi_view = fixed_size_list_as_array2::<Float64Type>(&solved_multi).unwrap();
+    assert_eq!(solved_multi_view.dim(), (2, 2));
+    assert_abs_diff_eq!(solved_multi_view[[0, 0]], 1.0_f64 / 11.0, epsilon = 1.0e-10);
+}
+
+#[test]
+fn arrow_tensor_advanced_decomposition_and_network_workflows_work() {
+    let (field, array) =
+        tensor_arrow_f64("tensor", &[2, 2, 2], vec![1.0, 3.0, 2.0, 6.0, 2.0, 6.0, 4.0, 12.0]);
+
+    let cp = tensor::cp_als_nd::<Float64Type>(&field, &array, 1, &CpAlsConfig::default()).unwrap();
+    let (cp_recon_field, cp_recon_array) =
+        tensor::cp_als_nd_reconstruct::<Float64Type>("cp_recon", &cp).unwrap();
+    let cp_recon_view =
+        fixed_shape_tensor_as_array_viewd::<Float64Type>(&cp_recon_field, &cp_recon_array).unwrap();
+    let original_view = fixed_shape_tensor_as_array_viewd::<Float64Type>(&field, &array).unwrap();
+    assert_eq!(cp_recon_view.shape(), original_view.shape());
+    assert_abs_diff_eq!(cp_recon_view[[1, 1, 1]], original_view[[1, 1, 1]], epsilon = 1.0e-6);
+
+    let hosvd = tensor::hosvd_nd::<Float64Type>(&field, &array, &[1, 1, 1]).unwrap();
+    let (hosvd_recon_field, hosvd_recon_array) =
+        tensor::hosvd_nd_reconstruct::<Float64Type>("hosvd_recon", &hosvd).unwrap();
+    let hosvd_recon_view =
+        fixed_shape_tensor_as_array_viewd::<Float64Type>(&hosvd_recon_field, &hosvd_recon_array)
+            .unwrap();
+    assert_eq!(hosvd_recon_view.shape(), &[2, 2, 2]);
+    assert_abs_diff_eq!(hosvd_recon_view[[0, 0, 1]], 3.0_f64, epsilon = 1.0e-6);
+
+    let tucker_core =
+        tensor::tucker_project::<Float64Type>(&field, &array, &hosvd.factors).unwrap();
+    let tucker_reexpanded =
+        tensor::tucker_expand::<Float64Type>(&tucker_core.0, &tucker_core.1, &hosvd.factors)
+            .unwrap();
+    let tucker_view = fixed_shape_tensor_as_array_viewd::<Float64Type>(
+        &tucker_reexpanded.0,
+        &tucker_reexpanded.1,
+    )
+    .unwrap();
+    assert_abs_diff_eq!(tucker_view[[1, 1, 1]], 12.0_f64, epsilon = 1.0e-6);
+
+    let tt = tensor::tt_svd::<Float64Type>(&field, &array, &TtSvdConfig::default()).unwrap();
+    let tt_norm = tensor::tt_norm(&tt).unwrap();
+    assert!(tt_norm.is_finite());
+    let tt_inner = tensor::tt_inner(&tt, &tt).unwrap();
+    assert_abs_diff_eq!(tt_inner.sqrt(), tt_norm, epsilon = 1.0e-6);
+
+    let tt_rounded = tensor::tt_round(&tt, &TtRoundConfig::default()).unwrap();
+    let (tt_recon_field, tt_recon_array) =
+        tensor::tt_svd_reconstruct::<Float64Type>("tt_recon", &tt_rounded).unwrap();
+    let tt_recon_view =
+        fixed_shape_tensor_as_array_viewd::<Float64Type>(&tt_recon_field, &tt_recon_array).unwrap();
+    assert_eq!(tt_recon_view.shape(), &[2, 2, 2]);
+    assert_abs_diff_eq!(tt_recon_view[[0, 1, 1]], 6.0_f64, epsilon = 1.0e-6);
+
+    let (left_field, left_array) =
+        tensor_arrow_f64("left", &[2, 2, 2], vec![1.0, 2.0, 3.0, 4.0, 0.0, 1.0, 1.0, 0.0]);
+    let (right_field, right_array) =
+        tensor_arrow_f64("right", &[2, 2, 2], vec![5.0, 6.0, 7.0, 8.0, 1.0, 0.0, 0.0, 1.0]);
+    let (einsum_field, einsum_array) = tensor::einsum::<Float64Type>(
+        "bij,bjk->bik",
+        &left_field,
+        &left_array,
+        &right_field,
+        &right_array,
+    )
+    .unwrap();
+    let einsum_view =
+        fixed_shape_tensor_as_array_viewd::<Float64Type>(&einsum_field, &einsum_array).unwrap();
+    assert_eq!(einsum_view.shape(), &[2, 2, 2]);
+    assert_abs_diff_eq!(einsum_view[[0, 0, 0]], 19.0_f64, epsilon = 1.0e-12);
+}
+
+#[test]
+fn arrow_variable_shape_tensor_workflows_cover_real_surface() {
+    let left_a = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![3.0_f64, 4.0, 0.0, 5.0]).unwrap();
+    let left_b = ArrayD::from_shape_vec(IxDyn(&[1, 3]), vec![8.0_f64, 15.0, 17.0]).unwrap();
+    let right_a = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![1.0_f64, 1.0, 2.0, 0.0]).unwrap();
+    let right_b = ArrayD::from_shape_vec(IxDyn(&[1, 3]), vec![1.0_f64, 0.0, 1.0]).unwrap();
+    let (field, array) =
+        arrays_to_variable_shape_tensor("ragged", vec![left_a.clone(), left_b.clone()], None)
+            .unwrap();
+    let (right_field, right_array) =
+        arrays_to_variable_shape_tensor("ragged_rhs", vec![right_a, right_b], None).unwrap();
+
+    let (sum_field, sum_array) =
+        tensor::sum_last_axis_variable::<Float64Type>(&field, &array).unwrap();
+    let mut sum_iter = variable_shape_tensor_iter::<Float64Type>(&sum_field, &sum_array).unwrap();
+    let (_, first_sum) = sum_iter.next().unwrap().unwrap();
+    let (_, second_sum) = sum_iter.next().unwrap().unwrap();
+    assert_eq!(first_sum.shape(), &[2]);
+    assert_abs_diff_eq!(first_sum[[0]], 7.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(second_sum[[0]], 40.0_f64, epsilon = 1.0e-12);
+
+    let (norm_field, norm_array) =
+        tensor::l2_norm_last_axis_variable::<Float64Type>(&field, &array).unwrap();
+    let mut norm_iter =
+        variable_shape_tensor_iter::<Float64Type>(&norm_field, &norm_array).unwrap();
+    let (_, first_norms) = norm_iter.next().unwrap().unwrap();
+    assert_abs_diff_eq!(first_norms[[0]], 5.0_f64, epsilon = 1.0e-12);
+
+    let (normalized_field, normalized_array) =
+        tensor::normalize_last_axis_variable::<Float64Type>(&field, &array).unwrap();
+    let mut normalized_iter =
+        variable_shape_tensor_iter::<Float64Type>(&normalized_field, &normalized_array).unwrap();
+    let (_, first_normalized) = normalized_iter.next().unwrap().unwrap();
+    assert_abs_diff_eq!(first_normalized[[0, 0]], 0.6_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(first_normalized[[0, 1]], 0.8_f64, epsilon = 1.0e-12);
+
+    let (dot_field, dot_array) = tensor::batched_dot_last_axis_variable::<Float64Type>(
+        &field,
+        &array,
+        &right_field,
+        &right_array,
+    )
+    .unwrap();
+    let mut dot_iter = variable_shape_tensor_iter::<Float64Type>(&dot_field, &dot_array).unwrap();
+    let (_, first_dot) = dot_iter.next().unwrap().unwrap();
+    assert_abs_diff_eq!(first_dot[[0]], 7.0_f64, epsilon = 1.0e-12);
+}
+
+#[test]
+fn arrow_variable_shape_tensor_workflows_cover_complex_surface() {
+    let complex_left_a = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
+        Complex64::new(1.0, 1.0),
+        Complex64::new(0.0, 2.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(0.0, 1.0),
+    ])
+    .unwrap();
+    let complex_left_b = ArrayD::from_shape_vec(IxDyn(&[1, 2]), vec![
+        Complex64::new(3.0, 4.0),
+        Complex64::new(0.0, 1.0),
+    ])
+    .unwrap();
+    let complex_right_a = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
+        Complex64::new(1.0, -1.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(0.0, 1.0),
+        Complex64::new(1.0, 0.0),
+    ])
+    .unwrap();
+    let complex_right_b = ArrayD::from_shape_vec(IxDyn(&[1, 2]), vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(1.0, 0.0),
+    ])
+    .unwrap();
+    let (complex_field, complex_array) = arrays_complex64_to_variable_shape_tensor(
+        "complex_ragged",
+        vec![complex_left_a, complex_left_b],
+        None,
+    )
+    .unwrap();
+    let (complex_right_field, complex_right_array) = arrays_complex64_to_variable_shape_tensor(
+        "complex_ragged_rhs",
+        vec![complex_right_a, complex_right_b],
+        None,
+    )
+    .unwrap();
+
+    let (complex_sum_field, complex_sum_array) =
+        tensor::sum_last_axis_variable_complex(&complex_field, &complex_array).unwrap();
+    let mut complex_sum_iter =
+        complex64_variable_shape_tensor_iter(&complex_sum_field, &complex_sum_array).unwrap();
+    let (_, complex_first_sum) = complex_sum_iter.next().unwrap().unwrap();
+    assert_eq!(complex_first_sum.shape(), &[2]);
+
+    let (complex_norm_field, complex_norm_array) =
+        tensor::l2_norm_last_axis_variable_complex(&complex_field, &complex_array).unwrap();
+    let mut complex_norm_iter =
+        variable_shape_tensor_iter::<Float64Type>(&complex_norm_field, &complex_norm_array)
+            .unwrap();
+    let (_, complex_first_norms) = complex_norm_iter.next().unwrap().unwrap();
+    assert_abs_diff_eq!(complex_first_norms[[0]], (6.0_f64).sqrt(), epsilon = 1.0e-12);
+
+    let (complex_normalized_field, complex_normalized_array) =
+        tensor::normalize_last_axis_variable_complex(&complex_field, &complex_array).unwrap();
+    let mut complex_normalized_iter =
+        complex64_variable_shape_tensor_iter(&complex_normalized_field, &complex_normalized_array)
+            .unwrap();
+    let (_, complex_first_normalized) = complex_normalized_iter.next().unwrap().unwrap();
+    let row_norm = complex_first_normalized
+        .index_axis(ndarray::Axis(0), 0)
+        .iter()
+        .map(Complex64::norm_sqr)
+        .sum::<f64>()
+        .sqrt();
+    assert_abs_diff_eq!(row_norm, 1.0_f64, epsilon = 1.0e-12);
+
+    let (complex_dot_field, complex_dot_array) = tensor::batched_dot_last_axis_variable_complex(
+        &complex_field,
+        &complex_array,
+        &complex_right_field,
+        &complex_right_array,
+    )
+    .unwrap();
+    let mut complex_dot_iter =
+        complex64_variable_shape_tensor_iter(&complex_dot_field, &complex_dot_array).unwrap();
+    let (_, complex_first_dot) = complex_dot_iter.next().unwrap().unwrap();
+    assert_eq!(complex_first_dot.shape(), &[2]);
+}
+
+#[test]
+fn arrow_sparse_batch_workflows_cover_rows_of_sparse_matrices() {
+    let (field, matrices) = csr_batch_to_extension_array(
+        "sparse_batch",
+        vec![[2, 2], [1, 3]],
+        vec![vec![0_i32, 1, 2], vec![0_i32, 2]],
+        vec![vec![0_u32, 1], vec![0_u32, 2]],
+        vec![vec![2.0_f64, 3.0], vec![1.0_f64, 4.0]],
+    )
+    .unwrap();
+
+    let vector_rows = vec![
+        ArrayD::from_shape_vec(IxDyn(&[2]), vec![1.0_f64, 2.0]).unwrap(),
+        ArrayD::from_shape_vec(IxDyn(&[3]), vec![1.0_f64, 0.0, 1.0]).unwrap(),
+    ];
+    let (vectors_field, vectors) =
+        arrays_to_variable_shape_tensor("vectors", vector_rows, Some(vec![None])).unwrap();
+    let (matvec_field, matvec_array) = sparse::matvec_csr_batch_extension::<Float64Type>(
+        &field,
+        &matrices,
+        &vectors_field,
+        &vectors,
+    )
+    .unwrap();
+    let mut matvec_iter =
+        variable_shape_tensor_iter::<Float64Type>(&matvec_field, &matvec_array).unwrap();
+    let (_, first_matvec) = matvec_iter.next().unwrap().unwrap();
+    let (_, second_matvec) = matvec_iter.next().unwrap().unwrap();
+    assert_abs_diff_eq!(first_matvec[[0]], 2.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(first_matvec[[1]], 6.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(second_matvec[[0]], 5.0_f64, epsilon = 1.0e-12);
+
+    let dense_rows = vec![
+        ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![1.0_f64, 0.0, 0.0, 1.0]).unwrap(),
+        ArrayD::from_shape_vec(IxDyn(&[3, 1]), vec![1.0_f64, 0.0, 1.0]).unwrap(),
+    ];
+    let (dense_field, dense_array) =
+        arrays_to_variable_shape_tensor("dense_rhs", dense_rows, Some(vec![None, None])).unwrap();
+    let (dense_out_field, dense_out_array) =
+        sparse::matmat_dense_csr_batch_extension::<Float64Type>(
+            &field,
+            &matrices,
+            &dense_field,
+            &dense_array,
+        )
+        .unwrap();
+    let mut dense_out_iter =
+        variable_shape_tensor_iter::<Float64Type>(&dense_out_field, &dense_out_array).unwrap();
+    let (_, first_dense_out) = dense_out_iter.next().unwrap().unwrap();
+    assert_abs_diff_eq!(first_dense_out[[0, 0]], 2.0_f64, epsilon = 1.0e-12);
+    assert_abs_diff_eq!(first_dense_out[[1, 1]], 3.0_f64, epsilon = 1.0e-12);
+
+    let (transpose_field, transpose_array) =
+        sparse::transpose_csr_batch_extension::<Float64Type>(&field, &matrices).unwrap();
+    let mut transpose_iter =
+        csr_matrix_batch_iter::<Float64Type>(&transpose_field, &transpose_array).unwrap();
+    let (_, first_transpose) = transpose_iter.next().unwrap().unwrap();
+    assert_eq!(first_transpose.nrows, 2);
+    assert_eq!(first_transpose.ncols, 2);
+    assert_eq!(first_transpose.col_indices, &[0_u32, 1]);
+
+    let (product_field, product_array) = sparse::matmat_sparse_csr_batch_extension::<Float64Type>(
+        &field,
+        &matrices,
+        &transpose_field,
+        &transpose_array,
+    )
+    .unwrap();
+    let mut product_iter =
+        csr_matrix_batch_iter::<Float64Type>(&product_field, &product_array).unwrap();
+    let (_, first_product) = product_iter.next().unwrap().unwrap();
+    assert_eq!(first_product.nrows, 2);
+    assert_eq!(first_product.ncols, 2);
 }

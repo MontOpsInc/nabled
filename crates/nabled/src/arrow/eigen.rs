@@ -4,7 +4,8 @@ use arrow_array::types::{Float32Type, Float64Type};
 use arrow_array::{FixedSizeListArray, PrimitiveArray};
 
 use super::{
-    ArrowInteropError, fixed_size_list_from_owned, fixed_size_list_view, primitive_array_from_owned,
+    ArrowInteropError, complex64_matrix_view, fixed_size_list_from_owned, fixed_size_list_view,
+    primitive_array_from_owned,
 };
 
 /// Compute symmetric `f32` eigen decomposition directly from an Arrow dense matrix.
@@ -133,4 +134,15 @@ pub fn nonsymmetric_bi_f64(
 ) -> Result<crate::linalg::eigen::NdarrayNonsymmetricBiEigenResult<f64>, ArrowInteropError> {
     let matrix_view = fixed_size_list_view::<Float64Type>(matrix)?;
     Ok(crate::linalg::eigen::nonsymmetric_bi_view(&matrix_view, config)?)
+}
+
+/// Compute complex non-symmetric eigen decomposition directly from Arrow complex dense input.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or eigendecomposition fails.
+pub fn nonsymmetric_complex(
+    matrix: &FixedSizeListArray,
+) -> Result<crate::linalg::eigen::NdarrayNonsymmetricEigenResult<f64>, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    Ok(crate::linalg::eigen::nonsymmetric_complex_view(&matrix_view)?)
 }

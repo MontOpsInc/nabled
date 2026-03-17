@@ -216,7 +216,10 @@ fn l2_norm<T: NabledReal, S: Data<Elem = T>>(vector: &ArrayBase<S, Ix1>) -> T {
         .sqrt()
 }
 
-fn l2_norm_complex(vector: &Array1<Complex64>) -> f64 {
+fn l2_norm_complex<S>(vector: &ArrayBase<S, Ix1>) -> f64
+where
+    S: Data<Elem = Complex64>,
+{
     vector.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt()
 }
 
@@ -232,7 +235,10 @@ fn validate_vector<T: NabledReal, S: Data<Elem = T>>(
     Ok(())
 }
 
-fn validate_vector_complex(vector: &Array1<Complex64>) -> Result<(), OptimizationError> {
+fn validate_vector_complex<S>(vector: &ArrayBase<S, Ix1>) -> Result<(), OptimizationError>
+where
+    S: Data<Elem = Complex64>,
+{
     if vector.is_empty() {
         return Err(OptimizationError::EmptyInput);
     }
@@ -353,11 +359,16 @@ fn validate_bounds<T: NabledReal, IS: Data<Elem = T>, LS: Data<Elem = T>, US: Da
     Ok(())
 }
 
-fn validate_bounds_complex(
-    initial: &Array1<Complex64>,
-    lower_bounds: &Array1<Complex64>,
-    upper_bounds: &Array1<Complex64>,
-) -> Result<(), OptimizationError> {
+fn validate_bounds_complex<IS, LS, US>(
+    initial: &ArrayBase<IS, Ix1>,
+    lower_bounds: &ArrayBase<LS, Ix1>,
+    upper_bounds: &ArrayBase<US, Ix1>,
+) -> Result<(), OptimizationError>
+where
+    IS: Data<Elem = Complex64>,
+    LS: Data<Elem = Complex64>,
+    US: Data<Elem = Complex64>,
+{
     if initial.len() != lower_bounds.len() || initial.len() != upper_bounds.len() {
         return Err(OptimizationError::DimensionMismatch);
     }
@@ -395,8 +406,8 @@ fn project_to_bounds<T: NabledReal, LS: Data<Elem = T>, US: Data<Elem = T>>(
 
 fn project_to_bounds_complex(
     point: &mut Array1<Complex64>,
-    lower_bounds: &Array1<Complex64>,
-    upper_bounds: &Array1<Complex64>,
+    lower_bounds: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
+    upper_bounds: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
 ) {
     for i in 0..point.len() {
         let real = point[i].re.clamp(lower_bounds[i].re, upper_bounds[i].re);
@@ -429,7 +440,11 @@ fn hermitian_transpose(matrix: &Array2<Complex64>) -> Array2<Complex64> {
     matrix.t().mapv(|value| value.conj())
 }
 
-fn hermitian_dot(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Complex64 {
+fn hermitian_dot<LS, RS>(left: &ArrayBase<LS, Ix1>, right: &ArrayBase<RS, Ix1>) -> Complex64
+where
+    LS: Data<Elem = Complex64>,
+    RS: Data<Elem = Complex64>,
+{
     left.iter().zip(right.iter()).map(|(lhs, rhs)| lhs.conj() * rhs).sum()
 }
 
@@ -827,8 +842,8 @@ where
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite objective evaluations.
 pub fn backtracking_line_search_complex<F, G>(
-    point: &Array1<Complex64>,
-    direction: &Array1<Complex64>,
+    point: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
+    direction: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     objective: F,
     gradient: G,
     config: &LineSearchConfig<f64>,
@@ -844,22 +859,24 @@ where
     }
     validate_line_search_config(config)?;
 
-    let grad = gradient(point);
+    let point = point.to_owned();
+    let direction = direction.to_owned();
+    let grad = gradient(&point);
     if grad.len() != point.len()
         || grad.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
     {
         return Err(OptimizationError::NonFiniteInput);
     }
 
-    let fx = objective(point);
+    let fx = objective(&point);
     if !fx.is_finite() {
         return Err(OptimizationError::NonFiniteInput);
     }
-    let directional_derivative = hermitian_dot(&grad, direction).re;
+    let directional_derivative = hermitian_dot(&grad, &direction).re;
 
     let mut alpha = config.initial_step;
     for _ in 0..config.max_iterations {
-        let candidate = point + &direction.mapv(|value| value * alpha);
+        let candidate = &point + &direction.mapv(|value| value * alpha);
         let candidate_value = objective(&candidate);
         if !candidate_value.is_finite() {
             return Err(OptimizationError::NonFiniteInput);
@@ -877,7 +894,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
 pub fn gradient_descent_complex<F, G>(
-    initial: &Array1<Complex64>,
+    initial: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     objective: F,
     gradient: G,
     config: &SGDConfig<f64>,
@@ -889,7 +906,7 @@ where
     validate_vector_complex(initial)?;
     validate_sgd_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let _ = objective(&x);
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
 
@@ -914,7 +931,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
 pub fn adam_complex<F, G>(
-    initial: &Array1<Complex64>,
+    initial: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     objective: F,
     gradient: G,
     config: &AdamConfig<f64>,
@@ -926,7 +943,7 @@ where
     validate_vector_complex(initial)?;
     validate_adam_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let mut m = Array1::<Complex64>::zeros(x.len());
     let mut v = Array1::<f64>::zeros(x.len());
     let mut beta1_power = 1.0_f64;
@@ -966,7 +983,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
 pub fn momentum_descent_complex<F, G>(
-    initial: &Array1<Complex64>,
+    initial: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     objective: F,
     gradient: G,
     config: &MomentumConfig<f64>,
@@ -978,7 +995,7 @@ where
     validate_vector_complex(initial)?;
     validate_momentum_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let mut velocity = Array1::<Complex64>::zeros(x.len());
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
 
@@ -1008,7 +1025,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
 pub fn rmsprop_complex<F, G>(
-    initial: &Array1<Complex64>,
+    initial: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     objective: F,
     gradient: G,
     config: &RMSPropConfig<f64>,
@@ -1020,7 +1037,7 @@ where
     validate_vector_complex(initial)?;
     validate_rmsprop_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let mut avg_sq = Array1::<f64>::zeros(x.len());
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
 
@@ -1052,11 +1069,11 @@ where
 /// # Errors
 /// Returns an error for invalid inputs/configuration, invalid bounds, or non-finite gradients.
 pub fn projected_gradient_descent_box_complex<F, G>(
-    initial: &Array1<Complex64>,
+    initial: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     objective: F,
     gradient: G,
-    lower_bounds: &Array1<Complex64>,
-    upper_bounds: &Array1<Complex64>,
+    lower_bounds: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
+    upper_bounds: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     config: &ProjectedGradientConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
 where
@@ -1069,7 +1086,7 @@ where
     validate_projected_gradient_config(config)?;
     validate_bounds_complex(initial, lower_bounds, upper_bounds)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     project_to_bounds_complex(&mut x, lower_bounds, upper_bounds);
     let _ = objective(&x);
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
@@ -1100,7 +1117,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
 pub fn stochastic_gradient_descent_complex<G>(
-    initial: &Array1<Complex64>,
+    initial: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     stochastic_gradient: G,
     config: &SGDConfig<f64>,
 ) -> Result<Array1<Complex64>, OptimizationError>
@@ -1110,7 +1127,7 @@ where
     validate_vector_complex(initial)?;
     validate_sgd_config(config)?;
 
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
     for iteration in 0..config.max_iterations {
         let grad = stochastic_gradient(&x, iteration);
@@ -1132,7 +1149,7 @@ where
 /// # Errors
 /// Returns an error for invalid inputs/configuration or non-finite gradients.
 pub fn bfgs_complex<F, G>(
-    initial: &Array1<Complex64>,
+    initial: &ArrayBase<impl Data<Elem = Complex64>, Ix1>,
     objective: F,
     gradient: G,
     config: &BFGSConfig<f64>,
@@ -1145,7 +1162,7 @@ where
     validate_bfgs_config(config)?;
 
     let dimension = initial.len();
-    let mut x = initial.clone();
+    let mut x = initial.to_owned();
     let mut h_inv = Array2::<Complex64>::eye(dimension);
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
 

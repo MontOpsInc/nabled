@@ -3,7 +3,10 @@
 use arrow_array::FixedSizeListArray;
 use arrow_array::types::{Float32Type, Float64Type};
 
-use super::{ArrowInteropError, fixed_size_list_from_owned, fixed_size_list_view};
+use super::{
+    ArrowInteropError, complex64_matrix_from_owned, complex64_matrix_view,
+    fixed_size_list_from_owned, fixed_size_list_view,
+};
 
 /// Compute `f32` PCA directly from Arrow dense input.
 ///
@@ -79,4 +82,40 @@ pub fn inverse_transform_f64(
     let score_view = fixed_size_list_view::<Float64Type>(scores)?;
     let output = crate::ml::pca::inverse_transform_view(&score_view, pca);
     fixed_size_list_from_owned::<Float64Type>(output)
+}
+
+/// Compute complex PCA directly from Arrow complex dense input.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or PCA fails.
+pub fn compute_complex(
+    matrix: &FixedSizeListArray,
+    n_components: Option<usize>,
+) -> Result<crate::ml::pca::NdarrayComplexPCAResult, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    Ok(crate::ml::pca::compute_pca_complex_view(&matrix_view, n_components)?)
+}
+
+/// Project complex Arrow dense data into PCA score space.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls or shape conversion fails.
+pub fn transform_complex(
+    matrix: &FixedSizeListArray,
+    pca: &crate::ml::pca::NdarrayComplexPCAResult,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    let matrix_view = complex64_matrix_view(matrix)?;
+    complex64_matrix_from_owned(crate::ml::pca::transform_complex_view(&matrix_view, pca))
+}
+
+/// Reconstruct complex Arrow dense data from PCA scores.
+///
+/// # Errors
+/// Returns an error when the score matrix contains nulls or shape conversion fails.
+pub fn inverse_transform_complex(
+    scores: &FixedSizeListArray,
+    pca: &crate::ml::pca::NdarrayComplexPCAResult,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
+    let score_view = complex64_matrix_view(scores)?;
+    complex64_matrix_from_owned(crate::ml::pca::inverse_transform_complex_view(&score_view, pca))
 }
