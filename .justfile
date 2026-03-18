@@ -236,8 +236,8 @@ release-lto example:
     cargo build -p nabled --profile=release-lto --example "{{ example }}"
     codesign -s - -v -f --entitlements assets/mac.entitlements "target/release-lto/examples/{{ example }}"
 
-example example:
-    cargo run -p nabled --example "{{ example }}"
+example example *args='':
+    cargo run -p nabled --example "{{ example }}" {{ args }}
 
 example-lto example:
     cargo run -p nabled --profile=release-lto --example "{{ example }}"
