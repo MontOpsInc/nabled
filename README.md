@@ -72,6 +72,8 @@ print("singular values:", s)
 
 The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, batched decompositions, tensor ops, regression, PCA, and statistics. See `python/pynabled/__init__.py` for the full API surface.
 
+For building with optional features (e.g. OpenBLAS, accelerator-rayon), see [BUILD.md](BUILD.md).
+
 ## Namespaced API
 
 1. `nabled::core`: shared errors, validation, and prelude exports.

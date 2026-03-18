@@ -4,6 +4,7 @@ use numpy::{PyArray1, PyArray2, PyArray3, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::error::to_py_err;
+use crate::utils;
 
 /// Batched QR decomposition. Returns list of (Q, R) tuples.
 #[pyfunction(name = "batched_qr")]
@@ -11,10 +12,10 @@ pub fn qr<'py>(
     py: Python<'py>,
     matrices: &Bound<'py, PyArray3<f64>>,
 ) -> PyResult<Vec<(Py<PyArray2<f64>>, Py<PyArray2<f64>>)>> {
+    utils::require_contiguous(matrices)?;
     let arr = matrices.readonly();
     let config = nabled_linalg::qr::QRConfig::<f64>::default();
-    let results =
-        nabled_linalg::batched::qr(&arr.as_array().to_owned(), &config).map_err(to_py_err)?;
+    let results = nabled_linalg::batched::qr_view(&arr.as_array(), &config).map_err(to_py_err)?;
     let mut out = Vec::with_capacity(results.len());
     for r in results {
         out.push((
@@ -31,8 +32,9 @@ pub fn svd<'py>(
     py: Python<'py>,
     matrices: &Bound<'py, PyArray3<f64>>,
 ) -> PyResult<Vec<(Py<PyArray2<f64>>, Py<PyArray1<f64>>, Py<PyArray2<f64>>)>> {
+    utils::require_contiguous(matrices)?;
     let arr = matrices.readonly();
-    let results = nabled_linalg::batched::svd(&arr.as_array().to_owned()).map_err(to_py_err)?;
+    let results = nabled_linalg::batched::svd_view(&arr.as_array()).map_err(to_py_err)?;
     let mut out = Vec::with_capacity(results.len());
     for r in results {
         out.push((
@@ -50,8 +52,9 @@ pub fn lu<'py>(
     py: Python<'py>,
     matrices: &Bound<'py, PyArray3<f64>>,
 ) -> PyResult<Vec<(Py<PyArray2<f64>>, Py<PyArray2<f64>>)>> {
+    utils::require_contiguous(matrices)?;
     let arr = matrices.readonly();
-    let results = nabled_linalg::batched::lu(&arr.as_array().to_owned()).map_err(to_py_err)?;
+    let results = nabled_linalg::batched::lu_view(&arr.as_array()).map_err(to_py_err)?;
     let mut out = Vec::with_capacity(results.len());
     for r in results {
         out.push((
@@ -68,9 +71,9 @@ pub fn cholesky<'py>(
     py: Python<'py>,
     matrices: &Bound<'py, PyArray3<f64>>,
 ) -> PyResult<Vec<Py<PyArray2<f64>>>> {
+    utils::require_contiguous(matrices)?;
     let arr = matrices.readonly();
-    let results =
-        nabled_linalg::batched::cholesky(&arr.as_array().to_owned()).map_err(to_py_err)?;
+    let results = nabled_linalg::batched::cholesky_view(&arr.as_array()).map_err(to_py_err)?;
     let mut out = Vec::with_capacity(results.len());
     for r in results {
         out.push(PyArray2::from_owned_array(py, r.l).unbind());
@@ -84,9 +87,10 @@ pub fn symmetric_eigen<'py>(
     py: Python<'py>,
     matrices: &Bound<'py, PyArray3<f64>>,
 ) -> PyResult<Vec<(Py<PyArray1<f64>>, Py<PyArray2<f64>>)>> {
+    utils::require_contiguous(matrices)?;
     let arr = matrices.readonly();
     let results =
-        nabled_linalg::batched::symmetric_eigen(&arr.as_array().to_owned()).map_err(to_py_err)?;
+        nabled_linalg::batched::symmetric_eigen_view(&arr.as_array()).map_err(to_py_err)?;
     let mut out = Vec::with_capacity(results.len());
     for r in results {
         out.push((

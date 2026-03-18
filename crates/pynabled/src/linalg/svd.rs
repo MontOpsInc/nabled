@@ -4,6 +4,7 @@ use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::error::to_py_err;
+use crate::utils;
 
 /// Compute the SVD of a matrix. Returns (U, singular_values, Vt).
 #[pyfunction(name = "svd_decompose")]
@@ -11,9 +12,10 @@ pub fn decompose<'py>(
     py: Python<'py>,
     a: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<(Py<PyArray2<f64>>, Py<PyArray1<f64>>, Py<PyArray2<f64>>)> {
+    utils::require_contiguous(a)?;
     let arr = a.readonly();
     let view = arr.as_array();
-    let result = nabled_linalg::svd::decompose(&view.to_owned()).map_err(to_py_err)?;
+    let result = nabled_linalg::svd::decompose_view(&view).map_err(to_py_err)?;
     Ok((
         PyArray2::from_owned_array(py, result.u).unbind(),
         PyArray1::from_owned_array(py, result.singular_values).unbind(),
@@ -28,9 +30,10 @@ pub fn decompose_truncated<'py>(
     a: &Bound<'py, PyArray2<f64>>,
     k: usize,
 ) -> PyResult<(Py<PyArray2<f64>>, Py<PyArray1<f64>>, Py<PyArray2<f64>>)> {
+    utils::require_contiguous(a)?;
     let arr = a.readonly();
     let view = arr.as_array();
-    let result = nabled_linalg::svd::decompose_truncated(&view.to_owned(), k).map_err(to_py_err)?;
+    let result = nabled_linalg::svd::decompose_truncated_view(&view, k).map_err(to_py_err)?;
     Ok((
         PyArray2::from_owned_array(py, result.u).unbind(),
         PyArray1::from_owned_array(py, result.singular_values).unbind(),
@@ -44,10 +47,11 @@ pub fn pseudo_inverse<'py>(
     py: Python<'py>,
     a: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(a)?;
     let arr = a.readonly();
     let view = arr.as_array();
-    let result = nabled_linalg::svd::pseudo_inverse(
-        &view.to_owned(),
+    let result = nabled_linalg::svd::pseudo_inverse_view(
+        &view,
         &nabled_linalg::svd::PseudoInverseConfig::default(),
     )
     .map_err(to_py_err)?;
@@ -62,6 +66,9 @@ pub fn reconstruct_matrix<'py>(
     singular_values: &Bound<'py, PyArray1<f64>>,
     vt: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(u)?;
+    utils::require_contiguous(singular_values)?;
+    utils::require_contiguous(vt)?;
     let u_arr = u.readonly().as_array().to_owned();
     let s_arr = singular_values.readonly().as_array().to_owned();
     let vt_arr = vt.readonly().as_array().to_owned();
@@ -81,6 +88,9 @@ pub fn condition_number(
     singular_values: &Bound<'_, PyArray1<f64>>,
     vt: &Bound<'_, PyArray2<f64>>,
 ) -> PyResult<f64> {
+    utils::require_contiguous(u)?;
+    utils::require_contiguous(singular_values)?;
+    utils::require_contiguous(vt)?;
     let svd = nabled_linalg::svd::NdarraySVD {
         u:               u.readonly().as_array().to_owned(),
         singular_values: singular_values.readonly().as_array().to_owned(),
@@ -92,6 +102,7 @@ pub fn condition_number(
 /// Compute numerical rank from singular values.
 #[pyfunction(name = "svd_rank", signature = (singular_values, tolerance=None))]
 pub fn rank(singular_values: &Bound<'_, PyArray1<f64>>, tolerance: Option<f64>) -> PyResult<usize> {
+    utils::require_contiguous(singular_values)?;
     let s = singular_values.readonly().as_array().to_owned();
     let len = s.len();
     let svd = nabled_linalg::svd::NdarraySVD {
@@ -109,8 +120,9 @@ pub fn null_space<'py>(
     a: &Bound<'py, PyArray2<f64>>,
     tolerance: Option<f64>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(a)?;
     let arr = a.readonly();
     let view = arr.as_array();
-    let result = nabled_linalg::svd::null_space(&view.to_owned(), tolerance).map_err(to_py_err)?;
+    let result = nabled_linalg::svd::null_space_view(&view, tolerance).map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }

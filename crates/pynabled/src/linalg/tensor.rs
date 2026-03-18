@@ -4,6 +4,7 @@ use numpy::{PyArray2, PyArray3, PyArrayDyn, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::error::to_py_err;
+use crate::utils;
 
 /// Batched matrix-vector product: cube (B, m, n) @ vectors (B, n) -> (B, m).
 #[pyfunction(name = "tensor_cube_matvec")]
@@ -12,11 +13,12 @@ pub fn cube_matvec<'py>(
     cube: &Bound<'py, PyArray3<f64>>,
     vectors: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(cube)?;
+    utils::require_contiguous(vectors)?;
     let c = cube.readonly();
     let v = vectors.readonly();
     let result =
-        nabled_linalg::tensor::cube_matvec(&c.as_array().to_owned(), &v.as_array().to_owned())
-            .map_err(to_py_err)?;
+        nabled_linalg::tensor::cube_matvec_view(&c.as_array(), &v.as_array()).map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }
 
@@ -27,11 +29,12 @@ pub fn cube_matmat<'py>(
     left: &Bound<'py, PyArray3<f64>>,
     right: &Bound<'py, PyArray3<f64>>,
 ) -> PyResult<Py<PyArray3<f64>>> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
     let l = left.readonly();
     let r = right.readonly();
     let result =
-        nabled_linalg::tensor::cube_matmat(&l.as_array().to_owned(), &r.as_array().to_owned())
-            .map_err(to_py_err)?;
+        nabled_linalg::tensor::cube_matmat_view(&l.as_array(), &r.as_array()).map_err(to_py_err)?;
     Ok(PyArray3::from_owned_array(py, result).unbind())
 }
 
@@ -41,9 +44,9 @@ pub fn sum_last_axis<'py>(
     py: Python<'py>,
     tensor: &Bound<'py, PyArrayDyn<f64>>,
 ) -> PyResult<Py<PyArrayDyn<f64>>> {
+    utils::require_contiguous(tensor)?;
     let t = tensor.readonly();
-    let result =
-        nabled_linalg::tensor::sum_last_axis(&t.as_array().to_owned()).map_err(to_py_err)?;
+    let result = nabled_linalg::tensor::sum_last_axis_view(&t.as_array()).map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, result).unbind())
 }
 
@@ -53,9 +56,9 @@ pub fn l2_norm_last_axis<'py>(
     py: Python<'py>,
     tensor: &Bound<'py, PyArrayDyn<f64>>,
 ) -> PyResult<Py<PyArrayDyn<f64>>> {
+    utils::require_contiguous(tensor)?;
     let t = tensor.readonly();
-    let result =
-        nabled_linalg::tensor::l2_norm_last_axis(&t.as_array().to_owned()).map_err(to_py_err)?;
+    let result = nabled_linalg::tensor::l2_norm_last_axis_view(&t.as_array()).map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, result).unbind())
 }
 
@@ -65,9 +68,10 @@ pub fn normalize_last_axis<'py>(
     py: Python<'py>,
     tensor: &Bound<'py, PyArrayDyn<f64>>,
 ) -> PyResult<Py<PyArrayDyn<f64>>> {
+    utils::require_contiguous(tensor)?;
     let t = tensor.readonly();
     let result =
-        nabled_linalg::tensor::normalize_last_axis(&t.as_array().to_owned()).map_err(to_py_err)?;
+        nabled_linalg::tensor::normalize_last_axis_view(&t.as_array()).map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, result).unbind())
 }
 
@@ -78,13 +82,12 @@ pub fn batched_dot_last_axis<'py>(
     left: &Bound<'py, PyArrayDyn<f64>>,
     right: &Bound<'py, PyArrayDyn<f64>>,
 ) -> PyResult<Py<PyArrayDyn<f64>>> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
     let l = left.readonly();
     let r = right.readonly();
-    let result = nabled_linalg::tensor::batched_dot_last_axis(
-        &l.as_array().to_owned(),
-        &r.as_array().to_owned(),
-    )
-    .map_err(to_py_err)?;
+    let result = nabled_linalg::tensor::batched_dot_last_axis_view(&l.as_array(), &r.as_array())
+        .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, result).unbind())
 }
 
@@ -95,9 +98,10 @@ pub fn permute_axes<'py>(
     tensor: &Bound<'py, PyArrayDyn<f64>>,
     permutation: Vec<usize>,
 ) -> PyResult<Py<PyArrayDyn<f64>>> {
+    utils::require_contiguous(tensor)?;
     let t = tensor.readonly();
-    let result = nabled_linalg::tensor::permute_axes(&t.as_array().to_owned(), &permutation)
-        .map_err(to_py_err)?;
+    let result =
+        nabled_linalg::tensor::permute_axes_view(&t.as_array(), &permutation).map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, result).unbind())
 }
 
@@ -110,11 +114,13 @@ pub fn contract_axes<'py>(
     left_axes: Vec<usize>,
     right_axes: Vec<usize>,
 ) -> PyResult<Py<PyArrayDyn<f64>>> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
     let l = left.readonly();
     let r = right.readonly();
-    let result = nabled_linalg::tensor::contract_axes(
-        &l.as_array().to_owned(),
-        &r.as_array().to_owned(),
+    let result = nabled_linalg::tensor::contract_axes_view(
+        &l.as_array(),
+        &r.as_array(),
         &left_axes,
         &right_axes,
     )
@@ -129,13 +135,12 @@ pub fn batched_matmul_last_two<'py>(
     left: &Bound<'py, PyArrayDyn<f64>>,
     right: &Bound<'py, PyArrayDyn<f64>>,
 ) -> PyResult<Py<PyArrayDyn<f64>>> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
     let l = left.readonly();
     let r = right.readonly();
-    let result = nabled_linalg::tensor::batched_matmul_last_two(
-        &l.as_array().to_owned(),
-        &r.as_array().to_owned(),
-    )
-    .map_err(to_py_err)?;
+    let result = nabled_linalg::tensor::batched_matmul_last_two_view(&l.as_array(), &r.as_array())
+        .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, result).unbind())
 }
 
@@ -148,6 +153,7 @@ pub fn hosvd3<'py>(
     rank1: usize,
     rank2: usize,
 ) -> PyResult<(Py<PyArray3<f64>>, Py<PyArray2<f64>>, Py<PyArray2<f64>>, Py<PyArray2<f64>>)> {
+    utils::require_contiguous(cube)?;
     let c = cube.readonly();
     let result = nabled_linalg::tensor::hosvd3(&c.as_array().to_owned(), (rank0, rank1, rank2))
         .map_err(to_py_err)?;
@@ -168,6 +174,10 @@ pub fn hosvd3_reconstruct<'py>(
     u1: &Bound<'py, PyArray2<f64>>,
     u2: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray3<f64>>> {
+    utils::require_contiguous(core)?;
+    utils::require_contiguous(u0)?;
+    utils::require_contiguous(u1)?;
+    utils::require_contiguous(u2)?;
     let r = nabled_linalg::tensor::Hosvd3Result {
         core: core.readonly().as_array().to_owned(),
         u0:   u0.readonly().as_array().to_owned(),

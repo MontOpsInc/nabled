@@ -14,11 +14,9 @@ def _make_spd(n):
 
 def test_batched_row_matvec():
     # API: batched_row_matvec(matrix, vectors). matrix (m,n), vectors (B,n) -> (B,m).
-    # Binding passes (matrix, vectors) to nabled as (batch_vectors, matrix).
-    # So pass vectors (B,n) first, matrix (m,n) second to get (B,m).
     vectors = np.random.randn(2, 4).astype(np.float64)
     matrix = np.random.randn(3, 4).astype(np.float64)
-    out = pynabled.batched_row_matvec(vectors, matrix)
+    out = pynabled.batched_row_matvec(matrix, vectors)
     assert out.shape == (2, 3)
     for i in range(2):
         np.testing.assert_allclose(out[i], matrix @ vectors[i], rtol=1e-10)

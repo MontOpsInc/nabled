@@ -60,3 +60,13 @@ def test_svd_null_space():
     # Each column should be in null space: A @ null_col ≈ 0
     for j in range(null.shape[1]):
         np.testing.assert_allclose(a @ null[:, j], np.zeros(2), atol=1e-10)
+
+
+def test_contiguity_error():
+    """Non-contiguous arrays raise a clear error."""
+    a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+    # Transpose creates a non-contiguous view
+    a_non_contig = a.T
+    assert not a_non_contig.flags["C_CONTIGUOUS"]
+    with pytest.raises(ValueError, match="C-contiguous"):
+        pynabled.svd_decompose(a_non_contig)

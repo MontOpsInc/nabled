@@ -4,6 +4,7 @@ use numpy::{PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::error::to_py_err;
+use crate::utils;
 
 const DEFAULT_MAX_TERMS: usize = 64;
 
@@ -17,12 +18,12 @@ pub fn matrix_exp<'py>(
     max_terms: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
     let terms = max_terms.unwrap_or(DEFAULT_MAX_TERMS);
     let tol = tolerance.unwrap_or(DEFAULT_TOLERANCE);
-    let result =
-        nabled_linalg::matrix_functions::matrix_exp(&arr.as_array().to_owned(), terms, tol)
-            .map_err(to_py_err)?;
+    let result = nabled_linalg::matrix_functions::matrix_exp_view(&arr.as_array(), terms, tol)
+        .map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }
 
@@ -32,8 +33,9 @@ pub fn matrix_exp_eigen<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
-    let result = nabled_linalg::matrix_functions::matrix_exp_eigen(&arr.as_array().to_owned())
+    let result = nabled_linalg::matrix_functions::matrix_exp_eigen_view(&arr.as_array())
         .map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }
@@ -46,11 +48,12 @@ pub fn matrix_log_taylor<'py>(
     max_terms: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
     let terms = max_terms.unwrap_or(DEFAULT_MAX_TERMS);
     let tol = tolerance.unwrap_or(DEFAULT_TOLERANCE);
     let result =
-        nabled_linalg::matrix_functions::matrix_log_taylor(&arr.as_array().to_owned(), terms, tol)
+        nabled_linalg::matrix_functions::matrix_log_taylor_view(&arr.as_array(), terms, tol)
             .map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }
@@ -61,8 +64,9 @@ pub fn matrix_log_eigen<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
-    let result = nabled_linalg::matrix_functions::matrix_log_eigen(&arr.as_array().to_owned())
+    let result = nabled_linalg::matrix_functions::matrix_log_eigen_view(&arr.as_array())
         .map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }
@@ -73,9 +77,10 @@ pub fn matrix_log_svd<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
-    let result = nabled_linalg::matrix_functions::matrix_log_svd(&arr.as_array().to_owned())
-        .map_err(to_py_err)?;
+    let result =
+        nabled_linalg::matrix_functions::matrix_log_svd_view(&arr.as_array()).map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }
 
@@ -86,8 +91,9 @@ pub fn matrix_power<'py>(
     matrix: &Bound<'py, PyArray2<f64>>,
     power: f64,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
-    let result = nabled_linalg::matrix_functions::matrix_power(&arr.as_array().to_owned(), power)
+    let result = nabled_linalg::matrix_functions::matrix_power_view(&arr.as_array(), power)
         .map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }
@@ -98,8 +104,9 @@ pub fn matrix_sign<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
-    let result = nabled_linalg::matrix_functions::matrix_sign(&arr.as_array().to_owned())
-        .map_err(to_py_err)?;
+    let result =
+        nabled_linalg::matrix_functions::matrix_sign_view(&arr.as_array()).map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }

@@ -4,6 +4,7 @@ use numpy::{PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::error::to_py_err;
+use crate::utils;
 
 /// Solve Sylvester equation AX + XB = C.
 #[pyfunction(name = "sylvester_solve")]
@@ -13,15 +14,15 @@ pub fn solve_sylvester<'py>(
     matrix_b: &Bound<'py, PyArray2<f64>>,
     matrix_c: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(matrix_a)?;
+    utils::require_contiguous(matrix_b)?;
+    utils::require_contiguous(matrix_c)?;
     let a = matrix_a.readonly();
     let b = matrix_b.readonly();
     let c = matrix_c.readonly();
-    let result = nabled_linalg::sylvester::solve_sylvester(
-        &a.as_array().to_owned(),
-        &b.as_array().to_owned(),
-        &c.as_array().to_owned(),
-    )
-    .map_err(to_py_err)?;
+    let result =
+        nabled_linalg::sylvester::solve_sylvester_view(&a.as_array(), &b.as_array(), &c.as_array())
+            .map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }
 
@@ -32,12 +33,12 @@ pub fn solve_lyapunov<'py>(
     a: &Bound<'py, PyArray2<f64>>,
     q: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<Py<PyArray2<f64>>> {
+    utils::require_contiguous(a)?;
+    utils::require_contiguous(q)?;
     let a_arr = a.readonly();
     let q_arr = q.readonly();
-    let result = nabled_linalg::sylvester::solve_lyapunov(
-        &a_arr.as_array().to_owned(),
-        &q_arr.as_array().to_owned(),
-    )
-    .map_err(to_py_err)?;
+    let result =
+        nabled_linalg::sylvester::solve_lyapunov_view(&a_arr.as_array(), &q_arr.as_array())
+            .map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
 }

@@ -21,6 +21,7 @@ crate-type = ["cdylib"]
 default = []
 openblas-system = ["nabled/openblas-system"]
 accelerator-rayon = ["nabled-linalg/accelerator-rayon"]
+arrow = ["nabled/arrow", "dep:arrow-pyarrow", "dep:arrow-array", "dep:arrow-data"]
 
 [dependencies]
 nabled.workspace = true
@@ -30,6 +31,9 @@ ndarray.workspace = true
 num-complex.workspace = true
 numpy = "0.28"
 pyo3 = { version = "0.28", features = ["extension-module"] }
+arrow-pyarrow = { version = "58", optional = true }
+arrow-array = { version = "58", optional = true }
+arrow-data = { version = "58", optional = true }
 
 [lints]
 workspace = true

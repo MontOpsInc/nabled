@@ -4,6 +4,7 @@ use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::error::to_py_err;
+use crate::utils;
 
 /// Linear regression. Returns (coefficients, r_squared).
 #[pyfunction]
@@ -12,11 +13,13 @@ pub fn linear_regression<'py>(
     x: &Bound<'py, PyArray2<f64>>,
     y: &Bound<'py, PyArray1<f64>>,
 ) -> PyResult<(Py<PyArray1<f64>>, f64)> {
+    utils::require_contiguous(x)?;
+    utils::require_contiguous(y)?;
     let x_arr = x.readonly();
     let y_arr = y.readonly();
-    let result = nabled_ml::regression::linear_regression(
-        &x_arr.as_array().to_owned(),
-        &y_arr.as_array().to_owned(),
+    let result = nabled_ml::regression::linear_regression_view(
+        &x_arr.as_array(),
+        &y_arr.as_array(),
         true, // add_intercept
     )
     .map_err(to_py_err)?;

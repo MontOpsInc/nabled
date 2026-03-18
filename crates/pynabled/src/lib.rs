@@ -14,6 +14,10 @@ mod error;
 mod linalg;
 mod ml;
 mod sparse;
+mod utils;
+
+#[cfg(feature = "arrow")]
+mod arrow;
 
 use pyo3::prelude::*;
 
@@ -127,6 +131,13 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::matvec, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::jacobi_solve, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::pcg_solve, m)?)?;
+
+    #[cfg(feature = "arrow")]
+    {
+        m.add_function(pyo3::wrap_pyfunction!(arrow::dot, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::l2_norm, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::svd_decompose, m)?)?;
+    }
 
     Ok(())
 }

@@ -5,6 +5,7 @@ use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::error::to_py_err;
+use crate::utils;
 
 /// Symmetric eigenvalue decomposition. Returns (eigenvalues, eigenvectors).
 #[pyfunction(name = "eigen_symmetric")]
@@ -12,8 +13,9 @@ pub fn symmetric<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray2<f64>>)> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
-    let result = nabled_linalg::eigen::symmetric(&arr.as_array().to_owned()).map_err(to_py_err)?;
+    let result = nabled_linalg::eigen::symmetric_view(&arr.as_array()).map_err(to_py_err)?;
     Ok((
         PyArray1::from_owned_array(py, result.eigenvalues).unbind(),
         PyArray2::from_owned_array(py, result.eigenvectors).unbind(),
@@ -27,11 +29,12 @@ pub fn generalized<'py>(
     matrix_a: &Bound<'py, PyArray2<f64>>,
     matrix_b: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray2<f64>>)> {
+    utils::require_contiguous(matrix_a)?;
+    utils::require_contiguous(matrix_b)?;
     let a = matrix_a.readonly();
     let b = matrix_b.readonly();
     let result =
-        nabled_linalg::eigen::generalized(&a.as_array().to_owned(), &b.as_array().to_owned())
-            .map_err(to_py_err)?;
+        nabled_linalg::eigen::generalized_view(&a.as_array(), &b.as_array()).map_err(to_py_err)?;
     Ok((
         PyArray1::from_owned_array(py, result.eigenvalues).unbind(),
         PyArray2::from_owned_array(py, result.eigenvectors).unbind(),
@@ -45,9 +48,9 @@ pub fn nonsymmetric<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyArray2<f64>>,
 ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray2<f64>>, Py<PyArray2<f64>>)> {
+    utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
-    let result =
-        nabled_linalg::eigen::nonsymmetric(&arr.as_array().to_owned()).map_err(to_py_err)?;
+    let result = nabled_linalg::eigen::nonsymmetric_view(&arr.as_array()).map_err(to_py_err)?;
     let re: Vec<f64> = result.eigenvalues.iter().map(|c| c.re).collect();
     let im: Vec<f64> = result.eigenvalues.iter().map(|c| c.im).collect();
     let rows = result.schur_vectors.nrows();
