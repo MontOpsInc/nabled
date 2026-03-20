@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- Implements ndarrow 0.0.4 changes ([d7c3271](https://github.com/MontOpsInc/nabled/commit/d7c3271654ef03dcd3c7c4303cb39ccaf29d2639))
+
+### Example
+
+- Introduces arrow extension type example ([6372982](https://github.com/MontOpsInc/nabled/commit/63729828ff23e96ce4e0e156b35b334e81273280))
+
+## [0.0.7] - 2026-03-13
+
+### Miscellaneous Tasks
+
+- Prepare release v0.0.7 ([#21](https://github.com/MontOpsInc/nabled/issues/21)) ([141c90a](https://github.com/MontOpsInc/nabled/commit/141c90a693f9fe41650f6269c0fe75d71d12124a))
+
 ### Refactor
 
 - Expands ndarrow interface to cover advanced and row-based cases ([4b12dbe](https://github.com/MontOpsInc/nabled/commit/4b12dbe3c9c7d6519a0691fb9a89cb9f4eb40b07))
