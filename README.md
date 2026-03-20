@@ -21,7 +21,7 @@ Important! Nabled is under active development right now, so the only way to be s
 
 ```toml
 [dependencies]
-nabled = "0.0.7"
+nabled = "0.0.8"
 ```
 
 ## Implemented Domains
@@ -72,12 +72,12 @@ Review more examples in `crates/nabled/examples`.
 
 ```toml
 [dependencies]
-nabled = { version = "0.0.7", features = ["openblas-system"] }
+nabled = { version = "0.0.8", features = ["openblas-system"] }
 ```
 
 ```toml
 [dependencies]
-nabled = { version = "0.0.7", features = ["arrow"] }
+nabled = { version = "0.0.8", features = ["arrow"] }
 ```
 
 Arrow interop notes:
