@@ -4,10 +4,46 @@ build-backend = "maturin"
 
 [project]
 name = "pynabled"
-version = "0.0.4"
-description = "Ndarray-native linear algebra and ML library - Python bindings"
+version = "0.0.7"
+description = "Ndarray-native linear algebra and ML library - Python bindings for nabled"
+readme = "python/README.md"
 requires-python = ">=3.10"
+license = { text = "MIT OR Apache-2.0" }
+authors = [
+    { name = "Niklaus Parcell", email = "nik.parcell@gmail.com" },
+    { name = "George Lee Patterson", email = "patterson.george@gmail.com" },
+]
+keywords = [
+    "linear-algebra",
+    "numpy",
+    "ndarray",
+    "svd",
+    "pca",
+    "linalg",
+    "scientific",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = ["numpy>=1.16"]
+
+[project.urls]
+Homepage = "https://github.com/MontOpsInc/nabled"
+Repository = "https://github.com/MontOpsInc/nabled"
+Documentation = "https://docs.rs/nabled"
+Changelog = "https://github.com/MontOpsInc/nabled/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]

@@ -540,7 +540,80 @@ release-dry version:
     @echo "6. Generate RELEASE_NOTES.md"
     @echo "7. Create commit and push branch"
     @echo ""
-    @echo "After PR merge, 'just tag-release {{ version }}' would:"
+    @    echo "After PR merge, 'just tag-release {{ version }}' would:"
     @echo "1. Tag the merged commit as v{{ version }}"
     @echo "2. Verify leaf dry-run (nabled-core)"
     @echo "3. Push the tag (triggering ordered release workflow)"
+
+# --- PYTHON / PYPI ---
+
+# Sync pyproject.toml version from Cargo.toml [workspace.package], commit if needed, tag pypi-vX.Y.Z and push (triggers publish-pypi.yml).
+tag-pypi-release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="$(git rev-parse --show-toplevel)"
+    cd "$ROOT"
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "Error: Working tree is not clean. Commit or stash first."
+        exit 1
+    fi
+    CARGO_VERSION="$(awk '/^\[workspace\.package\]/ {in_ws=1; next} in_ws && /^version = / {gsub(/"/,"",$3); print $3; exit}' Cargo.toml)"
+    if [[ -z "$CARGO_VERSION" ]]; then
+        echo "Error: could not read workspace version from Cargo.toml"
+        exit 1
+    fi
+    awk -v ver="$CARGO_VERSION" '
+      /^\[project\]$/ { in_proj=1; print; next }
+      /^\[/ && !/^\\[project/ { in_proj=0 }
+      in_proj && /^version = / { print "version = \"" ver "\""; next }
+      { print }
+    ' pyproject.toml > pyproject.toml.tmp && mv pyproject.toml.tmp pyproject.toml
+    bash scripts/check_pyproject_version_matches_cargo.sh
+    BRANCH="$(git branch --show-current)"
+    if ! git diff --quiet pyproject.toml; then
+        git add pyproject.toml
+        git commit -m "chore(pynabled): sync pyproject version with Cargo workspace (${CARGO_VERSION})"
+        git push origin "$BRANCH"
+    fi
+    TAG="pypi-v${CARGO_VERSION}"
+    if git rev-parse "$TAG" >/dev/null 2>&1; then
+        echo "Error: tag $TAG already exists"
+        exit 1
+    fi
+    git tag -a "$TAG" -m "PyPI publish pynabled ${CARGO_VERSION}"
+    git push origin "$TAG"
+    echo ""
+    echo "Pushed $TAG — GitHub Actions will publish wheels to PyPI (if PYPI_API_TOKEN is set)."
+    echo ""
+
+# Local wheel smoke: maturin build --release, venv install, import (mirrors CI python-wheel-smoke).
+wheel-smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="$(git rev-parse --show-toplevel)"
+    cd "$ROOT"
+    command -v maturin >/dev/null 2>&1 || { echo "Install maturin: pip install maturin"; exit 1; }
+    maturin build --release --out dist
+    VENV="$(mktemp -d /tmp/pynabled-wheel-smoke.XXXXXX)"
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install --upgrade pip
+    "$VENV/bin/pip" install dist/pynabled-*.whl
+    "$VENV/bin/python" -c "import pynabled; import pynabled._pynabled; print('wheel-smoke ok')"
+    rm -rf "$VENV"
+    echo "wheel-smoke passed"
+
+# Optional: build wheel, install in venv, run full pytest (slower than wheel-smoke).
+wheel-smoke-pytest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="$(git rev-parse --show-toplevel)"
+    cd "$ROOT"
+    command -v maturin >/dev/null 2>&1 || { echo "Install maturin: pip install maturin"; exit 1; }
+    maturin build --release --out dist
+    VENV="$(mktemp -d /tmp/pynabled-wheel-pytest.XXXXXX)"
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install --upgrade pip pytest numpy
+    "$VENV/bin/pip" install dist/pynabled-*.whl
+    "$VENV/bin/pytest" python/tests/ -q
+    rm -rf "$VENV"
+    echo "wheel-smoke-pytest passed"

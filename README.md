@@ -74,6 +74,8 @@ The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapun
 
 For building with optional features (e.g. OpenBLAS, accelerator-rayon), see [BUILD.md](BUILD.md).
 
+To publish **pynabled** wheels to PyPI (tags, CI, TestPyPI), see [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md).
+
 ## Namespaced API
 
 1. `nabled::core`: shared errors, validation, and prelude exports.
