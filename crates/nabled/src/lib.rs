@@ -74,6 +74,13 @@ pub mod ml {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
+/// Re-exported Arrow/ndarray bridge used by `nabled::arrow`.
+///
+/// This keeps downstream Arrow consumers on the same `ndarrow` contract version as `nabled`
+/// without requiring a second explicit dependency.
+#[cfg(feature = "arrow")]
+pub use ndarrow;
+
 /// Common ndarray and complex-number prelude exports.
 pub mod prelude {
     pub use crate::core::prelude::*;

@@ -18,14 +18,14 @@ use nabled::ml::optimization::{
     AdamConfig, BFGSConfig, LineSearchConfig, MomentumConfig, ProjectedGradientConfig,
     RMSPropConfig, SGDConfig,
 };
-use ndarray::{Array1, ArrayD, IxDyn, array};
-use ndarrow::{
+use nabled::ndarrow::{
     AsNdarray, IntoArrow, array2_complex64_to_fixed_size_list, arrayd_to_fixed_shape_tensor,
     arrays_complex64_to_variable_shape_tensor, arrays_to_variable_shape_tensor,
     complex64_as_array_view1, complex64_as_array_view2, complex64_variable_shape_tensor_iter,
     csr_batch_to_extension_array, csr_matrix_batch_iter, csr_to_extension_array,
     fixed_shape_tensor_as_array_viewd, fixed_size_list_as_array2, variable_shape_tensor_iter,
 };
+use ndarray::{Array1, ArrayD, IxDyn, array};
 use num_complex::Complex64;
 
 fn tensor_arrow_f64(

@@ -1,6 +1,6 @@
 # Ndarrow Integration
 
-Last updated: 2026-03-12
+Last updated: 2026-03-20
 
 ## Purpose
 
@@ -11,19 +11,21 @@ Define how `nabled` collaborates with `ndarrow` without compromising `nabled`'s 
 1. `nabled-core`, `nabled-linalg`, and `nabled-ml` remain Arrow-free.
 2. Arrow awareness lives only in facade crate `crates/nabled`.
 3. Arrow support is explicit and opt-in via feature `arrow`.
-4. Inbound Arrow -> ndarray bridging uses `ndarrow` zero-copy views wherever the underlying
+4. `nabled` re-exports `ndarrow` as `nabled::ndarrow` behind feature `arrow` so downstream Arrow
+   consumers can stay on the same bridge contract version as the facade adapters.
+5. Inbound Arrow -> ndarray bridging uses `ndarrow` zero-copy views wherever the underlying
    `nabled` API already accepts ndarray views.
-5. Outbound ndarray -> Arrow conversion is provided only where the result shape maps naturally to
+6. Outbound ndarray -> Arrow conversion is provided only where the result shape maps naturally to
    Arrow (`PrimitiveArray`, `FixedSizeListArray`, canonical fixed-shape tensor extension).
-6. Multi-output decomposition results remain in `nabled`'s ndarray-native result structs unless a
+7. Multi-output decomposition results remain in `nabled`'s ndarray-native result structs unless a
    dedicated Arrow result contract is explicitly introduced later.
-7. Arrow is an ingress/storage format, not a separate compute engine.
-8. Arrow adapters must delegate to the canonical ndarray-native public/view entrypoint for the
+8. Arrow is an ingress/storage format, not a separate compute engine.
+9. Arrow adapters must delegate to the canonical ndarray-native public/view entrypoint for the
    operation so providers, backends, kernels, routing, and fallback policy remain shared with
    normal ndarray users.
-9. Arrow interop is concept-first: each mathematical object family should have one canonical
+10. Arrow interop is concept-first: each mathematical object family should have one canonical
    standalone ingress and one canonical `rows-of-X` batch carrier.
-10. Standalone batching should prefer the same canonical `rows-of-X` carriers that `ndatafusion`
+11. Standalone batching should prefer the same canonical `rows-of-X` carriers that `ndatafusion`
     will use later; ad hoc collections of standalone Arrow objects are not canonical batch forms.
 
 ## Admission Rules
@@ -59,6 +61,7 @@ This means:
 ## Current Surface
 
 The current facade-level Arrow adapter module is `nabled::arrow` behind feature `arrow`.
+The matching bridge crate is re-exported as `nabled::ndarrow` behind the same feature.
 
 Direct Arrow ingress exists broadly across these public domains:
 
@@ -114,11 +117,13 @@ This matrix is the release-checkpoint view of `nabled::arrow`:
 3. Sparse CSR:
    - Arrow columns (`List<UInt32>` + `List<T>`) -> `ndarrow::CsrView<T>` -> `nabled::sparse::CsrMatrixView`
    - `ndarrow.csr_matrix` extension -> same route
-   - `ndarrow.csr_matrix_batch` extension -> per-row `ndarrow::CsrView<T>` -> per-row `nabled::sparse::CsrMatrixView`
+   - `ndarrow.csr_matrix_batch` extension -> `ndarrow::CsrMatrixBatchView<T>` -> per-row
+     `ndarrow::CsrView<T>` -> per-row `nabled::sparse::CsrMatrixView`
 4. Fixed-shape tensors:
    - canonical `arrow.fixed_shape_tensor` storage -> `ArrayViewD<T>`
 5. Variable-shape tensors:
-   - canonical `arrow.variable_shape_tensor` storage -> per-row `ArrayViewD<T>`
+   - canonical `arrow.variable_shape_tensor` storage -> `ndarrow::VariableShapeTensorBatchView<T>`
+     -> per-row `ArrayViewD<T>`
 6. Complex dense matrices:
    - nested `FixedSizeList<ndarrow.complex64>(D)` -> `ArrayView2<Complex64>`
 7. Complex fixed-shape tensors:
