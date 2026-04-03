@@ -49,9 +49,12 @@
 
 These are deferred until the ndarray-first core is complete and stable.
 
-## Python Bindings (Implemented)
+## Python Bindings
 
-Python bindings are implemented via the `pynabled` crate (PyO3-based). See `crates/pynabled` and the root `pyproject.toml` for build/install. The package exposes nabled's linear algebra and ML APIs to Python with NumPy arrays as the canonical data type.
+Python bindings are pursued via the `pynabled` crate (PyO3-based). NumPy arrays are the canonical
+dense Python data type. Branch-local parity and PyPI readiness are not inferred from this document;
+use `docs/PYNABLED_GAPS_AUDIT.md`, `docs/EXECUTION_TRACKER.md`, and `docs/STATUS.md` for current
+merge/release truth when working on `feat/pynabled-bindings`.
 
 ## Provider and Backend Contract
 

@@ -27,10 +27,11 @@ This folder contains the current, authoritative direction for `nabled`.
 13. `docs/ROADMAP.md`: implementation sequencing and milestones.
 14. `docs/PUBLISH_CHECKLIST.md`: crates.io publish gate and release-day checklist.
 15. `docs/PYPI_PUBLISH.md`: **pynabled** PyPI releases (tags, CI wheel smoke, `just tag-pypi-release`).
-16. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
-17. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
-18. `docs/NDARROW_INTEGRATION.md`: facade-level Arrow interop contract and current adapter surface.
-19. `docs/ARROW_SUPPORT_MATRIX.md`: direct Arrow-ingress coverage against the current public API.
+16. `docs/PYNABLED_GAPS_AUDIT.md`: Python-branch audit findings and merge blockers for `feat/pynabled-bindings`.
+17. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+18. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
+19. `docs/NDARROW_INTEGRATION.md`: facade-level Arrow interop contract and current adapter surface.
+20. `docs/ARROW_SUPPORT_MATRIX.md`: direct Arrow-ingress coverage against the current public API.
 
 ## Context Resume Protocol
 
@@ -52,9 +53,10 @@ When starting from a compacted/partial context, read documents in this order:
 14. `docs/ROADMAP.md`
 15. `docs/PUBLISH_CHECKLIST.md`
 16. `docs/PYPI_PUBLISH.md` (when releasing Python bindings)
-17. `docs/STATUS.md`
-18. `docs/NDARROW_INTEGRATION.md`
-19. `docs/ARROW_SUPPORT_MATRIX.md`
+17. `docs/PYNABLED_GAPS_AUDIT.md` (when working on `feat/pynabled-bindings` / `pynabled`)
+18. `docs/STATUS.md`
+19. `docs/NDARROW_INTEGRATION.md`
+20. `docs/ARROW_SUPPORT_MATRIX.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 

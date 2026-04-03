@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-03-12
+Last updated: 2026-04-03
 
 ## Summary
 
@@ -10,6 +10,13 @@ Workspace migration for library domains is complete.
 2. `crates/nabled` is the facade package re-exporting workspace crates.
 3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.
 4. Facade crate `nabled` exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; domain entrypoints exist broadly across dense, sparse, decomposition, tensor, batched, and ML/stat workflows, and checkpoint 2 is now complete under the concept-first standalone / `rows-of-X` contract.
+
+Branch note:
+`feat/pynabled-bindings` is not yet merge-ready or PyPI-release-ready. The 2026-04-03 audit in
+`docs/PYNABLED_GAPS_AUDIT.md` found blocking gaps in branch sync/version baseline, Python API parity,
+Arrow/PyArrow coverage, packaging hygiene, feature exposure, coverage/CI gates, performance contracts,
+documentation, and PyPI supply-chain hardening. Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as
+the ordered closure plan for that branch.
 5. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 6. Public `*_lapack` compatibility wrappers have been removed.
 7. Dense-kernel APIs are normalized around `decompose`/domain-specific operation naming.
@@ -200,7 +207,12 @@ Workspace migration for library domains is complete.
 
 ## Next Required Milestone
 
-GPU phase-2 continuation:
+On `feat/pynabled-bindings`, `pynabled` merge-gate closure supersedes the repository's monitor-only posture:
+
+1. Complete `N-PY-001..N-PY-008` in `docs/EXECUTION_TRACKER.md`.
+2. Do not merge the branch or declare `pynabled` production-ready until the blockers captured in `docs/PYNABLED_GAPS_AUDIT.md` are closed.
+
+After the Python merge gate closes, the core repository returns to the existing monitor-mode milestone:
 
 1. Keep `K-005` in monitor mode with repeated same-host decomposition sweeps; reopen optimization only for persistent regressions.
 2. Tensor algebra post-v1 rubric (`D-179..D-182`) is complete; tensor expansion is now monitor-only unless explicit new tracker items are approved.

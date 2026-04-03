@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-03-09
+Last updated: 2026-04-03
 
 ## Purpose
 
@@ -25,7 +25,8 @@ Use this file to resume work quickly after context compaction without re-auditin
 4. macOS OpenBLAS environment wiring is centralized in `.justfile` for provider-enabled recipes.
 5. Quality gates continue to pass in both internal and provider-enabled modes after capability expansion.
 6. Benchmark smoke/report coverage now includes matrix/tensor suites in addition to prior dense/sparse suites.
-7. Ordered v1 stability gate blockers are closed; focus is now K-series normalization and benchmark/performance hardening passes.
+7. Ordered v1 stability gate blockers are closed for the Rust workspace; core `nabled` remains in K-series normalization / benchmark-monitor mode.
+8. Branch-local audit on `feat/pynabled-bindings` found blocking Python/PyPI gaps; that branch is not merge-ready and does not inherit the repository's monitor-only posture until the `N-PY-*` items below are complete.
 
 ## V1 Stability Gate (Ordered, Required)
 
@@ -37,6 +38,22 @@ Use this file to resume work quickly after context compaction without re-auditin
 4. Required feature/build matrix is fully exercised in CI and local checks (including provider-enabled and GPU-enabled paths where applicable).
 5. Complex parity is complete for higher-level ML/statistical domains (`stats`, `regression`, `pca`, `optimization`) with explicit real/complex API contracts.
 6. Final no-surprises audit passes (allocation contracts, error semantics, fallback rules, and docs all aligned with behavior).
+
+## Pynabled Merge Gate (Ordered, Required)
+
+Audit reference: `docs/PYNABLED_GAPS_AUDIT.md` (2026-04-03).
+
+`feat/pynabled-bindings` may not merge to `main` or be treated as PyPI-release-ready until all items below are complete, in order:
+
+1. Branch/package baseline is synchronized to `origin/main` / latest released `nabled`, including version metadata, `ndarrow` baseline, and removal of tracked native build artifacts from source distributions.
+2. Python capability parity is made explicit against current Rust `nabled` and `nabled::arrow` surfaces, with no unapproved omissions in dense, sparse, tensor, ML, or Arrow-admitted domains.
+3. Python bindings cover the required release surface across supported dtypes and numerics (`f32`, `f64`, complex where Rust admits them), plus missing ML/tensor/sparse breadth required for "no gaps / no compromises" claims.
+4. PyArrow / `ndarrow` interop reaches full admitted parity, using canonical carriers and zero-copy ingress/egress contracts wherever the Rust facade already supports them.
+5. Python build/configuration paths expose the required provider/backend feature matrix clearly and truthfully, including source-build flows for BLAS/LAPACK, accelerator, and MAGMA-related capabilities where supported.
+6. Python-side performance/copy contracts are audited and hardened so wrappers preserve `nabled` performance goals rather than silently forcing avoidable copies or layout failures.
+7. CI and local quality gates enforce Python behavior with wheel+sdist smoke, full pytest execution, Python coverage `>= 90%`, and feature-matrix jobs beyond import-only validation.
+8. Python user documentation, API reference, and release docs are production-ready and synchronized with actual package behavior.
+9. PyPI release hardening is complete: clean artifacts, pinned automation/toolchain, Python dependency/security scanning, and trusted publishing or equivalent supply-chain signoff.
 
 ## Done
 
@@ -238,9 +255,17 @@ Use this file to resume work quickly after context compaction without re-auditin
 
 ## Next
 
-1. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
-2. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
-3. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
+1. `N-PY-001`: Sync `feat/pynabled-bindings` to `origin/main` / `v0.0.8`, adopt the current `ndarrow` baseline, remove tracked native Python build artifacts from the repository/sdist path, and re-establish a clean packaging/version truth.
+2. `N-PY-002`: Write the authoritative parity matrix for `pynabled` vs `nabled` / `nabled::arrow`, covering dense, sparse, tensor, ML, Arrow, dtype, complex, workspace/`*_into`, and provider/backend exposure expectations for release.
+3. `N-PY-003`: Close the highest-priority missing Python API domains and numerics, starting with `jacobian`, `optimization`, complex parity, missing sparse breadth, and missing tensor depth needed for production parity claims.
+4. `N-PY-004`: Expand Python Arrow/PyArrow bindings from the current minimal subset to full admitted `ndarrow`/`nabled::arrow` parity, including canonical carrier selection and zero-copy contract preservation.
+5. `N-PY-005`: Normalize Python feature/build UX so the documented Python extras and source-build instructions truthfully map to the supported provider/backend feature matrix.
+6. `N-PY-006`: Add Python quality gates for wheel+sdist smoke, full pytest execution in CI, Python coverage `>= 90%`, and required feature permutations (`default`, `arrow`, provider, accelerator, and combined builds where applicable).
+7. `N-PY-007`: Perform the Python-side performance/copy-elision audit and close avoidable ingress/egress copies, contiguity traps, and wrapper-level materializations that would compromise `nabled` performance goals.
+8. `N-PY-008`: Harden the PyPI release path with clean sdists, pinned actions/tooling, Python dependency automation/scanning, and trusted publishing or equivalent supply-chain controls.
+9. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
+10. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
+11. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
 
 Tensor-depth stop rubric (post-v1 finite target):
 1. `D-179` TT algebra utilities (`tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, `tt_hadamard_round`) with tests/feature-matrix parity. ✅
@@ -249,7 +274,7 @@ Tensor-depth stop rubric (post-v1 finite target):
 4. After `D-182`, tensor-depth expansion returns to monitor mode; new tensor items require explicit new tracker IDs.
 
 Round scope lock:
-1. This round closed checkpoint 2 Arrow contract completion and returns the repository to ongoing benchmark monitor mode.
+1. Core `nabled` remains in ongoing benchmark monitor mode, but `feat/pynabled-bindings` is in merge-gate remediation until `N-PY-001..N-PY-008` are closed.
 2. Metal-specific work is deferred.
 3. SIMD optimization pass is deferred.
 
@@ -267,18 +292,20 @@ It means:
 ## Needed
 
 1. Tensor-depth expansion is monitor-only after `D-182`; additional tensor breadth requires explicit new tracker IDs.
-2. Canonical complex Arrow contract, if Arrow complex ingress is later required.
-3. AMD/HIP provider path once hardware is available.
-4. Metal-specific backend exploration beyond `wgpu`.
-5. SIMD opportunity pass for hand-rolled CPU kernels.
+2. Canonical complex Arrow contract, if Arrow complex ingress is later required beyond the current admitted surface.
+3. Python production signoff rubric once `N-PY-*` closure work is complete and the branch is ready for final merge/release assessment.
+4. AMD/HIP provider path once hardware is available.
+5. Metal-specific backend exploration beyond `wgpu`.
+6. SIMD opportunity pass for hand-rolled CPU kernels.
 
 ## Backlog (From Capability Matrix)
 
-1. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
-2. Tensor-depth post-v1 expansion (monitor-only; explicit new IDs required for additional breadth).
-3. AMD/HIP provider path once hardware is available.
-4. Metal-specific backend exploration beyond `wgpu`.
-5. SIMD opportunity pass for hand-rolled CPU kernels.
+1. `N-PY-*`: close the ordered `pynabled` merge gate on `feat/pynabled-bindings`.
+2. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
+3. Tensor-depth post-v1 expansion (monitor-only; explicit new IDs required for additional breadth).
+4. AMD/HIP provider path once hardware is available.
+5. Metal-specific backend exploration beyond `wgpu`.
+6. SIMD opportunity pass for hand-rolled CPU kernels.
 
 ## Resume Protocol (Compaction-Friendly)
 
@@ -293,5 +320,7 @@ It means:
    - `docs/V1_STABILITY.md`
    - `docs/EXECUTION_TRACKER.md`
    - `docs/STATUS.md`
+   - `docs/PYPI_PUBLISH.md` when working on Python/PyPI release flow
+   - `docs/PYNABLED_GAPS_AUDIT.md` when working on `crates/pynabled`, `python/`, or `feat/pynabled-bindings`
 2. Start from the highest-priority open `V2-*` or `N-*` item unless maintainers redirect.
 3. Keep item IDs in PR/commit notes when relevant so progression stays auditable.

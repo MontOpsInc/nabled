@@ -80,3 +80,16 @@ Next phase:
    - backend capability-report expansion (GPU-native vs GPU-fallback rows by kernel family).
 2. Continue optimization loops on the now-locked `L-GPU-WGPU-F32` benchmark chunk.
 3. Defer Metal-specific backend work and SIMD-focused CPU optimization until after benchmark hardening on the locked GPU kernel surface.
+
+## Parallel Branch Gate: Pynabled Release Readiness
+
+`feat/pynabled-bindings` has an active merge gate separate from the repository's current benchmark-monitor posture.
+
+Ordered closure path:
+1. Sync the branch to current `main` / latest release truth and remove tracked native build artifacts from the Python packaging path.
+2. Establish explicit `pynabled` parity targets against `nabled` and admitted `nabled::arrow` / `ndarrow` surface.
+3. Close Python API, Arrow/PyArrow, feature/build, performance, coverage, docs, and PyPI-security gaps tracked in `docs/PYNABLED_GAPS_AUDIT.md`.
+4. Use `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the authoritative execution order for this branch.
+
+Success condition:
+1. `pynabled` is merge-ready only when it is production-grade and leaves no unapproved functionality or interop gaps relative to the admitted Rust surface.
