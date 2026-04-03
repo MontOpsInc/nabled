@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use arrow_array::types::ArrowPrimitiveType;
-use arrow_array::{FixedSizeListArray, ListArray, PrimitiveArray, StructArray};
+use arrow_array::{Array, FixedSizeListArray, ListArray, PrimitiveArray, StructArray};
 use arrow_buffer::ScalarBuffer;
 use arrow_schema::Field;
 use nabled_core::scalar::NabledReal;
@@ -147,6 +147,21 @@ where
     T::Native: NdarrowElement,
 {
     Ok(ndarrow::fixed_shape_tensor_as_array_viewd::<T>(field, array)?)
+}
+
+pub(crate) fn variable_shape_tensor_batch_view<'a, T>(
+    field: &Field,
+    array: &'a StructArray,
+) -> Result<ndarrow::VariableShapeTensorBatchView<'a, T>, ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NdarrowElement,
+{
+    if array.null_count() > 0 {
+        return Err(ndarrow::NdarrowError::NullsPresent { null_count: array.null_count() }.into());
+    }
+
+    Ok(ndarrow::variable_shape_tensor_batch_view::<T>(field, array)?)
 }
 
 fn owned_array1_into_vec<T: Copy>(array: Array1<T>) -> Vec<T> {
@@ -285,6 +300,37 @@ where
     T::Native: NabledReal + NdarrowElement,
 {
     let view = ndarrow::csr_view_from_extension::<T>(field, array)?;
+    Ok(crate::linalg::sparse::CsrMatrixView::new(
+        view.nrows,
+        view.ncols,
+        view.row_ptrs,
+        view.col_indices,
+        view.values,
+    )?)
+}
+
+pub(crate) fn csr_matrix_batch_view<'a, T>(
+    field: &Field,
+    array: &'a StructArray,
+) -> Result<ndarrow::CsrMatrixBatchView<'a, T>, ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    if array.null_count() > 0 {
+        return Err(ndarrow::NdarrowError::NullsPresent { null_count: array.null_count() }.into());
+    }
+
+    Ok(ndarrow::csr_matrix_batch_view::<T>(field, array)?)
+}
+
+pub(crate) fn csr_matrix_view_from_batch_row<T>(
+    view: ndarrow::CsrView<'_, T::Native>,
+) -> Result<crate::linalg::sparse::CsrMatrixView<'_, i32, T::Native, u32>, ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
     Ok(crate::linalg::sparse::CsrMatrixView::new(
         view.nrows,
         view.ncols,

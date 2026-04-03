@@ -54,6 +54,11 @@ rand.workspace = true
 [lints]
 workspace = true
 
+[[example]]
+name = "arrow_extension_types"
+path = "examples/arrow_extension_types.rs"
+required-features = ["arrow"]
+
 [[bench]]
 name = "svd_benchmarks"
 harness = false

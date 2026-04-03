@@ -12,6 +12,8 @@ linear algebra and ML-oriented matrix/vector operations.
 Optional Arrow interop is available behind feature `arrow`, using
 [ndarrow](https://crates.io/crates/ndarrow) as the zero-copy Arrow/ndarray bridge while keeping
 the core numerical crates ndarray-native.
+When feature `arrow` is enabled, `nabled` also re-exports that bridge as `nabled::ndarrow` so
+Arrow-facing consumers can stay on the same bridge contract version as the facade adapters.
 
 Important! Nabled is under active development right now, so the only way to be sure the public APIs don't break is to pin your version. When stabilized, it will follow proper versioning, but for now it is guaranteed to change.
 
@@ -19,7 +21,7 @@ Important! Nabled is under active development right now, so the only way to be s
 
 ```toml
 [dependencies]
-nabled = "0.0.7"
+nabled = "0.0.8"
 ```
 
 ## Implemented Domains
@@ -96,12 +98,12 @@ To publish **pynabled** wheels to PyPI (tags, CI, TestPyPI), see [docs/PYPI_PUBL
 
 ```toml
 [dependencies]
-nabled = { version = "0.0.7", features = ["openblas-system"] }
+nabled = { version = "0.0.8", features = ["openblas-system"] }
 ```
 
 ```toml
 [dependencies]
-nabled = { version = "0.0.7", features = ["arrow"] }
+nabled = { version = "0.0.8", features = ["arrow"] }
 ```
 
 Arrow interop notes:
@@ -111,7 +113,8 @@ Arrow interop notes:
    dense, sparse, decomposition, tensor, batched, and ML/stat workflows.
 3. Arrow wrappers delegate to the same ndarray-native execution paths, so provider backends,
    GPU/backend routing, and MAGMA behavior are inherited rather than reimplemented.
-4. Exact direct-ingress coverage is tracked in `docs/ARROW_SUPPORT_MATRIX.md`.
+4. The bridge crate used by the facade is re-exported as `nabled::ndarrow` behind feature `arrow`.
+5. Exact direct-ingress coverage is tracked in `docs/ARROW_SUPPORT_MATRIX.md`.
 
 Feature behavior:
 

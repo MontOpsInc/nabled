@@ -7,9 +7,10 @@ use nabled_core::scalar::NabledReal;
 use ndarrow::NdarrowElement;
 
 use super::{
-    ArrowInteropError, csr_matrix_view_from_columns, csr_matrix_view_from_extension,
-    fixed_size_list_from_owned, fixed_size_list_view, primitive_array_from_owned,
-    primitive_array_view,
+    ArrowInteropError, csr_matrix_batch_view, csr_matrix_view_from_batch_row,
+    csr_matrix_view_from_columns, csr_matrix_view_from_extension, fixed_size_list_from_owned,
+    fixed_size_list_view, primitive_array_from_owned, primitive_array_view,
+    variable_shape_tensor_batch_view,
 };
 
 type CsrBatchRowParts<T> = ([usize; 2], Vec<i32>, Vec<u32>, Vec<T>);
@@ -395,23 +396,16 @@ where
         )));
     }
 
-    let mut outputs = Vec::with_capacity(matrices.len());
-    let mut vector_iter = ndarrow::variable_shape_tensor_iter::<T>(vectors_field, vectors)?;
-    for matrix_row in ndarrow::csr_matrix_batch_iter::<T>(field, matrices)? {
-        let (_, matrix_view) = matrix_row?;
-        let (_, vector_view) = vector_iter.next().ok_or_else(|| {
-            ArrowInteropError::InvalidShape("dense vector batch iterator ended early".to_owned())
-        })??;
-        let vector_view = vector_view
+    let matrix_batch = csr_matrix_batch_view::<T>(field, matrices)?;
+    let vector_batch = variable_shape_tensor_batch_view::<T>(vectors_field, vectors)?;
+    let mut outputs = Vec::with_capacity(matrix_batch.len());
+    for row in 0..matrix_batch.len() {
+        let matrix_view = csr_matrix_view_from_batch_row::<T>(matrix_batch.row(row)?)?;
+        let vector_view = vector_batch
+            .row(row)?
+            .as_array_viewd()?
             .into_dimensionality::<ndarray::Ix1>()
             .map_err(|error| ArrowInteropError::InvalidShape(error.to_string()))?;
-        let matrix_view = crate::linalg::sparse::CsrMatrixView::new(
-            matrix_view.nrows,
-            matrix_view.ncols,
-            matrix_view.row_ptrs,
-            matrix_view.col_indices,
-            matrix_view.values,
-        )?;
         outputs.push(crate::linalg::sparse::matvec_view(&matrix_view, &vector_view)?.into_dyn());
     }
 
@@ -442,23 +436,16 @@ where
         )));
     }
 
-    let mut outputs = Vec::with_capacity(matrices.len());
-    let mut right_iter = ndarrow::variable_shape_tensor_iter::<T>(right_field, right)?;
-    for matrix_row in ndarrow::csr_matrix_batch_iter::<T>(field, matrices)? {
-        let (_, matrix_view) = matrix_row?;
-        let (_, right_view) = right_iter.next().ok_or_else(|| {
-            ArrowInteropError::InvalidShape("dense matrix batch iterator ended early".to_owned())
-        })??;
-        let right_view = right_view
+    let matrix_batch = csr_matrix_batch_view::<T>(field, matrices)?;
+    let right_batch = variable_shape_tensor_batch_view::<T>(right_field, right)?;
+    let mut outputs = Vec::with_capacity(matrix_batch.len());
+    for row in 0..matrix_batch.len() {
+        let matrix_view = csr_matrix_view_from_batch_row::<T>(matrix_batch.row(row)?)?;
+        let right_view = right_batch
+            .row(row)?
+            .as_array_viewd()?
             .into_dimensionality::<ndarray::Ix2>()
             .map_err(|error| ArrowInteropError::InvalidShape(error.to_string()))?;
-        let matrix_view = crate::linalg::sparse::CsrMatrixView::new(
-            matrix_view.nrows,
-            matrix_view.ncols,
-            matrix_view.row_ptrs,
-            matrix_view.col_indices,
-            matrix_view.values,
-        )?;
         outputs
             .push(crate::linalg::sparse::matmat_dense_view(&matrix_view, &right_view)?.into_dyn());
     }
@@ -478,20 +465,14 @@ where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
 {
-    let mut shapes = Vec::with_capacity(matrices.len());
-    let mut row_ptrs = Vec::with_capacity(matrices.len());
-    let mut col_indices = Vec::with_capacity(matrices.len());
-    let mut values = Vec::with_capacity(matrices.len());
+    let matrix_batch = csr_matrix_batch_view::<T>(field, matrices)?;
+    let mut shapes = Vec::with_capacity(matrix_batch.len());
+    let mut row_ptrs = Vec::with_capacity(matrix_batch.len());
+    let mut col_indices = Vec::with_capacity(matrix_batch.len());
+    let mut values = Vec::with_capacity(matrix_batch.len());
 
-    for matrix_row in ndarrow::csr_matrix_batch_iter::<T>(field, matrices)? {
-        let (_, matrix_view) = matrix_row?;
-        let matrix_view = crate::linalg::sparse::CsrMatrixView::new(
-            matrix_view.nrows,
-            matrix_view.ncols,
-            matrix_view.row_ptrs,
-            matrix_view.col_indices,
-            matrix_view.values,
-        )?;
+    for row in 0..matrix_batch.len() {
+        let matrix_view = csr_matrix_view_from_batch_row::<T>(matrix_batch.row(row)?)?;
         let transposed = crate::linalg::sparse::transpose_view(&matrix_view)?;
         let (shape, row_ptr, cols, row_values) = csr_matrix_to_batch_parts(transposed)?;
         shapes.push(shape);
@@ -533,31 +514,16 @@ where
         )));
     }
 
-    let mut shapes = Vec::with_capacity(left.len());
-    let mut row_ptrs = Vec::with_capacity(left.len());
-    let mut col_indices = Vec::with_capacity(left.len());
-    let mut values = Vec::with_capacity(left.len());
-    let mut right_iter = ndarrow::csr_matrix_batch_iter::<T>(right_field, right)?;
+    let left_batch = csr_matrix_batch_view::<T>(left_field, left)?;
+    let right_batch = csr_matrix_batch_view::<T>(right_field, right)?;
+    let mut shapes = Vec::with_capacity(left_batch.len());
+    let mut row_ptrs = Vec::with_capacity(left_batch.len());
+    let mut col_indices = Vec::with_capacity(left_batch.len());
+    let mut values = Vec::with_capacity(left_batch.len());
 
-    for left_row in ndarrow::csr_matrix_batch_iter::<T>(left_field, left)? {
-        let (_, left_view) = left_row?;
-        let (_, right_view) = right_iter.next().ok_or_else(|| {
-            ArrowInteropError::InvalidShape("right sparse batch iterator ended early".to_owned())
-        })??;
-        let left_view = crate::linalg::sparse::CsrMatrixView::new(
-            left_view.nrows,
-            left_view.ncols,
-            left_view.row_ptrs,
-            left_view.col_indices,
-            left_view.values,
-        )?;
-        let right_view = crate::linalg::sparse::CsrMatrixView::new(
-            right_view.nrows,
-            right_view.ncols,
-            right_view.row_ptrs,
-            right_view.col_indices,
-            right_view.values,
-        )?;
+    for row in 0..left_batch.len() {
+        let left_view = csr_matrix_view_from_batch_row::<T>(left_batch.row(row)?)?;
+        let right_view = csr_matrix_view_from_batch_row::<T>(right_batch.row(row)?)?;
         let product = crate::linalg::sparse::matmat_sparse_view(&left_view, &right_view)?;
         let (shape, row_ptr, cols, row_values) = csr_matrix_to_batch_parts(product)?;
         shapes.push(shape);

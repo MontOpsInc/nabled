@@ -13,6 +13,7 @@ use super::{
     ArrowInteropError, complex64_fixed_shape_tensor_from_owned, complex64_fixed_shape_tensor_viewd,
     complex64_matrix_from_owned, complex64_matrix_view, fixed_shape_tensor_from_owned,
     fixed_shape_tensor_viewd, fixed_size_list_from_owned, fixed_size_list_view,
+    variable_shape_tensor_batch_view,
 };
 
 #[derive(Debug, Deserialize)]
@@ -77,9 +78,10 @@ where
     T::Native: NabledReal + NdarrowElement,
     F: FnMut(&ndarray::ArrayViewD<'_, T::Native>) -> Result<ArrayD<T::Native>, ArrowInteropError>,
 {
-    let mut outputs = Vec::with_capacity(array.len());
-    for row in ndarrow::variable_shape_tensor_iter::<T>(field, array)? {
-        let (_, tensor_view) = row?;
+    let batch = variable_shape_tensor_batch_view::<T>(field, array)?;
+    let mut outputs = Vec::with_capacity(batch.len());
+    for row in 0..batch.len() {
+        let tensor_view = batch.row(row)?.as_array_viewd()?;
         outputs.push(op(&tensor_view)?);
     }
     Ok(ndarrow::arrays_to_variable_shape_tensor(field.name(), outputs, uniform_shape)?)
@@ -408,15 +410,12 @@ where
     }
 
     let uniform_shape = reduced_uniform_shape(variable_shape_uniform_shape(left_field)?);
-    let mut outputs = Vec::with_capacity(left.len());
-    let mut right_iter = ndarrow::variable_shape_tensor_iter::<T>(right_field, right)?;
-    for left_row in ndarrow::variable_shape_tensor_iter::<T>(left_field, left)? {
-        let (_, left_view) = left_row?;
-        let (_, right_view) = right_iter.next().ok_or_else(|| {
-            ArrowInteropError::InvalidShape(
-                "variable-shape tensor batch iterator ended early".to_owned(),
-            )
-        })??;
+    let left_batch = variable_shape_tensor_batch_view::<T>(left_field, left)?;
+    let right_batch = variable_shape_tensor_batch_view::<T>(right_field, right)?;
+    let mut outputs = Vec::with_capacity(left_batch.len());
+    for row in 0..left_batch.len() {
+        let left_view = left_batch.row(row)?.as_array_viewd()?;
+        let right_view = right_batch.row(row)?.as_array_viewd()?;
         outputs.push(crate::linalg::tensor::batched_dot_last_axis_view(&left_view, &right_view)?);
     }
     Ok(ndarrow::arrays_to_variable_shape_tensor(left_field.name(), outputs, uniform_shape)?)
