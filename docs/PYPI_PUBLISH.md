@@ -106,8 +106,9 @@ That push triggers [`.github/workflows/publish-pypi.yml`](../.github/workflows/p
 If versions are already aligned:
 
 ```bash
-git tag -a pypi-v0.0.7 -m "PyPI publish pynabled 0.0.7"
-git push origin pypi-v0.0.7
+VERSION="$(awk '/^\[workspace\.package\]/ {in_ws=1; next} in_ws && /^version = / {gsub(/"/,"",$3); print $3; exit}' Cargo.toml)"
+git tag -a "pypi-v${VERSION}" -m "PyPI publish pynabled ${VERSION}"
+git push origin "pypi-v${VERSION}"
 ```
 
 ## Post-release

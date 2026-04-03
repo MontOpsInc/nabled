@@ -26,7 +26,9 @@ Use this file to resume work quickly after context compaction without re-auditin
 5. Quality gates continue to pass in both internal and provider-enabled modes after capability expansion.
 6. Benchmark smoke/report coverage now includes matrix/tensor suites in addition to prior dense/sparse suites.
 7. Ordered v1 stability gate blockers are closed for the Rust workspace; core `nabled` remains in K-series normalization / benchmark-monitor mode.
-8. Branch-local audit on `feat/pynabled-bindings` found blocking Python/PyPI gaps; that branch is not merge-ready and does not inherit the repository's monitor-only posture until the `N-PY-*` items below are complete.
+8. `feat/pynabled-bindings` baseline sync is now complete (`N-PY-001`): the branch is merged to current `main`, Python package version truth is aligned to `0.0.8`, and tracked native `dSYM` artifacts are removed from the sdist path.
+9. `feat/pynabled-bindings` now has an explicit parity target in `docs/PYNABLED_PARITY_MATRIX.md`, covering domain, dtype, Arrow, allocation-control, and feature/build expectations for release.
+10. `feat/pynabled-bindings` remains under an active merge gate for parity, coverage, docs, performance, feature/build UX, and PyPI hardening; it does not inherit the repository's monitor-only posture until the remaining `N-PY-*` items below are complete.
 
 ## V1 Stability Gate (Ordered, Required)
 
@@ -253,20 +255,20 @@ Audit reference: `docs/PYNABLED_GAPS_AUDIT.md` (2026-04-03).
 194. `D-194`: Arrow interop has been re-baselined under the concept-first standalone / `rows-of-X` contract. Broad domain entrypoints remain landed, but checkpoint 2 is now explicitly tracked as incomplete until each concept family has a coherent canonical batch carrier and workflow surface.
 195. `D-195`: Arrow checkpoint 2 is complete under the concept-first contract: `nabled` now depends on `ndarrow 0.0.3`, dense vector batches have row-wise real/complex norms/cosine/distance/normalize over canonical `rows-of-vectors`, custom complex matrix/fixed-shape tensor codecs were replaced with `ndarrow` carriers, variable-shape tensor real/complex last-axis and batched-dot facades are landed, and sparse matrix batch workflows now admit row-wise dense matvec/matmat plus sparse transpose/matmat over `ndarrow.csr_matrix_batch`.
 196. `D-196`: Arrow facade contract polish is now complete for the current downstream integration round: `nabled` depends on `ndarrow 0.0.4`, re-exports the bridge as `nabled::ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume canonical `ndarrow` batch views rather than paired row iterators, keeping the facade aligned with the stabilized column-level bridge surface.
+197. `D-197`: `N-PY-001` is complete on `feat/pynabled-bindings`: the branch is merged to current `origin/main`, `pynabled` package metadata is aligned to workspace version `0.0.8`, tracked native `dSYM` artifacts were removed from `python/pynabled/`, and `maturin sdist` now emits a clean source distribution without native debug bundles.
+198. `D-198`: `N-PY-002` is complete on `feat/pynabled-bindings`: `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative Rust-vs-Python parity target across dense, sparse, tensor, ML, Arrow, dtype, allocation-control, and provider/backend exposure expectations, and resume/bootstrap docs now point future work at that matrix.
 
 ## Next
 
-1. `N-PY-001`: Sync `feat/pynabled-bindings` to `origin/main` / `v0.0.8`, adopt the current `ndarrow` baseline, remove tracked native Python build artifacts from the repository/sdist path, and re-establish a clean packaging/version truth.
-2. `N-PY-002`: Write the authoritative parity matrix for `pynabled` vs `nabled` / `nabled::arrow`, covering dense, sparse, tensor, ML, Arrow, dtype, complex, workspace/`*_into`, and provider/backend exposure expectations for release.
-3. `N-PY-003`: Close the highest-priority missing Python API domains and numerics, starting with `jacobian`, `optimization`, complex parity, missing sparse breadth, and missing tensor depth needed for production parity claims.
-4. `N-PY-004`: Expand Python Arrow/PyArrow bindings from the current minimal subset to full admitted `ndarrow`/`nabled::arrow` parity, including canonical carrier selection and zero-copy contract preservation.
-5. `N-PY-005`: Normalize Python feature/build UX so the documented Python extras and source-build instructions truthfully map to the supported provider/backend feature matrix.
-6. `N-PY-006`: Add Python quality gates for wheel+sdist smoke, full pytest execution in CI, Python coverage `>= 90%`, and required feature permutations (`default`, `arrow`, provider, accelerator, and combined builds where applicable).
-7. `N-PY-007`: Perform the Python-side performance/copy-elision audit and close avoidable ingress/egress copies, contiguity traps, and wrapper-level materializations that would compromise `nabled` performance goals.
-8. `N-PY-008`: Harden the PyPI release path with clean sdists, pinned actions/tooling, Python dependency automation/scanning, and trusted publishing or equivalent supply-chain controls.
-9. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
-10. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
-11. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
+1. `N-PY-003`: Close the highest-priority missing Python API domains and numerics, starting with `jacobian`, `optimization`, complex parity, missing sparse breadth, and missing tensor depth needed for production parity claims.
+2. `N-PY-004`: Expand Python Arrow/PyArrow bindings from the current minimal subset to full admitted `ndarrow`/`nabled::arrow` parity, including canonical carrier selection and zero-copy contract preservation.
+3. `N-PY-005`: Normalize Python feature/build UX so the documented Python extras and source-build instructions truthfully map to the supported provider/backend feature matrix.
+4. `N-PY-006`: Add Python quality gates for wheel+sdist smoke, full pytest execution in CI, Python coverage `>= 90%`, and required feature permutations (`default`, `arrow`, provider, accelerator, and combined builds where applicable).
+5. `N-PY-007`: Perform the Python-side performance/copy-elision audit and close avoidable ingress/egress copies, contiguity traps, and wrapper-level materializations that would compromise `nabled` performance goals.
+6. `N-PY-008`: Harden the PyPI release path with clean sdists, pinned actions/tooling, Python dependency automation/scanning, and trusted publishing or equivalent supply-chain controls.
+7. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
+8. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
+9. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
 
 Tensor-depth stop rubric (post-v1 finite target):
 1. `D-179` TT algebra utilities (`tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, `tt_hadamard_round`) with tests/feature-matrix parity. ✅
@@ -323,5 +325,6 @@ It means:
    - `docs/STATUS.md`
    - `docs/PYPI_PUBLISH.md` when working on Python/PyPI release flow
    - `docs/PYNABLED_GAPS_AUDIT.md` when working on `crates/pynabled`, `python/`, or `feat/pynabled-bindings`
+   - `docs/PYNABLED_PARITY_MATRIX.md` when closing Python parity/release gaps
 2. Start from the highest-priority open `V2-*` or `N-*` item unless maintainers redirect.
 3. Keep item IDs in PR/commit notes when relevant so progression stays auditable.

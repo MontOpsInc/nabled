@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pynabled"
-version = "0.0.7"
+version = "0.0.8"
 description = "Ndarray-native linear algebra and ML library - Python bindings for nabled"
 readme = "python/README.md"
 requires-python = ">=3.10"

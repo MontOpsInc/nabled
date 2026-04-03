@@ -11,11 +11,14 @@ Workspace migration for library domains is complete.
 3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.
 4. Facade crate `nabled` exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; domain entrypoints exist broadly across dense, sparse, decomposition, tensor, batched, and ML/stat workflows, and checkpoint 2 is now complete under the concept-first standalone / `rows-of-X` contract.
 Branch note:
-`feat/pynabled-bindings` is not yet merge-ready or PyPI-release-ready. The 2026-04-03 audit in
-`docs/PYNABLED_GAPS_AUDIT.md` found blocking gaps in branch sync/version baseline, Python API parity,
-Arrow/PyArrow coverage, packaging hygiene, feature exposure, coverage/CI gates, performance contracts,
-documentation, and PyPI supply-chain hardening. Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as
-the ordered closure plan for that branch.
+`feat/pynabled-bindings` is not yet merge-ready or PyPI-release-ready, but baseline sync `N-PY-001`
+and parity-target definition `N-PY-002` are now complete: the branch is merged to current `main`,
+`pyproject.toml` version truth is aligned to `0.0.8`, tracked native `dSYM` artifacts were removed
+from the Python sdist path, and `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative
+release target. Remaining blocking work is Python API parity implementation, Arrow/PyArrow
+coverage, feature exposure, coverage/CI gates, performance contracts, documentation, and PyPI
+supply-chain hardening. Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure
+plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 7. Public `*_lapack` compatibility wrappers have been removed.
