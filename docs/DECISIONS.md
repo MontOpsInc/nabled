@@ -56,6 +56,22 @@ dense Python data type. Branch-local parity and PyPI readiness are not inferred 
 use `docs/PYNABLED_GAPS_AUDIT.md`, `docs/EXECUTION_TRACKER.md`, and `docs/STATUS.md` for current
 merge/release truth when working on `feat/pynabled-bindings`.
 
+Locked Python-boundary decisions:
+1. `pynabled` does not use one universal Python carrier across all admitted domains.
+2. Dense/vector/matrix/tensor CPU-facing APIs use NumPy arrays as the canonical Python carrier.
+3. Sparse APIs require first-class sparse carriers (`pynabled` wrappers and/or SciPy-compatible
+   objects); raw CSR buffer tuples are transitional only, not the release-grade contract.
+4. Arrow-admitted APIs use canonical PyArrow/`ndarrow` carriers; Arrow-native Rust flows must not
+   be degraded back to NumPy by default.
+5. Rich Rust result structs must become typed Python result objects where metadata matters; tuples
+   are not the final release contract for those families.
+6. Callback-driven Python APIs are convenience APIs unless their hot loops remain in Rust; they may
+   not be documented as no-compromise performance equivalents by default.
+7. Copy/allocation behavior at the Python boundary must follow the same no-hidden-copy discipline as
+   the Rust workspace.
+
+For the detailed per-domain contract, use `docs/PYNABLED_ARCHITECTURE.md`.
+
 ## Provider and Backend Contract
 
 1. `blas` is a baseline feature for enabling BLAS-accelerated ndarray paths where available.

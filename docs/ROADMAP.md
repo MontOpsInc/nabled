@@ -88,8 +88,13 @@ Next phase:
 Ordered closure path:
 1. Sync the branch to current `main` / latest release truth and remove tracked native build artifacts from the Python packaging path.
 2. Establish explicit `pynabled` parity targets against `nabled` and admitted `nabled::arrow` / `ndarrow` surface.
-3. Close Python API, Arrow/PyArrow, feature/build, performance, coverage, docs, and PyPI-security gaps tracked in `docs/PYNABLED_GAPS_AUDIT.md`.
-4. Use `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the authoritative execution order for this branch.
+3. Lock the Python boundary architecture explicitly:
+   - canonical carrier by domain,
+   - copy/allocation contract,
+   - callback/execution-locality contract,
+   - result-object fidelity contract.
+4. Close Python API, Arrow/PyArrow, feature/build, performance, coverage, docs, and PyPI-security gaps tracked in `docs/PYNABLED_GAPS_AUDIT.md` under that locked architecture.
+5. Use `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the authoritative execution order for this branch.
 
 Success condition:
 1. `pynabled` is merge-ready only when it is production-grade and leaves no unapproved functionality or interop gaps relative to the admitted Rust surface.

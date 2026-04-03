@@ -28,7 +28,8 @@ Use this file to resume work quickly after context compaction without re-auditin
 7. Ordered v1 stability gate blockers are closed for the Rust workspace; core `nabled` remains in K-series normalization / benchmark-monitor mode.
 8. `feat/pynabled-bindings` baseline sync is now complete (`N-PY-001`): the branch is merged to current `main`, Python package version truth is aligned to `0.0.8`, and tracked native `dSYM` artifacts are removed from the sdist path.
 9. `feat/pynabled-bindings` now has an explicit parity target in `docs/PYNABLED_PARITY_MATRIX.md`, covering domain, dtype, Arrow, allocation-control, and feature/build expectations for release.
-10. `feat/pynabled-bindings` remains under an active merge gate for parity, coverage, docs, performance, feature/build UX, and PyPI hardening; it does not inherit the repository's monitor-only posture until the remaining `N-PY-*` items below are complete.
+10. `feat/pynabled-bindings` now has an explicit boundary-architecture contract in `docs/PYNABLED_ARCHITECTURE.md`, locking canonical Python carriers by domain plus copy/allocation, callback, and result-fidelity rules.
+11. `feat/pynabled-bindings` remains under an active merge gate for parity, coverage, docs, performance, feature/build UX, and PyPI hardening; it does not inherit the repository's monitor-only posture until the remaining `N-PY-*` items below are complete.
 
 ## V1 Stability Gate (Ordered, Required)
 
@@ -49,13 +50,14 @@ Audit reference: `docs/PYNABLED_GAPS_AUDIT.md` (2026-04-03).
 
 1. Branch/package baseline is synchronized to `origin/main` / latest released `nabled`, including version metadata, `ndarrow` baseline, and removal of tracked native build artifacts from source distributions.
 2. Python capability parity is made explicit against current Rust `nabled` and `nabled::arrow` surfaces, with no unapproved omissions in dense, sparse, tensor, ML, or Arrow-admitted domains.
-3. Python bindings cover the required release surface across supported dtypes and numerics (`f32`, `f64`, complex where Rust admits them), plus missing ML/tensor/sparse breadth required for "no gaps / no compromises" claims.
-4. PyArrow / `ndarrow` interop reaches full admitted parity, using canonical carriers and zero-copy ingress/egress contracts wherever the Rust facade already supports them.
-5. Python build/configuration paths expose the required provider/backend feature matrix clearly and truthfully, including source-build flows for BLAS/LAPACK, accelerator, and MAGMA-related capabilities where supported.
-6. Python-side performance/copy contracts are audited and hardened so wrappers preserve `nabled` performance goals rather than silently forcing avoidable copies or layout failures.
-7. CI and local quality gates enforce Python behavior with wheel+sdist smoke, full pytest execution, Python coverage `>= 90%`, and feature-matrix jobs beyond import-only validation.
-8. Python user documentation, API reference, and release docs are production-ready and synchronized with actual package behavior.
-9. PyPI release hardening is complete: clean artifacts, pinned automation/toolchain, Python dependency/security scanning, and trusted publishing or equivalent supply-chain signoff.
+3. Python boundary architecture is explicit and enforced: canonical carriers are locked by domain, copy/allocation classes are documented, callback/execution-locality semantics are explicit, and release-relevant Rust result structs have a Python fidelity plan.
+4. Python bindings cover the required release surface across supported dtypes and numerics (`f32`, `f64`, complex where Rust admits them), plus missing ML/tensor/sparse breadth required for "no gaps / no compromises" claims.
+5. PyArrow / `ndarrow` interop reaches full admitted parity, using canonical carriers and zero-copy ingress/egress contracts wherever the Rust facade already supports them.
+6. Python build/configuration paths expose the required provider/backend feature matrix clearly and truthfully, including source-build flows for BLAS/LAPACK, accelerator, and MAGMA-related capabilities where supported.
+7. Python-side performance/copy contracts are audited and hardened so wrappers preserve `nabled` performance goals rather than silently forcing avoidable copies or layout failures.
+8. CI and local quality gates enforce Python behavior with wheel+sdist smoke, full pytest execution, Python coverage `>= 90%`, and feature-matrix jobs beyond import-only validation.
+9. Python user documentation, API reference, and release docs are production-ready and synchronized with actual package behavior.
+10. PyPI release hardening is complete: clean artifacts, pinned automation/toolchain, Python dependency/security scanning, and trusted publishing or equivalent supply-chain signoff.
 
 ## Done
 
@@ -257,10 +259,14 @@ Audit reference: `docs/PYNABLED_GAPS_AUDIT.md` (2026-04-03).
 196. `D-196`: Arrow facade contract polish is now complete for the current downstream integration round: `nabled` depends on `ndarrow 0.0.4`, re-exports the bridge as `nabled::ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume canonical `ndarrow` batch views rather than paired row iterators, keeping the facade aligned with the stabilized column-level bridge surface.
 197. `D-197`: `N-PY-001` is complete on `feat/pynabled-bindings`: the branch is merged to current `origin/main`, `pynabled` package metadata is aligned to workspace version `0.0.8`, tracked native `dSYM` artifacts were removed from `python/pynabled/`, and `maturin sdist` now emits a clean source distribution without native debug bundles.
 198. `D-198`: `N-PY-002` is complete on `feat/pynabled-bindings`: `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative Rust-vs-Python parity target across dense, sparse, tensor, ML, Arrow, dtype, allocation-control, and provider/backend exposure expectations, and resume/bootstrap docs now point future work at that matrix.
+199. `D-199`: First `N-PY-003` pass is landed on `feat/pynabled-bindings`: `pynabled` now exposes callable-driven `jacobian` and `optimization` bindings, plus complex/high-level ML parity additions for iterative solves, PCA compute/transform/inverse-transform, regression, and stats; the Python test suite is green on a Python 3.12 editable build (`90 passed, 3 skipped`).
+200. `D-200`: Second `N-PY-003` pass is landed on `feat/pynabled-bindings`: `pynabled` tensor coverage now includes complex tensor kernels plus real tensor decomposition/network breadth (`einsum`, N-D `hosvd`/`hooi`, Tucker projection/expansion, rank-3/N-D `cp_als` with diagnostics/reporting, and TT-SVD / TT algebra / TT reconstruction), and the full Python suite is green on the editable Python 3.12 build (`96 passed, 3 skipped`).
+201. `D-201`: Python boundary architecture is now explicit for `feat/pynabled-bindings`: `docs/PYNABLED_ARCHITECTURE.md` locks canonical carriers by domain (NumPy dense CPU, sparse-specific carriers, Arrow-native PyArrow/`ndarrow`, typed result objects), plus copy/allocation classes, callback/execution-locality rules, and result-fidelity requirements so future parity work does not continue on the prior broken universal-carrier assumption.
+202. `D-202`: Third `N-PY-003` foundation pass is landed on `feat/pynabled-bindings`: dense/view-based NumPy APIs no longer reject non-C-contiguous inputs at the Python boundary, Python tensor decomposition wrappers now use Rust view APIs where those already exist (`einsum`, N-D `hosvd`/`hooi`, Tucker, CP-ALS diagnostics/reporting, TT-SVD), TT-SVD now normalizes strided dynamic tensors before reshape-sensitive steps, and the full Python suite is green on the editable Python 3.12 build (`99 passed, 3 skipped`).
 
 ## Next
 
-1. `N-PY-003`: Close the highest-priority missing Python API domains and numerics, starting with `jacobian`, `optimization`, complex parity, missing sparse breadth, and missing tensor depth needed for production parity claims.
+1. `N-PY-003`: Continue the Python API/numerics parity pass under the locked `docs/PYNABLED_ARCHITECTURE.md` contract, focusing next on broad `f32` coverage, sparse-carrier redesign, remaining dense complex parity, and typed result-object fidelity needed for production parity claims.
 2. `N-PY-004`: Expand Python Arrow/PyArrow bindings from the current minimal subset to full admitted `ndarrow`/`nabled::arrow` parity, including canonical carrier selection and zero-copy contract preservation.
 3. `N-PY-005`: Normalize Python feature/build UX so the documented Python extras and source-build instructions truthfully map to the supported provider/backend feature matrix.
 4. `N-PY-006`: Add Python quality gates for wheel+sdist smoke, full pytest execution in CI, Python coverage `>= 90%`, and required feature permutations (`default`, `arrow`, provider, accelerator, and combined builds where applicable).

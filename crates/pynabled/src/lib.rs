@@ -84,16 +84,50 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Tensor
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matvec, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matvec_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matmat, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matmat_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::sum_last_axis, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::sum_last_axis_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::l2_norm_last_axis, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::l2_norm_last_axis_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::normalize_last_axis, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::normalize_last_axis_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_dot_last_axis, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_dot_last_axis_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::permute_axes, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::permute_axes_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::contract_axes, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::contract_axes_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_matmul_last_two, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_matmul_last_two_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::einsum, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::einsum_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd3, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd3_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd_nd, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hooi_nd, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd_nd_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_project, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_expand, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3_with_report, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3_diagnostics, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd_with_report, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd_diagnostics, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_svd, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_orthogonalize_left, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_orthogonalize_right, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_round, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_inner, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_norm, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_add, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_hadamard, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_hadamard_round, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_svd_reconstruct, m)?)?;
 
     // Batched
     m.add_function(pyo3::wrap_pyfunction!(linalg::batched::qr, m)?)?;
@@ -117,15 +151,57 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // ML
     m.add_function(pyo3::wrap_pyfunction!(ml::regression::linear_regression, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::regression::linear_regression_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::compute_pca, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::compute_pca_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_transform, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_transform_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_inverse_transform, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_inverse_transform_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::column_means, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::center_columns, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::covariance_matrix, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::correlation_matrix, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::column_means_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::center_columns_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::covariance_matrix_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::correlation_matrix_complex, m)?)?;
 
     // Iterative (dense CG, GMRES)
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::gmres, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::iterative::gmres_complex, m)?)?;
+
+    // Jacobian / derivatives
+    m.add_function(pyo3::wrap_pyfunction!(ml::jacobian::numerical_jacobian, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::jacobian::numerical_jacobian_central, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::jacobian::numerical_gradient, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::jacobian::numerical_hessian, m)?)?;
+
+    // Optimization
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::backtracking_line_search, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::backtracking_line_search_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::gradient_descent, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::gradient_descent_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::adam, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::adam_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::momentum_descent, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::momentum_descent_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::rmsprop, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::rmsprop_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::projected_gradient_descent_box, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        ml::optimization::projected_gradient_descent_box_complex,
+        m
+    )?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::stochastic_gradient_descent, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        ml::optimization::stochastic_gradient_descent_complex,
+        m
+    )?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::bfgs, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::optimization::bfgs_complex, m)?)?;
 
     // Sparse
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::matvec, m)?)?;

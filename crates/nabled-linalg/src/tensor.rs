@@ -3475,7 +3475,10 @@ fn tt_svd_impl<T: TtSvdScalar>(
     }
 
     let mut cores = Vec::<Array3<T>>::with_capacity(ndim);
-    let mut current = tensor.to_owned();
+    // TT-SVD repeatedly reshapes the working tensor into matrices. Normalize the initial dynamic
+    // tensor into standard layout once so view-based callers are not rejected purely because the
+    // source NumPy/ndarray storage is strided or Fortran-ordered.
+    let mut current = tensor.as_standard_layout().to_owned();
     let mut left_rank = 1_usize;
 
     for mode in 0..(ndim - 1) {

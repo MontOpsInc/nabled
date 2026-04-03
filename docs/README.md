@@ -29,10 +29,11 @@ This folder contains the current, authoritative direction for `nabled`.
 15. `docs/PYPI_PUBLISH.md`: **pynabled** PyPI releases (tags, CI wheel smoke, `just tag-pypi-release`).
 16. `docs/PYNABLED_GAPS_AUDIT.md`: Python-branch audit findings and merge blockers for `feat/pynabled-bindings`.
 17. `docs/PYNABLED_PARITY_MATRIX.md`: authoritative Rust-vs-Python parity target for `pynabled` release readiness.
-18. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
-19. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
-20. `docs/NDARROW_INTEGRATION.md`: facade-level Arrow interop contract and current adapter surface.
-21. `docs/ARROW_SUPPORT_MATRIX.md`: direct Arrow-ingress coverage against the current public API.
+18. `docs/PYNABLED_ARCHITECTURE.md`: canonical Python carrier, copy/allocation, callback, and result-fidelity contract for `pynabled`.
+19. `docs/STATUS.md`: current migration snapshot (source of truth for what has been moved).
+20. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
+21. `docs/NDARROW_INTEGRATION.md`: facade-level Arrow interop contract and current adapter surface.
+22. `docs/ARROW_SUPPORT_MATRIX.md`: direct Arrow-ingress coverage against the current public API.
 
 ## Context Resume Protocol
 
@@ -56,9 +57,10 @@ When starting from a compacted/partial context, read documents in this order:
 16. `docs/PYPI_PUBLISH.md` (when releasing Python bindings)
 17. `docs/PYNABLED_GAPS_AUDIT.md` (when working on `feat/pynabled-bindings` / `pynabled`)
 18. `docs/PYNABLED_PARITY_MATRIX.md` (when closing `N-PY-*` implementation gaps)
-19. `docs/STATUS.md`
-20. `docs/NDARROW_INTEGRATION.md`
-21. `docs/ARROW_SUPPORT_MATRIX.md`
+19. `docs/PYNABLED_ARCHITECTURE.md` (when changing Python carriers, copy contracts, or result objects)
+20. `docs/STATUS.md`
+21. `docs/NDARROW_INTEGRATION.md`
+22. `docs/ARROW_SUPPORT_MATRIX.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 
@@ -83,6 +85,7 @@ After reading the docs above, a contributor should be able to answer:
 9. What are the execution axes? (`Provider` vs `Backend` vs `Kernel`; see `docs/DECISIONS.md`)
 10. What is the complete kernel set and current wiring status? (See `docs/KERNEL_CATALOG.md`)
 11. What objective rubric defines "done" and "production-ready v1"? (See `docs/REFERENCE_RUBRIC.md`)
+12. What are the canonical Python carriers and copy/result contracts for `pynabled`? (See `docs/PYNABLED_ARCHITECTURE.md`)
 
 ## Scope Boundary
 

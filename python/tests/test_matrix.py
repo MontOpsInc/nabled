@@ -1,9 +1,8 @@
 """Tests for matrix bindings."""
 
 import numpy as np
-import pytest
-
 import pynabled
+import pytest
 
 
 def test_matvec():
@@ -56,3 +55,12 @@ def test_gram_schmidt_classic():
     assert q.shape == a.shape
     qtq = q.T @ q
     np.testing.assert_allclose(qtq, np.eye(2), rtol=1e-10, atol=1e-14)
+
+
+def test_dense_kernels_accept_non_contiguous_inputs():
+    matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64).T
+    vector = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)[::2]
+    assert not matrix.flags["C_CONTIGUOUS"]
+    assert not vector.flags["C_CONTIGUOUS"]
+    np.testing.assert_allclose(pynabled.matvec(matrix, vector), matrix @ vector, rtol=1e-10)
+    np.testing.assert_allclose(pynabled.matmat(matrix, matrix.T), matrix @ matrix.T, rtol=1e-10)

@@ -1,6 +1,7 @@
 //! Iterative solver bindings for Python (dense CG, GMRES).
 
 use nabled_ml::iterative::IterativeConfig;
+use num_complex::Complex64;
 use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
@@ -48,6 +49,54 @@ pub fn gmres<'py>(
         max_iterations: max_iterations.unwrap_or(1000),
     };
     let result = nabled_ml::iterative::gmres_view(&a.as_array(), &b.as_array(), &config)
+        .map_err(to_py_err)?;
+    Ok(PyArray1::from_owned_array(py, result).unbind())
+}
+
+/// Conjugate gradient solve for complex Hermitian positive definite Ax = b.
+#[pyfunction(name = "conjugate_gradient_complex")]
+pub fn conjugate_gradient_complex<'py>(
+    py: Python<'py>,
+    matrix_a: &Bound<'py, PyArray2<Complex64>>,
+    matrix_b: &Bound<'py, PyArray1<Complex64>>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<Py<PyArray1<Complex64>>> {
+    utils::require_contiguous(matrix_a)?;
+    utils::require_contiguous(matrix_b)?;
+    let a = matrix_a.readonly();
+    let b = matrix_b.readonly();
+    let config = IterativeConfig {
+        tolerance:      tolerance.unwrap_or(1e-10),
+        max_iterations: max_iterations.unwrap_or(1000),
+    };
+    let result = nabled_ml::iterative::conjugate_gradient_complex_view(
+        &a.as_array(),
+        &b.as_array(),
+        &config,
+    )
+    .map_err(to_py_err)?;
+    Ok(PyArray1::from_owned_array(py, result).unbind())
+}
+
+/// GMRES solve for general complex Ax = b.
+#[pyfunction(name = "gmres_complex")]
+pub fn gmres_complex<'py>(
+    py: Python<'py>,
+    matrix_a: &Bound<'py, PyArray2<Complex64>>,
+    matrix_b: &Bound<'py, PyArray1<Complex64>>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<Py<PyArray1<Complex64>>> {
+    utils::require_contiguous(matrix_a)?;
+    utils::require_contiguous(matrix_b)?;
+    let a = matrix_a.readonly();
+    let b = matrix_b.readonly();
+    let config = IterativeConfig {
+        tolerance:      tolerance.unwrap_or(1e-10),
+        max_iterations: max_iterations.unwrap_or(1000),
+    };
+    let result = nabled_ml::iterative::gmres_complex_view(&a.as_array(), &b.as_array(), &config)
         .map_err(to_py_err)?;
     Ok(PyArray1::from_owned_array(py, result).unbind())
 }

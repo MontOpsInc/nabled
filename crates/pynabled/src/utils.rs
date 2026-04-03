@@ -2,17 +2,11 @@
 
 use numpy::PyUntypedArrayMethods;
 use pyo3::PyResult;
-use pyo3::exceptions::PyValueError;
 
-/// Ensure the array is C-contiguous for zero-copy access.
+/// Validate NumPy layout compatibility for borrowed-array ingress.
 ///
-/// Returns a clear error if the array is not C-contiguous, suggesting
-/// `np.ascontiguousarray(a)`.
-pub fn require_contiguous<'py, A: PyUntypedArrayMethods<'py>>(array: &A) -> PyResult<()> {
-    if !array.is_c_contiguous() {
-        return Err(PyValueError::new_err(
-            "array must be C-contiguous; use np.ascontiguousarray(a) first",
-        ));
-    }
-    Ok(())
-}
+/// `pynabled` no longer rejects non-C-contiguous dense NumPy arrays at the Python boundary.
+/// Dense kernels should borrow strided views when the Rust API admits them, and wrappers that
+/// still materialize owned arrays must do so because of API shape rather than a blanket layout
+/// restriction at ingress.
+pub fn require_contiguous<'py, A: PyUntypedArrayMethods<'py>>(_array: &A) -> PyResult<()> { Ok(()) }

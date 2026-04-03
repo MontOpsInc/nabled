@@ -1,8 +1,6 @@
 """Tests for SVD bindings."""
 
 import numpy as np
-import pytest
-
 import pynabled
 
 
@@ -62,11 +60,10 @@ def test_svd_null_space():
         np.testing.assert_allclose(a @ null[:, j], np.zeros(2), atol=1e-10)
 
 
-def test_contiguity_error():
-    """Non-contiguous arrays raise a clear error."""
+def test_svd_accepts_non_contiguous_inputs():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
-    # Transpose creates a non-contiguous view
     a_non_contig = a.T
     assert not a_non_contig.flags["C_CONTIGUOUS"]
-    with pytest.raises(ValueError, match="C-contiguous"):
-        pynabled.svd_decompose(a_non_contig)
+    u, s, vt = pynabled.svd_decompose(a_non_contig)
+    recon = u @ np.diag(s) @ vt
+    np.testing.assert_allclose(recon, a_non_contig, rtol=1e-10)

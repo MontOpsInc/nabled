@@ -30,7 +30,10 @@ u, s, vt = pynabled.svd_decompose(a)
 print("singular values:", s)
 ```
 
-Use **C-contiguous** `float64` arrays for zero-copy paths; otherwise call `np.ascontiguousarray(a)` first.
+`numpy.ndarray` is the canonical CPU-array carrier for `pynabled`. Borrowed NumPy views are used
+where the Rust API admits them, including non-C-contiguous inputs for the view-based dense paths.
+Some higher-level wrappers still materialize owned arrays internally where the current Rust API
+shape requires it.
 
 ## Documentation
 

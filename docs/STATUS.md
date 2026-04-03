@@ -17,8 +17,22 @@ and parity-target definition `N-PY-002` are now complete: the branch is merged t
 from the Python sdist path, and `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative
 release target. Remaining blocking work is Python API parity implementation, Arrow/PyArrow
 coverage, feature exposure, coverage/CI gates, performance contracts, documentation, and PyPI
-supply-chain hardening. Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure
-plan for that branch.
+supply-chain hardening. The first `N-PY-003` implementation pass is also landed: Python now has
+callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across
+iterative solves, PCA transform/inverse-transform, regression, and stats. A second `N-PY-003`
+pass is also landed: Python tensor coverage now includes complex tensor kernels plus real tensor
+decomposition/network breadth (`einsum`, N-D `hosvd`/`hooi`, Tucker helpers, rank-3/N-D
+`cp_als` with diagnostics/reporting, and TT-SVD / TT algebra / reconstruction), and the full
+Python suite is green on the editable Python 3.12 build (`96 passed, 3 skipped`). The Python
+boundary architecture is now also explicit in `docs/PYNABLED_ARCHITECTURE.md`: `pynabled` does not
+use one universal carrier, NumPy remains the canonical dense CPU carrier, sparse/Arrow/result
+families require domain-native contracts, and copy/result/callback semantics are now tracked as
+first-order release requirements. A third `N-PY-003` foundation pass is now also landed: dense
+view-based NumPy APIs no longer reject non-C-contiguous inputs at the Python boundary, tensor
+decomposition wrappers now use Rust view APIs where they already exist, TT-SVD now normalizes
+strided dynamic tensors before reshape-sensitive steps, and the full Python suite is green on the
+editable Python 3.12 build (`99 passed, 3 skipped`). Treat
+`docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 7. Public `*_lapack` compatibility wrappers have been removed.
@@ -213,7 +227,8 @@ plan for that branch.
 On `feat/pynabled-bindings`, `pynabled` merge-gate closure supersedes the repository's monitor-only posture:
 
 1. Complete `N-PY-001..N-PY-008` in `docs/EXECUTION_TRACKER.md`.
-2. Do not merge the branch or declare `pynabled` production-ready until the blockers captured in `docs/PYNABLED_GAPS_AUDIT.md` are closed.
+2. Follow `docs/PYNABLED_ARCHITECTURE.md` for canonical Python carrier, copy/allocation, callback, and result-fidelity decisions while closing those items.
+3. Do not merge the branch or declare `pynabled` production-ready until the blockers captured in `docs/PYNABLED_GAPS_AUDIT.md` are closed.
 
 After the Python merge gate closes, the core repository returns to the existing monitor-mode milestone:
 
