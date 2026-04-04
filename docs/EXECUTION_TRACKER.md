@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-04-03
+Last updated: 2026-04-04
 
 ## Purpose
 
@@ -264,10 +264,12 @@ Audit reference: `docs/PYNABLED_GAPS_AUDIT.md` (2026-04-03).
 201. `D-201`: Python boundary architecture is now explicit for `feat/pynabled-bindings`: `docs/PYNABLED_ARCHITECTURE.md` locks canonical carriers by domain (NumPy dense CPU, sparse-specific carriers, Arrow-native PyArrow/`ndarrow`, typed result objects), plus copy/allocation classes, callback/execution-locality rules, and result-fidelity requirements so future parity work does not continue on the prior broken universal-carrier assumption.
 202. `D-202`: Third `N-PY-003` foundation pass is landed on `feat/pynabled-bindings`: dense/view-based NumPy APIs no longer reject non-C-contiguous inputs at the Python boundary, Python tensor decomposition wrappers now use Rust view APIs where those already exist (`einsum`, N-D `hosvd`/`hooi`, Tucker, CP-ALS diagnostics/reporting, TT-SVD), TT-SVD now normalizes strided dynamic tensors before reshape-sensitive steps, and the full Python suite is green on the editable Python 3.12 build (`99 passed, 3 skipped`).
 203. `D-203`: Fourth `N-PY-003` foundation pass is landed on `feat/pynabled-bindings`: sparse Python now has a canonical `CsrMatrix` carrier with SciPy-compatible CSR ingress, current sparse wrappers borrow CSR structure and RHS data into Rust view paths instead of rebuilding owned sparse matrices on every call, and the exposed sparse surface now includes sparse-dense matmat plus transpose alongside matvec/Jacobi/PCG; the full Python suite is green on the editable Python 3.12 build (`101 passed, 3 skipped`).
+204. `D-204`: Fifth `N-PY-003` numerics pass is landed on `feat/pynabled-bindings`: existing real-valued Python vector/matrix/current sparse-baseline/statistics/regression/PCA/iterative bindings now accept both `float32` and `float64` under the same public function names, sparse `CsrMatrix` preserves `float32` / `float64` values instead of normalizing everything to `float64`, mixed real dtypes now fail explicitly instead of silently casting, and the full Python suite is green on the editable Python 3.12 build (`108 passed, 3 skipped`).
+205. `D-205`: Sixth `N-PY-003` sparse-carrier ergonomics pass is landed on `feat/pynabled-bindings`: `pynabled.CsrMatrix` now preserves `int32` / `int64` index buffers end-to-end, the raw Rust bridge borrows either signed index dtype instead of forcing `int64`, sparse transpose preserves the input index dtype, explicit `dtype=` / `index_dtype=` normalization plus `astype(...)` / `with_index_dtype(...)` are available on the carrier, non-contiguous CSR buffers now fail at carrier construction unless `copy=True`, and the full Python suite is green on the editable Python 3.12 build (`113 passed, 3 skipped`).
 
 ## Next
 
-1. `N-PY-003`: Continue the Python API/numerics parity pass under the locked `docs/PYNABLED_ARCHITECTURE.md` contract, focusing next on broad `f32` coverage, remaining sparse breadth/reuse paths beyond the landed CSR carrier foundation, remaining dense complex parity, and typed result-object fidelity needed for production parity claims.
+1. `N-PY-003`: Continue the Python API/numerics parity pass under the locked `docs/PYNABLED_ARCHITECTURE.md` contract, focusing next on the remaining `f32` gaps (dense decompositions/functions, tensor breadth, callable `jacobian`/`optimization`, and Arrow-admitted rows), sparse breadth/reuse paths beyond the landed CSR carrier foundation, remaining dense complex parity, and typed result-object fidelity needed for production parity claims.
 2. `N-PY-004`: Expand Python Arrow/PyArrow bindings from the current minimal subset to full admitted `ndarrow`/`nabled::arrow` parity, including canonical carrier selection and zero-copy contract preservation.
 3. `N-PY-005`: Normalize Python feature/build UX so the documented Python extras and source-build instructions truthfully map to the supported provider/backend feature matrix.
 4. `N-PY-006`: Add Python quality gates for wheel+sdist smoke, full pytest execution in CI, Python coverage `>= 90%`, and required feature permutations (`default`, `arrow`, provider, accelerator, and combined builds where applicable).

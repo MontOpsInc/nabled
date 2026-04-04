@@ -64,3 +64,44 @@ def test_dense_kernels_accept_non_contiguous_inputs():
     assert not vector.flags["C_CONTIGUOUS"]
     np.testing.assert_allclose(pynabled.matvec(matrix, vector), matrix @ vector, rtol=1e-10)
     np.testing.assert_allclose(pynabled.matmat(matrix, matrix.T), matrix @ matrix.T, rtol=1e-10)
+
+
+def test_dense_kernels_accept_float32():
+    matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+    vector = np.array([1.0, 1.0], dtype=np.float32)
+    left = np.arange(8, dtype=np.float32).reshape(2, 2, 2)
+    right = np.array(
+        [
+            [[1.0, 0.0], [0.0, 1.0]],
+            [[2.0, 0.0], [0.0, 2.0]],
+        ],
+        dtype=np.float32,
+    )
+
+    matvec = pynabled.matvec(matrix, vector)
+    matmat = pynabled.matmat(matrix, matrix)
+    batched_row = pynabled.batched_row_matvec(
+        matrix, np.vstack([vector, 2.0 * vector]).astype(np.float32)
+    )
+    batched = pynabled.batched_matmat(left, right)
+
+    assert matvec.dtype == np.float32
+    assert matmat.dtype == np.float32
+    assert batched_row.dtype == np.float32
+    assert batched.dtype == np.float32
+    np.testing.assert_allclose(matvec, matrix @ vector, rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(matmat, matrix @ matrix, rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(
+        batched_row,
+        np.vstack([vector @ matrix.T, (2.0 * vector) @ matrix.T]).astype(np.float32),
+        rtol=1e-5,
+        atol=1e-6,
+    )
+    np.testing.assert_allclose(batched, left @ right, rtol=1e-5, atol=1e-6)
+
+
+def test_dense_kernels_reject_mixed_real_dtypes():
+    matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+    vector = np.array([1.0, 1.0], dtype=np.float64)
+    with pytest.raises(TypeError, match="matching dtype"):
+        pynabled.matvec(matrix, vector)

@@ -23,6 +23,7 @@ use pyo3::prelude::*;
 
 #[pymodule]
 #[pyo3(name = "_pynabled")]
+#[allow(clippy::too_many_lines)]
 fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // SVD
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::decompose, m)?)?;

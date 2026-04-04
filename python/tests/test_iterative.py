@@ -38,3 +38,21 @@ def test_gmres_complex():
     b = np.array([1.0 + 2.0j, 4.0 - 2.0j], dtype=np.complex128)
     x = pynabled.gmres_complex(a, b, None, None)
     np.testing.assert_allclose(a @ x, b, rtol=1e-10, atol=1e-10)
+
+
+def test_iterative_real_solvers_accept_float32():
+    spd = np.array(
+        [[6.0, 2.0, 0.0], [2.0, 5.0, 1.0], [0.0, 1.0, 4.0]],
+        dtype=np.float32,
+    )
+    rhs_spd = np.array([1.0, -2.0, 3.0], dtype=np.float32)
+    general = np.array([[4.0, 1.0], [2.0, 3.0]], dtype=np.float32)
+    rhs_general = np.array([1.0, 2.0], dtype=np.float32)
+
+    cg = pynabled.conjugate_gradient(spd, rhs_spd, None, None)
+    gmres = pynabled.gmres(general, rhs_general, None, None)
+
+    assert cg.dtype == np.float32
+    assert gmres.dtype == np.float32
+    np.testing.assert_allclose(spd @ cg, rhs_spd, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(general @ gmres, rhs_general, rtol=1e-4, atol=1e-5)

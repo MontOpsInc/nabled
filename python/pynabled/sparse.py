@@ -23,6 +23,10 @@ from ._pynabled import (
     sparse_jacobi_solve as _sparse_jacobi_solve_raw,
 )
 
+_REAL_DTYPES = (np.dtype(np.float32), np.dtype(np.float64))
+_INDEX_DTYPES = (np.dtype(np.int32), np.dtype(np.int64))
+_INT32_MAX = np.iinfo(np.int32).max
+
 
 def _normalize_shape(shape: Any) -> tuple[int, int]:
     try:
@@ -36,33 +40,146 @@ def _normalize_shape(shape: Any) -> tuple[int, int]:
     return nrows, ncols
 
 
+def _normalize_explicit_dtype(
+    name: str, dtype: Any, allowed: tuple[np.dtype[Any], ...]
+) -> np.dtype[Any]:
+    resolved = np.dtype(dtype)
+    if resolved not in allowed:
+        allowed_names = " or ".join(candidate.name for candidate in allowed)
+        raise TypeError(f"{name} must be {allowed_names}")
+    return resolved
+
+
+def _require_c_contiguous(name: str, array: np.ndarray) -> np.ndarray:
+    if not array.flags.c_contiguous:
+        raise ValueError(
+            f"{name} must be C-contiguous; pass copy=True or an explicit normalization dtype"
+        )
+    return array
+
+
 def _normalize_1d(name: str, value: Any, dtype: np.dtype[Any], *, copy: bool) -> np.ndarray:
     array = np.array(value, dtype=dtype, copy=True) if copy else np.asarray(value, dtype=dtype)
     if array.ndim != 1:
         raise ValueError(f"{name} must be a 1D array")
+    return _require_c_contiguous(name, array)
+
+
+def _normalize_real_array(
+    name: str,
+    value: Any,
+    *,
+    ndim: int,
+    copy: bool,
+    dtype: np.dtype[Any] | None = None,
+    require_c_contiguous: bool = False,
+    allow_cast: bool = False,
+    mismatch_message: str | None = None,
+) -> np.ndarray:
+    if dtype is None:
+        array = np.array(value, copy=True) if copy else np.asarray(value)
+    elif allow_cast:
+        array = np.array(value, dtype=dtype, copy=True) if copy else np.asarray(value, dtype=dtype)
+    else:
+        array = np.array(value, copy=True) if copy else np.asarray(value)
+    if array.ndim != ndim:
+        raise ValueError(f"{name} must be a {ndim}D array")
+    if dtype is None:
+        if array.dtype not in _REAL_DTYPES:
+            raise TypeError(f"{name} must have dtype float32 or float64")
+    elif array.dtype != dtype:
+        raise TypeError(mismatch_message or f"{name} must have dtype {dtype.name}")
+    if require_c_contiguous:
+        return _require_c_contiguous(name, array)
     return array
 
 
-def _normalize_vector(vector: Any) -> np.ndarray:
-    array = np.asarray(vector, dtype=np.float64)
-    if array.ndim != 1:
-        raise ValueError("vector must be a 1D array")
-    return array
+def _resolve_data_dtype(dtype: Any | None) -> np.dtype[Any] | None:
+    if dtype is None:
+        return None
+    return _normalize_explicit_dtype("dtype", dtype, _REAL_DTYPES)
 
 
-def _normalize_dense(dense: Any) -> np.ndarray:
-    array = np.asarray(dense, dtype=np.float64)
-    if array.ndim != 2:
-        raise ValueError("dense operand must be a 2D array")
-    return array
+def _resolve_index_dtype(
+    indptr: Any,
+    indices: Any,
+    *,
+    ncols: int,
+    nnz: int,
+    index_dtype: Any | None,
+) -> np.dtype[Any]:
+    if index_dtype is not None:
+        return _normalize_explicit_dtype("index_dtype", index_dtype, _INDEX_DTYPES)
+
+    if isinstance(indptr, np.ndarray) and indptr.dtype not in _INDEX_DTYPES:
+        raise TypeError(
+            "indptr must have dtype int32 or int64; pass index_dtype=... to normalize explicitly"
+        )
+    if isinstance(indices, np.ndarray) and indices.dtype not in _INDEX_DTYPES:
+        raise TypeError(
+            "indices must have dtype int32 or int64; pass index_dtype=... to normalize explicitly"
+        )
+
+    indptr_dtype = (
+        indptr.dtype if isinstance(indptr, np.ndarray) and indptr.dtype in _INDEX_DTYPES else None
+    )
+    indices_dtype = (
+        indices.dtype
+        if isinstance(indices, np.ndarray) and indices.dtype in _INDEX_DTYPES
+        else None
+    )
+    if indptr_dtype is not None and indices_dtype is not None:
+        if indptr_dtype != indices_dtype:
+            raise TypeError(
+                "indptr and indices must share dtype int32 or int64; pass index_dtype=... to normalize explicitly"
+            )
+        return indptr_dtype
+    if indptr_dtype is not None:
+        return indptr_dtype
+    if indices_dtype is not None:
+        return indices_dtype
+    return np.dtype(np.int32 if max(ncols - 1, nnz) <= _INT32_MAX else np.int64)
+
+
+def _normalize_vector(vector: Any, *, dtype: np.dtype[Any]) -> np.ndarray:
+    return _normalize_real_array(
+        "vector",
+        vector,
+        ndim=1,
+        copy=False,
+        dtype=dtype,
+        mismatch_message=f"vector must have dtype {dtype.name} to match sparse matrix data",
+    )
+
+
+def _normalize_rhs(rhs: Any, *, dtype: np.dtype[Any]) -> np.ndarray:
+    return _normalize_real_array(
+        "rhs",
+        rhs,
+        ndim=1,
+        copy=False,
+        dtype=dtype,
+        mismatch_message=f"rhs must have dtype {dtype.name} to match sparse matrix data",
+    )
+
+
+def _normalize_dense(dense: Any, *, dtype: np.dtype[Any]) -> np.ndarray:
+    return _normalize_real_array(
+        "dense operand",
+        dense,
+        ndim=2,
+        copy=False,
+        dtype=dtype,
+        mismatch_message=f"dense operand must have dtype {dtype.name} to match sparse matrix data",
+    )
 
 
 class CsrMatrix:
     """Canonical Python carrier for CSR sparse matrices in `pynabled`.
 
-    This carrier normalizes indices to `int64` and values to `float64` for the current sparse
-    Python surface. SciPy-compatible CSR objects are accepted through `from_scipy()` or the public
-    sparse wrappers.
+    This carrier preserves `int32` or `int64` index buffers and preserves `float32` / `float64`
+    values for the current sparse Python surface. SciPy-compatible CSR objects are accepted through
+    `from_scipy()` or the public sparse wrappers.
     """
 
     __slots__ = ("shape", "indptr", "indices", "data")
@@ -76,11 +193,29 @@ class CsrMatrix:
         data: Any,
         *,
         copy: bool = False,
+        dtype: Any | None = None,
+        index_dtype: Any | None = None,
     ) -> None:
         nrows, ncols = _normalize_shape(shape)
-        indptr_array = _normalize_1d("indptr", indptr, np.int64, copy=copy)
-        indices_array = _normalize_1d("indices", indices, np.int64, copy=copy)
-        data_array = _normalize_1d("data", data, np.float64, copy=copy)
+        data_dtype = _resolve_data_dtype(dtype)
+        data_array = _normalize_real_array(
+            "data",
+            data,
+            ndim=1,
+            copy=copy,
+            dtype=data_dtype,
+            require_c_contiguous=True,
+            allow_cast=data_dtype is not None,
+        )
+        resolved_index_dtype = _resolve_index_dtype(
+            indptr,
+            indices,
+            ncols=ncols,
+            nnz=data_array.shape[0],
+            index_dtype=index_dtype,
+        )
+        indptr_array = _normalize_1d("indptr", indptr, resolved_index_dtype, copy=copy)
+        indices_array = _normalize_1d("indices", indices, resolved_index_dtype, copy=copy)
         if indptr_array.shape[0] != nrows + 1:
             raise ValueError("indptr length must equal nrows + 1")
         if indices_array.shape[0] != data_array.shape[0]:
@@ -101,20 +236,44 @@ class CsrMatrix:
     @classmethod
     def from_components(
         cls,
-        nrows: int,
-        ncols: int,
-        indptr: Any,
-        indices: Any,
-        data: Any,
-        *,
+        *components: Any,
         copy: bool = False,
+        dtype: Any | None = None,
+        index_dtype: Any | None = None,
     ) -> "CsrMatrix":
-        return cls((nrows, ncols), indptr, indices, data, copy=copy)
+        if len(components) == 4:
+            shape, indptr, indices, data = components
+        elif len(components) == 5:
+            nrows, ncols, indptr, indices, data = components
+            shape = (nrows, ncols)
+        else:
+            raise TypeError(
+                "from_components expects (shape, indptr, indices, data) or "
+                "(nrows, ncols, indptr, indices, data)"
+            )
+        return cls(shape, indptr, indices, data, copy=copy, dtype=dtype, index_dtype=index_dtype)
 
     @classmethod
-    def from_scipy(cls, matrix: Any, *, copy: bool = False) -> "CsrMatrix":
+    def from_scipy(
+        cls,
+        matrix: Any,
+        *,
+        copy: bool = False,
+        dtype: Any | None = None,
+        index_dtype: Any | None = None,
+    ) -> "CsrMatrix":
         if isinstance(matrix, cls):
-            return matrix.copy() if copy else matrix
+            if dtype is None and index_dtype is None and not copy:
+                return matrix
+            return cls(
+                matrix.shape,
+                matrix.indptr,
+                matrix.indices,
+                matrix.data,
+                copy=copy,
+                dtype=matrix.dtype if dtype is None else dtype,
+                index_dtype=matrix.index_dtype if index_dtype is None else index_dtype,
+            )
         if getattr(matrix, "format", None) != "csr":
             tocsr = getattr(matrix, "tocsr", None)
             if tocsr is None:
@@ -127,7 +286,15 @@ class CsrMatrix:
                 raise TypeError(
                     "expected pynabled.CsrMatrix or a scipy.sparse-compatible CSR object"
                 )
-        return cls(matrix.shape, matrix.indptr, matrix.indices, matrix.data, copy=copy)
+        return cls(
+            matrix.shape,
+            matrix.indptr,
+            matrix.indices,
+            matrix.data,
+            copy=copy,
+            dtype=dtype,
+            index_dtype=index_dtype,
+        )
 
     @property
     def nrows(self) -> int:
@@ -142,11 +309,55 @@ class CsrMatrix:
         return int(self.data.shape[0])
 
     @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.data.dtype
+
+    @property
+    def index_dtype(self) -> np.dtype[Any]:
+        return self.indptr.dtype
+
+    @property
     def T(self) -> "CsrMatrix":
         return self.transpose()
 
     def copy(self) -> "CsrMatrix":
-        return CsrMatrix(self.shape, self.indptr, self.indices, self.data, copy=True)
+        return CsrMatrix(
+            self.shape,
+            self.indptr,
+            self.indices,
+            self.data,
+            copy=True,
+            dtype=self.dtype,
+            index_dtype=self.index_dtype,
+        )
+
+    def astype(self, dtype: Any, *, copy: bool = False) -> "CsrMatrix":
+        resolved_dtype = _resolve_data_dtype(dtype)
+        if resolved_dtype == self.dtype and not copy:
+            return self
+        return CsrMatrix(
+            self.shape,
+            self.indptr,
+            self.indices,
+            self.data,
+            copy=copy,
+            dtype=resolved_dtype,
+            index_dtype=self.index_dtype,
+        )
+
+    def with_index_dtype(self, index_dtype: Any, *, copy: bool = False) -> "CsrMatrix":
+        resolved_index_dtype = _normalize_explicit_dtype("index_dtype", index_dtype, _INDEX_DTYPES)
+        if resolved_index_dtype == self.index_dtype and not copy:
+            return self
+        return CsrMatrix(
+            self.shape,
+            self.indptr,
+            self.indices,
+            self.data,
+            copy=copy,
+            dtype=self.dtype,
+            index_dtype=resolved_index_dtype,
+        )
 
     def to_components(self) -> tuple[int, int, np.ndarray, np.ndarray, np.ndarray]:
         return self.nrows, self.ncols, self.indptr, self.indices, self.data
@@ -196,7 +407,10 @@ class CsrMatrix:
         return NotImplemented
 
     def __repr__(self) -> str:
-        return f"CsrMatrix(shape={self.shape}, nnz={self.nnz}, dtype={self.data.dtype})"
+        return (
+            f"CsrMatrix(shape={self.shape}, nnz={self.nnz}, "
+            f"dtype={self.data.dtype}, index_dtype={self.index_dtype})"
+        )
 
 
 def _coerce_csr_matrix(matrix: Any) -> CsrMatrix:
@@ -213,7 +427,7 @@ def sparse_matvec(matrix: Any, vector: Any) -> np.ndarray:
         csr.indptr,
         csr.indices,
         csr.data,
-        _normalize_vector(vector),
+        _normalize_vector(vector, dtype=csr.data.dtype),
     )
 
 
@@ -225,7 +439,7 @@ def sparse_matmat_dense(matrix: Any, dense: Any) -> np.ndarray:
         csr.indptr,
         csr.indices,
         csr.data,
-        _normalize_dense(dense),
+        _normalize_dense(dense, dtype=csr.data.dtype),
     )
 
 
@@ -250,7 +464,7 @@ def sparse_jacobi_solve(
         csr.indptr,
         csr.indices,
         csr.data,
-        _normalize_vector(rhs),
+        _normalize_rhs(rhs, dtype=csr.data.dtype),
         tolerance,
         max_iterations,
     )
@@ -270,7 +484,7 @@ def sparse_pcg_solve(
         csr.indptr,
         csr.indices,
         csr.data,
-        _normalize_vector(rhs),
+        _normalize_rhs(rhs, dtype=csr.data.dtype),
         tolerance,
         max_iterations,
     )

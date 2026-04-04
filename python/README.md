@@ -32,12 +32,18 @@ print("singular values:", s)
 
 `numpy.ndarray` is the canonical CPU-array carrier for `pynabled`. Borrowed NumPy views are used
 where the Rust API admits them, including non-C-contiguous inputs for the view-based dense paths.
-Some higher-level wrappers still materialize owned arrays internally where the current Rust API
-shape requires it.
+Current real-valued vector/matrix/statistics/regression/PCA/iterative bindings accept both
+`float32` and `float64` under the same public function names. Mixed real dtypes are rejected
+explicitly instead of being silently cast. Some higher-level wrappers still materialize owned
+arrays internally where the current Rust API shape requires it.
 
 Sparse CSR workflows use `pynabled.CsrMatrix` as the canonical Python carrier. SciPy-compatible
 objects can be normalized into that carrier explicitly with `CsrMatrix.from_scipy(...)` or passed
-to the public sparse wrappers directly.
+to the public sparse wrappers directly. The current CSR carrier preserves `int32` / `int64` index
+buffers and `float32` / `float64` data rather than normalizing everything to one dtype. Explicit
+normalization is available through `dtype=` / `index_dtype=` on construction plus
+`CsrMatrix.astype(...)` and `CsrMatrix.with_index_dtype(...)`, while mixed sparse operand dtypes
+continue to fail explicitly instead of being silently cast.
 
 ## Documentation
 

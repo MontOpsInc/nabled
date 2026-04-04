@@ -121,3 +121,44 @@ def test_pca_and_stats_accept_fortran_order_inputs():
     transformed = pynabled.pca_transform(x, components, mean)
     np.testing.assert_allclose(transformed, scores, rtol=1e-10, atol=1e-10)
     np.testing.assert_allclose(pynabled.column_means(x), x.mean(axis=0), rtol=1e-12, atol=1e-12)
+
+
+def test_real_ml_bindings_accept_float32():
+    np.random.seed(7)
+    x = np.random.randn(64, 3).astype(np.float32)
+    weights = np.array([0.5, -1.25, 2.0], dtype=np.float32)
+    y = x @ weights + np.float32(0.75)
+
+    coef, r_squared = pynabled.linear_regression(x, y)
+    components, ev, evr, mean, scores = pynabled.compute_pca(x, n_components=3)
+    transformed = pynabled.pca_transform(x, components, mean)
+    reconstructed = pynabled.pca_inverse_transform(scores, components, mean)
+    means = pynabled.column_means(x)
+    centered = pynabled.center_columns(x)
+    covariance = pynabled.covariance_matrix(x)
+    correlation = pynabled.correlation_matrix(x)
+
+    assert coef.dtype == np.float32
+    assert components.dtype == np.float32
+    assert ev.dtype == np.float32
+    assert evr.dtype == np.float32
+    assert mean.dtype == np.float32
+    assert scores.dtype == np.float32
+    assert transformed.dtype == np.float32
+    assert reconstructed.dtype == np.float32
+    assert means.dtype == np.float32
+    assert centered.dtype == np.float32
+    assert covariance.dtype == np.float32
+    assert correlation.dtype == np.float32
+    np.testing.assert_allclose(coef[0], 0.75, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(coef[1:], weights, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(transformed, scores, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(reconstructed, x, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(means, x.mean(axis=0), rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(
+        pynabled.column_means(centered), np.zeros(3, dtype=np.float32), atol=1e-5
+    )
+    np.testing.assert_allclose(covariance, covariance.T, rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(correlation, correlation.T, rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(np.diag(correlation), np.ones(3, dtype=np.float32), atol=1e-5)
+    assert 0.99 <= r_squared <= 1.0

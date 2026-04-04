@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-03
+Last updated: 2026-04-04
 
 ## Summary
 
@@ -36,7 +36,18 @@ landed: sparse Python now has a canonical `CsrMatrix` carrier with SciPy-compati
 current sparse wrappers borrow CSR structure and RHS data into Rust view paths instead of
 rebuilding owned sparse matrices on every call, and the sparse surface now includes sparse-dense
 matmat plus transpose alongside matvec/Jacobi/PCG; the full Python suite is green on the editable
-Python 3.12 build (`101 passed, 3 skipped`). Treat
+Python 3.12 build (`101 passed, 3 skipped`). A fifth `N-PY-003` numerics pass is also landed:
+existing real-valued Python vector/matrix/current sparse-baseline/statistics/regression/PCA/
+iterative bindings now accept both `float32` and `float64` under the same public function names,
+the sparse `CsrMatrix` carrier preserves `float32` / `float64` data instead of normalizing
+everything to `float64`, mixed real dtypes now fail explicitly instead of silently casting, and
+the full Python suite is green on the editable Python 3.12 build (`108 passed, 3 skipped`). A
+sixth `N-PY-003` sparse-carrier ergonomics pass is also landed: `pynabled.CsrMatrix` now preserves
+`int32` / `int64` index buffers end-to-end, the raw Rust bridge borrows either signed index dtype
+instead of forcing `int64`, sparse transpose preserves input index dtype, explicit `dtype=` /
+`index_dtype=` normalization plus `astype(...)` / `with_index_dtype(...)` are available on the
+carrier, non-contiguous CSR buffers now fail at carrier construction unless `copy=True`, and the
+full Python suite is green on the editable Python 3.12 build (`113 passed, 3 skipped`). Treat
 `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).

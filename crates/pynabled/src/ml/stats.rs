@@ -3,56 +3,71 @@
 use num_complex::Complex64;
 use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
 
 use crate::error::to_py_err;
 use crate::utils;
 
 /// Compute column means.
 #[pyfunction]
-pub fn column_means<'py>(
-    py: Python<'py>,
-    matrix: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<Py<PyArray1<f64>>> {
-    utils::require_contiguous(matrix)?;
-    let arr = matrix.readonly();
-    let result = nabled_ml::stats::column_means_view(&arr.as_array());
-    Ok(PyArray1::from_owned_array(py, result).unbind())
+pub fn column_means<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            Ok(utils::pyarray1_from_owned(py, nabled_ml::stats::column_means_view(&arr.as_array())))
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            Ok(utils::pyarray1_from_owned(py, nabled_ml::stats::column_means_view(&arr.as_array())))
+        }
+    }
 }
 
 /// Center columns (subtract mean).
 #[pyfunction]
-pub fn center_columns<'py>(
-    py: Python<'py>,
-    matrix: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<Py<PyArray2<f64>>> {
-    utils::require_contiguous(matrix)?;
-    let arr = matrix.readonly();
-    let result = nabled_ml::stats::center_columns_view(&arr.as_array());
-    Ok(PyArray2::from_owned_array(py, result).unbind())
+pub fn center_columns<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => Ok(utils::pyarray2_from_owned(
+            py,
+            nabled_ml::stats::center_columns_view(&arr.as_array()),
+        )),
+        utils::RealReadonlyArray2::F64(arr) => Ok(utils::pyarray2_from_owned(
+            py,
+            nabled_ml::stats::center_columns_view(&arr.as_array()),
+        )),
+    }
 }
 
 /// Compute covariance matrix.
 #[pyfunction]
-pub fn covariance_matrix<'py>(
-    py: Python<'py>,
-    matrix: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<Py<PyArray2<f64>>> {
-    utils::require_contiguous(matrix)?;
-    let arr = matrix.readonly();
-    let result = nabled_ml::stats::covariance_matrix_view(&arr.as_array()).map_err(to_py_err)?;
-    Ok(PyArray2::from_owned_array(py, result).unbind())
+pub fn covariance_matrix<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let result =
+                nabled_ml::stats::covariance_matrix_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let result =
+                nabled_ml::stats::covariance_matrix_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+    }
 }
 
 /// Compute correlation matrix.
 #[pyfunction]
-pub fn correlation_matrix<'py>(
-    py: Python<'py>,
-    matrix: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<Py<PyArray2<f64>>> {
-    utils::require_contiguous(matrix)?;
-    let arr = matrix.readonly();
-    let result = nabled_ml::stats::correlation_matrix_view(&arr.as_array()).map_err(to_py_err)?;
-    Ok(PyArray2::from_owned_array(py, result).unbind())
+pub fn correlation_matrix<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let result =
+                nabled_ml::stats::correlation_matrix_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let result =
+                nabled_ml::stats::correlation_matrix_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+    }
 }
 
 /// Compute column means for a complex matrix.

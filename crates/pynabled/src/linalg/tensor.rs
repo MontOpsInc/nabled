@@ -61,8 +61,7 @@ fn tt_svd_config(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> nabled_linalg::tensor::TtSvdConfig<f64> {
-    let mut config = nabled_linalg::tensor::TtSvdConfig::<f64>::default();
-    config.max_rank = max_rank;
+    let mut config = nabled_linalg::tensor::TtSvdConfig::<f64> { max_rank, ..Default::default() };
     if let Some(tolerance) = tolerance {
         config.tolerance = tolerance;
     }
@@ -73,8 +72,7 @@ fn tt_round_config(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> nabled_linalg::tensor::TtRoundConfig<f64> {
-    let mut config = nabled_linalg::tensor::TtRoundConfig::<f64>::default();
-    config.max_rank = max_rank;
+    let mut config = nabled_linalg::tensor::TtRoundConfig::<f64> { max_rank, ..Default::default() };
     if let Some(tolerance) = tolerance {
         config.tolerance = tolerance;
     }

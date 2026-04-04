@@ -1,9 +1,8 @@
 """Tests for vector primitive bindings."""
 
 import numpy as np
-import pytest
-
 import pynabled
+import pytest
 
 
 def test_l2_norm():
@@ -38,3 +37,21 @@ def test_pairwise_cosine_similarity():
     sim = pynabled.pairwise_cosine_similarity(left, right)
     assert sim.shape == (2, 2)
     np.testing.assert_allclose(sim, np.eye(2), rtol=1e-14)
+
+
+def test_vector_primitives_accept_float32():
+    a = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    b = np.array([4.0, 5.0, 6.0], dtype=np.float32)
+    left = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    right = np.array([[0.0, 0.0], [1.0, 1.0]], dtype=np.float32)
+
+    assert abs(pynabled.dot(a, b) - 32.0) < 1e-5
+    assert abs(pynabled.l2_norm(a) - np.linalg.norm(a)) < 1e-5
+    assert abs(pynabled.cosine_similarity(a, b) - 0.97463185) < 1e-5
+
+    distances = pynabled.pairwise_l2_distance(left, right)
+    similarities = pynabled.pairwise_cosine_similarity(left, left)
+    assert distances.dtype == np.float32
+    assert similarities.dtype == np.float32
+    np.testing.assert_allclose(distances, np.array([[1.0, 1.0], [1.0, 1.0]], dtype=np.float32))
+    np.testing.assert_allclose(similarities, np.eye(2, dtype=np.float32), rtol=1e-5, atol=1e-6)

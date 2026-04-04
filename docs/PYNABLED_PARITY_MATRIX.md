@@ -1,6 +1,6 @@
 # Pynabled Parity Matrix
 
-Last updated: 2026-04-03
+Last updated: 2026-04-04
 
 ## Purpose
 
@@ -57,8 +57,8 @@ Use code, not memory:
 
 | Domain | Rust admitted release surface | Current `pynabled` surface | Status | Release requirement |
 |---|---|---|---|---|
-| `vector` | Real and complex dot/norm/cosine/distance plus batched dot/norm/cosine/distance/normalize and workspace-backed pairwise paths | Real `dot`, `l2_norm`, `cosine_similarity`, `pairwise_l2_distance`, `pairwise_cosine_similarity` | Partial | Add `f32` + complex parity, batched vector APIs, normalization/distance breadth, and an allocation-control story for heavy pairwise/batched paths |
-| `matrix` | Real and complex `matvec`, `matmat`, batched row matvec, batched matmat, broadcasted batch matmat, `*_into`, backend-dispatched hot paths | Real `matvec`, `matmat`, `batched_row_matvec`, `batched_matmat` | Partial | Add `f32` + complex parity, missing broadcasted batch families, and Python-visible allocation-control/back-end contract for hot kernels |
+| `vector` | Real and complex dot/norm/cosine/distance plus batched dot/norm/cosine/distance/normalize and workspace-backed pairwise paths | Real `dot`, `l2_norm`, `cosine_similarity`, `pairwise_l2_distance`, `pairwise_cosine_similarity` now accept both `float32` and `float64` under shared Python names | Partial | Add complex parity, batched vector APIs, normalization/distance breadth, and an allocation-control story for heavy pairwise/batched paths |
+| `matrix` | Real and complex `matvec`, `matmat`, batched row matvec, batched matmat, broadcasted batch matmat, `*_into`, backend-dispatched hot paths | Real `matvec`, `matmat`, `batched_row_matvec`, `batched_matmat` now accept both `float32` and `float64` under shared Python names | Partial | Add complex parity, missing broadcasted batch families, and Python-visible allocation-control/back-end contract for hot kernels |
 | `svd` | Real and complex decomposition, toleranced/truncated variants, pseudo-inverse, null space, reconstruction, rank, condition number, view-first execution | Real decomposition/truncated/pinv/reconstruct/rank/condition/null-space only | Partial | Add `f32` + complex parity, toleranced/configurable entrypoints, and preserve canonical result metadata/contracts |
 | `qr` | Real and complex full/reduced/pivoted QR, least-squares, reconstruction, condition number | Real decomposition + least-squares only | Partial | Add reduced/pivoted/reconstruct/condition surfaces and complex parity |
 | `lu` | Real and complex decompose/solve/inverse/determinant/log-determinant plus mixed-precision solve helpers | Real decompose/solve/inverse/determinant only | Partial | Add `f32` + complex parity, log-determinant, mixed-precision policy, and truthful result metadata |
@@ -70,26 +70,26 @@ Use code, not memory:
 | `matrix_functions` | Real and complex `exp`, `log`, `power`, `sign` families with `*_into` and workspace-backed variants | Real `matrix_exp`, `matrix_exp_eigen`, `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`, `matrix_sign` | Partial | Add complex parity, `f32` breadth, and equivalent allocation-control semantics |
 | `orthogonalization` | Real and complex Gram-Schmidt variants | Real `gram_schmidt`, `gram_schmidt_classic` only | Partial | Add complex parity |
 | `batched` | Batched QR/SVD/LU/Cholesky/symmetric eigen over matrix stacks with canonical result structs | Real batched QR/SVD/LU/Cholesky/symmetric eigen only | Partial | Add admitted dtype/complex breadth and preserve canonical result semantics |
-| `sparse` | CSR/CSC/COO formats, conversion, sparse-dense and sparse-sparse products, iterative solvers, direct sparse LU, preconditioners, factorization reuse | `pynabled.CsrMatrix` plus SciPy-compatible CSR ingress now cover `matvec`, sparse-dense matmat, transpose, Jacobi, and PCG; broader sparse formats/factorizations/reuse paths are still missing | Partial | Add admitted sparse format breadth, sparse products, iterative breadth, preconditioners/factorization reuse, direct sparse LU, and non-CSR sparse carriers/result objects |
+| `sparse` | CSR/CSC/COO formats, conversion, sparse-dense and sparse-sparse products, iterative solvers, direct sparse LU, preconditioners, factorization reuse | `pynabled.CsrMatrix` now preserves `int32` / `int64` index buffers and `float32` / `float64` values, supports SciPy-compatible CSR ingress plus explicit `dtype=` / `index_dtype=` normalization, and the current exposed CSR surface covers `matvec`, sparse-dense matmat, transpose, Jacobi, and PCG; broader sparse formats/factorizations/reuse paths are still missing | Partial | Add admitted sparse format breadth, sparse products, iterative breadth, preconditioners/factorization reuse, direct sparse LU, non-CSR sparse carriers/result objects, and current-surface `f32` breadth for the still-missing sparse rows |
 | `tensor` | Cube kernels, higher-rank last-axis ops, axis permutation/contraction, N-D batched matmul, real/complex breadth, HOSVD/HOOI/Tucker/CP/TT/einsum families | Real tensor decomposition/network breadth is now broadly bound (`hosvd3`, `hosvd_nd`, `hooi_nd`, Tucker helpers, rank-3/N-D `cp_als` with diagnostics/reporting, TT-SVD/algebra/reconstruction) and basic tensor kernels/einsum now have complex bindings | Partial | Close remaining `f32` breadth and stabilize release-grade result-object contracts for tensor decomposition/network outputs |
-| `iterative` | Real and complex dense `conjugate_gradient` / `gmres` with config + view-first paths | Real and complex `conjugate_gradient`, `gmres` | Partial | Add `f32` breadth and richer config/result exposure |
+| `iterative` | Real and complex dense `conjugate_gradient` / `gmres` with config + view-first paths | Real and complex `conjugate_gradient`, `gmres`; real dense solves now accept `float32` and `float64` | Partial | Add richer config/result exposure and close remaining non-dense / higher-level `f32` gaps around iterative-adjacent workflows |
 | `jacobian` | Numerical Jacobian, central Jacobian, gradient, Hessian | Forward/central Jacobian, gradient, Hessian for Python callables | Partial | Add `f32` breadth and document callback/result contracts for production API |
 | `optimization` | Line search, gradient descent, Adam, momentum, RMSProp, projected GD, SGD, BFGS, real + complex | Real and complex line search / gradient descent / Adam / momentum / RMSProp / projected GD / SGD / BFGS via Python callables | Partial | Add `f32` breadth, stabilize callback/config ergonomics, and document optimizer contracts |
-| `pca` | Real and complex `compute`, `transform`, `inverse_transform` | Real and complex `compute_pca`, `pca_transform`, `pca_inverse_transform` | Partial | Preserve release-grade result-object fidelity and add `f32` breadth |
-| `regression` | Real and complex linear regression with canonical result structs | Real and complex `linear_regression` | Partial | Preserve canonical result metadata beyond coefficients / `r_squared` and add `f32` breadth |
-| `stats` | Real and complex means/centering/covariance/correlation | Real and complex means/centering/covariance/correlation | Partial | Add `f32` breadth and document complex-stat contracts clearly |
+| `pca` | Real and complex `compute`, `transform`, `inverse_transform` | Real and complex `compute_pca`, `pca_transform`, `pca_inverse_transform`; real flows now accept `float32` and `float64` | Partial | Preserve release-grade result-object fidelity |
+| `regression` | Real and complex linear regression with canonical result structs | Real and complex `linear_regression`; real flows now accept `float32` and `float64` | Partial | Preserve canonical result metadata beyond coefficients / `r_squared` |
+| `stats` | Real and complex means/centering/covariance/correlation | Real and complex means/centering/covariance/correlation; real flows now accept `float32` and `float64` | Partial | Document complex-stat contracts clearly and preserve dtype/copy semantics consistently in the remaining higher-level rows |
 | `arrow` / `PyArrow` | Full admitted `nabled::arrow` surface across dense, sparse, tensor, ML, and Arrow-admitted result contracts | `arrow_dot`, `arrow_l2_norm`, `arrow_svd_decompose` only | Partial | Reach full admitted `nabled::arrow` parity using canonical `ndarrow` carriers and explicit zero-copy contracts |
 
 ## Cross-Cutting Parity Matrix
 
 | Axis | Rust baseline | Current Python state | Status | Release requirement |
 |---|---|---|---|---|
-| Real dtype breadth | Broad `f32` + `f64` across linalg/ml/tensor domains | Nearly all bindings are `f64`-only | Partial | Expose admitted `f32` release surface wherever Rust already admits it |
+| Real dtype breadth | Broad `f32` + `f64` across linalg/ml/tensor domains | Meaningful `f32` breadth is now landed for vector, matrix, current sparse-baseline, stats, regression, PCA, and dense iterative APIs; many decomposition/function/tensor/callable/Arrow rows still remain | Partial | Expose admitted `f32` release surface wherever Rust already admits it |
 | Complex breadth | Broad complex parity across dense, tensor, and ML/stat domains; limited to admitted Rust APIs | Meaningful complex ML/tensor coverage now exists, but dense linalg/decomposition/function parity is still materially incomplete | Partial | Expose admitted complex release surface or explicitly narrow Rust admission first |
 | View / copy contract | Rust is view-first across hot paths | View-based dense Python APIs now admit strided / Fortran-order NumPy inputs, but higher-level result/tensor/sparse paths still materialize owned arrays in places | Partial | Preserve zero-copy ingress where possible and make unavoidable copies explicit and documented |
 | Allocation control | Rust exposes `*_into` and reusable workspace/result helpers in hot domains | No `out=` / workspace / reusable-plan equivalent | Missing | Add Python allocation-control semantics for performance-critical paths |
 | Result object fidelity | Rust returns typed result structs for decompositions and higher-level workflows | Python mostly flattens results to tuples/arrays | Partial | Preserve release-relevant metadata and make result contracts stable/documented |
-| Sparse data carriers | Rust uses typed sparse matrix structs and admitted Arrow sparse carriers | Python now has first-class `CsrMatrix` plus SciPy-compatible CSR ingress for the current exposed sparse surface, but no CSC/COO/factorization carrier story yet | Partial | Extend carrier coverage beyond CSR and add reusable sparse result/factorization objects |
+| Sparse data carriers | Rust uses typed sparse matrix structs and admitted Arrow sparse carriers | Python now has first-class `CsrMatrix` plus SciPy-compatible CSR ingress for the current exposed sparse surface, with preserved `int32` / `int64` indices and explicit normalization controls, but no CSC/COO/factorization carrier story yet | Partial | Extend carrier coverage beyond CSR and add reusable sparse result/factorization objects |
 | Arrow carriers | Rust uses canonical `ndarrow` carriers across admitted Arrow workflows | Python Arrow bridge only handles `float64` primitive arrays and fixed-size-list matrices | Partial | Use the same canonical `ndarrow` carrier set and explicit ingress/egress contracts as Rust |
 | PyArrow egress | Rust Arrow facade can stay Arrow-native where natural | Python `arrow_svd_decompose` converts results to NumPy | Partial | Keep Arrow-native egress where the Rust facade already defines an Arrow-native contract |
 | Provider feature exposure | Rust facade admits `openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`, `magma-system` | Python exposes only `openblas-system` | Partial | Expose/document truthful source-build paths for admitted provider features |
@@ -100,7 +100,7 @@ Use code, not memory:
 
 These are the gaps that directly drive `N-PY-003..N-PY-008`:
 
-1. Missing cross-domain numerics: broad `f32` parity remains largely absent.
+1. Missing cross-domain numerics: `f32` parity is now meaningful on the current real-valued dense/sparse/ML baseline, but major release rows still remain (`svd`, `qr`, `lu`, `cholesky`, `eigen`, `matrix_functions`, tensor breadth, callable `jacobian`/`optimization`, and Arrow-admitted flows).
 2. Missing sparse breadth beyond the landed CSR carrier foundation: formats, products, solver/preconditioner depth, reuse paths.
 3. Missing dense/linalg complex breadth outside the landed ML/tensor surfaces.
 4. Missing Arrow/PyArrow breadth: nearly the full admitted `nabled::arrow` surface.
@@ -111,7 +111,7 @@ These are the gaps that directly drive `N-PY-003..N-PY-008`:
 ## Implementation Order Derived From This Matrix
 
 1. `N-PY-003`: continue from the landed ML + tensor parity passes:
-   - broad `f32` breadth
+   - remaining `f32` breadth
    - sparse breadth
    - remaining dense complex parity
    - remaining result-fidelity gaps in higher-level workflows
