@@ -77,9 +77,6 @@ from pynabled._pynabled import (
     rmsprop,
     rmsprop_complex,
     schur_compute,
-    sparse_jacobi_solve,
-    sparse_matvec,
-    sparse_pcg_solve,
     stochastic_gradient_descent,
     stochastic_gradient_descent_complex,
     svd_condition_number,
@@ -139,6 +136,15 @@ from pynabled._pynabled import (
     triangular_solve_lower_matrix,
     triangular_solve_upper,
     triangular_solve_upper_matrix,
+)
+
+from .sparse import (
+    CsrMatrix,
+    sparse_jacobi_solve,
+    sparse_matmat_dense,
+    sparse_matvec,
+    sparse_pcg_solve,
+    sparse_transpose,
 )
 
 __all__ = [
@@ -232,7 +238,10 @@ __all__ = [
     "stochastic_gradient_descent_complex",
     "bfgs",
     "bfgs_complex",
+    "CsrMatrix",
     "sparse_matvec",
+    "sparse_matmat_dense",
+    "sparse_transpose",
     "sparse_jacobi_solve",
     "sparse_pcg_solve",
     "tensor_cube_matvec",

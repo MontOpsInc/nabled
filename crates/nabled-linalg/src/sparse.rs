@@ -178,6 +178,15 @@ impl CsrIndex for i32 {
     }
 }
 
+impl CsrIndex for i64 {
+    fn to_usize(self) -> Result<usize, SparseError> {
+        if self < 0 {
+            return Err(SparseError::InvalidStructure);
+        }
+        usize::try_from(self).map_err(|_| SparseError::InvalidStructure)
+    }
+}
+
 /// Borrowed compressed sparse row (CSR) matrix view.
 #[derive(Debug, Clone, Copy)]
 pub struct CsrMatrixView<'a, R: CsrIndex = usize, T = f64, C: CsrIndex = R> {

@@ -35,6 +35,10 @@ where the Rust API admits them, including non-C-contiguous inputs for the view-b
 Some higher-level wrappers still materialize owned arrays internally where the current Rust API
 shape requires it.
 
+Sparse CSR workflows use `pynabled.CsrMatrix` as the canonical Python carrier. SciPy-compatible
+objects can be normalized into that carrier explicitly with `CsrMatrix.from_scipy(...)` or passed
+to the public sparse wrappers directly.
+
 ## Documentation
 
 - Rust library API: [docs.rs/nabled](https://docs.rs/nabled)

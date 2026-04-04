@@ -31,7 +31,12 @@ first-order release requirements. A third `N-PY-003` foundation pass is now also
 view-based NumPy APIs no longer reject non-C-contiguous inputs at the Python boundary, tensor
 decomposition wrappers now use Rust view APIs where they already exist, TT-SVD now normalizes
 strided dynamic tensors before reshape-sensitive steps, and the full Python suite is green on the
-editable Python 3.12 build (`99 passed, 3 skipped`). Treat
+editable Python 3.12 build (`99 passed, 3 skipped`). A fourth `N-PY-003` foundation pass is also
+landed: sparse Python now has a canonical `CsrMatrix` carrier with SciPy-compatible CSR ingress,
+current sparse wrappers borrow CSR structure and RHS data into Rust view paths instead of
+rebuilding owned sparse matrices on every call, and the sparse surface now includes sparse-dense
+matmat plus transpose alongside matvec/Jacobi/PCG; the full Python suite is green on the editable
+Python 3.12 build (`101 passed, 3 skipped`). Treat
 `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
