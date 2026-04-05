@@ -109,3 +109,23 @@ def test_dense_kernels_reject_mixed_real_dtypes():
     vector = np.array([1.0, 1.0], dtype=np.float64)
     with pytest.raises(TypeError, match="matching dtype"):
         pynabled.matvec(matrix, vector)
+
+
+def test_eigen_symmetric_and_schur_accept_float32():
+    symmetric = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float32)
+    general = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+
+    eigen = pynabled.eigen_symmetric(symmetric)
+    schur = pynabled.schur_compute(general)
+
+    assert eigen.eigenvalues.dtype == np.float32
+    assert eigen.eigenvectors.dtype == np.float32
+    assert schur.q.dtype == np.float32
+    assert schur.t.dtype == np.float32
+    np.testing.assert_allclose(
+        symmetric @ eigen.eigenvectors,
+        eigen.eigenvectors @ np.diag(eigen.eigenvalues),
+        rtol=1e-4,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(schur.q @ schur.t @ schur.q.T, general, rtol=1e-4, atol=1e-5)

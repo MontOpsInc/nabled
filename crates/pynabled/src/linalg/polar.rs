@@ -1,7 +1,7 @@
 //! Polar decomposition bindings for Python.
 
-use numpy::{PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
 
 use crate::error::to_py_err;
 use crate::utils;
@@ -10,13 +10,18 @@ use crate::utils;
 #[pyfunction(name = "polar_compute")]
 pub fn compute_polar<'py>(
     py: Python<'py>,
-    matrix: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<(Py<PyArray2<f64>>, Py<PyArray2<f64>>)> {
-    utils::require_contiguous(matrix)?;
-    let arr = matrix.readonly();
-    let result = nabled_linalg::polar::compute_polar_view(&arr.as_array()).map_err(to_py_err)?;
-    Ok((
-        PyArray2::from_owned_array(py, result.u).unbind(),
-        PyArray2::from_owned_array(py, result.p).unbind(),
-    ))
+    matrix: &Bound<'py, PyAny>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let result =
+                nabled_linalg::polar::compute_polar_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.u), utils::pyarray2_from_owned(py, result.p)))
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let result =
+                nabled_linalg::polar::compute_polar_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.u), utils::pyarray2_from_owned(py, result.p)))
+        }
+    }
 }

@@ -32,10 +32,10 @@ print("singular values:", result.singular_values)
 
 `numpy.ndarray` is the canonical CPU-array carrier for `pynabled`. Borrowed NumPy views are used
 where the Rust API admits them, including non-C-contiguous inputs for the view-based dense paths.
-Current real-valued vector/matrix/statistics/regression/PCA/iterative bindings accept both
-`float32` and `float64` under the same public function names. Mixed real dtypes are rejected
-explicitly instead of being silently cast. Some higher-level wrappers still materialize owned
-arrays internally where the current Rust API shape requires it.
+Current real-valued vector/matrix/decomposition/function/batched/statistics/regression/PCA/
+iterative bindings accept both `float32` and `float64` under the same public function names.
+Mixed real dtypes are rejected explicitly instead of being silently cast. Some higher-level
+wrappers still materialize owned arrays internally where the current Rust API shape requires it.
 
 Structured decomposition / ML / tensor workflows now return typed Python result objects with named
 fields instead of anonymous tuples. For example, `svd_decompose(...)` returns `pynabled.SvdResult`,

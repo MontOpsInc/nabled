@@ -6,10 +6,10 @@ import pytest
 import pynabled
 
 
-def _make_spd(n):
-    np.random.seed(42)
-    x = np.random.randn(n, n).astype(np.float64)
-    return x.T @ x + 0.1 * np.eye(n)
+def _make_spd(n, dtype=np.float64):
+    rng = np.random.default_rng(42)
+    x = rng.standard_normal((n, n)).astype(dtype)
+    return x.T @ x + np.array(0.1, dtype=dtype) * np.eye(n, dtype=dtype)
 
 
 def test_eigen_generalized():
@@ -34,3 +34,21 @@ def test_eigen_nonsymmetric():
     assert np.iscomplexobj(result.schur_vectors)
     # Eigenvalues of [[1,2],[3,4]] are 5.37 and -0.37 (approx)
     assert len(result.eigenvalues) == 2
+
+
+def test_eigen_accepts_float32():
+    a = _make_spd(3, dtype=np.float32)
+    b = _make_spd(3, dtype=np.float32)
+    nonsymmetric = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+
+    generalized = pynabled.eigen_generalized(a, b)
+    nonsymmetric_result = pynabled.eigen_nonsymmetric(nonsymmetric)
+
+    assert generalized.eigenvalues.dtype == np.float32
+    assert generalized.eigenvectors.dtype == np.float32
+    assert nonsymmetric_result.eigenvalues.dtype == np.complex64
+    assert nonsymmetric_result.schur_vectors.dtype == np.complex64
+    for i in range(3):
+        av = a @ generalized.eigenvectors[:, i]
+        bv = b @ generalized.eigenvectors[:, i] * generalized.eigenvalues[i]
+        np.testing.assert_allclose(av, bv, rtol=1e-4, atol=1e-5)

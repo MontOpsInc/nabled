@@ -57,6 +57,13 @@ with named fields, reconstruct/transform helpers operate on those result objects
 binding fidelity was improved for non-symmetric eigen (complex arrays instead of split real/imag)
 and regression (fitted values/residuals exposed), and the full `python-quality` gate is green on
 Python 3.12 (`127 passed, 3 skipped`, `98.86%` Python coverage, editable + Arrow + wheel/sdist +
+feature-smoke builds). An eighth `N-PY-003` real-dtype parity pass is now also landed: the
+remaining real-valued dense decomposition/function/batched families (`svd`, `qr`, `lu`,
+`cholesky`, `eigen`, `schur`, `polar`, `sylvester` / `lyapunov`, `matrix_functions`, and batched
+decomposition wrappers) now accept both `float32` and `float64`, real nonsymmetric eigen preserves
+`complex64` output for `float32` inputs, array-valued decomposition/function outputs preserve
+`float32` instead of silently widening to `float64`, and the full `python-quality` gate is green on
+Python 3.12 (`137 passed, 3 skipped`, `98.86%` Python coverage, editable + Arrow + wheel/sdist +
 feature-smoke builds). Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure
 plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.

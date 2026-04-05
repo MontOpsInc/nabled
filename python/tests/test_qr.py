@@ -24,3 +24,19 @@ def test_qr_solve_least_squares():
     x = pynabled.qr_solve_least_squares(a, b)
     np.testing.assert_allclose(a @ x, b, rtol=1e-10)
     np.testing.assert_allclose(x, x_true, rtol=1e-10)
+
+
+def test_qr_accepts_float32():
+    a = np.array([[1.0, 2.0], [3.0, 5.0], [7.0, 11.0]], dtype=np.float32)
+    x_true = np.array([0.5, -1.25], dtype=np.float32)
+    b = a @ x_true
+
+    result = pynabled.qr_decompose(a)
+    x = pynabled.qr_solve_least_squares(a, b)
+
+    assert result.q.dtype == np.float32
+    assert result.r.dtype == np.float32
+    assert x.dtype == np.float32
+    np.testing.assert_allclose(result.q @ result.r, a, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(a @ x, b, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(x, x_true, rtol=5e-4, atol=2e-5)

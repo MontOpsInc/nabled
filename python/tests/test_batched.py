@@ -81,3 +81,63 @@ def test_batched_symmetric_eigen():
             result.eigenvectors @ np.diag(result.eigenvalues),
             rtol=1e-10,
         )
+
+
+def test_batched_decompositions_accept_float32():
+    qr_input = np.array(
+        [
+            [[1.0, 2.0], [3.0, 5.0], [7.0, 11.0]],
+            [[2.0, 1.0], [5.0, 3.0], [13.0, 8.0]],
+        ],
+        dtype=np.float32,
+    )
+    square = np.array(
+        [
+            [[4.0, 1.0], [2.0, 3.0]],
+            [[5.0, 2.0], [1.0, 4.0]],
+        ],
+        dtype=np.float32,
+    )
+    spd = np.array(
+        [
+            [[3.0, 1.0], [1.0, 2.0]],
+            [[4.0, 0.5], [0.5, 3.0]],
+        ],
+        dtype=np.float32,
+    )
+
+    qr_results = pynabled.batched_qr(qr_input)
+    svd_results = pynabled.batched_svd(square)
+    lu_results = pynabled.batched_lu(square)
+    cholesky_results = pynabled.batched_cholesky(spd)
+    eigen_results = pynabled.batched_symmetric_eigen(spd)
+
+    for i, result in enumerate(qr_results):
+        assert result.q.dtype == np.float32
+        assert result.r.dtype == np.float32
+        np.testing.assert_allclose(result.q @ result.r, qr_input[i], rtol=1e-4, atol=1e-5)
+
+    for i, result in enumerate(svd_results):
+        assert result.u.dtype == np.float32
+        assert result.singular_values.dtype == np.float32
+        assert result.vt.dtype == np.float32
+        recon = result.u @ np.diag(result.singular_values) @ result.vt
+        np.testing.assert_allclose(recon, square[i], rtol=1e-4, atol=1e-5)
+
+    for result in lu_results:
+        assert result.l.dtype == np.float32
+        assert result.u.dtype == np.float32
+
+    for i, result in enumerate(cholesky_results):
+        assert result.l.dtype == np.float32
+        np.testing.assert_allclose(result.l @ result.l.T, spd[i], rtol=1e-4, atol=1e-5)
+
+    for i, result in enumerate(eigen_results):
+        assert result.eigenvalues.dtype == np.float32
+        assert result.eigenvectors.dtype == np.float32
+        np.testing.assert_allclose(
+            spd[i] @ result.eigenvectors,
+            result.eigenvectors @ np.diag(result.eigenvalues),
+            rtol=1e-4,
+            atol=1e-5,
+        )

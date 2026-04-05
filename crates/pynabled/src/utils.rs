@@ -1,11 +1,12 @@
 //! Utilities for Python bindings.
 
 use ndarray::{Array1, Array2, Array3};
+use num_traits::ToPrimitive;
 use numpy::{
     Element, PyArray1, PyArray2, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArray3, PyUntypedArrayMethods,
 };
-use pyo3::exceptions::PyTypeError;
+use pyo3::exceptions::{PyOverflowError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
@@ -61,6 +62,12 @@ pub fn matching_index_dtype_error(names: &[&str]) -> PyErr {
         "{} must all have matching dtype (all int32 or all int64)",
         names.join(", ")
     ))
+}
+
+pub fn f64_to_f32(value: f64, name: &str) -> PyResult<f32> {
+    value
+        .to_f32()
+        .ok_or_else(|| PyOverflowError::new_err(format!("{name} must be representable as float32")))
 }
 
 pub fn real_array1<'py>(
