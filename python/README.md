@@ -26,8 +26,8 @@ import numpy as np
 import pynabled
 
 a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64, order="C")
-u, s, vt = pynabled.svd_decompose(a)
-print("singular values:", s)
+result = pynabled.svd_decompose(a)
+print("singular values:", result.singular_values)
 ```
 
 `numpy.ndarray` is the canonical CPU-array carrier for `pynabled`. Borrowed NumPy views are used
@@ -36,6 +36,11 @@ Current real-valued vector/matrix/statistics/regression/PCA/iterative bindings a
 `float32` and `float64` under the same public function names. Mixed real dtypes are rejected
 explicitly instead of being silently cast. Some higher-level wrappers still materialize owned
 arrays internally where the current Rust API shape requires it.
+
+Structured decomposition / ML / tensor workflows now return typed Python result objects with named
+fields instead of anonymous tuples. For example, `svd_decompose(...)` returns `pynabled.SvdResult`,
+`compute_pca(...)` returns `pynabled.PcaResult`, and tensor decomposition helpers return
+corresponding `Hosvd*` / `CpAls*` / `TensorTrainResult` objects.
 
 Sparse CSR workflows use `pynabled.CsrMatrix` as the canonical Python carrier. SciPy-compatible
 objects can be normalized into that carrier explicitly with `CsrMatrix.from_scipy(...)` or passed

@@ -68,11 +68,11 @@ import numpy as np
 import pynabled
 
 a = np.array([[1., 2.], [3., 4.]], dtype=np.float64)
-u, s, vt = pynabled.svd_decompose(a)
-print("singular values:", s)
+result = pynabled.svd_decompose(a)
+print("singular values:", result.singular_values)
 ```
 
-The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, batched decompositions, tensor ops, regression, PCA, and statistics. See `python/pynabled/__init__.py` for the full API surface.
+The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, batched decompositions, tensor ops, regression, PCA, and statistics. Decomposition and higher-level ML/tensor workflows return typed result objects with named fields rather than anonymous tuples. See `python/pynabled/__init__.py` for the full API surface.
 
 For building with optional features (e.g. OpenBLAS, accelerator-rayon), see [BUILD.md](BUILD.md).
 

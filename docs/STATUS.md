@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-04
+Last updated: 2026-04-05
 
 ## Summary
 
@@ -51,8 +51,14 @@ full Python suite is green on the editable Python 3.12 build (`113 passed, 3 ski
 is now also complete: Rust `llvm-cov` excludes `pynabled`, Python package coverage is enforced at
 `>= 90%` via `pytest-cov` (`127 passed, 3 skipped`, `99.65%`), `just checks` now runs the
 `python-quality` gate, CI enforces full pytest plus wheel/sdist/feature smoke, and the full repo
-gate is green again. Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan
-for that branch.
+gate is green again. A seventh `N-PY-003` result-fidelity pass is now also landed: decomposition,
+batched, PCA/regression, tensor, and Arrow SVD workflows now return typed Python result objects
+with named fields, reconstruct/transform helpers operate on those result objects directly, raw
+binding fidelity was improved for non-symmetric eigen (complex arrays instead of split real/imag)
+and regression (fitted values/residuals exposed), and the full `python-quality` gate is green on
+Python 3.12 (`127 passed, 3 skipped`, `98.86%` Python coverage, editable + Arrow + wheel/sdist +
+feature-smoke builds). Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure
+plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 7. Public `*_lapack` compatibility wrappers have been removed.

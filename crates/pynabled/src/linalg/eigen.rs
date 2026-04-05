@@ -1,6 +1,6 @@
 //! Eigenvalue decomposition bindings for Python.
 
-use num_complex::Complex;
+use num_complex::Complex64;
 use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
@@ -41,28 +41,17 @@ pub fn generalized<'py>(
     ))
 }
 
-/// Non-symmetric eigenvalue decomposition. Returns (eigenvalues_real, eigenvalues_imag,
-/// schur_vectors_real, schur_vectors_imag).
+/// Non-symmetric eigenvalue decomposition. Returns (eigenvalues, schur_vectors).
 #[pyfunction(name = "eigen_nonsymmetric")]
 pub fn nonsymmetric<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray2<f64>>, Py<PyArray2<f64>>)> {
+) -> PyResult<(Py<PyArray1<Complex64>>, Py<PyArray2<Complex64>>)> {
     utils::require_contiguous(matrix)?;
     let arr = matrix.readonly();
     let result = nabled_linalg::eigen::nonsymmetric_view(&arr.as_array()).map_err(to_py_err)?;
-    let re: Vec<f64> = result.eigenvalues.iter().map(|c| c.re).collect();
-    let im: Vec<f64> = result.eigenvalues.iter().map(|c| c.im).collect();
-    let rows = result.schur_vectors.nrows();
-    let cols = result.schur_vectors.ncols();
-    let vec_re: Vec<f64> = result.schur_vectors.iter().map(|c: &Complex<f64>| c.re).collect();
-    let vec_im: Vec<f64> = result.schur_vectors.iter().map(|c: &Complex<f64>| c.im).collect();
-    let schur_re = ndarray::Array2::from_shape_vec((rows, cols), vec_re).unwrap();
-    let schur_im = ndarray::Array2::from_shape_vec((rows, cols), vec_im).unwrap();
     Ok((
-        PyArray1::from_owned_array(py, ndarray::Array1::from_vec(re)).unbind(),
-        PyArray1::from_owned_array(py, ndarray::Array1::from_vec(im)).unbind(),
-        PyArray2::from_owned_array(py, schur_re).unbind(),
-        PyArray2::from_owned_array(py, schur_im).unbind(),
+        PyArray1::from_owned_array(py, result.eigenvalues).unbind(),
+        PyArray2::from_owned_array(py, result.schur_vectors).unbind(),
     ))
 }

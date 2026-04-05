@@ -8,9 +8,9 @@ import pynabled
 
 def test_lu_decompose():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
-    l, u = pynabled.lu_decompose(a)
-    assert l.shape == (2, 2)
-    assert u.shape == (2, 2)
+    result = pynabled.lu_decompose(a)
+    assert result.l.shape == (2, 2)
+    assert result.u.shape == (2, 2)
     # LU with pivoting: P @ L @ U = A. lu_solve uses factors internally.
 
 

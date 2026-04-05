@@ -1,9 +1,8 @@
 """Tests for Cholesky decomposition bindings."""
 
 import numpy as np
-import pytest
-
 import pynabled
+import pytest
 
 
 def _make_spd(n):
@@ -15,10 +14,10 @@ def _make_spd(n):
 
 def test_cholesky_decompose():
     a = _make_spd(3)
-    l = pynabled.cholesky_decompose(a)
-    assert l.shape == (3, 3)
-    np.testing.assert_allclose(l @ l.T, a, rtol=1e-10)
-    assert np.allclose(np.tril(l), l)
+    result = pynabled.cholesky_decompose(a)
+    assert result.l.shape == (3, 3)
+    np.testing.assert_allclose(result.l @ result.l.T, a, rtol=1e-10)
+    assert np.allclose(np.tril(result.l), result.l)
 
 
 def test_cholesky_solve():

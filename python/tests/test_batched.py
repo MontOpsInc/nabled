@@ -35,17 +35,18 @@ def test_batched_qr():
     matrices = np.random.randn(2, 3, 3).astype(np.float64)
     results = pynabled.batched_qr(matrices)
     assert len(results) == 2
-    for i, (q, r) in enumerate(results):
-        np.testing.assert_allclose(q @ r, matrices[i], rtol=1e-10)
-        np.testing.assert_allclose(q.T @ q, np.eye(3), rtol=1e-10, atol=1e-14)
+    for i, result in enumerate(results):
+        np.testing.assert_allclose(result.q @ result.r, matrices[i], rtol=1e-10)
+        np.testing.assert_allclose(result.q.T @ result.q, np.eye(3), rtol=1e-10, atol=1e-14)
+        assert result.rank == 3
 
 
 def test_batched_svd():
     matrices = np.random.randn(2, 3, 3).astype(np.float64)
     results = pynabled.batched_svd(matrices)
     assert len(results) == 2
-    for i, (u, s, vt) in enumerate(results):
-        recon = u @ np.diag(s) @ vt
+    for i, result in enumerate(results):
+        recon = result.u @ np.diag(result.singular_values) @ result.vt
         np.testing.assert_allclose(recon, matrices[i], rtol=1e-10)
 
 
@@ -53,9 +54,9 @@ def test_batched_lu():
     matrices = np.random.randn(2, 3, 3).astype(np.float64)
     results = pynabled.batched_lu(matrices)
     assert len(results) == 2
-    for i, (l, u) in enumerate(results):
-        assert l.shape == (3, 3)
-        assert u.shape == (3, 3)
+    for result in results:
+        assert result.l.shape == (3, 3)
+        assert result.u.shape == (3, 3)
 
 
 def test_batched_cholesky():
@@ -64,8 +65,8 @@ def test_batched_cholesky():
     matrices = np.stack([a0, a1], axis=0)
     results = pynabled.batched_cholesky(matrices)
     assert len(results) == 2
-    for i, l in enumerate(results):
-        np.testing.assert_allclose(l @ l.T, matrices[i], rtol=1e-10)
+    for i, result in enumerate(results):
+        np.testing.assert_allclose(result.l @ result.l.T, matrices[i], rtol=1e-10)
 
 
 def test_batched_symmetric_eigen():
@@ -74,7 +75,9 @@ def test_batched_symmetric_eigen():
     matrices = np.stack([a0, a1], axis=0)
     results = pynabled.batched_symmetric_eigen(matrices)
     assert len(results) == 2
-    for i, (vals, vecs) in enumerate(results):
+    for i, result in enumerate(results):
         np.testing.assert_allclose(
-            matrices[i] @ vecs, vecs @ np.diag(vals), rtol=1e-10
+            matrices[i] @ result.eigenvectors,
+            result.eigenvectors @ np.diag(result.eigenvalues),
+            rtol=1e-10,
         )

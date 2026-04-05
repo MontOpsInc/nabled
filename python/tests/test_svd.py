@@ -6,20 +6,20 @@ import pynabled
 
 def test_svd_decompose():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64, order="C")
-    u, s, vt = pynabled.svd_decompose(a)
-    assert u.shape == (2, 2)
-    assert s.shape == (2,)
-    assert vt.shape == (2, 2)
-    recon = u @ np.diag(s) @ vt
+    result = pynabled.svd_decompose(a)
+    assert result.u.shape == (2, 2)
+    assert result.singular_values.shape == (2,)
+    assert result.vt.shape == (2, 2)
+    recon = result.u @ np.diag(result.singular_values) @ result.vt
     np.testing.assert_allclose(recon, a, rtol=1e-10)
 
 
 def test_svd_decompose_truncated():
     a = np.random.randn(5, 3).astype(np.float64)
-    u, s, vt = pynabled.svd_decompose_truncated(a, 2)
-    assert u.shape == (5, 2)
-    assert s.shape == (2,)
-    assert vt.shape == (2, 3)
+    result = pynabled.svd_decompose_truncated(a, 2)
+    assert result.u.shape == (5, 2)
+    assert result.singular_values.shape == (2,)
+    assert result.vt.shape == (2, 3)
 
 
 def test_svd_pseudo_inverse():
@@ -30,22 +30,22 @@ def test_svd_pseudo_inverse():
 
 def test_svd_rank():
     a = np.eye(3, dtype=np.float64)
-    _, s, _ = pynabled.svd_decompose(a)
-    r = pynabled.svd_rank(s)
+    result = pynabled.svd_decompose(a)
+    r = pynabled.svd_rank(result)
     assert r == 3
 
 
 def test_svd_reconstruct_matrix():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
-    u, s, vt = pynabled.svd_decompose(a)
-    recon = pynabled.svd_reconstruct_matrix(u, s, vt)
+    result = pynabled.svd_decompose(a)
+    recon = pynabled.svd_reconstruct_matrix(result)
     np.testing.assert_allclose(recon, a, rtol=1e-10)
 
 
 def test_svd_condition_number():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
-    u, s, vt = pynabled.svd_decompose(a)
-    kappa = pynabled.svd_condition_number(u, s, vt)
+    result = pynabled.svd_decompose(a)
+    kappa = pynabled.svd_condition_number(result)
     assert np.isfinite(kappa)
     assert kappa > 0
 
@@ -64,6 +64,6 @@ def test_svd_accepts_non_contiguous_inputs():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
     a_non_contig = a.T
     assert not a_non_contig.flags["C_CONTIGUOUS"]
-    u, s, vt = pynabled.svd_decompose(a_non_contig)
-    recon = u @ np.diag(s) @ vt
+    result = pynabled.svd_decompose(a_non_contig)
+    recon = result.u @ np.diag(result.singular_values) @ result.vt
     np.testing.assert_allclose(recon, a_non_contig, rtol=1e-10)

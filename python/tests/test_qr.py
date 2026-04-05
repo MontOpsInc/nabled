@@ -8,11 +8,12 @@ import pynabled
 
 def test_qr_decompose():
     a = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float64, order="C")
-    q, r, rank = pynabled.qr_decompose(a)
-    assert q.shape == (3, 2)
-    assert r.shape == (2, 2)
-    np.testing.assert_allclose(q @ r, a, rtol=1e-10)
-    np.testing.assert_allclose(q.T @ q, np.eye(2), rtol=1e-10, atol=1e-14)
+    result = pynabled.qr_decompose(a)
+    assert result.q.shape == (3, 2)
+    assert result.r.shape == (2, 2)
+    assert result.rank == 2
+    np.testing.assert_allclose(result.q @ result.r, a, rtol=1e-10)
+    np.testing.assert_allclose(result.q.T @ result.q, np.eye(2), rtol=1e-10, atol=1e-14)
 
 
 def test_qr_solve_least_squares():

@@ -81,17 +81,17 @@ def test_tensor_batched_matmul_last_two():
 
 def test_tensor_hosvd3():
     cube = np.random.randn(3, 4, 5).astype(np.float64)
-    core, u0, u1, u2 = pynabled.tensor_hosvd3(cube, 2, 2, 2)
-    assert core.shape == (2, 2, 2)
-    assert u0.shape == (3, 2)
-    assert u1.shape == (4, 2)
-    assert u2.shape == (5, 2)
+    result = pynabled.tensor_hosvd3(cube, 2, 2, 2)
+    assert result.core.shape == (2, 2, 2)
+    assert result.u0.shape == (3, 2)
+    assert result.u1.shape == (4, 2)
+    assert result.u2.shape == (5, 2)
 
 
 def test_tensor_hosvd3_reconstruct():
     cube = np.random.randn(3, 4, 5).astype(np.float64)
-    core, u0, u1, u2 = pynabled.tensor_hosvd3(cube, 3, 4, 5)
-    recon = pynabled.tensor_hosvd3_reconstruct(core, u0, u1, u2)
+    result = pynabled.tensor_hosvd3(cube, 3, 4, 5)
+    recon = pynabled.tensor_hosvd3_reconstruct(result)
     np.testing.assert_allclose(recon, cube, rtol=1e-10)
 
 
@@ -233,16 +233,16 @@ def test_tensor_decompositions_accept_fortran_order_inputs():
     assert cube.flags["F_CONTIGUOUS"]
     assert not cube.flags["C_CONTIGUOUS"]
 
-    core, factors = pynabled.tensor_hosvd_nd(cube, [3, 4, 5])
-    reconstructed = pynabled.tensor_hosvd_nd_reconstruct(core, factors)
+    hosvd = pynabled.tensor_hosvd_nd(cube, [3, 4, 5])
+    reconstructed = pynabled.tensor_hosvd_nd_reconstruct(hosvd)
     np.testing.assert_allclose(reconstructed, cube, rtol=1e-10, atol=1e-10)
 
-    weights, factor_0, factor_1, factor_2 = pynabled.tensor_cp_als3(cube, 2, 100, 1e-8)
-    reconstructed_cp = pynabled.tensor_cp_als3_reconstruct(weights, factor_0, factor_1, factor_2)
+    cp = pynabled.tensor_cp_als3(cube, 2, 100, 1e-8)
+    reconstructed_cp = pynabled.tensor_cp_als3_reconstruct(cp)
     assert reconstructed_cp.shape == cube.shape
 
-    tt_cores = pynabled.tensor_tt_svd(cube, None, 1e-10)
-    reconstructed_tt = pynabled.tensor_tt_svd_reconstruct(tt_cores)
+    tt = pynabled.tensor_tt_svd(cube, None, 1e-10)
+    reconstructed_tt = pynabled.tensor_tt_svd_reconstruct(tt)
     np.testing.assert_allclose(reconstructed_tt, cube, rtol=1e-10, atol=1e-10)
 
 
@@ -266,57 +266,97 @@ def test_tensor_hosvd_nd_and_tucker_helpers():
         np.array([[1.0, 0.0], [0.6, 0.7], [0.2, 1.1], [0.5, -0.3]], dtype=np.float64),
         np.array([[1.0, -0.2], [0.4, 0.9]], dtype=np.float64),
     ]
-    tensor = pynabled.tensor_tucker_expand(core, factors)
+    reference = pynabled.HosvdNdResult(core=core, factors=factors)
+    tensor = pynabled.tensor_tucker_expand(reference)
 
-    estimated_core, estimated_factors = pynabled.tensor_hosvd_nd(tensor, [2, 2, 2, 2])
-    projected = pynabled.tensor_tucker_project(tensor, estimated_factors)
-    reconstructed = pynabled.tensor_hosvd_nd_reconstruct(estimated_core, estimated_factors)
-    expanded = pynabled.tensor_tucker_expand(projected, estimated_factors)
+    estimated = pynabled.tensor_hosvd_nd(tensor, [2, 2, 2, 2])
+    projected = pynabled.tensor_tucker_project(tensor, estimated)
+    reconstructed = pynabled.tensor_hosvd_nd_reconstruct(estimated)
+    expanded = pynabled.tensor_tucker_expand(
+        pynabled.HosvdNdResult(core=projected, factors=estimated.factors)
+    )
 
-    np.testing.assert_allclose(projected, estimated_core, rtol=1e-8, atol=1e-8)
+    np.testing.assert_allclose(projected, estimated.core, rtol=1e-8, atol=1e-8)
     np.testing.assert_allclose(reconstructed, tensor, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(expanded, tensor, rtol=1e-6, atol=1e-6)
 
 
 def test_tensor_hooi_nd_reconstructs_full_rank_tensor():
     tensor = np.random.randn(2, 3, 2, 2).astype(np.float64)
-    core, factors = pynabled.tensor_hooi_nd(tensor, list(tensor.shape), 20, 1e-10)
-    reconstructed = pynabled.tensor_hosvd_nd_reconstruct(core, factors)
+    result = pynabled.tensor_hooi_nd(tensor, list(tensor.shape), 20, 1e-10)
+    reconstructed = pynabled.tensor_hosvd_nd_reconstruct(result)
     np.testing.assert_allclose(reconstructed, tensor, rtol=1e-8, atol=1e-8)
 
 
 def test_tensor_cp_als3_with_report():
     weights, factor_0, factor_1, factor_2 = _cp_als3_reference()
-    tensor = pynabled.tensor_cp_als3_reconstruct(weights, factor_0, factor_1, factor_2)
+    reference = pynabled.CpAls3Result(
+        weights=weights,
+        factor_0=factor_0,
+        factor_1=factor_1,
+        factor_2=factor_2,
+    )
+    tensor = pynabled.tensor_cp_als3_reconstruct(reference)
 
     estimate, report = pynabled.tensor_cp_als3_with_report(tensor, 2, 300, 1e-10)
-    reconstructed = pynabled.tensor_cp_als3_reconstruct(*estimate)
-    metrics = pynabled.tensor_cp_als3_diagnostics(tensor, *estimate)
+    reconstructed = pynabled.tensor_cp_als3_reconstruct(estimate)
+    metrics = pynabled.tensor_cp_als3_diagnostics(tensor, estimate)
 
     assert _relative_error(reconstructed, tensor) < 1e-6
-    assert 1 <= report[0][0] <= 300
-    np.testing.assert_allclose(report[1], metrics, rtol=1e-10, atol=1e-10)
-    assert report[1][2] < 1e-6
-    assert report[1][3] > 0.999999
+    assert 1 <= report.convergence.iterations_run <= 300
+    np.testing.assert_allclose(
+        [
+            report.metrics.signal_norm,
+            report.metrics.residual_norm,
+            report.metrics.relative_error,
+            report.metrics.fit,
+        ],
+        [
+            metrics.signal_norm,
+            metrics.residual_norm,
+            metrics.relative_error,
+            metrics.fit,
+        ],
+        rtol=1e-10,
+        atol=1e-10,
+    )
+    assert report.metrics.relative_error < 1e-6
+    assert report.metrics.fit > 0.999999
 
 
 def test_tensor_cp_als_nd_with_report():
     weights, factors = _cp_als_nd_reference()
-    tensor = pynabled.tensor_cp_als_nd_reconstruct(weights, factors)
+    reference = pynabled.CpAlsNdResult(weights=weights, factors=factors, shape=(3, 2, 4, 2))
+    tensor = pynabled.tensor_cp_als_nd_reconstruct(reference)
 
     estimate, report = pynabled.tensor_cp_als_nd_with_report(tensor, 2, 400, 1e-6)
-    reconstructed = pynabled.tensor_cp_als_nd_reconstruct(*estimate)
-    metrics = pynabled.tensor_cp_als_nd_diagnostics(tensor, *estimate)
+    reconstructed = pynabled.tensor_cp_als_nd_reconstruct(estimate)
+    metrics = pynabled.tensor_cp_als_nd_diagnostics(tensor, estimate)
 
     assert _relative_error(reconstructed, tensor) < 1e-5
-    assert 1 <= report[0][0] <= 400
-    np.testing.assert_allclose(report[1], metrics, rtol=1e-8, atol=1e-8)
-    assert report[1][2] < 1e-5
-    assert report[1][3] > 0.99999
+    assert 1 <= report.convergence.iterations_run <= 400
+    np.testing.assert_allclose(
+        [
+            report.metrics.signal_norm,
+            report.metrics.residual_norm,
+            report.metrics.relative_error,
+            report.metrics.fit,
+        ],
+        [
+            metrics.signal_norm,
+            metrics.residual_norm,
+            metrics.relative_error,
+            metrics.fit,
+        ],
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    assert report.metrics.relative_error < 1e-5
+    assert report.metrics.fit > 0.99999
 
 
 def test_tensor_tt_family():
-    reference = _tt_reference()
+    reference = pynabled.TensorTrainResult(cores=_tt_reference())
     tensor = pynabled.tensor_tt_svd_reconstruct(reference)
 
     estimated = pynabled.tensor_tt_svd(tensor, 2, 1e-10)
@@ -338,8 +378,8 @@ def test_tensor_tt_family():
         rtol=1e-10,
         atol=1e-10,
     )
-    assert all(core.shape[2] <= 2 for core in rounded[:-1])
-    assert all(core.shape[0] <= 2 for core in rounded[1:])
+    assert all(core.shape[2] <= 2 for core in rounded.cores[:-1])
+    assert all(core.shape[0] <= 2 for core in rounded.cores[1:])
 
     left_tensor = np.array(
         [

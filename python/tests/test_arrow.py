@@ -39,8 +39,10 @@ def test_arrow_l2_norm():
 def test_arrow_svd_decompose():
     # Create a 2x2 matrix as FixedSizeListArray (rows as lists)
     data = pa.array([[1.0, 2.0], [3.0, 4.0]], type=pa.list_(pa.float64(), 2))
-    u, s, vt = arrow_svd_decompose(data)
-    u, s, vt = np.asarray(u), np.asarray(s), np.asarray(vt)
+    result = arrow_svd_decompose(data)
+    u = np.asarray(result.u)
+    s = np.asarray(result.singular_values)
+    vt = np.asarray(result.vt)
     a = np.array([[1.0, 2.0], [3.0, 4.0]])
     recon = u @ np.diag(s) @ vt
     np.testing.assert_allclose(recon, a, rtol=1e-10)

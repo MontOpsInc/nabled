@@ -6,12 +6,12 @@ use pyo3::prelude::*;
 use crate::error::to_py_err;
 use crate::utils;
 
-/// Batched QR decomposition. Returns list of (Q, R) tuples.
+/// Batched QR decomposition. Returns list of (Q, R, rank) tuples.
 #[pyfunction(name = "batched_qr")]
 pub fn qr<'py>(
     py: Python<'py>,
     matrices: &Bound<'py, PyArray3<f64>>,
-) -> PyResult<Vec<(Py<PyArray2<f64>>, Py<PyArray2<f64>>)>> {
+) -> PyResult<Vec<(Py<PyArray2<f64>>, Py<PyArray2<f64>>, usize)>> {
     utils::require_contiguous(matrices)?;
     let arr = matrices.readonly();
     let config = nabled_linalg::qr::QRConfig::<f64>::default();
@@ -21,6 +21,7 @@ pub fn qr<'py>(
         out.push((
             PyArray2::from_owned_array(py, r.q).unbind(),
             PyArray2::from_owned_array(py, r.r).unbind(),
+            r.rank,
         ));
     }
     Ok(out)

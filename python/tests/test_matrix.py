@@ -28,16 +28,20 @@ def test_dot():
 
 def test_eigen_symmetric():
     a = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
-    vals, vecs = pynabled.eigen_symmetric(a)
-    assert vals.shape == (2,)
-    assert vecs.shape == (2, 2)
-    np.testing.assert_allclose(a @ vecs, vecs @ np.diag(vals), rtol=1e-10)
+    result = pynabled.eigen_symmetric(a)
+    assert result.eigenvalues.shape == (2,)
+    assert result.eigenvectors.shape == (2, 2)
+    np.testing.assert_allclose(
+        a @ result.eigenvectors,
+        result.eigenvectors @ np.diag(result.eigenvalues),
+        rtol=1e-10,
+    )
 
 
 def test_schur():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
-    t, q = pynabled.schur_compute(a)
-    np.testing.assert_allclose(q @ t @ q.T, a, rtol=1e-10)
+    result = pynabled.schur_compute(a)
+    np.testing.assert_allclose(result.q @ result.t @ result.q.T, a, rtol=1e-10)
 
 
 def test_gram_schmidt():
