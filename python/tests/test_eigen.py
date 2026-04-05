@@ -52,3 +52,21 @@ def test_eigen_accepts_float32():
         av = a @ generalized.eigenvectors[:, i]
         bv = b @ generalized.eigenvectors[:, i] * generalized.eigenvalues[i]
         np.testing.assert_allclose(av, bv, rtol=1e-4, atol=1e-5)
+
+
+def test_eigen_nonsymmetric_accepts_complex128():
+    matrix = np.array(
+        [[2.0 + 1.0j, 0.0 + 0.0j], [0.0 + 0.0j, -3.0 + 0.5j]],
+        dtype=np.complex128,
+    )
+
+    result = pynabled.eigen_nonsymmetric(matrix)
+
+    assert result.eigenvalues.dtype == np.complex128
+    assert result.schur_vectors.dtype == np.complex128
+    np.testing.assert_allclose(
+        np.sort_complex(result.eigenvalues),
+        np.sort_complex(np.array([2.0 + 1.0j, -3.0 + 0.5j], dtype=np.complex128)),
+        rtol=1e-10,
+        atol=1e-12,
+    )

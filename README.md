@@ -72,7 +72,7 @@ result = pynabled.svd_decompose(a)
 print("singular values:", result.singular_values)
 ```
 
-The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, batched decompositions, tensor ops, regression, PCA, and statistics. Decomposition and higher-level ML/tensor workflows return typed result objects with named fields rather than anonymous tuples. See `python/pynabled/__init__.py` for the full API surface.
+The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, batched decompositions, tensor ops, regression, PCA, statistics, and the current sparse CSR/reuse surface. Decomposition, higher-level ML/tensor workflows, and reusable sparse factorization/preconditioner paths return typed Python objects instead of anonymous tuples. See `python/pynabled/__init__.py` for the full API surface.
 
 For building with optional features (e.g. OpenBLAS, accelerator-rayon), see [BUILD.md](BUILD.md).
 

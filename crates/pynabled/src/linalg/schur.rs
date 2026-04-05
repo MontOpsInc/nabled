@@ -12,15 +12,20 @@ pub fn compute_schur<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyAny>,
 ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-    match utils::real_array2(matrix, "matrix")? {
-        utils::RealReadonlyArray2::F32(arr) => {
+    match utils::numeric_array2(matrix, "matrix")? {
+        utils::NumericReadonlyArray2::F32(arr) => {
             let result =
                 nabled_linalg::schur::compute_schur_view(&arr.as_array()).map_err(to_py_err)?;
             Ok((utils::pyarray2_from_owned(py, result.t), utils::pyarray2_from_owned(py, result.q)))
         }
-        utils::RealReadonlyArray2::F64(arr) => {
+        utils::NumericReadonlyArray2::F64(arr) => {
             let result =
                 nabled_linalg::schur::compute_schur_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.t), utils::pyarray2_from_owned(py, result.q)))
+        }
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let result = nabled_linalg::schur::compute_schur_complex_view(&arr.as_array())
+                .map_err(to_py_err)?;
             Ok((utils::pyarray2_from_owned(py, result.t), utils::pyarray2_from_owned(py, result.q)))
         }
     }

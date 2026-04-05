@@ -12,6 +12,13 @@ def _make_spd(n, dtype=np.float64):
     return x.T @ x + np.array(0.1, dtype=dtype) * np.eye(n, dtype=dtype)
 
 
+def _make_hpd(n):
+    rng = np.random.default_rng(42)
+    x = rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n))
+    x = x.astype(np.complex128)
+    return x.conj().T @ x + np.array(0.1, dtype=np.complex128) * np.eye(n, dtype=np.complex128)
+
+
 def test_cholesky_decompose():
     a = _make_spd(3)
     result = pynabled.cholesky_decompose(a)
@@ -48,3 +55,19 @@ def test_cholesky_accepts_float32():
     np.testing.assert_allclose(result.l @ result.l.T, a, rtol=1e-4, atol=1e-5)
     np.testing.assert_allclose(a @ x, b, rtol=1e-4, atol=1e-5)
     np.testing.assert_allclose(a @ inv_a, np.eye(3, dtype=np.float32), rtol=1e-4, atol=1e-5)
+
+
+def test_cholesky_accepts_complex128():
+    a = _make_hpd(3)
+    b = np.array([1.0 + 0.5j, -2.0 + 1.0j, 3.0 - 0.25j], dtype=np.complex128)
+
+    result = pynabled.cholesky_decompose(a)
+    x = pynabled.cholesky_solve(a, b)
+    inv_a = pynabled.cholesky_inverse(a)
+
+    assert result.l.dtype == np.complex128
+    assert x.dtype == np.complex128
+    assert inv_a.dtype == np.complex128
+    np.testing.assert_allclose(result.l @ result.l.conj().T, a, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(a @ x, b, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(a @ inv_a, np.eye(3, dtype=np.complex128), rtol=1e-10, atol=1e-12)

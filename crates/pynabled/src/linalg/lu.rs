@@ -28,31 +28,42 @@ pub fn solve<'py>(
     a: &Bound<'py, PyAny>,
     b: &Bound<'py, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    match (utils::real_array2(a, "a")?, utils::real_array1(b, "b")?) {
-        (utils::RealReadonlyArray2::F32(a_arr), utils::RealReadonlyArray1::F32(b_arr)) => {
+    match (utils::numeric_array2(a, "a")?, utils::numeric_array1(b, "b")?) {
+        (utils::NumericReadonlyArray2::F32(a_arr), utils::NumericReadonlyArray1::F32(b_arr)) => {
             let result = nabled_linalg::lu::solve_view(&a_arr.as_array(), &b_arr.as_array())
                 .map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, result))
         }
-        (utils::RealReadonlyArray2::F64(a_arr), utils::RealReadonlyArray1::F64(b_arr)) => {
+        (utils::NumericReadonlyArray2::F64(a_arr), utils::NumericReadonlyArray1::F64(b_arr)) => {
             let result = nabled_linalg::lu::solve_view(&a_arr.as_array(), &b_arr.as_array())
                 .map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, result))
         }
-        _ => Err(utils::matching_real_dtype_error(&["a", "b"])),
+        (utils::NumericReadonlyArray2::C64(a_arr), utils::NumericReadonlyArray1::C64(b_arr)) => {
+            let result =
+                nabled_linalg::lu::solve_complex_view(&a_arr.as_array(), &b_arr.as_array())
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        _ => Err(utils::matching_numeric_dtype_error(&["a", "b"])),
     }
 }
 
 /// Compute matrix inverse using LU.
 #[pyfunction(name = "lu_inverse")]
 pub fn inverse<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
-    match utils::real_array2(a, "a")? {
-        utils::RealReadonlyArray2::F32(arr) => {
+    match utils::numeric_array2(a, "a")? {
+        utils::NumericReadonlyArray2::F32(arr) => {
             let result = nabled_linalg::lu::inverse_view(&arr.as_array()).map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, result))
         }
-        utils::RealReadonlyArray2::F64(arr) => {
+        utils::NumericReadonlyArray2::F64(arr) => {
             let result = nabled_linalg::lu::inverse_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let result =
+                nabled_linalg::lu::inverse_complex_view(&arr.as_array()).map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, result))
         }
     }
@@ -60,13 +71,20 @@ pub fn inverse<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Py<PyAny
 
 /// Compute determinant.
 #[pyfunction(name = "lu_determinant")]
-pub fn determinant(a: &Bound<'_, PyAny>) -> PyResult<f64> {
-    match utils::real_array2(a, "a")? {
-        utils::RealReadonlyArray2::F32(arr) => {
-            Ok(nabled_linalg::lu::determinant_view(&arr.as_array()).map_err(to_py_err)?.into())
+pub fn determinant<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
+    match utils::numeric_array2(a, "a")? {
+        utils::NumericReadonlyArray2::F32(arr) => {
+            let result = nabled_linalg::lu::determinant_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok(utils::py_float(py, result.into()))
         }
-        utils::RealReadonlyArray2::F64(arr) => {
-            nabled_linalg::lu::determinant_view(&arr.as_array()).map_err(to_py_err)
+        utils::NumericReadonlyArray2::F64(arr) => {
+            let result = nabled_linalg::lu::determinant_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok(utils::py_float(py, result))
+        }
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let result =
+                nabled_linalg::lu::determinant_complex_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok(utils::py_complex(py, result))
         }
     }
 }

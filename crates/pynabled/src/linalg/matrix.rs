@@ -13,10 +13,10 @@ pub fn matvec<'py>(
     matrix: &Bound<'py, PyAny>,
     vector: &Bound<'py, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    match (utils::real_array2(matrix, "matrix")?, utils::real_array1(vector, "vector")?) {
+    match (utils::numeric_array2(matrix, "matrix")?, utils::numeric_array1(vector, "vector")?) {
         (
-            utils::RealReadonlyArray2::F32(matrix_arr),
-            utils::RealReadonlyArray1::F32(vector_arr),
+            utils::NumericReadonlyArray2::F32(matrix_arr),
+            utils::NumericReadonlyArray1::F32(vector_arr),
         ) => {
             let result =
                 nabled_linalg::matrix::matvec_view(&matrix_arr.as_array(), &vector_arr.as_array())
@@ -24,15 +24,26 @@ pub fn matvec<'py>(
             Ok(utils::pyarray1_from_owned(py, result))
         }
         (
-            utils::RealReadonlyArray2::F64(matrix_arr),
-            utils::RealReadonlyArray1::F64(vector_arr),
+            utils::NumericReadonlyArray2::F64(matrix_arr),
+            utils::NumericReadonlyArray1::F64(vector_arr),
         ) => {
             let result =
                 nabled_linalg::matrix::matvec_view(&matrix_arr.as_array(), &vector_arr.as_array())
                     .map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, result))
         }
-        _ => Err(utils::matching_real_dtype_error(&["matrix", "vector"])),
+        (
+            utils::NumericReadonlyArray2::C64(matrix_arr),
+            utils::NumericReadonlyArray1::C64(vector_arr),
+        ) => {
+            let result = nabled_linalg::matrix::matvec_complex_view(
+                &matrix_arr.as_array(),
+                &vector_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        _ => Err(utils::matching_numeric_dtype_error(&["matrix", "vector"])),
     }
 }
 
@@ -43,20 +54,37 @@ pub fn matmat<'py>(
     left: &Bound<'py, PyAny>,
     right: &Bound<'py, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
-        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+    match (utils::numeric_array2(left, "left")?, utils::numeric_array2(right, "right")?) {
+        (
+            utils::NumericReadonlyArray2::F32(left_arr),
+            utils::NumericReadonlyArray2::F32(right_arr),
+        ) => {
             let result =
                 nabled_linalg::matrix::matmat_view(&left_arr.as_array(), &right_arr.as_array())
                     .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, result))
         }
-        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+        (
+            utils::NumericReadonlyArray2::F64(left_arr),
+            utils::NumericReadonlyArray2::F64(right_arr),
+        ) => {
             let result =
                 nabled_linalg::matrix::matmat_view(&left_arr.as_array(), &right_arr.as_array())
                     .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, result))
         }
-        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+        (
+            utils::NumericReadonlyArray2::C64(left_arr),
+            utils::NumericReadonlyArray2::C64(right_arr),
+        ) => {
+            let result = nabled_linalg::matrix::matmat_complex_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_numeric_dtype_error(&["left", "right"])),
     }
 }
 

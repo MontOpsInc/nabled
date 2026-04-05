@@ -41,3 +41,47 @@ def test_numerical_hessian():
     hess = pynabled.numerical_hessian(func, x)
     expected = np.array([[2.0, 3.0], [3.0, 4.0]], dtype=np.float64)
     np.testing.assert_allclose(hess, expected, rtol=5e-4, atol=1e-3)
+
+
+def test_real_jacobian_bindings_accept_float32():
+    def vector_func(x):
+        return np.array([x[0] ** 2, x[0] * x[1]], dtype=np.float32)
+
+    def scalar_func(x):
+        return np.float32((x[0] - 1.5) ** 2 + np.float32(2.0) * (x[1] + 0.25) ** 2)
+
+    x = np.array([2.0, -0.5], dtype=np.float32)
+
+    jac = pynabled.numerical_jacobian(vector_func, x)
+    jac_central = pynabled.numerical_jacobian_central(vector_func, x)
+    grad = pynabled.numerical_gradient(scalar_func, x)
+    hess = pynabled.numerical_hessian(scalar_func, x)
+
+    assert jac.dtype == np.float32
+    assert jac_central.dtype == np.float32
+    assert grad.dtype == np.float32
+    assert hess.dtype == np.float32
+    np.testing.assert_allclose(
+        jac,
+        np.array([[4.0, 0.0], [-0.5, 2.0]], dtype=np.float32),
+        rtol=2e-3,
+        atol=5e-3,
+    )
+    np.testing.assert_allclose(
+        jac_central,
+        np.array([[4.0, 0.0], [-0.5, 2.0]], dtype=np.float32),
+        rtol=2e-3,
+        atol=5e-3,
+    )
+    np.testing.assert_allclose(
+        grad,
+        np.array([1.0, -1.0], dtype=np.float32),
+        rtol=3e-3,
+        atol=3e-3,
+    )
+    np.testing.assert_allclose(
+        hess,
+        np.array([[2.0, 0.0], [0.0, 4.0]], dtype=np.float32),
+        rtol=2e-2,
+        atol=2e-2,
+    )

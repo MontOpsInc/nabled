@@ -1,21 +1,25 @@
 //! Tensor bindings for Python.
 
-use ndarray::{Array2, Array3};
+use nabled_core::scalar::NabledReal;
+use ndarray::{Array1, Array2, Array3, ArrayD};
 use num_complex::Complex64;
-use numpy::{PyArray1, PyArray2, PyArray3, PyArrayDyn, PyArrayMethods};
-use pyo3::exceptions::PyValueError;
+use num_traits::{FromPrimitive, ToPrimitive};
+use numpy::{Element, PyArray2, PyArray3, PyArrayDyn, PyArrayMethods};
+use pyo3::exceptions::{PyOverflowError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
 
 use crate::error::to_py_err;
 use crate::utils;
 
-type PyCpAls3Result = (Py<PyArray1<f64>>, Py<PyArray2<f64>>, Py<PyArray2<f64>>, Py<PyArray2<f64>>);
-type PyCpAlsNdResult = (Py<PyArray1<f64>>, Vec<Py<PyArray2<f64>>>);
+type PyHosvd3Result = (Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>);
+type PyCpAls3Result = (Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>);
+type PyCpAlsNdResult = (Py<PyAny>, Vec<Py<PyAny>>);
 type PyCpMetrics = (f64, f64, f64, f64);
 type PyCpConvergence = (usize, bool, f64);
 type PyCpReport = (PyCpConvergence, PyCpMetrics);
-type PyHosvdNdResult = (Py<PyArrayDyn<f64>>, Vec<Py<PyArray2<f64>>>);
-type PyTensorTrainResult = Vec<Py<PyArray3<f64>>>;
+type PyHosvdNdResult = (Py<PyAny>, Vec<Py<PyAny>>);
+type PyTensorTrainResult = Vec<Py<PyAny>>;
 
 fn standard_array2<T: Clone>(array: Array2<T>) -> Array2<T> {
     array.as_standard_layout().to_owned()
@@ -25,220 +29,302 @@ fn standard_array3<T: Clone>(array: Array3<T>) -> Array3<T> {
     array.as_standard_layout().to_owned()
 }
 
-fn standard_arrayd<T: Clone>(array: ndarray::ArrayD<T>) -> ndarray::ArrayD<T> {
+fn standard_arrayd<T: Clone>(array: ArrayD<T>) -> ArrayD<T> {
     array.as_standard_layout().to_owned()
 }
 
-fn cp_als_config(
+fn real_scalar_to_f64<T: ToPrimitive>(value: T, name: &str) -> PyResult<f64> {
+    value
+        .to_f64()
+        .ok_or_else(|| PyOverflowError::new_err(format!("{name} could not be represented as f64")))
+}
+
+fn cp_als_config<T>(
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
-) -> nabled_linalg::tensor::CpAlsConfig<f64> {
-    let mut config = nabled_linalg::tensor::CpAlsConfig::<f64>::default();
+) -> PyResult<nabled_linalg::tensor::CpAlsConfig<T>>
+where
+    T: NabledReal + FromPrimitive,
+    nabled_linalg::tensor::CpAlsConfig<T>: Default,
+{
+    let mut config = nabled_linalg::tensor::CpAlsConfig::<T>::default();
     if let Some(max_iterations) = max_iterations {
         config.max_iterations = max_iterations;
     }
     if let Some(tolerance) = tolerance {
-        config.tolerance = tolerance;
+        config.tolerance = utils::f64_to_real::<T>(tolerance, "tolerance")?;
     }
-    config
+    Ok(config)
 }
 
-fn hooi_config(
+fn hooi_config<T>(
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
-) -> nabled_linalg::tensor::HooiConfig<f64> {
-    let mut config = nabled_linalg::tensor::HooiConfig::<f64>::default();
+) -> PyResult<nabled_linalg::tensor::HooiConfig<T>>
+where
+    T: NabledReal + FromPrimitive,
+    nabled_linalg::tensor::HooiConfig<T>: Default,
+{
+    let mut config = nabled_linalg::tensor::HooiConfig::<T>::default();
     if let Some(max_iterations) = max_iterations {
         config.max_iterations = max_iterations;
     }
     if let Some(tolerance) = tolerance {
-        config.tolerance = tolerance;
+        config.tolerance = utils::f64_to_real::<T>(tolerance, "tolerance")?;
     }
-    config
+    Ok(config)
 }
 
-fn tt_svd_config(
+fn tt_svd_config<T>(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
-) -> nabled_linalg::tensor::TtSvdConfig<f64> {
-    let mut config = nabled_linalg::tensor::TtSvdConfig::<f64> { max_rank, ..Default::default() };
+) -> PyResult<nabled_linalg::tensor::TtSvdConfig<T>>
+where
+    T: NabledReal + FromPrimitive,
+    nabled_linalg::tensor::TtSvdConfig<T>: Default,
+{
+    let mut config = nabled_linalg::tensor::TtSvdConfig::<T> { max_rank, ..Default::default() };
     if let Some(tolerance) = tolerance {
-        config.tolerance = tolerance;
+        config.tolerance = utils::f64_to_real::<T>(tolerance, "tolerance")?;
     }
-    config
+    Ok(config)
 }
 
-fn tt_round_config(
+fn tt_round_config<T>(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
-) -> nabled_linalg::tensor::TtRoundConfig<f64> {
-    let mut config = nabled_linalg::tensor::TtRoundConfig::<f64> { max_rank, ..Default::default() };
+) -> PyResult<nabled_linalg::tensor::TtRoundConfig<T>>
+where
+    T: NabledReal + FromPrimitive,
+    nabled_linalg::tensor::TtRoundConfig<T>: Default,
+{
+    let mut config = nabled_linalg::tensor::TtRoundConfig::<T> { max_rank, ..Default::default() };
     if let Some(tolerance) = tolerance {
-        config.tolerance = tolerance;
+        config.tolerance = utils::f64_to_real::<T>(tolerance, "tolerance")?;
     }
-    config
+    Ok(config)
 }
 
-fn py_cp_metrics(metrics: nabled_linalg::tensor::CpErrorMetrics<f64>) -> PyCpMetrics {
-    (metrics.signal_norm, metrics.residual_norm, metrics.relative_error, metrics.fit)
+fn py_cp_metrics<T: NabledReal + ToPrimitive>(
+    metrics: nabled_linalg::tensor::CpErrorMetrics<T>,
+) -> PyResult<PyCpMetrics> {
+    Ok((
+        real_scalar_to_f64(metrics.signal_norm, "signal_norm")?,
+        real_scalar_to_f64(metrics.residual_norm, "residual_norm")?,
+        real_scalar_to_f64(metrics.relative_error, "relative_error")?,
+        real_scalar_to_f64(metrics.fit, "fit")?,
+    ))
 }
 
-fn py_cp_report(report: nabled_linalg::tensor::CpAlsReport<f64>) -> PyCpReport {
-    (
+fn py_cp_report<T: NabledReal + ToPrimitive>(
+    report: nabled_linalg::tensor::CpAlsReport<T>,
+) -> PyResult<PyCpReport> {
+    Ok((
         (
             report.convergence.iterations_run,
             report.convergence.converged,
-            report.convergence.final_max_factor_change,
+            real_scalar_to_f64(
+                report.convergence.final_max_factor_change,
+                "final_max_factor_change",
+            )?,
         ),
-        py_cp_metrics(report.metrics),
+        py_cp_metrics(report.metrics)?,
+    ))
+}
+
+fn py_hosvd3_result<T: Element + Clone + NabledReal>(
+    py: Python<'_>,
+    result: nabled_linalg::tensor::Hosvd3Result<T>,
+) -> PyHosvd3Result {
+    (
+        utils::pyarray3_from_owned(py, standard_array3(result.core)),
+        utils::pyarray2_from_owned(py, standard_array2(result.u0)),
+        utils::pyarray2_from_owned(py, standard_array2(result.u1)),
+        utils::pyarray2_from_owned(py, standard_array2(result.u2)),
     )
 }
 
-fn py_cp_als3_result(
+fn py_cp_als3_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
-    result: nabled_linalg::tensor::CpAls3Result<f64>,
+    result: nabled_linalg::tensor::CpAls3Result<T>,
 ) -> PyCpAls3Result {
     (
-        PyArray1::from_owned_array(py, result.weights).unbind(),
-        PyArray2::from_owned_array(py, standard_array2(result.factor_0)).unbind(),
-        PyArray2::from_owned_array(py, standard_array2(result.factor_1)).unbind(),
-        PyArray2::from_owned_array(py, standard_array2(result.factor_2)).unbind(),
+        utils::pyarray1_from_owned(py, result.weights),
+        utils::pyarray2_from_owned(py, standard_array2(result.factor_0)),
+        utils::pyarray2_from_owned(py, standard_array2(result.factor_1)),
+        utils::pyarray2_from_owned(py, standard_array2(result.factor_2)),
     )
 }
 
-fn py_cp_als_nd_result(
+fn py_cp_als_nd_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
-    result: nabled_linalg::tensor::CpAlsNdResult<f64>,
+    result: nabled_linalg::tensor::CpAlsNdResult<T>,
 ) -> PyCpAlsNdResult {
     (
-        PyArray1::from_owned_array(py, result.weights).unbind(),
+        utils::pyarray1_from_owned(py, result.weights),
         result
             .factors
             .into_iter()
-            .map(|factor| PyArray2::from_owned_array(py, standard_array2(factor)).unbind())
+            .map(|factor| utils::pyarray2_from_owned(py, standard_array2(factor)))
             .collect(),
     )
 }
 
-fn py_hosvd_nd_result(
+fn py_hosvd_nd_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
-    result: nabled_linalg::tensor::HosvdNdResult<f64>,
+    result: nabled_linalg::tensor::HosvdNdResult<T>,
 ) -> PyHosvdNdResult {
     (
-        PyArrayDyn::from_owned_array(py, standard_arrayd(result.core)).unbind(),
+        utils::pyarrayd_from_owned(py, standard_arrayd(result.core)),
         result
             .factors
             .into_iter()
-            .map(|factor| PyArray2::from_owned_array(py, standard_array2(factor)).unbind())
+            .map(|factor| utils::pyarray2_from_owned(py, standard_array2(factor)))
             .collect(),
     )
 }
 
-fn py_tt_result(
+fn py_tt_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
-    result: nabled_linalg::tensor::TensorTrainResult<f64>,
+    result: nabled_linalg::tensor::TensorTrainResult<T>,
 ) -> PyTensorTrainResult {
     result
         .cores
         .into_iter()
-        .map(|core| PyArray3::from_owned_array(py, standard_array3(core)).unbind())
+        .map(|core| utils::pyarray3_from_owned(py, standard_array3(core)))
         .collect()
 }
 
-fn extract_array2_sequence(arrays: &Bound<'_, PyAny>) -> PyResult<Vec<Array2<f64>>> {
+fn extract_array2_sequence<T: Element + Clone>(
+    arrays: &Bound<'_, PyAny>,
+) -> PyResult<Vec<Array2<T>>> {
     let mut out = Vec::new();
     for item in arrays.try_iter()? {
         let item = item?;
-        let array = item.cast::<PyArray2<f64>>()?;
+        let array = item.cast::<PyArray2<T>>().map_err(|_| {
+            PyValueError::new_err(
+                "expected a non-empty sequence of 2D NumPy arrays with matching float32/float64 \
+                 dtype",
+            )
+        })?;
         utils::require_contiguous(array)?;
         out.push(array.readonly().as_array().to_owned());
     }
     if out.is_empty() {
-        return Err(PyValueError::new_err("expected a non-empty sequence of 2D numpy arrays"));
+        return Err(PyValueError::new_err(
+            "expected a non-empty sequence of 2D NumPy arrays with matching float32/float64 dtype",
+        ));
     }
     Ok(out)
 }
 
-fn extract_array3_sequence(arrays: &Bound<'_, PyAny>) -> PyResult<Vec<Array3<f64>>> {
-    let mut out = Vec::new();
-    for item in arrays.try_iter()? {
-        let item = item?;
-        let array = item.cast::<PyArray3<f64>>()?;
-        utils::require_contiguous(array)?;
-        out.push(array.readonly().as_array().to_owned());
-    }
-    if out.is_empty() {
-        return Err(PyValueError::new_err("expected a non-empty sequence of 3D numpy arrays"));
-    }
-    Ok(out)
+enum RealTensorTrainResult {
+    F32(nabled_linalg::tensor::TensorTrainResult<f32>),
+    F64(nabled_linalg::tensor::TensorTrainResult<f64>),
 }
 
-fn cp_als3_result_from_arrays(
-    weights: &Bound<'_, PyArray1<f64>>,
-    factor_0: &Bound<'_, PyArray2<f64>>,
-    factor_1: &Bound<'_, PyArray2<f64>>,
-    factor_2: &Bound<'_, PyArray2<f64>>,
-) -> PyResult<nabled_linalg::tensor::CpAls3Result<f64>> {
-    utils::require_contiguous(weights)?;
-    utils::require_contiguous(factor_0)?;
-    utils::require_contiguous(factor_1)?;
-    utils::require_contiguous(factor_2)?;
-    Ok(nabled_linalg::tensor::CpAls3Result {
-        weights:  weights.readonly().as_array().to_owned(),
-        factor_0: factor_0.readonly().as_array().to_owned(),
-        factor_1: factor_1.readonly().as_array().to_owned(),
-        factor_2: factor_2.readonly().as_array().to_owned(),
-    })
-}
-
-fn cp_als_nd_result_from_arrays(
-    weights: &Bound<'_, PyArray1<f64>>,
-    factors: &Bound<'_, PyAny>,
-) -> PyResult<nabled_linalg::tensor::CpAlsNdResult<f64>> {
-    utils::require_contiguous(weights)?;
-    let factors = extract_array2_sequence(factors)?;
-    let shape = factors.iter().map(Array2::nrows).collect();
-    Ok(nabled_linalg::tensor::CpAlsNdResult {
-        weights: weights.readonly().as_array().to_owned(),
-        factors,
-        shape,
-    })
-}
-
-fn hosvd_nd_result_from_arrays(
-    core: &Bound<'_, PyArrayDyn<f64>>,
-    factors: &Bound<'_, PyAny>,
-) -> PyResult<nabled_linalg::tensor::HosvdNdResult<f64>> {
-    utils::require_contiguous(core)?;
-    Ok(nabled_linalg::tensor::HosvdNdResult {
-        core:    core.readonly().as_array().to_owned(),
-        factors: extract_array2_sequence(factors)?,
-    })
-}
-
-fn tt_result_from_cores(
-    cores: &Bound<'_, PyAny>,
-) -> PyResult<nabled_linalg::tensor::TensorTrainResult<f64>> {
-    let cores = extract_array3_sequence(cores)?;
+fn tensor_train_result_from_cores<T: NabledReal>(
+    cores: Vec<Array3<T>>,
+) -> nabled_linalg::tensor::TensorTrainResult<T> {
     let shape = cores.iter().map(|core| core.dim().1).collect();
-    Ok(nabled_linalg::tensor::TensorTrainResult { cores, shape })
+    nabled_linalg::tensor::TensorTrainResult { cores, shape }
+}
+
+fn real_tt_result_from_cores(cores: &Bound<'_, PyAny>) -> PyResult<RealTensorTrainResult> {
+    let mut iter = cores.try_iter()?;
+    let Some(first) = iter.next() else {
+        return Err(PyValueError::new_err(
+            "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
+        ));
+    };
+    let first = first?;
+    if let Ok(array) = first.cast::<PyArray3<f32>>() {
+        utils::require_contiguous(array)?;
+        let mut owned = vec![array.readonly().as_array().to_owned()];
+        for item in iter {
+            let item = item?;
+            let array = item.cast::<PyArray3<f32>>().map_err(|_| {
+                PyValueError::new_err(
+                    "expected a non-empty sequence of 3D NumPy arrays with matching \
+                     float32/float64 dtype",
+                )
+            })?;
+            utils::require_contiguous(array)?;
+            owned.push(array.readonly().as_array().to_owned());
+        }
+        return Ok(RealTensorTrainResult::F32(tensor_train_result_from_cores(owned)));
+    }
+    if let Ok(array) = first.cast::<PyArray3<f64>>() {
+        utils::require_contiguous(array)?;
+        let mut owned = vec![array.readonly().as_array().to_owned()];
+        for item in iter {
+            let item = item?;
+            let array = item.cast::<PyArray3<f64>>().map_err(|_| {
+                PyValueError::new_err(
+                    "expected a non-empty sequence of 3D NumPy arrays with matching \
+                     float32/float64 dtype",
+                )
+            })?;
+            utils::require_contiguous(array)?;
+            owned.push(array.readonly().as_array().to_owned());
+        }
+        return Ok(RealTensorTrainResult::F64(tensor_train_result_from_cores(owned)));
+    }
+    Err(PyValueError::new_err(
+        "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
+    ))
+}
+
+fn cp_als3_result_from_arrays<T: Clone + NabledReal>(
+    weights: Array1<T>,
+    factor_0: Array2<T>,
+    factor_1: Array2<T>,
+    factor_2: Array2<T>,
+) -> nabled_linalg::tensor::CpAls3Result<T> {
+    nabled_linalg::tensor::CpAls3Result { weights, factor_0, factor_1, factor_2 }
+}
+
+fn cp_als_nd_result_from_arrays<T: Clone + NabledReal>(
+    weights: Array1<T>,
+    factors: Vec<Array2<T>>,
+) -> nabled_linalg::tensor::CpAlsNdResult<T> {
+    let shape = factors.iter().map(Array2::nrows).collect();
+    nabled_linalg::tensor::CpAlsNdResult { weights, factors, shape }
+}
+
+fn hosvd_nd_result_from_arrays<T: Clone + NabledReal>(
+    core: ArrayD<T>,
+    factors: Vec<Array2<T>>,
+) -> nabled_linalg::tensor::HosvdNdResult<T> {
+    nabled_linalg::tensor::HosvdNdResult { core, factors }
 }
 
 /// Batched matrix-vector product: cube `(B, m, n)` @ vectors `(B, n)` -> `(B, m)`.
 #[pyfunction(name = "tensor_cube_matvec")]
 pub fn cube_matvec<'py>(
     py: Python<'py>,
-    cube: &Bound<'py, PyArray3<f64>>,
-    vectors: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<Py<PyArray2<f64>>> {
-    utils::require_contiguous(cube)?;
-    utils::require_contiguous(vectors)?;
-    let result = nabled_linalg::tensor::cube_matvec_view(
-        &cube.readonly().as_array(),
-        &vectors.readonly().as_array(),
-    )
-    .map_err(to_py_err)?;
-    Ok(PyArray2::from_owned_array(py, result).unbind())
+    cube: &Bound<'py, PyAny>,
+    vectors: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_array3(cube, "cube")?, utils::real_array2(vectors, "vectors")?) {
+        (utils::RealReadonlyArray3::F32(cube_arr), utils::RealReadonlyArray2::F32(vectors_arr)) => {
+            let result = nabled_linalg::tensor::cube_matvec_view(
+                &cube_arr.as_array(),
+                &vectors_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray3::F64(cube_arr), utils::RealReadonlyArray2::F64(vectors_arr)) => {
+            let result = nabled_linalg::tensor::cube_matvec_view(
+                &cube_arr.as_array(),
+                &vectors_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["cube", "vectors"])),
+    }
 }
 
 /// Complex batched matrix-vector product.
@@ -262,17 +348,28 @@ pub fn cube_matvec_complex<'py>(
 #[pyfunction(name = "tensor_cube_matmat")]
 pub fn cube_matmat<'py>(
     py: Python<'py>,
-    left: &Bound<'py, PyArray3<f64>>,
-    right: &Bound<'py, PyArray3<f64>>,
-) -> PyResult<Py<PyArray3<f64>>> {
-    utils::require_contiguous(left)?;
-    utils::require_contiguous(right)?;
-    let result = nabled_linalg::tensor::cube_matmat_view(
-        &left.readonly().as_array(),
-        &right.readonly().as_array(),
-    )
-    .map_err(to_py_err)?;
-    Ok(PyArray3::from_owned_array(py, result).unbind())
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_array3(left, "left")?, utils::real_array3(right, "right")?) {
+        (utils::RealReadonlyArray3::F32(left_arr), utils::RealReadonlyArray3::F32(right_arr)) => {
+            let result = nabled_linalg::tensor::cube_matmat_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray3::F64(left_arr), utils::RealReadonlyArray3::F64(right_arr)) => {
+            let result = nabled_linalg::tensor::cube_matmat_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
 }
 
 /// Complex batched matrix-matrix product over the last two cube axes.
@@ -294,14 +391,19 @@ pub fn cube_matmat_complex<'py>(
 
 /// Sum over the last axis of a tensor.
 #[pyfunction(name = "tensor_sum_last_axis")]
-pub fn sum_last_axis<'py>(
-    py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(tensor)?;
-    let result = nabled_linalg::tensor::sum_last_axis_view(&tensor.readonly().as_array())
-        .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+pub fn sum_last_axis<'py>(py: Python<'py>, tensor: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let result = nabled_linalg::tensor::sum_last_axis_view(&tensor_arr.as_array())
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let result = nabled_linalg::tensor::sum_last_axis_view(&tensor_arr.as_array())
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }
 
 /// Sum over the last axis of a complex tensor.
@@ -318,14 +420,19 @@ pub fn sum_last_axis_complex<'py>(
 
 /// L2 norm over the last axis.
 #[pyfunction(name = "tensor_l2_norm_last_axis")]
-pub fn l2_norm_last_axis<'py>(
-    py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(tensor)?;
-    let result = nabled_linalg::tensor::l2_norm_last_axis_view(&tensor.readonly().as_array())
-        .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+pub fn l2_norm_last_axis<'py>(py: Python<'py>, tensor: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let result = nabled_linalg::tensor::l2_norm_last_axis_view(&tensor_arr.as_array())
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let result = nabled_linalg::tensor::l2_norm_last_axis_view(&tensor_arr.as_array())
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }
 
 /// L2 norm over the last axis of a complex tensor.
@@ -345,12 +452,20 @@ pub fn l2_norm_last_axis_complex<'py>(
 #[pyfunction(name = "tensor_normalize_last_axis")]
 pub fn normalize_last_axis<'py>(
     py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(tensor)?;
-    let result = nabled_linalg::tensor::normalize_last_axis_view(&tensor.readonly().as_array())
-        .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+    tensor: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let result = nabled_linalg::tensor::normalize_last_axis_view(&tensor_arr.as_array())
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let result = nabled_linalg::tensor::normalize_last_axis_view(&tensor_arr.as_array())
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }
 
 /// Normalize a complex tensor over the last axis.
@@ -370,17 +485,34 @@ pub fn normalize_last_axis_complex<'py>(
 #[pyfunction(name = "tensor_batched_dot_last_axis")]
 pub fn batched_dot_last_axis<'py>(
     py: Python<'py>,
-    left: &Bound<'py, PyArrayDyn<f64>>,
-    right: &Bound<'py, PyArrayDyn<f64>>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(left)?;
-    utils::require_contiguous(right)?;
-    let result = nabled_linalg::tensor::batched_dot_last_axis_view(
-        &left.readonly().as_array(),
-        &right.readonly().as_array(),
-    )
-    .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_arrayd(left, "left")?, utils::real_arrayd(right, "right")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(left_arr),
+            utils::RealReadonlyArrayDyn::F32(right_arr),
+        ) => {
+            let result = nabled_linalg::tensor::batched_dot_last_axis_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(left_arr),
+            utils::RealReadonlyArrayDyn::F64(right_arr),
+        ) => {
+            let result = nabled_linalg::tensor::batched_dot_last_axis_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
 }
 
 /// Complex batched dot product over the last axis.
@@ -404,14 +536,23 @@ pub fn batched_dot_last_axis_complex<'py>(
 #[pyfunction(name = "tensor_permute_axes")]
 pub fn permute_axes<'py>(
     py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
+    tensor: &Bound<'py, PyAny>,
     permutation: Vec<usize>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(tensor)?;
-    let result =
-        nabled_linalg::tensor::permute_axes_view(&tensor.readonly().as_array(), &permutation)
-            .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+) -> PyResult<Py<PyAny>> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let result =
+                nabled_linalg::tensor::permute_axes_view(&tensor_arr.as_array(), &permutation)
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let result =
+                nabled_linalg::tensor::permute_axes_view(&tensor_arr.as_array(), &permutation)
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }
 
 /// Permute complex tensor axes.
@@ -434,21 +575,40 @@ pub fn permute_axes_complex<'py>(
 #[pyfunction(name = "tensor_contract_axes")]
 pub fn contract_axes<'py>(
     py: Python<'py>,
-    left: &Bound<'py, PyArrayDyn<f64>>,
-    right: &Bound<'py, PyArrayDyn<f64>>,
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
     left_axes: Vec<usize>,
     right_axes: Vec<usize>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(left)?;
-    utils::require_contiguous(right)?;
-    let result = nabled_linalg::tensor::contract_axes_view(
-        &left.readonly().as_array(),
-        &right.readonly().as_array(),
-        &left_axes,
-        &right_axes,
-    )
-    .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_arrayd(left, "left")?, utils::real_arrayd(right, "right")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(left_arr),
+            utils::RealReadonlyArrayDyn::F32(right_arr),
+        ) => {
+            let result = nabled_linalg::tensor::contract_axes_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &left_axes,
+                &right_axes,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(left_arr),
+            utils::RealReadonlyArrayDyn::F64(right_arr),
+        ) => {
+            let result = nabled_linalg::tensor::contract_axes_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &left_axes,
+                &right_axes,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
 }
 
 /// Contract explicit axes between two complex tensors.
@@ -476,17 +636,34 @@ pub fn contract_axes_complex<'py>(
 #[pyfunction(name = "tensor_batched_matmul_last_two")]
 pub fn batched_matmul_last_two<'py>(
     py: Python<'py>,
-    left: &Bound<'py, PyArrayDyn<f64>>,
-    right: &Bound<'py, PyArrayDyn<f64>>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(left)?;
-    utils::require_contiguous(right)?;
-    let result = nabled_linalg::tensor::batched_matmul_last_two_view(
-        &left.readonly().as_array(),
-        &right.readonly().as_array(),
-    )
-    .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_arrayd(left, "left")?, utils::real_arrayd(right, "right")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(left_arr),
+            utils::RealReadonlyArrayDyn::F32(right_arr),
+        ) => {
+            let result = nabled_linalg::tensor::batched_matmul_last_two_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(left_arr),
+            utils::RealReadonlyArrayDyn::F64(right_arr),
+        ) => {
+            let result = nabled_linalg::tensor::batched_matmul_last_two_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
 }
 
 /// Complex batched matrix multiply over the last two axes.
@@ -511,18 +688,36 @@ pub fn batched_matmul_last_two_complex<'py>(
 pub fn einsum<'py>(
     py: Python<'py>,
     equation: String,
-    left: &Bound<'py, PyArrayDyn<f64>>,
-    right: &Bound<'py, PyArrayDyn<f64>>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(left)?;
-    utils::require_contiguous(right)?;
-    let result = nabled_linalg::tensor::einsum_view(
-        &equation,
-        &left.readonly().as_array(),
-        &right.readonly().as_array(),
-    )
-    .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_arrayd(left, "left")?, utils::real_arrayd(right, "right")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(left_arr),
+            utils::RealReadonlyArrayDyn::F32(right_arr),
+        ) => {
+            let result = nabled_linalg::tensor::einsum_view(
+                &equation,
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(left_arr),
+            utils::RealReadonlyArrayDyn::F64(right_arr),
+        ) => {
+            let result = nabled_linalg::tensor::einsum_view(
+                &equation,
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
 }
 
 /// Binary Einstein summation over complex tensors.
@@ -548,118 +743,203 @@ pub fn einsum_complex<'py>(
 #[pyfunction(name = "tensor_hosvd3")]
 pub fn hosvd3<'py>(
     py: Python<'py>,
-    cube: &Bound<'py, PyArray3<f64>>,
+    cube: &Bound<'py, PyAny>,
     rank0: usize,
     rank1: usize,
     rank2: usize,
-) -> PyResult<(Py<PyArray3<f64>>, Py<PyArray2<f64>>, Py<PyArray2<f64>>, Py<PyArray2<f64>>)> {
-    utils::require_contiguous(cube)?;
-    let result = nabled_linalg::tensor::hosvd3(
-        &cube.readonly().as_array().to_owned(),
-        (rank0, rank1, rank2),
-    )
-    .map_err(to_py_err)?;
-    Ok((
-        PyArray3::from_owned_array(py, standard_array3(result.core)).unbind(),
-        PyArray2::from_owned_array(py, standard_array2(result.u0)).unbind(),
-        PyArray2::from_owned_array(py, standard_array2(result.u1)).unbind(),
-        PyArray2::from_owned_array(py, standard_array2(result.u2)).unbind(),
-    ))
+) -> PyResult<PyHosvd3Result> {
+    match utils::real_array3(cube, "cube")? {
+        utils::RealReadonlyArray3::F32(cube_arr) => {
+            let result = nabled_linalg::tensor::hosvd3(
+                &cube_arr.as_array().to_owned(),
+                (rank0, rank1, rank2),
+            )
+            .map_err(to_py_err)?;
+            Ok(py_hosvd3_result(py, result))
+        }
+        utils::RealReadonlyArray3::F64(cube_arr) => {
+            let result = nabled_linalg::tensor::hosvd3(
+                &cube_arr.as_array().to_owned(),
+                (rank0, rank1, rank2),
+            )
+            .map_err(to_py_err)?;
+            Ok(py_hosvd3_result(py, result))
+        }
+    }
 }
 
 /// Reconstruct a cube from an HOSVD3 decomposition.
 #[pyfunction(name = "tensor_hosvd3_reconstruct")]
 pub fn hosvd3_reconstruct<'py>(
     py: Python<'py>,
-    core: &Bound<'py, PyArray3<f64>>,
-    u0: &Bound<'py, PyArray2<f64>>,
-    u1: &Bound<'py, PyArray2<f64>>,
-    u2: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<Py<PyArray3<f64>>> {
-    utils::require_contiguous(core)?;
-    utils::require_contiguous(u0)?;
-    utils::require_contiguous(u1)?;
-    utils::require_contiguous(u2)?;
-    let result = nabled_linalg::tensor::hosvd3_reconstruct(&nabled_linalg::tensor::Hosvd3Result {
-        core: core.readonly().as_array().to_owned(),
-        u0:   u0.readonly().as_array().to_owned(),
-        u1:   u1.readonly().as_array().to_owned(),
-        u2:   u2.readonly().as_array().to_owned(),
-    })
-    .map_err(to_py_err)?;
-    Ok(PyArray3::from_owned_array(py, result).unbind())
+    core: &Bound<'py, PyAny>,
+    u0: &Bound<'py, PyAny>,
+    u1: &Bound<'py, PyAny>,
+    u2: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::real_array3(core, "core")?,
+        utils::real_array2(u0, "u0")?,
+        utils::real_array2(u1, "u1")?,
+        utils::real_array2(u2, "u2")?,
+    ) {
+        (
+            utils::RealReadonlyArray3::F32(core_arr),
+            utils::RealReadonlyArray2::F32(u0_arr),
+            utils::RealReadonlyArray2::F32(u1_arr),
+            utils::RealReadonlyArray2::F32(u2_arr),
+        ) => {
+            let result =
+                nabled_linalg::tensor::hosvd3_reconstruct(&nabled_linalg::tensor::Hosvd3Result {
+                    core: core_arr.as_array().to_owned(),
+                    u0:   u0_arr.as_array().to_owned(),
+                    u1:   u1_arr.as_array().to_owned(),
+                    u2:   u2_arr.as_array().to_owned(),
+                })
+                .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        (
+            utils::RealReadonlyArray3::F64(core_arr),
+            utils::RealReadonlyArray2::F64(u0_arr),
+            utils::RealReadonlyArray2::F64(u1_arr),
+            utils::RealReadonlyArray2::F64(u2_arr),
+        ) => {
+            let result =
+                nabled_linalg::tensor::hosvd3_reconstruct(&nabled_linalg::tensor::Hosvd3Result {
+                    core: core_arr.as_array().to_owned(),
+                    u0:   u0_arr.as_array().to_owned(),
+                    u1:   u1_arr.as_array().to_owned(),
+                    u2:   u2_arr.as_array().to_owned(),
+                })
+                .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["core", "u0", "u1", "u2"])),
+    }
 }
 
 /// N-D HOSVD decomposition. Returns `(core, factors)`.
 #[pyfunction(name = "tensor_hosvd_nd")]
 pub fn hosvd_nd<'py>(
     py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
+    tensor: &Bound<'py, PyAny>,
     ranks: Vec<usize>,
 ) -> PyResult<PyHosvdNdResult> {
-    utils::require_contiguous(tensor)?;
-    let result = nabled_linalg::tensor::hosvd_nd_view(&tensor.readonly().as_array(), &ranks)
-        .map_err(to_py_err)?;
-    Ok(py_hosvd_nd_result(py, result))
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let result = nabled_linalg::tensor::hosvd_nd_view(&tensor_arr.as_array(), &ranks)
+                .map_err(to_py_err)?;
+            Ok(py_hosvd_nd_result(py, result))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let result = nabled_linalg::tensor::hosvd_nd_view(&tensor_arr.as_array(), &ranks)
+                .map_err(to_py_err)?;
+            Ok(py_hosvd_nd_result(py, result))
+        }
+    }
 }
 
 /// N-D HOOI Tucker refinement. Returns `(core, factors)`.
 #[pyfunction(name = "tensor_hooi_nd")]
 pub fn hooi_nd<'py>(
     py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
+    tensor: &Bound<'py, PyAny>,
     ranks: Vec<usize>,
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<PyHosvdNdResult> {
-    utils::require_contiguous(tensor)?;
-    let config = hooi_config(max_iterations, tolerance);
-    let result =
-        nabled_linalg::tensor::hooi_nd_view(&tensor.readonly().as_array(), &ranks, &config)
-            .map_err(to_py_err)?;
-    Ok(py_hosvd_nd_result(py, result))
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let config = hooi_config::<f32>(max_iterations, tolerance)?;
+            let result =
+                nabled_linalg::tensor::hooi_nd_view(&tensor_arr.as_array(), &ranks, &config)
+                    .map_err(to_py_err)?;
+            Ok(py_hosvd_nd_result(py, result))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let config = hooi_config::<f64>(max_iterations, tolerance)?;
+            let result =
+                nabled_linalg::tensor::hooi_nd_view(&tensor_arr.as_array(), &ranks, &config)
+                    .map_err(to_py_err)?;
+            Ok(py_hosvd_nd_result(py, result))
+        }
+    }
 }
 
 /// Reconstruct an N-D tensor from Tucker/HOSVD factors.
 #[pyfunction(name = "tensor_hosvd_nd_reconstruct")]
 pub fn hosvd_nd_reconstruct<'py>(
     py: Python<'py>,
-    core: &Bound<'py, PyArrayDyn<f64>>,
+    core: &Bound<'py, PyAny>,
     factors: &Bound<'py, PyAny>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    let result =
-        nabled_linalg::tensor::hosvd_nd_reconstruct(&hosvd_nd_result_from_arrays(core, factors)?)
+) -> PyResult<Py<PyAny>> {
+    match utils::real_arrayd(core, "core")? {
+        utils::RealReadonlyArrayDyn::F32(core_arr) => {
+            let result = nabled_linalg::tensor::hosvd_nd_reconstruct(&hosvd_nd_result_from_arrays(
+                core_arr.as_array().to_owned(),
+                extract_array2_sequence::<f32>(factors)?,
+            ))
             .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        utils::RealReadonlyArrayDyn::F64(core_arr) => {
+            let result = nabled_linalg::tensor::hosvd_nd_reconstruct(&hosvd_nd_result_from_arrays(
+                core_arr.as_array().to_owned(),
+                extract_array2_sequence::<f64>(factors)?,
+            ))
+            .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }
 
 /// Project a tensor into a Tucker core using per-mode factors.
 #[pyfunction(name = "tensor_tucker_project")]
 pub fn tucker_project<'py>(
     py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
+    tensor: &Bound<'py, PyAny>,
     factors: &Bound<'py, PyAny>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(tensor)?;
-    let factors = extract_array2_sequence(factors)?;
-    let result =
-        nabled_linalg::tensor::tucker_project_view(&tensor.readonly().as_array(), &factors)
-            .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+) -> PyResult<Py<PyAny>> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let factors = extract_array2_sequence::<f32>(factors)?;
+            let result =
+                nabled_linalg::tensor::tucker_project_view(&tensor_arr.as_array(), &factors)
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let factors = extract_array2_sequence::<f64>(factors)?;
+            let result =
+                nabled_linalg::tensor::tucker_project_view(&tensor_arr.as_array(), &factors)
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }
 
 /// Expand a Tucker core using per-mode factors.
 #[pyfunction(name = "tensor_tucker_expand")]
 pub fn tucker_expand<'py>(
     py: Python<'py>,
-    core: &Bound<'py, PyArrayDyn<f64>>,
+    core: &Bound<'py, PyAny>,
     factors: &Bound<'py, PyAny>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    utils::require_contiguous(core)?;
-    let factors = extract_array2_sequence(factors)?;
-    let result = nabled_linalg::tensor::tucker_expand_view(&core.readonly().as_array(), &factors)
-        .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+) -> PyResult<Py<PyAny>> {
+    match utils::real_arrayd(core, "core")? {
+        utils::RealReadonlyArrayDyn::F32(core_arr) => {
+            let factors = extract_array2_sequence::<f32>(factors)?;
+            let result = nabled_linalg::tensor::tucker_expand_view(&core_arr.as_array(), &factors)
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        utils::RealReadonlyArrayDyn::F64(core_arr) => {
+            let factors = extract_array2_sequence::<f64>(factors)?;
+            let result = nabled_linalg::tensor::tucker_expand_view(&core_arr.as_array(), &factors)
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }
 
 /// Rank-`R` CP-ALS decomposition over rank-3 tensors. Returns `(weights, factor_0, factor_1,
@@ -667,147 +947,318 @@ pub fn tucker_expand<'py>(
 #[pyfunction(name = "tensor_cp_als3")]
 pub fn cp_als3<'py>(
     py: Python<'py>,
-    cube: &Bound<'py, PyArray3<f64>>,
+    cube: &Bound<'py, PyAny>,
     rank: usize,
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<PyCpAls3Result> {
-    utils::require_contiguous(cube)?;
-    let config = cp_als_config(max_iterations, tolerance);
-    let result = nabled_linalg::tensor::cp_als3_view(&cube.readonly().as_array(), rank, &config)
-        .map_err(to_py_err)?;
-    Ok(py_cp_als3_result(py, result))
+    match utils::real_array3(cube, "cube")? {
+        utils::RealReadonlyArray3::F32(cube_arr) => {
+            let config = cp_als_config::<f32>(max_iterations, tolerance)?;
+            let result = nabled_linalg::tensor::cp_als3_view(&cube_arr.as_array(), rank, &config)
+                .map_err(to_py_err)?;
+            Ok(py_cp_als3_result(py, result))
+        }
+        utils::RealReadonlyArray3::F64(cube_arr) => {
+            let config = cp_als_config::<f64>(max_iterations, tolerance)?;
+            let result = nabled_linalg::tensor::cp_als3_view(&cube_arr.as_array(), rank, &config)
+                .map_err(to_py_err)?;
+            Ok(py_cp_als3_result(py, result))
+        }
+    }
 }
 
 /// Rank-`R` CP-ALS decomposition with convergence and reconstruction report.
 #[pyfunction(name = "tensor_cp_als3_with_report")]
 pub fn cp_als3_with_report<'py>(
     py: Python<'py>,
-    cube: &Bound<'py, PyArray3<f64>>,
+    cube: &Bound<'py, PyAny>,
     rank: usize,
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<(PyCpAls3Result, PyCpReport)> {
-    utils::require_contiguous(cube)?;
-    let config = cp_als_config(max_iterations, tolerance);
-    let (result, report) =
-        nabled_linalg::tensor::cp_als3_view_with_report(&cube.readonly().as_array(), rank, &config)
+    match utils::real_array3(cube, "cube")? {
+        utils::RealReadonlyArray3::F32(cube_arr) => {
+            let config = cp_als_config::<f32>(max_iterations, tolerance)?;
+            let (result, report) = nabled_linalg::tensor::cp_als3_view_with_report(
+                &cube_arr.as_array(),
+                rank,
+                &config,
+            )
             .map_err(to_py_err)?;
-    Ok((py_cp_als3_result(py, result), py_cp_report(report)))
+            Ok((py_cp_als3_result(py, result), py_cp_report(report)?))
+        }
+        utils::RealReadonlyArray3::F64(cube_arr) => {
+            let config = cp_als_config::<f64>(max_iterations, tolerance)?;
+            let (result, report) = nabled_linalg::tensor::cp_als3_view_with_report(
+                &cube_arr.as_array(),
+                rank,
+                &config,
+            )
+            .map_err(to_py_err)?;
+            Ok((py_cp_als3_result(py, result), py_cp_report(report)?))
+        }
+    }
 }
 
 /// CP-ALS reconstruction diagnostics for rank-3 tensors.
 #[pyfunction(name = "tensor_cp_als3_diagnostics")]
 pub fn cp_als3_diagnostics(
-    cube: &Bound<'_, PyArray3<f64>>,
-    weights: &Bound<'_, PyArray1<f64>>,
-    factor_0: &Bound<'_, PyArray2<f64>>,
-    factor_1: &Bound<'_, PyArray2<f64>>,
-    factor_2: &Bound<'_, PyArray2<f64>>,
+    cube: &Bound<'_, PyAny>,
+    weights: &Bound<'_, PyAny>,
+    factor_0: &Bound<'_, PyAny>,
+    factor_1: &Bound<'_, PyAny>,
+    factor_2: &Bound<'_, PyAny>,
 ) -> PyResult<PyCpMetrics> {
-    utils::require_contiguous(cube)?;
-    let result = cp_als3_result_from_arrays(weights, factor_0, factor_1, factor_2)?;
-    let metrics =
-        nabled_linalg::tensor::cp_als3_diagnostics_view(&cube.readonly().as_array(), &result)
-            .map_err(to_py_err)?;
-    Ok(py_cp_metrics(metrics))
+    match (
+        utils::real_array3(cube, "cube")?,
+        utils::real_array1(weights, "weights")?,
+        utils::real_array2(factor_0, "factor_0")?,
+        utils::real_array2(factor_1, "factor_1")?,
+        utils::real_array2(factor_2, "factor_2")?,
+    ) {
+        (
+            utils::RealReadonlyArray3::F32(cube_arr),
+            utils::RealReadonlyArray1::F32(weights_arr),
+            utils::RealReadonlyArray2::F32(factor_0_arr),
+            utils::RealReadonlyArray2::F32(factor_1_arr),
+            utils::RealReadonlyArray2::F32(factor_2_arr),
+        ) => {
+            let result = cp_als3_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                factor_0_arr.as_array().to_owned(),
+                factor_1_arr.as_array().to_owned(),
+                factor_2_arr.as_array().to_owned(),
+            );
+            let metrics =
+                nabled_linalg::tensor::cp_als3_diagnostics_view(&cube_arr.as_array(), &result)
+                    .map_err(to_py_err)?;
+            py_cp_metrics(metrics)
+        }
+        (
+            utils::RealReadonlyArray3::F64(cube_arr),
+            utils::RealReadonlyArray1::F64(weights_arr),
+            utils::RealReadonlyArray2::F64(factor_0_arr),
+            utils::RealReadonlyArray2::F64(factor_1_arr),
+            utils::RealReadonlyArray2::F64(factor_2_arr),
+        ) => {
+            let result = cp_als3_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                factor_0_arr.as_array().to_owned(),
+                factor_1_arr.as_array().to_owned(),
+                factor_2_arr.as_array().to_owned(),
+            );
+            let metrics =
+                nabled_linalg::tensor::cp_als3_diagnostics_view(&cube_arr.as_array(), &result)
+                    .map_err(to_py_err)?;
+            py_cp_metrics(metrics)
+        }
+        _ => Err(utils::matching_real_dtype_error(&[
+            "cube", "weights", "factor_0", "factor_1", "factor_2",
+        ])),
+    }
 }
 
 /// Reconstruct a rank-3 tensor from CP-ALS factors.
 #[pyfunction(name = "tensor_cp_als3_reconstruct")]
 pub fn cp_als3_reconstruct<'py>(
     py: Python<'py>,
-    weights: &Bound<'py, PyArray1<f64>>,
-    factor_0: &Bound<'py, PyArray2<f64>>,
-    factor_1: &Bound<'py, PyArray2<f64>>,
-    factor_2: &Bound<'py, PyArray2<f64>>,
-) -> PyResult<Py<PyArray3<f64>>> {
-    let result = nabled_linalg::tensor::cp_als3_reconstruct(&cp_als3_result_from_arrays(
-        weights, factor_0, factor_1, factor_2,
-    )?)
-    .map_err(to_py_err)?;
-    Ok(PyArray3::from_owned_array(py, result).unbind())
+    weights: &Bound<'py, PyAny>,
+    factor_0: &Bound<'py, PyAny>,
+    factor_1: &Bound<'py, PyAny>,
+    factor_2: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::real_array1(weights, "weights")?,
+        utils::real_array2(factor_0, "factor_0")?,
+        utils::real_array2(factor_1, "factor_1")?,
+        utils::real_array2(factor_2, "factor_2")?,
+    ) {
+        (
+            utils::RealReadonlyArray1::F32(weights_arr),
+            utils::RealReadonlyArray2::F32(factor_0_arr),
+            utils::RealReadonlyArray2::F32(factor_1_arr),
+            utils::RealReadonlyArray2::F32(factor_2_arr),
+        ) => {
+            let result = nabled_linalg::tensor::cp_als3_reconstruct(&cp_als3_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                factor_0_arr.as_array().to_owned(),
+                factor_1_arr.as_array().to_owned(),
+                factor_2_arr.as_array().to_owned(),
+            ))
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        (
+            utils::RealReadonlyArray1::F64(weights_arr),
+            utils::RealReadonlyArray2::F64(factor_0_arr),
+            utils::RealReadonlyArray2::F64(factor_1_arr),
+            utils::RealReadonlyArray2::F64(factor_2_arr),
+        ) => {
+            let result = nabled_linalg::tensor::cp_als3_reconstruct(&cp_als3_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                factor_0_arr.as_array().to_owned(),
+                factor_1_arr.as_array().to_owned(),
+                factor_2_arr.as_array().to_owned(),
+            ))
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        _ => {
+            Err(utils::matching_real_dtype_error(&["weights", "factor_0", "factor_1", "factor_2"]))
+        }
+    }
 }
 
 /// Rank-`R` CP-ALS decomposition over N-D tensors. Returns `(weights, factors)`.
 #[pyfunction(name = "tensor_cp_als_nd")]
 pub fn cp_als_nd<'py>(
     py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
+    tensor: &Bound<'py, PyAny>,
     rank: usize,
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<PyCpAlsNdResult> {
-    utils::require_contiguous(tensor)?;
-    let config = cp_als_config(max_iterations, tolerance);
-    let result =
-        nabled_linalg::tensor::cp_als_nd_view(&tensor.readonly().as_array(), rank, &config)
-            .map_err(to_py_err)?;
-    Ok(py_cp_als_nd_result(py, result))
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let config = cp_als_config::<f32>(max_iterations, tolerance)?;
+            let result =
+                nabled_linalg::tensor::cp_als_nd_view(&tensor_arr.as_array(), rank, &config)
+                    .map_err(to_py_err)?;
+            Ok(py_cp_als_nd_result(py, result))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let config = cp_als_config::<f64>(max_iterations, tolerance)?;
+            let result =
+                nabled_linalg::tensor::cp_als_nd_view(&tensor_arr.as_array(), rank, &config)
+                    .map_err(to_py_err)?;
+            Ok(py_cp_als_nd_result(py, result))
+        }
+    }
 }
 
 /// Rank-`R` N-D CP-ALS decomposition with convergence and reconstruction report.
 #[pyfunction(name = "tensor_cp_als_nd_with_report")]
 pub fn cp_als_nd_with_report<'py>(
     py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
+    tensor: &Bound<'py, PyAny>,
     rank: usize,
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<(PyCpAlsNdResult, PyCpReport)> {
-    utils::require_contiguous(tensor)?;
-    let config = cp_als_config(max_iterations, tolerance);
-    let (result, report) = nabled_linalg::tensor::cp_als_nd_view_with_report(
-        &tensor.readonly().as_array(),
-        rank,
-        &config,
-    )
-    .map_err(to_py_err)?;
-    Ok((py_cp_als_nd_result(py, result), py_cp_report(report)))
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let config = cp_als_config::<f32>(max_iterations, tolerance)?;
+            let (result, report) = nabled_linalg::tensor::cp_als_nd_view_with_report(
+                &tensor_arr.as_array(),
+                rank,
+                &config,
+            )
+            .map_err(to_py_err)?;
+            Ok((py_cp_als_nd_result(py, result), py_cp_report(report)?))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let config = cp_als_config::<f64>(max_iterations, tolerance)?;
+            let (result, report) = nabled_linalg::tensor::cp_als_nd_view_with_report(
+                &tensor_arr.as_array(),
+                rank,
+                &config,
+            )
+            .map_err(to_py_err)?;
+            Ok((py_cp_als_nd_result(py, result), py_cp_report(report)?))
+        }
+    }
 }
 
 /// CP-ALS reconstruction diagnostics for N-D tensors.
 #[pyfunction(name = "tensor_cp_als_nd_diagnostics")]
 pub fn cp_als_nd_diagnostics(
-    tensor: &Bound<'_, PyArrayDyn<f64>>,
-    weights: &Bound<'_, PyArray1<f64>>,
+    tensor: &Bound<'_, PyAny>,
+    weights: &Bound<'_, PyAny>,
     factors: &Bound<'_, PyAny>,
 ) -> PyResult<PyCpMetrics> {
-    utils::require_contiguous(tensor)?;
-    let result = cp_als_nd_result_from_arrays(weights, factors)?;
-    let metrics =
-        nabled_linalg::tensor::cp_als_nd_diagnostics_view(&tensor.readonly().as_array(), &result)
-            .map_err(to_py_err)?;
-    Ok(py_cp_metrics(metrics))
+    match (utils::real_arrayd(tensor, "tensor")?, utils::real_array1(weights, "weights")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(tensor_arr),
+            utils::RealReadonlyArray1::F32(weights_arr),
+        ) => {
+            let result = cp_als_nd_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                extract_array2_sequence::<f32>(factors)?,
+            );
+            let metrics =
+                nabled_linalg::tensor::cp_als_nd_diagnostics_view(&tensor_arr.as_array(), &result)
+                    .map_err(to_py_err)?;
+            py_cp_metrics(metrics)
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(tensor_arr),
+            utils::RealReadonlyArray1::F64(weights_arr),
+        ) => {
+            let result = cp_als_nd_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                extract_array2_sequence::<f64>(factors)?,
+            );
+            let metrics =
+                nabled_linalg::tensor::cp_als_nd_diagnostics_view(&tensor_arr.as_array(), &result)
+                    .map_err(to_py_err)?;
+            py_cp_metrics(metrics)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["tensor", "weights", "factors"])),
+    }
 }
 
 /// Reconstruct an N-D tensor from CP-ALS factors.
 #[pyfunction(name = "tensor_cp_als_nd_reconstruct")]
 pub fn cp_als_nd_reconstruct<'py>(
     py: Python<'py>,
-    weights: &Bound<'py, PyArray1<f64>>,
+    weights: &Bound<'py, PyAny>,
     factors: &Bound<'py, PyAny>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    let result = nabled_linalg::tensor::cp_als_nd_reconstruct(&cp_als_nd_result_from_arrays(
-        weights, factors,
-    )?)
-    .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+) -> PyResult<Py<PyAny>> {
+    match utils::real_array1(weights, "weights")? {
+        utils::RealReadonlyArray1::F32(weights_arr) => {
+            let result =
+                nabled_linalg::tensor::cp_als_nd_reconstruct(&cp_als_nd_result_from_arrays(
+                    weights_arr.as_array().to_owned(),
+                    extract_array2_sequence::<f32>(factors)?,
+                ))
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        utils::RealReadonlyArray1::F64(weights_arr) => {
+            let result =
+                nabled_linalg::tensor::cp_als_nd_reconstruct(&cp_als_nd_result_from_arrays(
+                    weights_arr.as_array().to_owned(),
+                    extract_array2_sequence::<f64>(factors)?,
+                ))
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }
 
 /// Tensor-Train decomposition via TT-SVD. Returns a list of TT cores.
 #[pyfunction(name = "tensor_tt_svd")]
 pub fn tt_svd<'py>(
     py: Python<'py>,
-    tensor: &Bound<'py, PyArrayDyn<f64>>,
+    tensor: &Bound<'py, PyAny>,
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<PyTensorTrainResult> {
-    utils::require_contiguous(tensor)?;
-    let config = tt_svd_config(max_rank, tolerance);
-    let result = nabled_linalg::tensor::tt_svd_view(&tensor.readonly().as_array(), &config)
-        .map_err(to_py_err)?;
-    Ok(py_tt_result(py, result))
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let config = tt_svd_config::<f32>(max_rank, tolerance)?;
+            let result = nabled_linalg::tensor::tt_svd_view(&tensor_arr.as_array(), &config)
+                .map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let config = tt_svd_config::<f64>(max_rank, tolerance)?;
+            let result = nabled_linalg::tensor::tt_svd_view(&tensor_arr.as_array(), &config)
+                .map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+    }
 }
 
 /// Left-orthogonalize TT cores while preserving the represented tensor.
@@ -816,9 +1267,18 @@ pub fn tt_orthogonalize_left<'py>(
     py: Python<'py>,
     cores: &Bound<'py, PyAny>,
 ) -> PyResult<PyTensorTrainResult> {
-    let result = nabled_linalg::tensor::tt_orthogonalize_left(&tt_result_from_cores(cores)?)
-        .map_err(to_py_err)?;
-    Ok(py_tt_result(py, result))
+    match real_tt_result_from_cores(cores)? {
+        RealTensorTrainResult::F32(result) => {
+            let result =
+                nabled_linalg::tensor::tt_orthogonalize_left(&result).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        RealTensorTrainResult::F64(result) => {
+            let result =
+                nabled_linalg::tensor::tt_orthogonalize_left(&result).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+    }
 }
 
 /// Right-orthogonalize TT cores while preserving the represented tensor.
@@ -827,9 +1287,18 @@ pub fn tt_orthogonalize_right<'py>(
     py: Python<'py>,
     cores: &Bound<'py, PyAny>,
 ) -> PyResult<PyTensorTrainResult> {
-    let result = nabled_linalg::tensor::tt_orthogonalize_right(&tt_result_from_cores(cores)?)
-        .map_err(to_py_err)?;
-    Ok(py_tt_result(py, result))
+    match real_tt_result_from_cores(cores)? {
+        RealTensorTrainResult::F32(result) => {
+            let result =
+                nabled_linalg::tensor::tt_orthogonalize_right(&result).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        RealTensorTrainResult::F64(result) => {
+            let result =
+                nabled_linalg::tensor::tt_orthogonalize_right(&result).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+    }
 }
 
 /// Round or compress TT cores with optional rank truncation.
@@ -840,26 +1309,45 @@ pub fn tt_round<'py>(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<PyTensorTrainResult> {
-    let config = tt_round_config(max_rank, tolerance);
-    let result = nabled_linalg::tensor::tt_round(&tt_result_from_cores(cores)?, &config)
-        .map_err(to_py_err)?;
-    Ok(py_tt_result(py, result))
+    match real_tt_result_from_cores(cores)? {
+        RealTensorTrainResult::F32(result) => {
+            let config = tt_round_config::<f32>(max_rank, tolerance)?;
+            let result = nabled_linalg::tensor::tt_round(&result, &config).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        RealTensorTrainResult::F64(result) => {
+            let config = tt_round_config::<f64>(max_rank, tolerance)?;
+            let result = nabled_linalg::tensor::tt_round(&result, &config).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+    }
 }
 
 /// Inner product between two Tensor-Train tensors.
 #[pyfunction(name = "tensor_tt_inner")]
 pub fn tt_inner(left_cores: &Bound<'_, PyAny>, right_cores: &Bound<'_, PyAny>) -> PyResult<f64> {
-    nabled_linalg::tensor::tt_inner(
-        &tt_result_from_cores(left_cores)?,
-        &tt_result_from_cores(right_cores)?,
-    )
-    .map_err(to_py_err)
+    match (real_tt_result_from_cores(left_cores)?, real_tt_result_from_cores(right_cores)?) {
+        (RealTensorTrainResult::F32(left), RealTensorTrainResult::F32(right)) => {
+            Ok(f64::from(nabled_linalg::tensor::tt_inner(&left, &right).map_err(to_py_err)?))
+        }
+        (RealTensorTrainResult::F64(left), RealTensorTrainResult::F64(right)) => {
+            nabled_linalg::tensor::tt_inner(&left, &right).map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left_cores", "right_cores"])),
+    }
 }
 
 /// Frobenius norm of a Tensor-Train tensor.
 #[pyfunction(name = "tensor_tt_norm")]
 pub fn tt_norm(cores: &Bound<'_, PyAny>) -> PyResult<f64> {
-    nabled_linalg::tensor::tt_norm(&tt_result_from_cores(cores)?).map_err(to_py_err)
+    match real_tt_result_from_cores(cores)? {
+        RealTensorTrainResult::F32(result) => {
+            Ok(f64::from(nabled_linalg::tensor::tt_norm(&result).map_err(to_py_err)?))
+        }
+        RealTensorTrainResult::F64(result) => {
+            nabled_linalg::tensor::tt_norm(&result).map_err(to_py_err)
+        }
+    }
 }
 
 /// Add two Tensor-Train tensors with identical shapes.
@@ -869,12 +1357,17 @@ pub fn tt_add<'py>(
     left_cores: &Bound<'py, PyAny>,
     right_cores: &Bound<'py, PyAny>,
 ) -> PyResult<PyTensorTrainResult> {
-    let result = nabled_linalg::tensor::tt_add(
-        &tt_result_from_cores(left_cores)?,
-        &tt_result_from_cores(right_cores)?,
-    )
-    .map_err(to_py_err)?;
-    Ok(py_tt_result(py, result))
+    match (real_tt_result_from_cores(left_cores)?, real_tt_result_from_cores(right_cores)?) {
+        (RealTensorTrainResult::F32(left), RealTensorTrainResult::F32(right)) => {
+            let result = nabled_linalg::tensor::tt_add(&left, &right).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        (RealTensorTrainResult::F64(left), RealTensorTrainResult::F64(right)) => {
+            let result = nabled_linalg::tensor::tt_add(&left, &right).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left_cores", "right_cores"])),
+    }
 }
 
 /// Hadamard product between two Tensor-Train tensors with identical shapes.
@@ -884,12 +1377,17 @@ pub fn tt_hadamard<'py>(
     left_cores: &Bound<'py, PyAny>,
     right_cores: &Bound<'py, PyAny>,
 ) -> PyResult<PyTensorTrainResult> {
-    let result = nabled_linalg::tensor::tt_hadamard(
-        &tt_result_from_cores(left_cores)?,
-        &tt_result_from_cores(right_cores)?,
-    )
-    .map_err(to_py_err)?;
-    Ok(py_tt_result(py, result))
+    match (real_tt_result_from_cores(left_cores)?, real_tt_result_from_cores(right_cores)?) {
+        (RealTensorTrainResult::F32(left), RealTensorTrainResult::F32(right)) => {
+            let result = nabled_linalg::tensor::tt_hadamard(&left, &right).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        (RealTensorTrainResult::F64(left), RealTensorTrainResult::F64(right)) => {
+            let result = nabled_linalg::tensor::tt_hadamard(&left, &right).map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left_cores", "right_cores"])),
+    }
 }
 
 /// Hadamard product followed by TT rounding.
@@ -901,23 +1399,34 @@ pub fn tt_hadamard_round<'py>(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<PyTensorTrainResult> {
-    let config = tt_round_config(max_rank, tolerance);
-    let result = nabled_linalg::tensor::tt_hadamard_round(
-        &tt_result_from_cores(left_cores)?,
-        &tt_result_from_cores(right_cores)?,
-        &config,
-    )
-    .map_err(to_py_err)?;
-    Ok(py_tt_result(py, result))
+    match (real_tt_result_from_cores(left_cores)?, real_tt_result_from_cores(right_cores)?) {
+        (RealTensorTrainResult::F32(left), RealTensorTrainResult::F32(right)) => {
+            let config = tt_round_config::<f32>(max_rank, tolerance)?;
+            let result = nabled_linalg::tensor::tt_hadamard_round(&left, &right, &config)
+                .map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        (RealTensorTrainResult::F64(left), RealTensorTrainResult::F64(right)) => {
+            let config = tt_round_config::<f64>(max_rank, tolerance)?;
+            let result = nabled_linalg::tensor::tt_hadamard_round(&left, &right, &config)
+                .map_err(to_py_err)?;
+            Ok(py_tt_result(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left_cores", "right_cores"])),
+    }
 }
 
 /// Reconstruct a dense tensor from Tensor-Train cores.
 #[pyfunction(name = "tensor_tt_svd_reconstruct")]
-pub fn tt_svd_reconstruct<'py>(
-    py: Python<'py>,
-    cores: &Bound<'py, PyAny>,
-) -> PyResult<Py<PyArrayDyn<f64>>> {
-    let result = nabled_linalg::tensor::tt_svd_reconstruct(&tt_result_from_cores(cores)?)
-        .map_err(to_py_err)?;
-    Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+pub fn tt_svd_reconstruct<'py>(py: Python<'py>, cores: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
+    match real_tt_result_from_cores(cores)? {
+        RealTensorTrainResult::F32(result) => {
+            let result = nabled_linalg::tensor::tt_svd_reconstruct(&result).map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        RealTensorTrainResult::F64(result) => {
+            let result = nabled_linalg::tensor::tt_svd_reconstruct(&result).map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
 }

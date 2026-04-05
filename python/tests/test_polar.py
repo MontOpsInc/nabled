@@ -25,3 +25,18 @@ def test_polar_accepts_float32():
     np.testing.assert_allclose(
         result.u.T @ result.u, np.eye(2, dtype=np.float32), rtol=1e-4, atol=1e-5
     )
+
+
+def test_polar_accepts_complex128():
+    a = np.array([[1.0 + 1.0j, 2.0 - 0.5j], [3.0 + 0.25j, 4.0 - 1.0j]], dtype=np.complex128)
+    result = pynabled.polar_compute(a)
+
+    assert result.u.dtype == np.complex128
+    assert result.p.dtype == np.complex128
+    np.testing.assert_allclose(result.u @ result.p, a, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        result.u.conj().T @ result.u,
+        np.eye(2, dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )

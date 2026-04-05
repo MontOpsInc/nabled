@@ -8,47 +8,77 @@ use crate::utils;
 
 /// Compute dot product of two vectors.
 #[pyfunction]
-pub fn dot(a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<f64> {
-    match (utils::real_array1(a, "a")?, utils::real_array1(b, "b")?) {
-        (utils::RealReadonlyArray1::F32(a_arr), utils::RealReadonlyArray1::F32(b_arr)) => {
-            Ok(nabled_linalg::vector::dot_view(&a_arr.as_array(), &b_arr.as_array())
-                .map_err(to_py_err)?
-                .into())
+pub fn dot<'py>(
+    py: Python<'py>,
+    a: &Bound<'py, PyAny>,
+    b: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::numeric_array1(a, "a")?, utils::numeric_array1(b, "b")?) {
+        (utils::NumericReadonlyArray1::F32(a_arr), utils::NumericReadonlyArray1::F32(b_arr)) => {
+            let result = nabled_linalg::vector::dot_view(&a_arr.as_array(), &b_arr.as_array())
+                .map_err(to_py_err)?;
+            Ok(utils::py_float(py, result.into()))
         }
-        (utils::RealReadonlyArray1::F64(a_arr), utils::RealReadonlyArray1::F64(b_arr)) => {
-            nabled_linalg::vector::dot_view(&a_arr.as_array(), &b_arr.as_array()).map_err(to_py_err)
+        (utils::NumericReadonlyArray1::F64(a_arr), utils::NumericReadonlyArray1::F64(b_arr)) => {
+            let result = nabled_linalg::vector::dot_view(&a_arr.as_array(), &b_arr.as_array())
+                .map_err(to_py_err)?;
+            Ok(utils::py_float(py, result))
         }
-        _ => Err(utils::matching_real_dtype_error(&["a", "b"])),
+        (utils::NumericReadonlyArray1::C64(a_arr), utils::NumericReadonlyArray1::C64(b_arr)) => {
+            let result =
+                nabled_linalg::vector::dot_hermitian_view(&a_arr.as_array(), &b_arr.as_array())
+                    .map_err(to_py_err)?;
+            Ok(utils::py_complex(py, result))
+        }
+        _ => Err(utils::matching_numeric_dtype_error(&["a", "b"])),
     }
 }
 
 /// Compute L2 norm of a vector.
 #[pyfunction]
 pub fn l2_norm(v: &Bound<'_, PyAny>) -> PyResult<f64> {
-    match utils::real_array1(v, "v")? {
-        utils::RealReadonlyArray1::F32(arr) => {
+    match utils::numeric_array1(v, "v")? {
+        utils::NumericReadonlyArray1::F32(arr) => {
             Ok(nabled_linalg::vector::l2_norm_view(&arr.as_array()).map_err(to_py_err)?.into())
         }
-        utils::RealReadonlyArray1::F64(arr) => {
+        utils::NumericReadonlyArray1::F64(arr) => {
             nabled_linalg::vector::l2_norm_view(&arr.as_array()).map_err(to_py_err)
+        }
+        utils::NumericReadonlyArray1::C64(arr) => {
+            nabled_linalg::vector::l2_norm_complex_view(&arr.as_array()).map_err(to_py_err)
         }
     }
 }
 
 /// Compute cosine similarity between two vectors.
 #[pyfunction]
-pub fn cosine_similarity(a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<f64> {
-    match (utils::real_array1(a, "a")?, utils::real_array1(b, "b")?) {
-        (utils::RealReadonlyArray1::F32(a_arr), utils::RealReadonlyArray1::F32(b_arr)) => {
-            Ok(nabled_linalg::vector::cosine_similarity_view(&a_arr.as_array(), &b_arr.as_array())
-                .map_err(to_py_err)?
-                .into())
+pub fn cosine_similarity<'py>(
+    py: Python<'py>,
+    a: &Bound<'py, PyAny>,
+    b: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::numeric_array1(a, "a")?, utils::numeric_array1(b, "b")?) {
+        (utils::NumericReadonlyArray1::F32(a_arr), utils::NumericReadonlyArray1::F32(b_arr)) => {
+            let result =
+                nabled_linalg::vector::cosine_similarity_view(&a_arr.as_array(), &b_arr.as_array())
+                    .map_err(to_py_err)?;
+            Ok(utils::py_float(py, result.into()))
         }
-        (utils::RealReadonlyArray1::F64(a_arr), utils::RealReadonlyArray1::F64(b_arr)) => {
-            nabled_linalg::vector::cosine_similarity_view(&a_arr.as_array(), &b_arr.as_array())
-                .map_err(to_py_err)
+        (utils::NumericReadonlyArray1::F64(a_arr), utils::NumericReadonlyArray1::F64(b_arr)) => {
+            let result =
+                nabled_linalg::vector::cosine_similarity_view(&a_arr.as_array(), &b_arr.as_array())
+                    .map_err(to_py_err)?;
+            Ok(utils::py_float(py, result))
         }
-        _ => Err(utils::matching_real_dtype_error(&["a", "b"])),
+        (utils::NumericReadonlyArray1::C64(a_arr), utils::NumericReadonlyArray1::C64(b_arr)) => {
+            let result = nabled_linalg::vector::cosine_similarity_complex_view(
+                &a_arr.as_array(),
+                &b_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::py_complex(py, result))
+        }
+        _ => Err(utils::matching_numeric_dtype_error(&["a", "b"])),
     }
 }
 

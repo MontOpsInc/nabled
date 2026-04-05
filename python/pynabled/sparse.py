@@ -2,10 +2,53 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
+from pynabled._pynabled import (
+    _SparseIC0Factorization as _RawSparseIC0Factorization,
+)
+from pynabled._pynabled import (
+    _SparseILDL0Factorization as _RawSparseILDL0Factorization,
+)
+from pynabled._pynabled import (
+    _SparseILU0Factorization as _RawSparseILU0Factorization,
+)
+from pynabled._pynabled import (
+    _SparseILUKFactorization as _RawSparseILUKFactorization,
+)
+from pynabled._pynabled import (
+    _SparseILUTFactorization as _RawSparseILUTFactorization,
+)
+from pynabled._pynabled import (
+    _SparseJacobiPreconditioner as _RawSparseJacobiPreconditioner,
+)
+from pynabled._pynabled import (
+    _SparseLUFactorization as _RawSparseLUFactorization,
+)
+from pynabled._pynabled import (
+    sparse_ic0_factor as _sparse_ic0_factor_raw,
+)
+from pynabled._pynabled import (
+    sparse_ildl0_factor as _sparse_ildl0_factor_raw,
+)
+from pynabled._pynabled import (
+    sparse_ilu0_factor as _sparse_ilu0_factor_raw,
+)
+from pynabled._pynabled import (
+    sparse_iluk_factor as _sparse_iluk_factor_raw,
+)
+from pynabled._pynabled import (
+    sparse_ilut_factor as _sparse_ilut_factor_raw,
+)
+from pynabled._pynabled import (
+    sparse_jacobi_preconditioner as _sparse_jacobi_preconditioner_raw,
+)
+from pynabled._pynabled import (
+    sparse_lu_factor as _sparse_lu_factor_raw,
+)
 from pynabled._pynabled import (
     sparse_matmat_dense as _sparse_matmat_dense_raw,
 )
@@ -172,6 +215,333 @@ def _normalize_dense(dense: Any, *, dtype: np.dtype[Any]) -> np.ndarray:
         dtype=dtype,
         mismatch_message=f"dense operand must have dtype {dtype.name} to match sparse matrix data",
     )
+
+
+def _normalize_rhs_matrix(rhs: Any, *, dtype: np.dtype[Any]) -> np.ndarray:
+    return _normalize_real_array(
+        "rhs",
+        rhs,
+        ndim=2,
+        copy=False,
+        dtype=dtype,
+        mismatch_message=f"rhs must have dtype {dtype.name} to match sparse factorization data",
+    )
+
+
+@dataclass(slots=True)
+class ILUTConfig:
+    drop_tolerance: float
+    max_fill: int
+
+    @classmethod
+    def conservative(cls) -> "ILUTConfig":
+        return cls(drop_tolerance=1e-6, max_fill=8)
+
+    @classmethod
+    def balanced(cls) -> "ILUTConfig":
+        return cls(drop_tolerance=1e-8, max_fill=16)
+
+    @classmethod
+    def aggressive(cls) -> "ILUTConfig":
+        return cls(drop_tolerance=1e-10, max_fill=32)
+
+    @classmethod
+    def for_dimension(cls, dimension: int) -> "ILUTConfig":
+        fill = 8 if dimension <= 32 else 16 if dimension <= 256 else 32
+        return cls(drop_tolerance=1e-8, max_fill=min(fill, max(int(dimension), 1)))
+
+
+@dataclass(slots=True)
+class ILUKConfig:
+    level_of_fill: int
+
+    @classmethod
+    def conservative(cls) -> "ILUKConfig":
+        return cls(level_of_fill=0)
+
+    @classmethod
+    def balanced(cls) -> "ILUKConfig":
+        return cls(level_of_fill=1)
+
+    @classmethod
+    def aggressive(cls) -> "ILUKConfig":
+        return cls(level_of_fill=2)
+
+
+def _coerce_ilut_config(
+    matrix: "CsrMatrix",
+    *,
+    config: ILUTConfig | None,
+    drop_tolerance: float | None,
+    max_fill: int | None,
+) -> ILUTConfig:
+    if config is not None and (drop_tolerance is not None or max_fill is not None):
+        raise TypeError("pass either config=... or explicit drop_tolerance/max_fill, not both")
+    if config is not None:
+        return config
+    base = ILUTConfig.balanced()
+    if drop_tolerance is None and max_fill is None:
+        return base
+    return ILUTConfig(
+        drop_tolerance=base.drop_tolerance if drop_tolerance is None else float(drop_tolerance),
+        max_fill=base.max_fill if max_fill is None else int(max_fill),
+    )
+
+
+def _coerce_iluk_config(
+    *,
+    config: ILUKConfig | None,
+    level_of_fill: int | None,
+) -> ILUKConfig:
+    if config is not None and level_of_fill is not None:
+        raise TypeError("pass either config=... or level_of_fill=..., not both")
+    if config is not None:
+        return config
+    return (
+        ILUKConfig.balanced()
+        if level_of_fill is None
+        else ILUKConfig(level_of_fill=int(level_of_fill))
+    )
+
+
+class JacobiPreconditioner:
+    __slots__ = ("_raw", "_inverse_diagonal")
+
+    def __init__(self, raw: _RawSparseJacobiPreconditioner) -> None:
+        self._raw = raw
+        self._inverse_diagonal: np.ndarray | None = None
+
+    @property
+    def inverse_diagonal(self) -> np.ndarray:
+        if self._inverse_diagonal is None:
+            self._inverse_diagonal = self._raw.inverse_diagonal
+        return self._inverse_diagonal
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.inverse_diagonal.dtype
+
+    def apply(self, rhs: Any) -> np.ndarray:
+        return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
+
+    def __repr__(self) -> str:
+        return f"JacobiPreconditioner(size={self.inverse_diagonal.shape[0]}, dtype={self.dtype})"
+
+
+class ILU0Factorization:
+    __slots__ = ("matrix", "_raw", "_l", "_u")
+
+    def __init__(self, matrix: "CsrMatrix", raw: _RawSparseILU0Factorization) -> None:
+        self.matrix = matrix
+        self._raw = raw
+        self._l: CsrMatrix | None = None
+        self._u: CsrMatrix | None = None
+
+    @property
+    def l(self) -> "CsrMatrix":
+        if self._l is None:
+            self._l = CsrMatrix.from_components(*self._raw.l_parts())
+        return self._l
+
+    @property
+    def u(self) -> "CsrMatrix":
+        if self._u is None:
+            self._u = CsrMatrix.from_components(*self._raw.u_parts())
+        return self._u
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.matrix.dtype
+
+    def apply(self, rhs: Any) -> np.ndarray:
+        return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
+
+    def __repr__(self) -> str:
+        return f"ILU0Factorization(shape={self.matrix.shape}, dtype={self.dtype})"
+
+
+class ILUTFactorization:
+    __slots__ = ("matrix", "_raw", "_l", "_u")
+
+    def __init__(self, matrix: "CsrMatrix", raw: _RawSparseILUTFactorization) -> None:
+        self.matrix = matrix
+        self._raw = raw
+        self._l: CsrMatrix | None = None
+        self._u: CsrMatrix | None = None
+
+    @property
+    def l(self) -> "CsrMatrix":
+        if self._l is None:
+            self._l = CsrMatrix.from_components(*self._raw.l_parts())
+        return self._l
+
+    @property
+    def u(self) -> "CsrMatrix":
+        if self._u is None:
+            self._u = CsrMatrix.from_components(*self._raw.u_parts())
+        return self._u
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.matrix.dtype
+
+    def apply(self, rhs: Any) -> np.ndarray:
+        return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
+
+    def __repr__(self) -> str:
+        return f"ILUTFactorization(shape={self.matrix.shape}, dtype={self.dtype})"
+
+
+class ILUKFactorization:
+    __slots__ = ("matrix", "_raw", "_l", "_u")
+
+    def __init__(self, matrix: "CsrMatrix", raw: _RawSparseILUKFactorization) -> None:
+        self.matrix = matrix
+        self._raw = raw
+        self._l: CsrMatrix | None = None
+        self._u: CsrMatrix | None = None
+
+    @property
+    def l(self) -> "CsrMatrix":
+        if self._l is None:
+            self._l = CsrMatrix.from_components(*self._raw.l_parts())
+        return self._l
+
+    @property
+    def u(self) -> "CsrMatrix":
+        if self._u is None:
+            self._u = CsrMatrix.from_components(*self._raw.u_parts())
+        return self._u
+
+    @property
+    def level_of_fill(self) -> int:
+        return int(self._raw.level_of_fill)
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.matrix.dtype
+
+    def apply(self, rhs: Any) -> np.ndarray:
+        return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
+
+    def __repr__(self) -> str:
+        return (
+            f"ILUKFactorization(shape={self.matrix.shape}, level_of_fill={self.level_of_fill}, "
+            f"dtype={self.dtype})"
+        )
+
+
+class IC0Factorization:
+    __slots__ = ("matrix", "_raw", "_l", "_l_transpose")
+
+    def __init__(self, matrix: "CsrMatrix", raw: _RawSparseIC0Factorization) -> None:
+        self.matrix = matrix
+        self._raw = raw
+        self._l: CsrMatrix | None = None
+        self._l_transpose: CsrMatrix | None = None
+
+    @property
+    def l(self) -> "CsrMatrix":
+        if self._l is None:
+            self._l = CsrMatrix.from_components(*self._raw.l_parts())
+        return self._l
+
+    @property
+    def l_transpose(self) -> "CsrMatrix":
+        if self._l_transpose is None:
+            self._l_transpose = CsrMatrix.from_components(*self._raw.l_transpose_parts())
+        return self._l_transpose
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.matrix.dtype
+
+    def apply(self, rhs: Any) -> np.ndarray:
+        return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
+
+    def __repr__(self) -> str:
+        return f"IC0Factorization(shape={self.matrix.shape}, dtype={self.dtype})"
+
+
+class ILDL0Factorization:
+    __slots__ = ("matrix", "_raw", "_l", "_l_transpose", "_d")
+
+    def __init__(self, matrix: "CsrMatrix", raw: _RawSparseILDL0Factorization) -> None:
+        self.matrix = matrix
+        self._raw = raw
+        self._l: CsrMatrix | None = None
+        self._l_transpose: CsrMatrix | None = None
+        self._d: np.ndarray | None = None
+
+    @property
+    def l(self) -> "CsrMatrix":
+        if self._l is None:
+            self._l = CsrMatrix.from_components(*self._raw.l_parts())
+        return self._l
+
+    @property
+    def l_transpose(self) -> "CsrMatrix":
+        if self._l_transpose is None:
+            self._l_transpose = CsrMatrix.from_components(*self._raw.l_transpose_parts())
+        return self._l_transpose
+
+    @property
+    def d(self) -> np.ndarray:
+        if self._d is None:
+            self._d = self._raw.d
+        return self._d
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.matrix.dtype
+
+    def apply(self, rhs: Any) -> np.ndarray:
+        return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
+
+    def __repr__(self) -> str:
+        return f"ILDL0Factorization(shape={self.matrix.shape}, dtype={self.dtype})"
+
+
+class SparseLUFactorization:
+    __slots__ = ("matrix", "_raw", "_l", "_u", "_permutation")
+
+    def __init__(self, matrix: "CsrMatrix", raw: _RawSparseLUFactorization) -> None:
+        self.matrix = matrix
+        self._raw = raw
+        self._l: CsrMatrix | None = None
+        self._u: CsrMatrix | None = None
+        self._permutation: np.ndarray | None = None
+
+    @property
+    def l(self) -> "CsrMatrix":
+        if self._l is None:
+            self._l = CsrMatrix.from_components(*self._raw.l_parts())
+        return self._l
+
+    @property
+    def u(self) -> "CsrMatrix":
+        if self._u is None:
+            self._u = CsrMatrix.from_components(*self._raw.u_parts())
+        return self._u
+
+    @property
+    def permutation(self) -> np.ndarray:
+        if self._permutation is None:
+            self._permutation = self._raw.permutation
+        return self._permutation
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.matrix.dtype
+
+    def solve(self, rhs: Any) -> np.ndarray:
+        return self._raw.solve(_normalize_rhs(rhs, dtype=self.dtype))
+
+    def solve_multiple(self, rhs: Any) -> np.ndarray:
+        return self._raw.solve_multiple(_normalize_rhs_matrix(rhs, dtype=self.dtype))
+
+    def __repr__(self) -> str:
+        return f"SparseLUFactorization(shape={self.matrix.shape}, dtype={self.dtype})"
 
 
 class CsrMatrix:
@@ -398,6 +768,43 @@ class CsrMatrix:
     ) -> np.ndarray:
         return sparse_pcg_solve(self, rhs, tolerance=tolerance, max_iterations=max_iterations)
 
+    def jacobi_preconditioner(self) -> JacobiPreconditioner:
+        return sparse_jacobi_preconditioner(self)
+
+    def ilu0_factor(self) -> ILU0Factorization:
+        return sparse_ilu0_factor(self)
+
+    def ilut_factor(
+        self,
+        *,
+        drop_tolerance: float | None = None,
+        max_fill: int | None = None,
+        config: ILUTConfig | None = None,
+    ) -> ILUTFactorization:
+        return sparse_ilut_factor(
+            self,
+            drop_tolerance=drop_tolerance,
+            max_fill=max_fill,
+            config=config,
+        )
+
+    def iluk_factor(
+        self,
+        *,
+        level_of_fill: int | None = None,
+        config: ILUKConfig | None = None,
+    ) -> ILUKFactorization:
+        return sparse_iluk_factor(self, level_of_fill=level_of_fill, config=config)
+
+    def ic0_factor(self) -> IC0Factorization:
+        return sparse_ic0_factor(self)
+
+    def ildl0_factor(self) -> ILDL0Factorization:
+        return sparse_ildl0_factor(self)
+
+    def lu_factor(self) -> SparseLUFactorization:
+        return sparse_lu_factor(self)
+
     def __matmul__(self, other: Any) -> np.ndarray:
         other_array = np.asarray(other)
         if other_array.ndim == 1:
@@ -490,8 +897,110 @@ def sparse_pcg_solve(
     )
 
 
+def sparse_jacobi_preconditioner(matrix: Any) -> JacobiPreconditioner:
+    csr = _coerce_csr_matrix(matrix)
+    return JacobiPreconditioner(
+        _sparse_jacobi_preconditioner_raw(csr.nrows, csr.ncols, csr.indptr, csr.indices, csr.data)
+    )
+
+
+def sparse_ilu0_factor(matrix: Any) -> ILU0Factorization:
+    csr = _coerce_csr_matrix(matrix)
+    return ILU0Factorization(
+        csr, _sparse_ilu0_factor_raw(csr.nrows, csr.ncols, csr.indptr, csr.indices, csr.data)
+    )
+
+
+def sparse_ilut_factor(
+    matrix: Any,
+    *,
+    drop_tolerance: float | None = None,
+    max_fill: int | None = None,
+    config: ILUTConfig | None = None,
+) -> ILUTFactorization:
+    csr = _coerce_csr_matrix(matrix)
+    resolved = _coerce_ilut_config(
+        csr, config=config, drop_tolerance=drop_tolerance, max_fill=max_fill
+    )
+    return ILUTFactorization(
+        csr,
+        _sparse_ilut_factor_raw(
+            csr.nrows,
+            csr.ncols,
+            csr.indptr,
+            csr.indices,
+            csr.data,
+            float(resolved.drop_tolerance),
+            int(resolved.max_fill),
+        ),
+    )
+
+
+def sparse_iluk_factor(
+    matrix: Any,
+    *,
+    level_of_fill: int | None = None,
+    config: ILUKConfig | None = None,
+) -> ILUKFactorization:
+    csr = _coerce_csr_matrix(matrix)
+    resolved = _coerce_iluk_config(config=config, level_of_fill=level_of_fill)
+    return ILUKFactorization(
+        csr,
+        _sparse_iluk_factor_raw(
+            csr.nrows,
+            csr.ncols,
+            csr.indptr,
+            csr.indices,
+            csr.data,
+            int(resolved.level_of_fill),
+        ),
+    )
+
+
+def sparse_ic0_factor(matrix: Any) -> IC0Factorization:
+    csr = _coerce_csr_matrix(matrix)
+    return IC0Factorization(
+        csr, _sparse_ic0_factor_raw(csr.nrows, csr.ncols, csr.indptr, csr.indices, csr.data)
+    )
+
+
+def sparse_ildl0_factor(matrix: Any) -> ILDL0Factorization:
+    csr = _coerce_csr_matrix(matrix)
+    return ILDL0Factorization(
+        csr, _sparse_ildl0_factor_raw(csr.nrows, csr.ncols, csr.indptr, csr.indices, csr.data)
+    )
+
+
+def sparse_lu_factor(matrix: Any) -> SparseLUFactorization:
+    csr = _coerce_csr_matrix(matrix)
+    return SparseLUFactorization(
+        csr, _sparse_lu_factor_raw(csr.nrows, csr.ncols, csr.indptr, csr.indices, csr.data)
+    )
+
+
+def sparse_lu_solve(matrix: Any, rhs: Any) -> np.ndarray:
+    return sparse_lu_factor(matrix).solve(rhs)
+
+
 __all__ = [
     "CsrMatrix",
+    "IC0Factorization",
+    "ILDL0Factorization",
+    "ILU0Factorization",
+    "ILUKConfig",
+    "ILUKFactorization",
+    "ILUTConfig",
+    "ILUTFactorization",
+    "JacobiPreconditioner",
+    "SparseLUFactorization",
+    "sparse_ic0_factor",
+    "sparse_ildl0_factor",
+    "sparse_ilu0_factor",
+    "sparse_iluk_factor",
+    "sparse_ilut_factor",
+    "sparse_jacobi_preconditioner",
+    "sparse_lu_factor",
+    "sparse_lu_solve",
     "sparse_matvec",
     "sparse_matmat_dense",
     "sparse_transpose",

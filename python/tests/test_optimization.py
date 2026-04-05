@@ -1,9 +1,7 @@
 """Tests for optimization bindings."""
 
 import numpy as np
-
 import pynabled
-
 
 TARGET = np.array([3.0], dtype=np.float64)
 COMPLEX_TARGET = np.array([3.0 + 2.0j], dtype=np.complex128)
@@ -63,9 +61,7 @@ def test_stochastic_gradient_descent():
     def stochastic_grad(x, _iteration):
         return gradient(x)
 
-    optimum = pynabled.stochastic_gradient_descent(
-        initial, stochastic_grad, learning_rate=0.1
-    )
+    optimum = pynabled.stochastic_gradient_descent(initial, stochastic_grad, learning_rate=0.1)
     np.testing.assert_allclose(optimum, TARGET, atol=1e-4)
 
 
@@ -81,3 +77,53 @@ def test_complex_gradient_descent():
         initial, complex_objective, complex_gradient, learning_rate=0.1
     )
     np.testing.assert_allclose(optimum, COMPLEX_TARGET, atol=1e-4)
+
+
+def test_real_optimization_bindings_accept_float32():
+    target = np.array([3.0], dtype=np.float32)
+
+    def objective32(x):
+        delta = x - target
+        return np.dot(delta, delta).astype(np.float32)
+
+    def gradient32(x):
+        return np.float32(2.0) * (x - target)
+
+    initial = np.array([0.0], dtype=np.float32)
+    direction = np.array([1.0], dtype=np.float32)
+    lower = np.array([0.0], dtype=np.float32)
+    upper = np.array([2.5], dtype=np.float32)
+
+    line_search = pynabled.backtracking_line_search(initial, direction, objective32, gradient32)
+    optimum_gd = pynabled.gradient_descent(initial, objective32, gradient32, learning_rate=0.1)
+    optimum_adam = pynabled.adam(initial, objective32, gradient32, learning_rate=0.1)
+    optimum_momentum = pynabled.momentum_descent(
+        initial, objective32, gradient32, learning_rate=0.05, momentum=0.8
+    )
+    optimum_rmsprop = pynabled.rmsprop(initial, objective32, gradient32, learning_rate=0.05)
+    optimum_projected = pynabled.projected_gradient_descent_box(
+        initial, objective32, gradient32, lower, upper, learning_rate=0.1
+    )
+
+    def stochastic_gradient32(x, _iteration):
+        return gradient32(x)
+
+    optimum_sgd = pynabled.stochastic_gradient_descent(
+        initial, stochastic_gradient32, learning_rate=0.1
+    )
+    optimum_bfgs = pynabled.bfgs(initial, objective32, gradient32, step_size=0.5)
+
+    assert line_search > 0
+    for optimum in (
+        optimum_gd,
+        optimum_adam,
+        optimum_momentum,
+        optimum_rmsprop,
+        optimum_sgd,
+        optimum_bfgs,
+    ):
+        assert optimum.dtype == np.float32
+        np.testing.assert_allclose(optimum, target, atol=2e-3, rtol=2e-3)
+
+    assert optimum_projected.dtype == np.float32
+    np.testing.assert_allclose(optimum_projected, upper, atol=2e-3, rtol=2e-3)

@@ -104,6 +104,21 @@ def test_dense_kernels_accept_float32():
     np.testing.assert_allclose(batched, left @ right, rtol=1e-5, atol=1e-6)
 
 
+def test_dense_kernels_accept_complex128():
+    matrix = np.array([[1.0 + 1.0j, 0.0 - 1.0j], [2.0 + 0.0j, 1.0 + 2.0j]], dtype=np.complex128)
+    vector = np.array([1.0 + 0.0j, 0.5 - 0.5j], dtype=np.complex128)
+    left = np.array([[1.0 + 0.0j, 2.0 - 1.0j], [0.0 + 1.0j, 1.0 + 0.0j]], dtype=np.complex128)
+    right = np.array([[1.0 + 1.0j, 0.0 + 1.0j], [2.0 + 0.0j, 1.0 - 1.0j]], dtype=np.complex128)
+
+    matvec = pynabled.matvec(matrix, vector)
+    matmat = pynabled.matmat(left, right)
+
+    assert matvec.dtype == np.complex128
+    assert matmat.dtype == np.complex128
+    np.testing.assert_allclose(matvec, matrix @ vector, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(matmat, left @ right, rtol=1e-12, atol=1e-12)
+
+
 def test_dense_kernels_reject_mixed_real_dtypes():
     matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
     vector = np.array([1.0, 1.0], dtype=np.float64)
@@ -129,3 +144,46 @@ def test_eigen_symmetric_and_schur_accept_float32():
         atol=1e-5,
     )
     np.testing.assert_allclose(schur.q @ schur.t @ schur.q.T, general, rtol=1e-4, atol=1e-5)
+
+
+def test_schur_accepts_complex128():
+    matrix = np.array([[3.0 + 1.0j, 1.0 - 0.5j], [0.0 + 1.0j, 2.0 - 0.25j]], dtype=np.complex128)
+    result = pynabled.schur_compute(matrix)
+
+    assert result.q.dtype == np.complex128
+    assert result.t.dtype == np.complex128
+    np.testing.assert_allclose(
+        result.q @ result.t @ result.q.conj().T,
+        matrix,
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+
+def test_gram_schmidt_accepts_float32_and_complex128():
+    real = np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    complex_matrix = np.array(
+        [[1.0 + 0.0j, 1.0 - 1.0j], [1.0 + 1.0j, 0.0 + 0.0j], [0.0 + 0.0j, 1.0 + 0.5j]],
+        dtype=np.complex128,
+    )
+
+    q_real = pynabled.gram_schmidt(real)
+    q_classic = pynabled.gram_schmidt_classic(real)
+    q_complex = pynabled.gram_schmidt(complex_matrix)
+
+    assert q_real.dtype == np.float32
+    assert q_classic.dtype == np.float32
+    assert q_complex.dtype == np.complex128
+    np.testing.assert_allclose(q_real.T @ q_real, np.eye(2, dtype=np.float32), rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(
+        q_classic.T @ q_classic,
+        np.eye(2, dtype=np.float32),
+        rtol=1e-4,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        q_complex.conj().T @ q_complex,
+        np.eye(2, dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )

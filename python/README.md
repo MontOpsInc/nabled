@@ -33,9 +33,21 @@ print("singular values:", result.singular_values)
 `numpy.ndarray` is the canonical CPU-array carrier for `pynabled`. Borrowed NumPy views are used
 where the Rust API admits them, including non-C-contiguous inputs for the view-based dense paths.
 Current real-valued vector/matrix/decomposition/function/batched/statistics/regression/PCA/
-iterative bindings accept both `float32` and `float64` under the same public function names.
-Mixed real dtypes are rejected explicitly instead of being silently cast. Some higher-level
-wrappers still materialize owned arrays internally where the current Rust API shape requires it.
+iterative/callable-ML/tensor bindings all accept both `float32` and `float64` under the same
+public function names. The currently exposed Arrow rows (`arrow_dot`, `arrow_l2_norm`,
+`arrow_svd_decompose`) also accept both real dtypes, and current Arrow SVD NumPy egress preserves
+the caller's real dtype. Mixed real dtypes are rejected explicitly instead of being silently cast.
+Callable-driven `jacobian` / `optimization` workflows preserve the caller's real dtype end-to-end,
+and their `float32` defaults use `float32`-appropriate finite-difference / convergence settings
+instead of raw `float64` thresholds. Some higher-level wrappers still materialize owned arrays
+internally where the current Rust API shape requires it.
+
+Where the admitted Rust surface already has direct complex kernels, the current Python dense API
+now also accepts `complex128` across the main vector/matrix/decomposition/function families
+(`dot`, `l2_norm`, `cosine_similarity`, `matvec`, `matmat`, `svd`, `qr`, `lu` solve/inverse/
+determinant, `cholesky`, non-symmetric `eigen`, `schur`, `polar`, `sylvester`, `lyapunov`,
+admitted complex `matrix_functions`, and `gram_schmidt`). Unsupported rows fail explicitly rather
+than silently casting or dropping back to a different numerical contract.
 
 Structured decomposition / ML / tensor workflows now return typed Python result objects with named
 fields instead of anonymous tuples. For example, `svd_decompose(...)` returns `pynabled.SvdResult`,
@@ -49,6 +61,14 @@ buffers and `float32` / `float64` data rather than normalizing everything to one
 normalization is available through `dtype=` / `index_dtype=` on construction plus
 `CsrMatrix.astype(...)` and `CsrMatrix.with_index_dtype(...)`, while mixed sparse operand dtypes
 continue to fail explicitly instead of being silently cast.
+
+Sparse reuse paths are now first-class as well: `CsrMatrix` can build reusable
+`JacobiPreconditioner`, `ILU0` / `ILUT` / `ILUK`, `IC0`, `ILDL0`, and direct
+`SparseLUFactorization` objects. Those wrappers keep the reusable sparse state in Rust instead of
+reconstructing factors from NumPy on every apply/solve call, while factor properties still round
+trip back through canonical `CsrMatrix` carriers. `ILUTConfig` and `ILUKConfig` expose the current
+configurable sparse setup profiles, and sparse LU reuse already covers both single-RHS and
+multi-RHS solve workflows.
 
 ## Documentation
 

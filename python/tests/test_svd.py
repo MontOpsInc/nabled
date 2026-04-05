@@ -98,3 +98,23 @@ def test_svd_accepts_float32():
         np.testing.assert_allclose(
             rank_deficient @ null[:, j], np.zeros(2, dtype=np.float32), atol=1e-5
         )
+
+
+def test_svd_decompose_accepts_complex128():
+    a = np.array(
+        [[1.0 + 1.0j, 2.0 - 1.0j], [0.5 + 0.25j, -1.0 + 2.0j]],
+        dtype=np.complex128,
+    )
+
+    result = pynabled.svd_decompose(a)
+    recon = pynabled.svd_reconstruct_matrix(result)
+    kappa = pynabled.svd_condition_number(result)
+    rank = pynabled.svd_rank(result)
+
+    assert result.u.dtype == np.complex128
+    assert result.singular_values.dtype == np.float64
+    assert result.vt.dtype == np.complex128
+    assert recon.dtype == np.complex128
+    assert np.isfinite(kappa)
+    assert rank == 2
+    np.testing.assert_allclose(recon, a, rtol=1e-10, atol=1e-12)

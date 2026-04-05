@@ -64,6 +64,35 @@ decomposition wrappers) now accept both `float32` and `float64`, real nonsymmetr
 `complex64` output for `float32` inputs, array-valued decomposition/function outputs preserve
 `float32` instead of silently widening to `float64`, and the full `python-quality` gate is green on
 Python 3.12 (`137 passed, 3 skipped`, `98.86%` Python coverage, editable + Arrow + wheel/sdist +
+feature-smoke builds). A ninth `N-PY-003` callable real-dtype parity pass is now also landed:
+Python callable-driven `jacobian` and `optimization` APIs now accept both `float32` and `float64`,
+callback ingress/egress preserves the caller’s real dtype instead of widening through `float64`,
+Python-side optimizer defaults now use `float32`-appropriate convergence/epsilon values when the
+caller stays on `float32`, and `nabled-ml::jacobian` now uses a more stable default `float32`
+finite-difference step for Hessian-capable workflows. A tenth `N-PY-003` real-dtype parity pass is
+now also landed: the remaining direct NumPy tensor families now accept both `float32` and
+`float64`, typed tensor result objects preserve `float32` end-to-end across HOSVD / HOOI / Tucker
+/ CP / TT workflows, and the currently exposed Arrow rows (`arrow_dot`, `arrow_l2_norm`,
+`arrow_svd_decompose`) now admit `float32` as well as `float64` while current SVD NumPy egress
+preserves the caller’s real dtype. The full `python-quality` gate is green on Python 3.12
+(`142 passed, 3 skipped`, `98.86%` Python coverage, editable + Arrow + wheel/sdist +
+feature-smoke builds). An eleventh `N-PY-003` direct dense complex parity pass is now also landed:
+admitted direct dense complex rows now reach meaningfully broader Python parity across vector,
+matrix, decomposition/function families (`svd`, `qr`, `lu`, `cholesky`, `eigen`, `schur`,
+`polar`, `sylvester` / `lyapunov`, and admitted complex `matrix_functions`), plus
+`gram_schmidt` and vector-RHS triangular solves. The remaining `float32` gaps in
+`orthogonalization` / `triangular` are also closed, and the full `python-quality` gate remains
+green on Python 3.12 (`156 passed, 3 skipped`, `98.86%` Python coverage, editable + Arrow +
+wheel/sdist +
+feature-smoke builds). A twelfth `N-PY-003` sparse reuse/result-fidelity pass is now also landed:
+Python sparse now exposes reusable `JacobiPreconditioner`, `ILU0` / `ILUT` / `ILUK`, `IC0`,
+`ILDL0`, and direct `SparseLUFactorization` objects backed by persistent Rust sparse state instead
+of rebuilding factors from NumPy on every apply/solve call. `CsrMatrix` now has factor and
+preconditioner constructors, `ILUTConfig` / `ILUKConfig` shape the configurable sparse setup
+paths, sparse factor properties round-trip back through canonical `CsrMatrix` carriers, and sparse
+LU reuse now covers both single-RHS and multi-RHS solves. Validation is green end-to-end:
+`python-quality` passed (`158 passed, 3 skipped`, `95.07%` Python coverage, editable + Arrow +
+wheel/sdist +
 feature-smoke builds). Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure
 plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.

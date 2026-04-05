@@ -426,3 +426,167 @@ def test_tensor_tt_family():
         rtol=5e-3,
         atol=5e-3,
     )
+
+
+def test_tensor_float32_kernel_surface_preserves_dtype():
+    cube = np.random.randn(2, 3, 4).astype(np.float32)
+    vectors = np.random.randn(2, 4).astype(np.float32)
+    cube_matvec = pynabled.tensor_cube_matvec(cube, vectors)
+    assert cube_matvec.dtype == np.float32
+    np.testing.assert_allclose(
+        cube_matvec, np.einsum("bij,bj->bi", cube, vectors), rtol=5e-5, atol=5e-5
+    )
+
+    right_cube = np.random.randn(2, 4, 5).astype(np.float32)
+    cube_matmat = pynabled.tensor_cube_matmat(cube, right_cube)
+    assert cube_matmat.dtype == np.float32
+    np.testing.assert_allclose(cube_matmat, np.matmul(cube, right_cube), rtol=5e-5, atol=5e-5)
+
+    tensor = np.random.randn(2, 3, 4).astype(np.float32)
+    summed = pynabled.tensor_sum_last_axis(tensor)
+    assert summed.dtype == np.float32
+    np.testing.assert_allclose(summed, tensor.sum(axis=-1), rtol=5e-5, atol=5e-5)
+
+    norms = pynabled.tensor_l2_norm_last_axis(tensor)
+    assert norms.dtype == np.float32
+    np.testing.assert_allclose(norms, np.linalg.norm(tensor, axis=-1), rtol=5e-5, atol=5e-5)
+
+    normalized = pynabled.tensor_normalize_last_axis(tensor)
+    assert normalized.dtype == np.float32
+    np.testing.assert_allclose(
+        np.linalg.norm(normalized, axis=-1),
+        np.ones(tensor.shape[:-1], dtype=np.float32),
+        rtol=5e-5,
+        atol=5e-5,
+    )
+
+    other = np.random.randn(2, 3, 4).astype(np.float32)
+    batched_dot = pynabled.tensor_batched_dot_last_axis(tensor, other)
+    assert batched_dot.dtype == np.float32
+    np.testing.assert_allclose(batched_dot, (tensor * other).sum(axis=-1), rtol=5e-5, atol=5e-5)
+
+    permuted = pynabled.tensor_permute_axes(tensor, [2, 1, 0])
+    assert permuted.dtype == np.float32
+    np.testing.assert_allclose(permuted, np.transpose(tensor, (2, 1, 0)), rtol=5e-5, atol=5e-5)
+
+    contract_rhs = np.random.randn(4, 5).astype(np.float32)
+    contracted = pynabled.tensor_contract_axes(tensor, contract_rhs, [2], [0])
+    assert contracted.dtype == np.float32
+    np.testing.assert_allclose(
+        contracted,
+        np.einsum("ijk,kl->ijl", tensor, contract_rhs),
+        rtol=5e-5,
+        atol=5e-5,
+    )
+
+    batched_mm = pynabled.tensor_batched_matmul_last_two(cube, right_cube)
+    assert batched_mm.dtype == np.float32
+    np.testing.assert_allclose(batched_mm, np.matmul(cube, right_cube), rtol=5e-5, atol=5e-5)
+
+    einsum = pynabled.tensor_einsum("bij,bjk->bik", cube, right_cube)
+    assert einsum.dtype == np.float32
+    np.testing.assert_allclose(
+        einsum, np.einsum("bij,bjk->bik", cube, right_cube), rtol=5e-5, atol=5e-5
+    )
+
+
+def test_tensor_float32_decomposition_surface_preserves_dtype():
+    cube = np.random.randn(3, 4, 2).astype(np.float32)
+    hosvd3 = pynabled.tensor_hosvd3(cube, 3, 4, 2)
+    assert hosvd3.core.dtype == np.float32
+    assert hosvd3.u0.dtype == np.float32
+    assert hosvd3.u1.dtype == np.float32
+    assert hosvd3.u2.dtype == np.float32
+    reconstructed_cube = pynabled.tensor_hosvd3_reconstruct(hosvd3)
+    assert reconstructed_cube.dtype == np.float32
+    np.testing.assert_allclose(reconstructed_cube, cube, rtol=5e-5, atol=5e-5)
+
+    tensor = np.random.randn(2, 3, 2, 2).astype(np.float32)
+    hosvd = pynabled.tensor_hosvd_nd(tensor, list(tensor.shape))
+    assert hosvd.core.dtype == np.float32
+    assert all(factor.dtype == np.float32 for factor in hosvd.factors)
+    projected = pynabled.tensor_tucker_project(tensor, hosvd)
+    assert projected.dtype == np.float32
+    expanded = pynabled.tensor_tucker_expand(
+        pynabled.HosvdNdResult(core=projected, factors=hosvd.factors)
+    )
+    assert expanded.dtype == np.float32
+    np.testing.assert_allclose(expanded, tensor, rtol=5e-4, atol=5e-4)
+
+    hooi = pynabled.tensor_hooi_nd(tensor, list(tensor.shape), 20, 1e-5)
+    assert hooi.core.dtype == np.float32
+    assert all(factor.dtype == np.float32 for factor in hooi.factors)
+    reconstructed = pynabled.tensor_hosvd_nd_reconstruct(hooi)
+    assert reconstructed.dtype == np.float32
+    np.testing.assert_allclose(reconstructed, tensor, rtol=5e-4, atol=5e-4)
+
+
+def test_tensor_float32_cp_and_tt_surface_preserves_dtype():
+    weights, factor_0, factor_1, factor_2 = _cp_als3_reference()
+    cp3_reference = pynabled.CpAls3Result(
+        weights=weights.astype(np.float32),
+        factor_0=factor_0.astype(np.float32),
+        factor_1=factor_1.astype(np.float32),
+        factor_2=factor_2.astype(np.float32),
+    )
+    cp3_tensor = pynabled.tensor_cp_als3_reconstruct(cp3_reference)
+    estimate3, report3 = pynabled.tensor_cp_als3_with_report(cp3_tensor, 2, 300, 1e-5)
+    assert estimate3.weights.dtype == np.float32
+    assert estimate3.factor_0.dtype == np.float32
+    assert estimate3.factor_1.dtype == np.float32
+    assert estimate3.factor_2.dtype == np.float32
+    assert isinstance(report3.metrics.relative_error, float)
+    reconstructed3 = pynabled.tensor_cp_als3_reconstruct(estimate3)
+    assert reconstructed3.dtype == np.float32
+    assert _relative_error(reconstructed3, cp3_tensor) < 5e-4
+
+    weights_nd, factors_nd = _cp_als_nd_reference()
+    cp_nd_reference = pynabled.CpAlsNdResult(
+        weights=weights_nd.astype(np.float32),
+        factors=[factor.astype(np.float32) for factor in factors_nd],
+        shape=(3, 2, 4, 2),
+    )
+    cp_nd_tensor = pynabled.tensor_cp_als_nd_reconstruct(cp_nd_reference)
+    estimate_nd, report_nd = pynabled.tensor_cp_als_nd_with_report(cp_nd_tensor, 2, 400, 1e-5)
+    assert estimate_nd.weights.dtype == np.float32
+    assert all(factor.dtype == np.float32 for factor in estimate_nd.factors)
+    assert isinstance(report_nd.metrics.fit, float)
+    reconstructed_nd = pynabled.tensor_cp_als_nd_reconstruct(estimate_nd)
+    assert reconstructed_nd.dtype == np.float32
+    assert _relative_error(reconstructed_nd, cp_nd_tensor) < 5e-4
+
+    tt_reference = pynabled.TensorTrainResult(
+        cores=[core.astype(np.float32) for core in _tt_reference()]
+    )
+    tt_tensor = pynabled.tensor_tt_svd_reconstruct(tt_reference)
+    assert tt_tensor.dtype == np.float32
+
+    tt_estimated = pynabled.tensor_tt_svd(tt_tensor, 3, 1e-5)
+    assert all(core.dtype == np.float32 for core in tt_estimated.cores)
+    reconstructed_tt = pynabled.tensor_tt_svd_reconstruct(tt_estimated)
+    assert reconstructed_tt.dtype == np.float32
+    np.testing.assert_allclose(reconstructed_tt, tt_tensor, rtol=5e-4, atol=5e-4)
+
+    left_orth = pynabled.tensor_tt_orthogonalize_left(tt_reference)
+    right_orth = pynabled.tensor_tt_orthogonalize_right(tt_reference)
+    rounded = pynabled.tensor_tt_round(tt_reference, 2, 1e-5)
+    assert all(core.dtype == np.float32 for core in left_orth.cores)
+    assert all(core.dtype == np.float32 for core in right_orth.cores)
+    assert all(core.dtype == np.float32 for core in rounded.cores)
+
+    left_tensor = np.random.randn(2, 3, 2).astype(np.float32)
+    right_tensor = np.random.randn(2, 3, 2).astype(np.float32)
+    left_tt = pynabled.tensor_tt_svd(left_tensor, 4, 1e-5)
+    right_tt = pynabled.tensor_tt_svd(right_tensor, 4, 1e-5)
+
+    observed_inner = pynabled.tensor_tt_inner(left_tt, right_tt)
+    observed_norm = pynabled.tensor_tt_norm(left_tt)
+    assert abs(observed_inner - float(np.sum(left_tensor * right_tensor))) < 5e-4
+    assert abs(observed_norm - float(np.linalg.norm(left_tensor))) < 5e-4
+
+    added = pynabled.tensor_tt_add(left_tt, right_tt)
+    hadamard = pynabled.tensor_tt_hadamard(left_tt, right_tt)
+    rounded_hadamard = pynabled.tensor_tt_hadamard_round(left_tt, right_tt, 2, 1e-5)
+    assert all(core.dtype == np.float32 for core in added.cores)
+    assert all(core.dtype == np.float32 for core in hadamard.cores)
+    assert all(core.dtype == np.float32 for core in rounded_hadamard.cores)

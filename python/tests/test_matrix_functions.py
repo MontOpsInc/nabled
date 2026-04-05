@@ -101,3 +101,42 @@ def test_matrix_functions_accept_float32():
     np.testing.assert_allclose(pynabled.matrix_exp_eigen(log_svd), spd, rtol=3e-4, atol=3e-5)
     np.testing.assert_allclose(power, symmetric @ symmetric, rtol=2e-4, atol=2e-5)
     np.testing.assert_allclose(sign, sign_input, rtol=1e-4, atol=1e-5)
+
+
+def test_matrix_functions_accept_complex128_where_admitted():
+    general = np.array([[0.0 + 1.0j, 1.0 - 0.25j], [-1.0 + 0.5j, 0.0 - 1.0j]], dtype=np.complex128)
+    hermitian_pd = np.array(
+        [[3.0 + 0.0j, 1.0 - 0.5j], [1.0 + 0.5j, 2.5 + 0.0j]],
+        dtype=np.complex128,
+    )
+    hermitian_signed = np.array([[2.0 + 0.0j, 0.0], [0.0, -3.0 + 0.0j]], dtype=np.complex128)
+
+    exp_taylor = pynabled.matrix_exp(general, None, None)
+    exp_eigen = pynabled.matrix_exp_eigen(hermitian_pd)
+    log_eigen = pynabled.matrix_log_eigen(hermitian_pd)
+    log_svd = pynabled.matrix_log_svd(hermitian_pd)
+    power = pynabled.matrix_power(hermitian_pd, 2.0)
+    sign = pynabled.matrix_sign(hermitian_signed)
+
+    for result in (exp_taylor, exp_eigen, log_eigen, log_svd, power, sign):
+        assert result.dtype == np.complex128
+
+    np.testing.assert_allclose(
+        pynabled.matrix_exp_eigen(log_eigen),
+        hermitian_pd,
+        rtol=1e-10,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        pynabled.matrix_exp(log_svd, None, None),
+        hermitian_pd,
+        rtol=1e-9,
+        atol=1e-11,
+    )
+    np.testing.assert_allclose(power, hermitian_pd @ hermitian_pd, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        sign,
+        np.array([[1.0 + 0.0j, 0.0], [0.0, -1.0 + 0.0j]], dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )

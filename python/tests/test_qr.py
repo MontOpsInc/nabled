@@ -1,9 +1,8 @@
 """Tests for QR decomposition bindings."""
 
 import numpy as np
-import pytest
-
 import pynabled
+import pytest
 
 
 def test_qr_decompose():
@@ -40,3 +39,23 @@ def test_qr_accepts_float32():
     np.testing.assert_allclose(result.q @ result.r, a, rtol=1e-4, atol=1e-5)
     np.testing.assert_allclose(a @ x, b, rtol=1e-4, atol=1e-5)
     np.testing.assert_allclose(x, x_true, rtol=5e-4, atol=2e-5)
+
+
+def test_qr_decompose_accepts_complex128():
+    a = np.array(
+        [[1.0 + 1.0j, 2.0 - 1.0j], [3.0 + 0.5j, 4.0 + 0.25j], [5.0 - 0.5j, 6.0 + 1.0j]],
+        dtype=np.complex128,
+    )
+
+    result = pynabled.qr_decompose(a)
+
+    assert result.q.dtype == np.complex128
+    assert result.r.dtype == np.complex128
+    assert result.rank == 2
+    np.testing.assert_allclose(result.q @ result.r, a, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        result.q.conj().T @ result.q,
+        np.eye(2, dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )

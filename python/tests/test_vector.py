@@ -55,3 +55,21 @@ def test_vector_primitives_accept_float32():
     assert similarities.dtype == np.float32
     np.testing.assert_allclose(distances, np.array([[1.0, 1.0], [1.0, 1.0]], dtype=np.float32))
     np.testing.assert_allclose(similarities, np.eye(2, dtype=np.float32), rtol=1e-5, atol=1e-6)
+
+
+def test_vector_primitives_accept_complex128():
+    a = np.array([1.0 + 1.0j, 2.0 - 1.0j], dtype=np.complex128)
+    b = np.array([0.5 - 0.5j, -1.0 + 3.0j], dtype=np.complex128)
+
+    dot = pynabled.dot(a, b)
+    norm = pynabled.l2_norm(a)
+    cosine = pynabled.cosine_similarity(a, b)
+
+    np.testing.assert_allclose(dot, np.vdot(a, b), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(norm, np.linalg.norm(a), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        cosine,
+        np.vdot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)),
+        rtol=1e-12,
+        atol=1e-12,
+    )

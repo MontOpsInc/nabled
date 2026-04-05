@@ -50,3 +50,19 @@ def test_lu_accepts_float32():
     np.testing.assert_allclose(a @ x, b, rtol=1e-5, atol=1e-6)
     np.testing.assert_allclose(a @ inv_a, np.eye(2, dtype=np.float32), rtol=1e-4, atol=1e-5)
     np.testing.assert_allclose(det, np.linalg.det(a).astype(np.float64), rtol=1e-5, atol=1e-6)
+
+
+def test_lu_solve_inverse_and_determinant_accept_complex128():
+    a = np.array([[2.0 + 1.0j, 1.0 - 0.5j], [0.0 + 0.25j, 3.0 - 1.0j]], dtype=np.complex128)
+    b = np.array([1.0 + 2.0j, -0.5 + 1.0j], dtype=np.complex128)
+
+    x = pynabled.lu_solve(a, b)
+    inv_a = pynabled.lu_inverse(a)
+    det = pynabled.lu_determinant(a)
+
+    assert x.dtype == np.complex128
+    assert inv_a.dtype == np.complex128
+    assert isinstance(det, complex)
+    np.testing.assert_allclose(a @ x, b, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(a @ inv_a, np.eye(2, dtype=np.complex128), rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(det, np.linalg.det(a), rtol=1e-10, atol=1e-12)

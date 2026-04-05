@@ -12,8 +12,8 @@ pub fn decompose<'py>(
     py: Python<'py>,
     a: &Bound<'py, PyAny>,
 ) -> PyResult<(Py<PyAny>, Py<PyAny>, usize)> {
-    match utils::real_array2(a, "a")? {
-        utils::RealReadonlyArray2::F32(arr) => {
+    match utils::numeric_array2(a, "a")? {
+        utils::NumericReadonlyArray2::F32(arr) => {
             let config = nabled_linalg::qr::QRConfig::<f32>::default();
             let result =
                 nabled_linalg::qr::decompose_view(&arr.as_array(), &config).map_err(to_py_err)?;
@@ -23,10 +23,20 @@ pub fn decompose<'py>(
                 result.rank,
             ))
         }
-        utils::RealReadonlyArray2::F64(arr) => {
+        utils::NumericReadonlyArray2::F64(arr) => {
             let config = nabled_linalg::qr::QRConfig::<f64>::default();
             let result =
                 nabled_linalg::qr::decompose_view(&arr.as_array(), &config).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.q),
+                utils::pyarray2_from_owned(py, result.r),
+                result.rank,
+            ))
+        }
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let config = nabled_linalg::qr::QRConfig::<f64>::default();
+            let result = nabled_linalg::qr::decompose_complex_view(&arr.as_array(), &config)
+                .map_err(to_py_err)?;
             Ok((
                 utils::pyarray2_from_owned(py, result.q),
                 utils::pyarray2_from_owned(py, result.r),

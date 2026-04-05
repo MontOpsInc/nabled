@@ -17,6 +17,37 @@ def _make_csr_diagonal(n, dtype=np.float64, index_dtype=np.int64):
     return n, n, indptr, indices, data
 
 
+def _csr_from_dense(dense, *, index_dtype=np.int64):
+    dense = np.asarray(dense)
+    nrows, ncols = dense.shape
+    indptr = [0]
+    indices = []
+    data = []
+    for row in range(nrows):
+        for col in range(ncols):
+            value = dense[row, col]
+            if value != 0:
+                indices.append(col)
+                data.append(value)
+        indptr.append(len(indices))
+    return (
+        nrows,
+        ncols,
+        np.asarray(indptr, dtype=index_dtype),
+        np.asarray(indices, dtype=index_dtype),
+        np.asarray(data, dtype=dense.dtype),
+    )
+
+
+def _dense_from_csr(matrix):
+    dense = np.zeros(matrix.shape, dtype=matrix.dtype)
+    for row in range(matrix.nrows):
+        start = int(matrix.indptr[row])
+        end = int(matrix.indptr[row + 1])
+        dense[row, matrix.indices[start:end]] = matrix.data[start:end]
+    return dense
+
+
 class _FakeSciPyCsr:
     format = "csr"
 
@@ -85,6 +116,85 @@ def test_sparse_pcg_solve():
     x = pynabled.sparse_pcg_solve(matrix, rhs)
     np.testing.assert_allclose(x, [1.0, 1.0, 1.0], rtol=1e-10)
     np.testing.assert_allclose(matrix.pcg_solve(rhs), x, rtol=1e-10)
+
+
+def test_sparse_reusable_factorizations_and_direct_lu():
+    dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    matrix = pynabled.CsrMatrix.from_components(*_csr_from_dense(dense, index_dtype=np.int32))
+    rhs = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+    rhs_multi = np.column_stack([rhs, rhs * 2.0])
+    expected = np.linalg.solve(dense, rhs)
+    expected_multi = np.linalg.solve(dense, rhs_multi)
+
+    jacobi = pynabled.sparse_jacobi_preconditioner(matrix)
+    np.testing.assert_allclose(jacobi.inverse_diagonal, np.array([0.25, 1 / 3, 0.5]))
+    np.testing.assert_allclose(jacobi.apply(rhs), rhs / np.diag(dense), rtol=1e-12)
+
+    ilu0 = matrix.ilu0_factor()
+    ilut = matrix.ilut_factor(config=pynabled.ILUTConfig(drop_tolerance=0.0, max_fill=8))
+    iluk = matrix.iluk_factor(config=pynabled.ILUKConfig(level_of_fill=1))
+
+    for factorization in (ilu0, ilut, iluk):
+        assert factorization.l.index_dtype == np.dtype(np.int32)
+        assert factorization.u.index_dtype == np.dtype(np.int32)
+        np.testing.assert_allclose(
+            _dense_from_csr(factorization.l) @ _dense_from_csr(factorization.u),
+            dense,
+            rtol=1e-12,
+            atol=1e-12,
+        )
+        np.testing.assert_allclose(factorization.apply(rhs), expected, rtol=1e-10, atol=1e-10)
+
+    sparse_lu = matrix.lu_factor()
+    assert sparse_lu.l.index_dtype == np.dtype(np.int32)
+    assert sparse_lu.u.index_dtype == np.dtype(np.int32)
+    assert sparse_lu.permutation.dtype == np.dtype(np.int32)
+    np.testing.assert_allclose(sparse_lu.solve(rhs), expected, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        sparse_lu.solve_multiple(rhs_multi),
+        expected_multi,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        pynabled.sparse_lu_solve(matrix, rhs),
+        expected,
+        rtol=1e-12,
+        atol=1e-15,
+    )
+
+
+def test_sparse_symmetric_reusable_factorizations_preserve_dtype():
+    dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [1.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float32,
+    )
+    matrix = pynabled.CsrMatrix.from_components(*_csr_from_dense(dense))
+    rhs = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    expected = np.linalg.solve(dense.astype(np.float64), rhs.astype(np.float64)).astype(np.float32)
+
+    ic0 = pynabled.sparse_ic0_factor(matrix)
+    ildl0 = matrix.ildl0_factor()
+
+    assert ic0.l.dtype == np.dtype(np.float32)
+    assert ic0.l_transpose.dtype == np.dtype(np.float32)
+    assert ildl0.l.dtype == np.dtype(np.float32)
+    assert ildl0.l_transpose.dtype == np.dtype(np.float32)
+    assert ildl0.d.dtype == np.dtype(np.float32)
+
+    np.testing.assert_allclose(ic0.apply(rhs), expected, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(ildl0.apply(rhs), expected, rtol=1e-4, atol=1e-4)
 
 
 def test_sparse_accepts_scipy_compatible_objects():

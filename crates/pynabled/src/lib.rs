@@ -24,6 +24,14 @@ use pyo3::prelude::*;
 #[pyo3(name = "_pynabled")]
 #[expect(clippy::too_many_lines)]
 fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<sparse::csr::PyJacobiPreconditioner>()?;
+    m.add_class::<sparse::csr::PyIlu0Factorization>()?;
+    m.add_class::<sparse::csr::PyIlutFactorization>()?;
+    m.add_class::<sparse::csr::PyIlukFactorization>()?;
+    m.add_class::<sparse::csr::PyIc0Factorization>()?;
+    m.add_class::<sparse::csr::PyIldl0Factorization>()?;
+    m.add_class::<sparse::csr::PySparseLuFactorization>()?;
+
     // SVD
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::decompose, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::decompose_truncated, m)?)?;
@@ -209,6 +217,13 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::transpose, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::jacobi_solve, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::pcg_solve, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::jacobi_preconditioner, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::ilu0_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::ilut_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::iluk_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::ic0_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::ildl0_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::sparse_lu_factor, m)?)?;
 
     #[cfg(feature = "arrow")]
     {

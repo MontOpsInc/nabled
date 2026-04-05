@@ -25,6 +25,7 @@ arrow = ["nabled/arrow", "dep:arrow-pyarrow", "dep:arrow-array", "dep:arrow-data
 
 [dependencies]
 nabled.workspace = true
+nabled-core.workspace = true
 nabled-linalg.workspace = true
 nabled-ml.workspace = true
 ndarray.workspace = true

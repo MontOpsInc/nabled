@@ -66,8 +66,8 @@ pub fn nonsymmetric<'py>(
     py: Python<'py>,
     matrix: &Bound<'py, PyAny>,
 ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-    match utils::real_array2(matrix, "matrix")? {
-        utils::RealReadonlyArray2::F32(arr) => {
+    match utils::numeric_array2(matrix, "matrix")? {
+        utils::NumericReadonlyArray2::F32(arr) => {
             let result =
                 nabled_linalg::eigen::nonsymmetric_view(&arr.as_array()).map_err(to_py_err)?;
             Ok((
@@ -75,9 +75,17 @@ pub fn nonsymmetric<'py>(
                 utils::pyarray2_from_owned(py, result.schur_vectors),
             ))
         }
-        utils::RealReadonlyArray2::F64(arr) => {
+        utils::NumericReadonlyArray2::F64(arr) => {
             let result =
                 nabled_linalg::eigen::nonsymmetric_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.schur_vectors),
+            ))
+        }
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let result = nabled_linalg::eigen::nonsymmetric_complex_view(&arr.as_array())
+                .map_err(to_py_err)?;
             Ok((
                 utils::pyarray1_from_owned(py, result.eigenvalues),
                 utils::pyarray2_from_owned(py, result.schur_vectors),
