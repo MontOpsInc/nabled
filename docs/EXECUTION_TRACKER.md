@@ -29,7 +29,7 @@ Use this file to resume work quickly after context compaction without re-auditin
 8. `feat/pynabled-bindings` baseline sync is now complete (`N-PY-001`): the branch is merged to current `main`, Python package version truth is aligned to `0.0.8`, and tracked native `dSYM` artifacts are removed from the sdist path.
 9. `feat/pynabled-bindings` now has an explicit parity target in `docs/PYNABLED_PARITY_MATRIX.md`, covering domain, dtype, Arrow, allocation-control, and feature/build expectations for release.
 10. `feat/pynabled-bindings` now has an explicit boundary-architecture contract in `docs/PYNABLED_ARCHITECTURE.md`, locking canonical Python carriers by domain plus copy/allocation, callback, and result-fidelity rules.
-11. `feat/pynabled-bindings` remains under an active merge gate for parity, coverage, docs, performance, feature/build UX, and PyPI hardening; it does not inherit the repository's monitor-only posture until the remaining `N-PY-*` items below are complete.
+11. `feat/pynabled-bindings` remains under an active merge gate for parity, docs, performance, feature/build UX, and PyPI hardening; `N-PY-006` is now complete, so coverage/CI enforcement is no longer an open blocker category.
 
 ## V1 Stability Gate (Ordered, Required)
 
@@ -266,18 +266,18 @@ Audit reference: `docs/PYNABLED_GAPS_AUDIT.md` (2026-04-03).
 203. `D-203`: Fourth `N-PY-003` foundation pass is landed on `feat/pynabled-bindings`: sparse Python now has a canonical `CsrMatrix` carrier with SciPy-compatible CSR ingress, current sparse wrappers borrow CSR structure and RHS data into Rust view paths instead of rebuilding owned sparse matrices on every call, and the exposed sparse surface now includes sparse-dense matmat plus transpose alongside matvec/Jacobi/PCG; the full Python suite is green on the editable Python 3.12 build (`101 passed, 3 skipped`).
 204. `D-204`: Fifth `N-PY-003` numerics pass is landed on `feat/pynabled-bindings`: existing real-valued Python vector/matrix/current sparse-baseline/statistics/regression/PCA/iterative bindings now accept both `float32` and `float64` under the same public function names, sparse `CsrMatrix` preserves `float32` / `float64` values instead of normalizing everything to `float64`, mixed real dtypes now fail explicitly instead of silently casting, and the full Python suite is green on the editable Python 3.12 build (`108 passed, 3 skipped`).
 205. `D-205`: Sixth `N-PY-003` sparse-carrier ergonomics pass is landed on `feat/pynabled-bindings`: `pynabled.CsrMatrix` now preserves `int32` / `int64` index buffers end-to-end, the raw Rust bridge borrows either signed index dtype instead of forcing `int64`, sparse transpose preserves the input index dtype, explicit `dtype=` / `index_dtype=` normalization plus `astype(...)` / `with_index_dtype(...)` are available on the carrier, non-contiguous CSR buffers now fail at carrier construction unless `copy=True`, and the full Python suite is green on the editable Python 3.12 build (`113 passed, 3 skipped`).
+206. `D-206`: `N-PY-006` is complete on `feat/pynabled-bindings`: Python quality gates now have a first-class split policy instead of being implicitly folded into Rust coverage, with `cargo llvm-cov` excluding `pynabled`, Python package coverage enforced at `>= 90%` via `pytest-cov` (`127 passed, 3 skipped`, `99.65%`), `just checks` running the new `python-quality` gate, CI enforcing full pytest plus wheel/sdist/feature smoke (`default`, `arrow`, `openblas-system`, `accelerator-rayon`, and combined builds), and the full repository gate now exiting green.
 
 ## Next
 
 1. `N-PY-003`: Continue the Python API/numerics parity pass under the locked `docs/PYNABLED_ARCHITECTURE.md` contract, focusing next on the remaining `f32` gaps (dense decompositions/functions, tensor breadth, callable `jacobian`/`optimization`, and Arrow-admitted rows), sparse breadth/reuse paths beyond the landed CSR carrier foundation, remaining dense complex parity, and typed result-object fidelity needed for production parity claims.
 2. `N-PY-004`: Expand Python Arrow/PyArrow bindings from the current minimal subset to full admitted `ndarrow`/`nabled::arrow` parity, including canonical carrier selection and zero-copy contract preservation.
 3. `N-PY-005`: Normalize Python feature/build UX so the documented Python extras and source-build instructions truthfully map to the supported provider/backend feature matrix.
-4. `N-PY-006`: Add Python quality gates for wheel+sdist smoke, full pytest execution in CI, Python coverage `>= 90%`, and required feature permutations (`default`, `arrow`, provider, accelerator, and combined builds where applicable).
-5. `N-PY-007`: Perform the Python-side performance/copy-elision audit and close avoidable ingress/egress copies, contiguity traps, and wrapper-level materializations that would compromise `nabled` performance goals.
-6. `N-PY-008`: Harden the PyPI release path with clean sdists, pinned actions/tooling, Python dependency automation/scanning, and trusted publishing or equivalent supply-chain controls.
-7. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
-8. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
-9. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
+4. `N-PY-007`: Perform the Python-side performance/copy-elision audit and close avoidable ingress/egress copies, contiguity traps, and wrapper-level materializations that would compromise `nabled` performance goals.
+5. `N-PY-008`: Harden the PyPI release path with clean sdists, pinned actions/tooling, Python dependency automation/scanning, and trusted publishing or equivalent supply-chain controls.
+6. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
+7. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
+8. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
 
 Tensor-depth stop rubric (post-v1 finite target):
 1. `D-179` TT algebra utilities (`tt_inner`, `tt_norm`, `tt_add`, `tt_hadamard`, `tt_hadamard_round`) with tests/feature-matrix parity. ✅

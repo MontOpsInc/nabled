@@ -438,7 +438,7 @@ where
 }
 
 #[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 fn solve_least_squares_provider<T>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,

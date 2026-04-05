@@ -146,7 +146,6 @@ fn should_fallback_magma_runtime(error: &CholeskyError) -> bool {
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
@@ -600,7 +599,6 @@ fn inverse_complex_provider(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
 fn solve_complex_from_factor(
     lower_factor: &Array2<Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
@@ -658,7 +656,6 @@ fn decompose_dispatch<T: NabledReal>(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
 fn solve_from_factor<T: NabledReal>(
     lower_factor: &Array2<T>,
     rhs: &ArrayView1<'_, T>,
@@ -702,7 +699,6 @@ fn solve_from_factor<T: NabledReal>(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
 fn inverse_from_factor<T: NabledReal>(
     lower_factor: &Array2<T>,
 ) -> Result<Array2<T>, CholeskyError> {
@@ -930,7 +926,6 @@ pub fn solve_complex_view(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-#[allow(clippy::many_single_char_names)]
 #[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_into<T>(
     matrix: &Array2<T>,
@@ -947,7 +942,6 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-#[allow(clippy::many_single_char_names)]
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_into<T: NabledReal>(
     matrix: &Array2<T>,
@@ -957,7 +951,6 @@ pub fn solve_into<T: NabledReal>(
     solve_into_impl(&matrix.view(), &rhs.view(), output)
 }
 
-#[allow(clippy::many_single_char_names)]
 #[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn solve_into_impl<T>(
     matrix: &ArrayView2<'_, T>,
@@ -981,7 +974,6 @@ where
     Ok(())
 }
 
-#[allow(clippy::many_single_char_names)]
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn solve_into_impl<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,

@@ -141,7 +141,7 @@ pub(crate) fn lu_decompose<T: NabledReal>(
     Ok((l, u, pivots, sign))
 }
 
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 #[cfg(not(feature = "lapack-provider"))]
 pub(crate) fn lu_solve<T: NabledReal>(
     l: &Array2<T>,
@@ -185,7 +185,7 @@ pub(crate) fn lu_solve<T: NabledReal>(
     Ok(x)
 }
 
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 #[cfg(not(feature = "lapack-provider"))]
 pub(crate) fn inverse_from_lu<T: NabledReal>(
     l: &Array2<T>,
@@ -247,7 +247,7 @@ pub(crate) fn qr_gram_schmidt<T: NabledReal>(
     (q, r, rank)
 }
 
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 pub(crate) fn jacobi_eigen_symmetric<T: NabledReal>(
     matrix: &Array2<T>,
     tolerance: T,

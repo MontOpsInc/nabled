@@ -16,7 +16,7 @@ and parity-target definition `N-PY-002` are now complete: the branch is merged t
 `pyproject.toml` version truth is aligned to `0.0.8`, tracked native `dSYM` artifacts were removed
 from the Python sdist path, and `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative
 release target. Remaining blocking work is Python API parity implementation, Arrow/PyArrow
-coverage, feature exposure, coverage/CI gates, performance contracts, documentation, and PyPI
+coverage, feature exposure, performance contracts, documentation, and PyPI
 supply-chain hardening. The first `N-PY-003` implementation pass is also landed: Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across
 iterative solves, PCA transform/inverse-transform, regression, and stats. A second `N-PY-003`
@@ -47,8 +47,12 @@ sixth `N-PY-003` sparse-carrier ergonomics pass is also landed: `pynabled.CsrMat
 instead of forcing `int64`, sparse transpose preserves input index dtype, explicit `dtype=` /
 `index_dtype=` normalization plus `astype(...)` / `with_index_dtype(...)` are available on the
 carrier, non-contiguous CSR buffers now fail at carrier construction unless `copy=True`, and the
-full Python suite is green on the editable Python 3.12 build (`113 passed, 3 skipped`). Treat
-`docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
+full Python suite is green on the editable Python 3.12 build (`113 passed, 3 skipped`). `N-PY-006`
+is now also complete: Rust `llvm-cov` excludes `pynabled`, Python package coverage is enforced at
+`>= 90%` via `pytest-cov` (`127 passed, 3 skipped`, `99.65%`), `just checks` now runs the
+`python-quality` gate, CI enforces full pytest plus wheel/sdist/feature smoke, and the full repo
+gate is green again. Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan
+for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 7. Public `*_lapack` compatibility wrappers have been removed.

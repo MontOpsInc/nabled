@@ -62,27 +62,30 @@ test-integration-all:
 
 coverage:
     cargo llvm-cov clean --workspace
-    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
-    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
+    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
     cargo llvm-cov report -vv --html --output-dir coverage --open --ignore-filename-regex {{ coverage_ignore_regex }}
 
 coverage-json:
     cargo llvm-cov clean --workspace
-    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
-    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
+    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
     cargo llvm-cov report --json --output-path coverage/cov.json --ignore-filename-regex {{ coverage_ignore_regex }}
 
 coverage-lcov:
     cargo llvm-cov clean --workspace
-    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
-    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
+    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
     cargo llvm-cov report --lcov --output-path coverage/lcov.info --ignore-filename-regex {{ coverage_ignore_regex }}
 
 coverage-check:
     cargo llvm-cov clean --workspace
-    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled'
-    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled'
+    cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
+    {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
     cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }} --ignore-filename-regex {{ coverage_ignore_regex }}
+
+python-quality:
+    {{ provider_env_prefix }} bash scripts/python_quality_gate.sh
 
 # --- DOCS ---
 docs:
@@ -330,6 +333,7 @@ checks:
     just -f {{ justfile() }} check-accelerator
     just -f {{ justfile() }} test-accelerator
     just -f {{ justfile() }} coverage-check
+    just -f {{ justfile() }} python-quality
     just -f {{ justfile() }} check-provider
     just -f {{ justfile() }} backend-capability-report
 

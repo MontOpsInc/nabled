@@ -390,11 +390,11 @@ unsafe extern "C" {
     ) -> i32;
 }
 
-#[allow(unnameable_types)]
+#[expect(unnameable_types)]
 #[doc(hidden)]
-#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+#[expect(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
 pub trait MagmaReal: NabledReal + Copy + 'static {
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn magma_gesv(
         n: i32,
         nrhs: i32,
@@ -434,7 +434,7 @@ pub trait MagmaReal: NabledReal + Copy + 'static {
         lwork: i32,
         info: *mut i32,
     );
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn magma_syevd(
         jobz: i32,
         uplo: i32,
@@ -450,9 +450,9 @@ pub trait MagmaReal: NabledReal + Copy + 'static {
     );
 }
 
-#[allow(unnameable_types)]
+#[expect(unnameable_types)]
 #[doc(hidden)]
-#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+#[expect(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
 pub trait MagmaRealBatched: MagmaReal {
     fn magma_set_pointer(
         output_array: *mut *mut Self,
@@ -497,7 +497,7 @@ pub trait MagmaRealBatched: MagmaReal {
 
 type LuDecomposition<T> = (Array2<T>, Array2<T>, Vec<usize>, i8);
 
-#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+#[expect(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
 impl MagmaReal for f32 {
     fn magma_gesv(
         n: i32,
@@ -588,7 +588,7 @@ impl MagmaReal for f32 {
     }
 }
 
-#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+#[expect(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
 impl MagmaRealBatched for f32 {
     fn magma_set_pointer(
         output_array: *mut *mut Self,
@@ -661,7 +661,7 @@ impl MagmaRealBatched for f32 {
     }
 }
 
-#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+#[expect(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
 impl MagmaReal for f64 {
     fn magma_gesv(
         n: i32,
@@ -752,7 +752,7 @@ impl MagmaReal for f64 {
     }
 }
 
-#[allow(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
+#[expect(clippy::many_single_char_names, clippy::too_many_arguments, clippy::similar_names)]
 impl MagmaRealBatched for f64 {
     fn magma_set_pointer(
         output_array: *mut *mut Self,
@@ -1055,7 +1055,7 @@ fn validate_batched_finite<T: NabledReal>(
     Ok((batch_count, rows, cols))
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub(crate) fn qr_decompose_batched<T: MagmaRealBatched>(
     matrices: &ArrayView3<'_, T>,
     rank_tolerance: T,
@@ -1072,7 +1072,7 @@ pub(crate) fn qr_decompose_batched<T: MagmaRealBatched>(
     Ok(output)
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub(crate) fn lu_decompose_batched<T: MagmaRealBatched>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<(Array2<T>, Array2<T>)>, &'static str> {
@@ -1133,7 +1133,7 @@ fn lu_factor_raw<T: MagmaReal>(
     Ok((data, pivots, sign))
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) fn lu_decompose<T: MagmaReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<LuDecomposition<T>, &'static str> {
@@ -1523,7 +1523,7 @@ pub(crate) fn lu_determinant<T: MagmaReal>(matrix: &ArrayView2<'_, T>) -> Result
     Ok(determinant)
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub(crate) fn qr_decompose<T: MagmaReal>(
     matrix: &ArrayView2<'_, T>,
     tolerance: T,
@@ -1611,8 +1611,8 @@ pub(crate) fn qr_decompose<T: MagmaReal>(
     Ok((q, r, rank))
 }
 
-#[allow(clippy::type_complexity)]
-#[cfg_attr(feature = "lapack-provider", allow(dead_code))]
+#[expect(clippy::type_complexity)]
+#[cfg_attr(feature = "lapack-provider", expect(dead_code))]
 pub(crate) fn svd_decompose<T: MagmaReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<(Array2<T>, Array1<T>, Array2<T>), &'static str> {
@@ -2108,7 +2108,7 @@ pub(crate) fn cholesky_inverse_complex(
     Ok(inverse)
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub(crate) fn qr_decompose_complex(
     matrix: &ArrayView2<'_, Complex64>,
     tolerance: f64,
@@ -2205,7 +2205,7 @@ pub(crate) fn qr_decompose_complex(
     Ok((q, r, rank))
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub(crate) fn svd_decompose_complex(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<(Array2<Complex64>, Array1<f64>, Array2<Complex64>), &'static str> {

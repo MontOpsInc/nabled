@@ -208,7 +208,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
-#[allow(clippy::similar_names)]
+#[expect(clippy::similar_names)]
 pub fn numerical_hessian<T, F, S>(
     function: &F,
     x: &ArrayBase<S, Ix1>,

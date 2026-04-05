@@ -1167,7 +1167,6 @@ fn retain_strongest_entries<T: NabledReal>(entries: &mut Vec<(usize, T)>, max_en
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or the factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ilut_factor<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     drop_tolerance: T,
@@ -1183,7 +1182,6 @@ pub fn ilut_factor<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or the factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ilut_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     drop_tolerance: T,
@@ -1345,7 +1343,6 @@ type SparseUpperRowWithLevel<T> = Vec<(usize, T, usize)>;
 type IlukRowState<T> = (BTreeMap<usize, T>, HashMap<usize, usize>);
 type IlukRowFactors<T> = (SparseRowEntries<T>, SparseRowEntries<T>, SparseUpperRowWithLevel<T>, T);
 
-#[allow(clippy::many_single_char_names)]
 fn iluk_eliminate_row_entries<T: NabledReal>(
     row: usize,
     level_of_fill: usize,
@@ -1609,7 +1606,6 @@ fn split_lu_rows_to_csr<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn sparse_lu_factor<T: NabledReal>(
     matrix: &CsrMatrix<T>,
 ) -> Result<SparseLUFactorization<T>, SparseError> {
@@ -1622,7 +1618,6 @@ pub fn sparse_lu_factor<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn sparse_lu_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
 ) -> Result<SparseLUFactorization<T>, SparseError> {
@@ -1899,7 +1894,6 @@ pub fn apply_iluk_preconditioner<T: NabledReal, S: Data<Elem = T>>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ic0_factor<T: NabledReal>(
     matrix: &CsrMatrix<T>,
 ) -> Result<IC0Factorization<T>, SparseError> {
@@ -1913,7 +1907,6 @@ pub fn ic0_factor<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ic0_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
 ) -> Result<IC0Factorization<T>, SparseError> {
@@ -2080,7 +2073,6 @@ pub fn apply_ic0_preconditioner<T: NabledReal, S: Data<Elem = T>>(
 /// # Errors
 /// Returns an error if dimensions are incompatible, input is non-symmetric,
 /// or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ildl0_factor<T: NabledReal>(
     matrix: &CsrMatrix<T>,
 ) -> Result<ILDL0Factorization<T>, SparseError> {
@@ -2096,7 +2088,6 @@ pub fn ildl0_factor<T: NabledReal>(
 /// # Errors
 /// Returns an error if dimensions are incompatible, input is non-symmetric,
 /// or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ildl0_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
 ) -> Result<ILDL0Factorization<T>, SparseError> {
@@ -2545,7 +2536,7 @@ fn pcg_with_operator<T: NabledReal>(
 }
 
 #[cfg(feature = "magma-system")]
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 fn gmres_with_operator<T: NabledReal>(
     rhs: &Array1<T>,
     tolerance: T,
@@ -3557,7 +3548,6 @@ pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilu0_solve<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3573,7 +3563,6 @@ pub fn gmres_ilu0_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilu0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -3590,7 +3579,6 @@ pub fn gmres_ilu0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilu0_solve_with_factorization<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3613,7 +3601,6 @@ pub fn gmres_ilu0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -3718,7 +3705,6 @@ pub fn gmres_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: C
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilut_solve<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3743,7 +3729,6 @@ pub fn gmres_ilut_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilut_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -3762,7 +3747,6 @@ pub fn gmres_ilut_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilut_solve_with_factorization<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3785,7 +3769,6 @@ pub fn gmres_ilut_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilut_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -3923,7 +3906,6 @@ pub fn gmres_ilut_solve_with_config_view<T: NabledReal, R: CsrIndex, C: CsrIndex
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_iluk_solve<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3940,7 +3922,6 @@ pub fn gmres_iluk_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_iluk_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -3958,7 +3939,6 @@ pub fn gmres_iluk_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_iluk_solve_with_factorization<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3981,7 +3961,6 @@ pub fn gmres_iluk_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_iluk_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -4119,7 +4098,6 @@ pub fn gmres_iluk_solve_with_config_view<T: NabledReal, R: CsrIndex, C: CsrIndex
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ildl0_solve<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -4135,7 +4113,6 @@ pub fn gmres_ildl0_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ildl0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -4158,7 +4135,6 @@ pub fn gmres_ildl0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ildl0_solve_with_factorization<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -4181,7 +4157,6 @@ pub fn gmres_ildl0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,

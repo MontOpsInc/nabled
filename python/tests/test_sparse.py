@@ -1,5 +1,9 @@
 """Tests for sparse CSR bindings."""
 
+import re
+import sys
+import types
+
 import numpy as np
 import pynabled
 import pytest
@@ -190,3 +194,133 @@ def test_sparse_carrier_rejects_non_contiguous_csr_buffers_without_copy():
 
     matrix = pynabled.CsrMatrix((3, 3), indptr, indices, data, copy=True)
     assert matrix.index_dtype == np.dtype(np.int64)
+
+
+def test_sparse_rejects_invalid_explicit_dtypes():
+    nrows, ncols, indptr, indices, data = _make_csr_diagonal(3)
+    with pytest.raises(TypeError, match="dtype must be float32 or float64"):
+        pynabled.CsrMatrix((nrows, ncols), indptr, indices, data, dtype=np.int32)
+    with pytest.raises(TypeError, match="index_dtype must be int32 or int64"):
+        pynabled.CsrMatrix((nrows, ncols), indptr, indices, data, index_dtype=np.uint32)
+
+
+def test_sparse_rejects_bad_array_ranks_and_non_real_data():
+    _, _, indptr, indices, data = _make_csr_diagonal(3)
+    with pytest.raises(ValueError, match="indptr must be a 1D array"):
+        pynabled.CsrMatrix((3, 3), indptr.reshape(2, 2), indices, data)
+    with pytest.raises(ValueError, match="data must be a 1D array"):
+        pynabled.CsrMatrix((3, 3), indptr, indices, data.reshape(3, 1))
+    with pytest.raises(TypeError, match="data must have dtype float32 or float64"):
+        pynabled.CsrMatrix((3, 3), indptr, indices, np.array([1, 2, 3], dtype=np.int32))
+
+
+def test_sparse_index_dtype_inference_preserves_available_numpy_dtype():
+    _, _, indptr_i32, indices_i32, data = _make_csr_diagonal(3, index_dtype=np.int32)
+    matrix_from_indptr = pynabled.CsrMatrix((3, 3), indptr_i32, indices_i32.tolist(), data)
+    matrix_from_indices = pynabled.CsrMatrix((3, 3), indptr_i32.tolist(), indices_i32, data)
+    matrix_from_lists = pynabled.CsrMatrix((3, 3), indptr_i32.tolist(), indices_i32.tolist(), data)
+
+    assert matrix_from_indptr.index_dtype == np.dtype(np.int32)
+    assert matrix_from_indices.index_dtype == np.dtype(np.int32)
+    assert matrix_from_lists.index_dtype == np.dtype(np.int32)
+
+
+def test_sparse_rejects_invalid_numpy_index_dtypes_without_explicit_normalization():
+    _, _, indptr, indices, data = _make_csr_diagonal(3)
+    with pytest.raises(TypeError, match="indptr must have dtype int32 or int64"):
+        pynabled.CsrMatrix((3, 3), indptr.astype(np.uint32), indices, data)
+    with pytest.raises(TypeError, match="indices must have dtype int32 or int64"):
+        pynabled.CsrMatrix((3, 3), indptr, indices.astype(np.uint32), data)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"shape": (0, 3)}, "shape dimensions must be positive"),
+        ({"indptr": np.array([0, 1, 2], dtype=np.int64)}, "indptr length must equal nrows + 1"),
+        (
+            {"indices": np.array([0, 1], dtype=np.int64), "data": np.array([1.0, 2.0, 3.0])},
+            "indices and data must have matching lengths",
+        ),
+        ({"indptr": np.array([1, 2, 3, 3], dtype=np.int64)}, "indptr must start at 0"),
+        (
+            {"indptr": np.array([0, 1, 2, 4], dtype=np.int64)},
+            "indptr terminal offset must equal nnz",
+        ),
+        (
+            {"indptr": np.array([0, 2, 1, 3], dtype=np.int64)},
+            "indptr must be non-decreasing",
+        ),
+        (
+            {"indices": np.array([0, 1, 3], dtype=np.int64)},
+            "indices must lie within matrix column bounds",
+        ),
+    ],
+)
+def test_sparse_structural_validation_errors(kwargs, message):
+    base = {
+        "shape": (3, 3),
+        "indptr": np.array([0, 1, 2, 3], dtype=np.int64),
+        "indices": np.array([0, 1, 2], dtype=np.int64),
+        "data": np.array([1.0, 2.0, 3.0], dtype=np.float64),
+    }
+    base.update(kwargs)
+    with pytest.raises(ValueError, match=re.escape(message)):
+        pynabled.CsrMatrix(base["shape"], base["indptr"], base["indices"], base["data"])
+
+
+def test_sparse_from_components_and_from_scipy_error_paths():
+    matrix = pynabled.CsrMatrix.from_components(*_make_csr_diagonal(3))
+
+    with pytest.raises(TypeError, match="from_components expects"):
+        pynabled.CsrMatrix.from_components(1, 2, 3)
+
+    assert pynabled.CsrMatrix.from_scipy(matrix) is matrix
+    assert pynabled.CsrMatrix.from_scipy(matrix, dtype=np.float32).dtype == np.dtype(np.float32)
+
+    with pytest.raises(
+        TypeError,
+        match="expected pynabled.CsrMatrix or a scipy.sparse-compatible object with tocsr",
+    ):
+        pynabled.CsrMatrix.from_scipy(object())
+
+    incomplete = types.SimpleNamespace(format="csr", shape=(1, 1), indptr=np.array([0, 0]))
+    with pytest.raises(
+        TypeError, match="expected pynabled.CsrMatrix or a scipy.sparse-compatible CSR object"
+    ):
+        pynabled.CsrMatrix.from_scipy(incomplete)
+
+
+def test_sparse_carrier_helpers_and_dunders():
+    matrix = pynabled.CsrMatrix.from_components(*_make_csr_diagonal(3))
+
+    copied = matrix.copy()
+    components = matrix.to_components()
+
+    assert copied is not matrix
+    assert matrix.astype(np.float64) is matrix
+    assert matrix.with_index_dtype(np.int64) is matrix
+    assert components[0] == matrix.nrows
+    assert components[1] == matrix.ncols
+    assert matrix.__matmul__(np.zeros((1, 1, 1))) is NotImplemented
+    assert "index_dtype=int64" in repr(matrix)
+
+
+def test_sparse_to_scipy_import_error_and_success(monkeypatch):
+    matrix = pynabled.CsrMatrix.from_components(*_make_csr_diagonal(3))
+
+    with pytest.raises(ImportError, match="scipy is required"):
+        matrix.to_scipy()
+
+    scipy_sparse = types.SimpleNamespace(
+        csr_matrix=lambda payload, shape, copy: (payload, shape, copy)
+    )
+    scipy_module = types.SimpleNamespace(sparse=scipy_sparse)
+    monkeypatch.setitem(sys.modules, "scipy", scipy_module)
+
+    payload, shape, copy = matrix.to_scipy()
+    assert shape == matrix.shape
+    assert copy is False
+    np.testing.assert_array_equal(payload[0], matrix.data)
+    np.testing.assert_array_equal(payload[1], matrix.indices)
+    np.testing.assert_array_equal(payload[2], matrix.indptr)

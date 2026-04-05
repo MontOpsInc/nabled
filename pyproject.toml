@@ -46,7 +46,7 @@ Documentation = "https://docs.rs/nabled"
 Changelog = "https://github.com/MontOpsInc/nabled/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "pytest-cov>=7.0"]
 openblas = []
 accelerator = []
 arrow = ["pyarrow>=14"]
@@ -55,3 +55,11 @@ arrow = ["pyarrow>=14"]
 manifest-path = "crates/pynabled/Cargo.toml"
 python-source = "python"
 module-name = "pynabled._pynabled"
+
+[tool.coverage.run]
+branch = true
+source = ["pynabled"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true

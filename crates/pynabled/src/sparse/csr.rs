@@ -15,7 +15,7 @@ type PyCsrParts = (usize, usize, Py<PyAny>, Py<PyAny>, Py<PyAny>);
 
 fn py_value_error(message: impl ToString) -> PyErr { PyValueError::new_err(message.to_string()) }
 
-#[allow(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_possible_truncation)]
 fn tolerance_f32(tolerance: Option<f64>, default: f32) -> f32 {
     tolerance.map_or(default, |value| value as f32)
 }
@@ -392,6 +392,7 @@ pub fn transpose<'py>(
 
 /// Jacobi iterative solve over raw CSR components.
 #[pyfunction(name = "sparse_jacobi_solve")]
+#[expect(clippy::too_many_lines)]
 pub fn jacobi_solve<'py>(
     py: Python<'py>,
     nrows: usize,
@@ -509,6 +510,7 @@ pub fn jacobi_solve<'py>(
 
 /// PCG solve over raw CSR components.
 #[pyfunction(name = "sparse_pcg_solve")]
+#[expect(clippy::too_many_lines)]
 pub fn pcg_solve<'py>(
     py: Python<'py>,
     nrows: usize,

@@ -273,7 +273,7 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 #[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
@@ -290,7 +290,6 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
 #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
@@ -307,7 +306,7 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 #[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
@@ -324,7 +323,6 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
@@ -337,7 +335,7 @@ where
     gmres_view(&matrix_a.view(), &matrix_b.view(), config)
 }
 
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 fn gmres_impl<T>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView1<'_, T>,
@@ -415,7 +413,7 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 #[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
 pub fn gmres_view<T>(
     matrix_a: &ArrayView2<'_, T>,
@@ -432,7 +430,6 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
 #[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
 pub fn gmres_view<T>(
     matrix_a: &ArrayView2<'_, T>,
@@ -449,7 +446,7 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 #[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
 pub fn gmres_view<T>(
     matrix_a: &ArrayView2<'_, T>,
@@ -466,7 +463,6 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn gmres_view<T>(
     matrix_a: &ArrayView2<'_, T>,
@@ -483,7 +479,6 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_complex(
     matrix_a: &Array2<Complex64>,
     matrix_b: &Array1<Complex64>,

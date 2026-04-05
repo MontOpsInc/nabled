@@ -1,13 +1,12 @@
 //! Python bindings for nabled via PyO3.
 
-#![allow(
+#![expect(
     unreachable_pub,
     clippy::too_many_arguments,
     clippy::type_complexity,
     clippy::doc_markdown,
     clippy::unnecessary_wraps,
-    clippy::needless_pass_by_value,
-    clippy::default_trait_access
+    clippy::needless_pass_by_value
 )]
 
 mod error;
@@ -23,7 +22,7 @@ use pyo3::prelude::*;
 
 #[pymodule]
 #[pyo3(name = "_pynabled")]
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // SVD
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::decompose, m)?)?;

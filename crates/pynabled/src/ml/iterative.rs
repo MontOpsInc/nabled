@@ -9,7 +9,7 @@ use pyo3::types::PyAny;
 use crate::error::to_py_err;
 use crate::utils;
 
-#[allow(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_possible_truncation)]
 fn tolerance_f32(tolerance: Option<f64>, default: f32) -> f32 {
     tolerance.map_or(default, |value| value as f32)
 }

@@ -171,7 +171,6 @@ fn validate_complex_square_finite_view(matrix: &ArrayView2<'_, Complex64>) -> Re
 type ComplexLUFactors = (Array2<Complex64>, Array2<Complex64>, Vec<usize>, i8);
 
 #[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<ComplexLUFactors, LUError> {
@@ -232,7 +231,7 @@ fn decompose_complex_internal(
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 fn solve_complex_from_factors(
     l: &Array2<Complex64>,
     u: &Array2<Complex64>,
