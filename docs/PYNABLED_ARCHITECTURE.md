@@ -1,6 +1,6 @@
 # Pynabled Architecture Contract
 
-Last updated: 2026-04-03
+Last updated: 2026-04-06
 
 ## Purpose
 
@@ -198,6 +198,8 @@ Contract:
    exists.
 2. They may not be presented as no-compromise performance equivalents to Rust-native execution.
 3. Docs must distinguish them from performance-preserving APIs.
+4. Python should expose typed config objects for these workflows instead of treating raw positional
+   tuning parameters as the production-facing contract.
 
 ## Result Fidelity Contract
 

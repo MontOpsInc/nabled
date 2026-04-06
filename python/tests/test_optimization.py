@@ -1,6 +1,7 @@
 """Tests for optimization bindings."""
 
 import numpy as np
+import pytest
 import pynabled
 
 TARGET = np.array([3.0], dtype=np.float64)
@@ -28,20 +29,36 @@ def complex_gradient(x):
 def test_backtracking_line_search():
     point = np.array([0.0], dtype=np.float64)
     direction = np.array([1.0], dtype=np.float64)
-    step = pynabled.backtracking_line_search(point, direction, objective, gradient)
+    step = pynabled.backtracking_line_search(
+        point,
+        direction,
+        objective,
+        gradient,
+        config=pynabled.LineSearchConfig(initial_step=1.0, max_iterations=32),
+    )
     assert step > 0
     assert objective(point + step * direction) < objective(point)
 
 
 def test_gradient_descent():
     initial = np.array([0.0], dtype=np.float64)
-    optimum = pynabled.gradient_descent(initial, objective, gradient, learning_rate=0.1)
+    optimum = pynabled.gradient_descent(
+        initial,
+        objective,
+        gradient,
+        config=pynabled.GradientDescentConfig(learning_rate=0.1, max_iterations=200),
+    )
     np.testing.assert_allclose(optimum, TARGET, atol=1e-4)
 
 
 def test_adam():
     initial = np.array([0.0], dtype=np.float64)
-    optimum = pynabled.adam(initial, objective, gradient, learning_rate=0.1)
+    optimum = pynabled.adam(
+        initial,
+        objective,
+        gradient,
+        config=pynabled.AdamConfig(learning_rate=0.1),
+    )
     np.testing.assert_allclose(optimum, TARGET, atol=1e-3)
 
 
@@ -127,3 +144,16 @@ def test_real_optimization_bindings_accept_float32():
 
     assert optimum_projected.dtype == np.float32
     np.testing.assert_allclose(optimum_projected, upper, atol=2e-3, rtol=2e-3)
+
+
+def test_optimization_rejects_config_and_explicit_kwargs():
+    initial = np.array([0.0], dtype=np.float64)
+
+    with pytest.raises(TypeError, match="config="):
+        pynabled.gradient_descent(
+            initial,
+            objective,
+            gradient,
+            learning_rate=0.1,
+            config=pynabled.GradientDescentConfig(max_iterations=128),
+        )

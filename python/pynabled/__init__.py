@@ -6,6 +6,17 @@ import numpy as np
 
 import pynabled._pynabled as _raw
 
+from .config import (
+    AdamConfig,
+    BFGSConfig,
+    GradientDescentConfig,
+    IterativeConfig,
+    JacobianConfig,
+    LineSearchConfig,
+    MomentumConfig,
+    ProjectedGradientConfig,
+    RMSPropConfig,
+)
 from .results import (
     BalancedNonsymmetricResult,
     CholeskyResult,
@@ -116,6 +127,20 @@ def _cp_als_nd_result(weights, factors) -> CpAlsNdResult:
 
 def _tt_result(cores) -> TensorTrainResult:
     return TensorTrainResult(cores=list(cores))
+
+
+def _resolve_config(config, config_type, **kwargs):
+    if config is None:
+        return kwargs
+    if not isinstance(config, config_type):
+        raise TypeError(f"config must be {config_type.__name__} or None")
+    conflicts = [name for name, value in kwargs.items() if value is not None]
+    if conflicts:
+        joined = ", ".join(conflicts)
+        raise TypeError(
+            f"pass either {config_type.__name__} via config= or explicit keyword arguments, not both: {joined}"
+        )
+    return {name: getattr(config, name) for name in kwargs}
 
 
 def svd_decompose(a) -> SvdResult:
@@ -572,10 +597,52 @@ def tensor_tt_svd_reconstruct(result: TensorTrainResult):
     return _raw.tensor_tt_svd_reconstruct(result.cores)
 
 
-adam = _raw.adam
-adam_complex = _raw.adam_complex
-backtracking_line_search = _raw.backtracking_line_search
-backtracking_line_search_complex = _raw.backtracking_line_search_complex
+def backtracking_line_search(
+    point,
+    direction,
+    objective,
+    gradient,
+    initial_step=None,
+    contraction=None,
+    sufficient_decrease=None,
+    max_iterations=None,
+    *,
+    config: LineSearchConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        LineSearchConfig,
+        initial_step=initial_step,
+        contraction=contraction,
+        sufficient_decrease=sufficient_decrease,
+        max_iterations=max_iterations,
+    )
+    return _raw.backtracking_line_search(point, direction, objective, gradient, **kwargs)
+
+
+def backtracking_line_search_complex(
+    point,
+    direction,
+    objective,
+    gradient,
+    initial_step=None,
+    contraction=None,
+    sufficient_decrease=None,
+    max_iterations=None,
+    *,
+    config: LineSearchConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        LineSearchConfig,
+        initial_step=initial_step,
+        contraction=contraction,
+        sufficient_decrease=sufficient_decrease,
+        max_iterations=max_iterations,
+    )
+    return _raw.backtracking_line_search_complex(point, direction, objective, gradient, **kwargs)
+
+
 batched_matmat = _raw.batched_matmat
 batched_matmat_broadcast_left = _raw.batched_matmat_broadcast_left
 batched_matmat_broadcast_right = _raw.batched_matmat_broadcast_right
@@ -585,14 +652,92 @@ batched_cosine_similarity = _raw.batched_cosine_similarity
 batched_dot = _raw.batched_dot
 batched_l2_norm = _raw.batched_l2_norm
 batched_normalize = _raw.batched_normalize
-bfgs = _raw.bfgs
-bfgs_complex = _raw.bfgs_complex
+
+
+def bfgs(
+    initial,
+    objective,
+    gradient,
+    step_size=None,
+    max_iterations=None,
+    tolerance=None,
+    curvature_tolerance=None,
+    *,
+    config: BFGSConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        BFGSConfig,
+        step_size=step_size,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+        curvature_tolerance=curvature_tolerance,
+    )
+    return _raw.bfgs(initial, objective, gradient, **kwargs)
+
+
+def bfgs_complex(
+    initial,
+    objective,
+    gradient,
+    step_size=None,
+    max_iterations=None,
+    tolerance=None,
+    curvature_tolerance=None,
+    *,
+    config: BFGSConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        BFGSConfig,
+        step_size=step_size,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+        curvature_tolerance=curvature_tolerance,
+    )
+    return _raw.bfgs_complex(initial, objective, gradient, **kwargs)
+
+
 center_columns = _raw.center_columns
 center_columns_complex = _raw.center_columns_complex
 column_means = _raw.column_means
 column_means_complex = _raw.column_means_complex
-conjugate_gradient = _raw.conjugate_gradient
-conjugate_gradient_complex = _raw.conjugate_gradient_complex
+
+
+def conjugate_gradient(
+    matrix_a,
+    matrix_b,
+    tolerance=None,
+    max_iterations=None,
+    *,
+    config: IterativeConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        IterativeConfig,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    return _raw.conjugate_gradient(matrix_a, matrix_b, **kwargs)
+
+
+def conjugate_gradient_complex(
+    matrix_a,
+    matrix_b,
+    tolerance=None,
+    max_iterations=None,
+    *,
+    config: IterativeConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        IterativeConfig,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    return _raw.conjugate_gradient_complex(matrix_a, matrix_b, **kwargs)
+
+
 correlation_matrix = _raw.correlation_matrix
 correlation_matrix_complex = _raw.correlation_matrix_complex
 cosine_distance = _raw.cosine_distance
@@ -600,10 +745,82 @@ cosine_similarity = _raw.cosine_similarity
 covariance_matrix = _raw.covariance_matrix
 covariance_matrix_complex = _raw.covariance_matrix_complex
 dot = _raw.dot
-gmres = _raw.gmres
-gmres_complex = _raw.gmres_complex
-gradient_descent = _raw.gradient_descent
-gradient_descent_complex = _raw.gradient_descent_complex
+
+
+def gmres(
+    matrix_a,
+    matrix_b,
+    tolerance=None,
+    max_iterations=None,
+    *,
+    config: IterativeConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        IterativeConfig,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    return _raw.gmres(matrix_a, matrix_b, **kwargs)
+
+
+def gmres_complex(
+    matrix_a,
+    matrix_b,
+    tolerance=None,
+    max_iterations=None,
+    *,
+    config: IterativeConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        IterativeConfig,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    return _raw.gmres_complex(matrix_a, matrix_b, **kwargs)
+
+
+def gradient_descent(
+    initial,
+    objective,
+    gradient,
+    learning_rate=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: GradientDescentConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        GradientDescentConfig,
+        learning_rate=learning_rate,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.gradient_descent(initial, objective, gradient, **kwargs)
+
+
+def gradient_descent_complex(
+    initial,
+    objective,
+    gradient,
+    learning_rate=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: GradientDescentConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        GradientDescentConfig,
+        learning_rate=learning_rate,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.gradient_descent_complex(initial, objective, gradient, **kwargs)
+
+
 gram_schmidt = _raw.gram_schmidt
 gram_schmidt_classic = _raw.gram_schmidt_classic
 l2_norm = _raw.l2_norm
@@ -616,21 +833,329 @@ matrix_log_taylor = _raw.matrix_log_taylor
 matrix_power = _raw.matrix_power
 matrix_sign = _raw.matrix_sign
 matvec = _raw.matvec
-momentum_descent = _raw.momentum_descent
-momentum_descent_complex = _raw.momentum_descent_complex
-numerical_gradient = _raw.numerical_gradient
-numerical_hessian = _raw.numerical_hessian
-numerical_jacobian = _raw.numerical_jacobian
-numerical_jacobian_central = _raw.numerical_jacobian_central
+
+
+def momentum_descent(
+    initial,
+    objective,
+    gradient,
+    learning_rate=None,
+    momentum=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: MomentumConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        MomentumConfig,
+        learning_rate=learning_rate,
+        momentum=momentum,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.momentum_descent(initial, objective, gradient, **kwargs)
+
+
+def momentum_descent_complex(
+    initial,
+    objective,
+    gradient,
+    learning_rate=None,
+    momentum=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: MomentumConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        MomentumConfig,
+        learning_rate=learning_rate,
+        momentum=momentum,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.momentum_descent_complex(initial, objective, gradient, **kwargs)
+
+
+def numerical_gradient(
+    function,
+    x,
+    step_size=None,
+    tolerance=None,
+    max_iterations=None,
+    *,
+    config: JacobianConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        JacobianConfig,
+        step_size=step_size,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    return _raw.numerical_gradient(function, x, **kwargs)
+
+
+def numerical_hessian(
+    function,
+    x,
+    step_size=None,
+    tolerance=None,
+    max_iterations=None,
+    *,
+    config: JacobianConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        JacobianConfig,
+        step_size=step_size,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    return _raw.numerical_hessian(function, x, **kwargs)
+
+
+def numerical_jacobian(
+    function,
+    x,
+    step_size=None,
+    tolerance=None,
+    max_iterations=None,
+    *,
+    config: JacobianConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        JacobianConfig,
+        step_size=step_size,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    return _raw.numerical_jacobian(function, x, **kwargs)
+
+
+def numerical_jacobian_central(
+    function,
+    x,
+    step_size=None,
+    tolerance=None,
+    max_iterations=None,
+    *,
+    config: JacobianConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        JacobianConfig,
+        step_size=step_size,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    return _raw.numerical_jacobian_central(function, x, **kwargs)
+
+
 pairwise_cosine_similarity = _raw.pairwise_cosine_similarity
 pairwise_cosine_distance = _raw.pairwise_cosine_distance
 pairwise_l2_distance = _raw.pairwise_l2_distance
-projected_gradient_descent_box = _raw.projected_gradient_descent_box
-projected_gradient_descent_box_complex = _raw.projected_gradient_descent_box_complex
-rmsprop = _raw.rmsprop
-rmsprop_complex = _raw.rmsprop_complex
-stochastic_gradient_descent = _raw.stochastic_gradient_descent
-stochastic_gradient_descent_complex = _raw.stochastic_gradient_descent_complex
+
+
+def projected_gradient_descent_box(
+    initial,
+    objective,
+    gradient,
+    lower_bounds,
+    upper_bounds,
+    learning_rate=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: ProjectedGradientConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        ProjectedGradientConfig,
+        learning_rate=learning_rate,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.projected_gradient_descent_box(
+        initial,
+        objective,
+        gradient,
+        lower_bounds,
+        upper_bounds,
+        **kwargs,
+    )
+
+
+def projected_gradient_descent_box_complex(
+    initial,
+    objective,
+    gradient,
+    lower_bounds,
+    upper_bounds,
+    learning_rate=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: ProjectedGradientConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        ProjectedGradientConfig,
+        learning_rate=learning_rate,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.projected_gradient_descent_box_complex(
+        initial,
+        objective,
+        gradient,
+        lower_bounds,
+        upper_bounds,
+        **kwargs,
+    )
+
+
+def rmsprop(
+    initial,
+    objective,
+    gradient,
+    learning_rate=None,
+    rho=None,
+    epsilon=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: RMSPropConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        RMSPropConfig,
+        learning_rate=learning_rate,
+        rho=rho,
+        epsilon=epsilon,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.rmsprop(initial, objective, gradient, **kwargs)
+
+
+def rmsprop_complex(
+    initial,
+    objective,
+    gradient,
+    learning_rate=None,
+    rho=None,
+    epsilon=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: RMSPropConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        RMSPropConfig,
+        learning_rate=learning_rate,
+        rho=rho,
+        epsilon=epsilon,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.rmsprop_complex(initial, objective, gradient, **kwargs)
+
+
+def stochastic_gradient_descent(
+    initial,
+    stochastic_gradient,
+    learning_rate=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: GradientDescentConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        GradientDescentConfig,
+        learning_rate=learning_rate,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.stochastic_gradient_descent(initial, stochastic_gradient, **kwargs)
+
+
+def stochastic_gradient_descent_complex(
+    initial,
+    stochastic_gradient,
+    learning_rate=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: GradientDescentConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        GradientDescentConfig,
+        learning_rate=learning_rate,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.stochastic_gradient_descent_complex(initial, stochastic_gradient, **kwargs)
+
+
+def adam(
+    initial,
+    objective,
+    gradient,
+    learning_rate=None,
+    beta1=None,
+    beta2=None,
+    epsilon=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: AdamConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        AdamConfig,
+        learning_rate=learning_rate,
+        beta1=beta1,
+        beta2=beta2,
+        epsilon=epsilon,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.adam(initial, objective, gradient, **kwargs)
+
+
+def adam_complex(
+    initial,
+    objective,
+    gradient,
+    learning_rate=None,
+    beta1=None,
+    beta2=None,
+    epsilon=None,
+    max_iterations=None,
+    tolerance=None,
+    *,
+    config: AdamConfig | None = None,
+):
+    kwargs = _resolve_config(
+        config,
+        AdamConfig,
+        learning_rate=learning_rate,
+        beta1=beta1,
+        beta2=beta2,
+        epsilon=epsilon,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _raw.adam_complex(initial, objective, gradient, **kwargs)
+
+
 tensor_batched_dot_last_axis = _raw.tensor_batched_dot_last_axis
 tensor_batched_dot_last_axis_complex = _raw.tensor_batched_dot_last_axis_complex
 tensor_batched_matmul_last_two = _raw.tensor_batched_matmul_last_two
@@ -680,6 +1205,15 @@ __all__ = [
     "CpConvergenceReport",
     "CpAlsReport",
     "TensorTrainResult",
+    "AdamConfig",
+    "BFGSConfig",
+    "GradientDescentConfig",
+    "IterativeConfig",
+    "JacobianConfig",
+    "LineSearchConfig",
+    "MomentumConfig",
+    "ProjectedGradientConfig",
+    "RMSPropConfig",
     "svd_decompose",
     "svd_decompose_truncated",
     "svd_pseudo_inverse",

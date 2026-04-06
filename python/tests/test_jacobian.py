@@ -2,6 +2,7 @@
 
 import numpy as np
 import pynabled
+import pytest
 
 
 def test_numerical_jacobian():
@@ -9,7 +10,11 @@ def test_numerical_jacobian():
         return np.array([x[0] ** 2, x[1] ** 2], dtype=np.float64)
 
     x = np.array([2.0, 3.0], dtype=np.float64)
-    jac = pynabled.numerical_jacobian(func, x)
+    jac = pynabled.numerical_jacobian(
+        func,
+        x,
+        config=pynabled.JacobianConfig(step_size=1e-6, tolerance=1e-12, max_iterations=64),
+    )
     np.testing.assert_allclose(jac, np.array([[4.0, 0.0], [0.0, 6.0]]), rtol=1e-4)
 
 
@@ -85,3 +90,18 @@ def test_real_jacobian_bindings_accept_float32():
         rtol=2e-2,
         atol=2e-2,
     )
+
+
+def test_jacobian_rejects_config_and_explicit_kwargs():
+    def func(x):
+        return np.array([x[0] ** 2], dtype=np.float64)
+
+    x = np.array([2.0], dtype=np.float64)
+
+    with pytest.raises(TypeError, match="config="):
+        pynabled.numerical_jacobian(
+            func,
+            x,
+            step_size=1e-5,
+            config=pynabled.JacobianConfig(max_iterations=32),
+        )

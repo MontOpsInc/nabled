@@ -74,6 +74,13 @@ print("singular values:", result.singular_values)
 
 The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, dense vector/matrix primitives (including batched vector helpers and broadcasted batched matmat), batched decompositions, tensor ops, regression, PCA, statistics, and a widened sparse surface with first-class CSR/CSC/COO carriers, direct sparse iterative solvers, reusable sparse factorization/preconditioner workflows, and direct ILU(0)/ILUT/ILUK/ILDL0 GMRES / `BiCGSTAB` convenience rows. Decomposition, higher-level ML/tensor workflows, and reusable sparse factorization/preconditioner paths return typed Python objects instead of anonymous tuples; the denser config/result-bearing rows now include QR reduced/pivoted decomposition plus reconstruct/condition helpers, LU signed log-determinant, non-symmetric eigen balancing/bi-eigen results, and config-preserving ILUT/ILUK sparse factorization wrappers. See `python/pynabled/__init__.py` for the full API surface.
 
+Dense iterative plus callable-driven Jacobian/optimization rows now also expose typed Python
+config objects (`IterativeConfig`, `JacobianConfig`, `LineSearchConfig`, `GradientDescentConfig`,
+`AdamConfig`, `MomentumConfig`, `RMSPropConfig`, `ProjectedGradientConfig`, `BFGSConfig`) instead
+of treating raw tuning-parameter shims as the long-term contract. The callback-driven Jacobian and
+optimizer helpers remain convenience APIs rather than no-compromise hot-path equivalents, because
+their objective/gradient evaluations still cross back into Python.
+
 For building with optional features (e.g. OpenBLAS, accelerator-rayon), see [BUILD.md](BUILD.md).
 
 To publish **pynabled** wheels to PyPI (tags, CI, TestPyPI), see [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md).

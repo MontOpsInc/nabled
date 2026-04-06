@@ -42,6 +42,17 @@ and their `float32` defaults use `float32`-appropriate finite-difference / conve
 instead of raw `float64` thresholds. Some higher-level wrappers still materialize owned arrays
 internally where the current Rust API shape requires it.
 
+The iterative and callable-driven ML surface now uses typed config objects instead of exposing raw
+parameter shims as the production contract. `conjugate_gradient(...)` / `gmres(...)` accept
+`IterativeConfig`, Jacobian helpers accept `JacobianConfig`, and optimizer/line-search helpers use
+`LineSearchConfig`, `GradientDescentConfig`, `AdamConfig`, `MomentumConfig`, `RMSPropConfig`,
+`ProjectedGradientConfig`, and `BFGSConfig`. Passing both `config=` and explicit tuning kwargs is
+rejected instead of silently picking one side.
+
+Callback-driven Jacobian and optimizer helpers remain convenience-oriented APIs. They are
+production-supported, but each objective/gradient evaluation crosses back into Python, so they are
+not the same performance contract as the array-in/array-out kernels whose hot loops stay in Rust.
+
 Current dense primitive breadth is also wider: vector APIs now include cosine distance,
 pairwise cosine distance, and row-wise batched dot/norm/cosine/distance/normalize helpers, while
 matrix APIs now include broadcast-left/right batched matmat alongside the earlier direct and

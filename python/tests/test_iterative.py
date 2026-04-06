@@ -15,7 +15,11 @@ def _make_spd(n):
 def test_conjugate_gradient():
     a = _make_spd(5)
     b = np.random.randn(5).astype(np.float64)
-    x = pynabled.conjugate_gradient(a, b, None, None)
+    x = pynabled.conjugate_gradient(
+        a,
+        b,
+        config=pynabled.IterativeConfig(tolerance=1e-12, max_iterations=128),
+    )
     np.testing.assert_allclose(a @ x, b, rtol=1e-10)
 
 
@@ -56,3 +60,16 @@ def test_iterative_real_solvers_accept_float32():
     assert gmres.dtype == np.float32
     np.testing.assert_allclose(spd @ cg, rhs_spd, rtol=1e-4, atol=1e-5)
     np.testing.assert_allclose(general @ gmres, rhs_general, rtol=1e-4, atol=1e-5)
+
+
+def test_iterative_rejects_config_and_explicit_kwargs():
+    a = _make_spd(3)
+    b = np.ones(3, dtype=np.float64)
+
+    with pytest.raises(TypeError, match="config="):
+        pynabled.conjugate_gradient(
+            a,
+            b,
+            tolerance=1e-8,
+            config=pynabled.IterativeConfig(max_iterations=64),
+        )

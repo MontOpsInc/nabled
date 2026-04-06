@@ -130,6 +130,12 @@ objects themselves. The sparse contract now makes one-shot refactorization expli
 reusable factor objects as the performance-first path for repeated-RHS workloads. Validation is
 green end-to-end: full Python pytest passed (`181 passed`), the package gate passed (`178 passed,
 3 skipped`, `92.85%` Python coverage), and full `just checks` is green.
+An eighteenth `N-PY-003` callback/config contract pass is now also landed: iterative, Jacobian,
+and optimization entrypoints expose typed Python config objects instead of raw Rust aliases as the
+production-facing contract, conflicting `config=` plus explicit tuning kwargs now fail fast, and
+callback-driven Jacobian/optimization helpers are explicitly documented as convenience APIs rather
+than no-compromise hot-path equivalents. This closes the current `N-PY-003` scope; the next
+remaining `pynabled` merge-gate item is `N-PY-004` for Arrow/PyArrow parity.
 Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
