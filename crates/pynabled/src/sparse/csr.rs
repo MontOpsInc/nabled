@@ -626,6 +626,499 @@ pub fn pcg_solve<'py>(
     }
 }
 
+/// Convert CSR components to CSC.
+#[pyfunction(name = "sparse_csr_to_csc")]
+pub fn csr_to_csc<'py>(
+    py: Python<'py>,
+    nrows: usize,
+    ncols: usize,
+    indptr: &Bound<'py, PyAny>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+) -> PyResult<PyCsrParts> {
+    match (
+        utils::index_array1(indptr, "indptr")?,
+        utils::index_array1(indices, "indices")?,
+        utils::real_array1(data, "data")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::csr_to_csc_view(&matrix).map_err(to_py_err)?;
+            py_csc_parts_f32(py, result, StoredIndexDtype::I32)
+        }
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::csr_to_csc_view(&matrix).map_err(to_py_err)?;
+            py_csc_parts_f64(py, result, StoredIndexDtype::I32)
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f32(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::csr_to_csc_view(&matrix).map_err(to_py_err)?;
+            py_csc_parts_f32(py, result, StoredIndexDtype::I64)
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f64(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::csr_to_csc_view(&matrix).map_err(to_py_err)?;
+            py_csc_parts_f64(py, result, StoredIndexDtype::I64)
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _) => {
+            Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+        }
+    }
+}
+
+/// Convert CSC components to CSR.
+#[pyfunction(name = "sparse_csc_to_csr")]
+pub fn csc_to_csr<'py>(
+    py: Python<'py>,
+    nrows: usize,
+    ncols: usize,
+    indptr: &Bound<'py, PyAny>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+) -> PyResult<PyCsrParts> {
+    match (
+        utils::index_array1(indptr, "indptr")?,
+        utils::index_array1(indices, "indices")?,
+        utils::real_array1(data, "data")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+        ) => {
+            let matrix = owned_csc_from_slices(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = matrix.to_csr().map_err(to_py_err)?;
+            py_csr_parts_i32_f32(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+        ) => {
+            let matrix = owned_csc_from_slices(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = matrix.to_csr().map_err(to_py_err)?;
+            py_csr_parts_i32_f64(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+        ) => {
+            let matrix = owned_csc_from_slices(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = matrix.to_csr().map_err(to_py_err)?;
+            py_csr_parts_f32(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+        ) => {
+            let matrix = owned_csc_from_slices(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = matrix.to_csr().map_err(to_py_err)?;
+            py_csr_parts_f64(py, result)
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _) => {
+            Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+        }
+    }
+}
+
+/// Convert COO components to CSR.
+#[pyfunction(name = "sparse_coo_to_csr")]
+pub fn coo_to_csr<'py>(
+    py: Python<'py>,
+    nrows: usize,
+    ncols: usize,
+    row_indices: &Bound<'py, PyAny>,
+    col_indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+) -> PyResult<PyCsrParts> {
+    match (
+        utils::index_array1(row_indices, "row_indices")?,
+        utils::index_array1(col_indices, "col_indices")?,
+        utils::real_array1(data, "data")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(row_indices_arr),
+            utils::IndexReadonlyArray1::I32(col_indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+        ) => {
+            let matrix = owned_coo_from_slices(
+                nrows,
+                ncols,
+                row_indices_arr.as_slice().map_err(py_value_error)?,
+                col_indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = matrix.to_csr().map_err(to_py_err)?;
+            py_csr_parts_i32_f32(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I32(row_indices_arr),
+            utils::IndexReadonlyArray1::I32(col_indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+        ) => {
+            let matrix = owned_coo_from_slices(
+                nrows,
+                ncols,
+                row_indices_arr.as_slice().map_err(py_value_error)?,
+                col_indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = matrix.to_csr().map_err(to_py_err)?;
+            py_csr_parts_i32_f64(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I64(row_indices_arr),
+            utils::IndexReadonlyArray1::I64(col_indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+        ) => {
+            let matrix = owned_coo_from_slices(
+                nrows,
+                ncols,
+                row_indices_arr.as_slice().map_err(py_value_error)?,
+                col_indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = matrix.to_csr().map_err(to_py_err)?;
+            py_csr_parts_f32(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I64(row_indices_arr),
+            utils::IndexReadonlyArray1::I64(col_indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+        ) => {
+            let matrix = owned_coo_from_slices(
+                nrows,
+                ncols,
+                row_indices_arr.as_slice().map_err(py_value_error)?,
+                col_indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = matrix.to_csr().map_err(to_py_err)?;
+            py_csr_parts_f64(py, result)
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _) => {
+            Err(utils::matching_index_dtype_error(&["row_indices", "col_indices"]))
+        }
+    }
+}
+
+/// CSC sparse matrix-vector product over raw components.
+#[pyfunction(name = "sparse_matvec_csc")]
+pub fn matvec_csc<'py>(
+    py: Python<'py>,
+    nrows: usize,
+    ncols: usize,
+    indptr: &Bound<'py, PyAny>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+    vector: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::index_array1(indptr, "indptr")?,
+        utils::index_array1(indices, "indices")?,
+        utils::real_array1(data, "data")?,
+        utils::real_array1(vector, "vector")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(vector_arr),
+        ) => {
+            let matrix = owned_csc_from_slices(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result =
+                nabled_linalg::sparse::matvec_csc(&matrix, &vector_arr.as_array().to_owned())
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(vector_arr),
+        ) => {
+            let matrix = owned_csc_from_slices(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result =
+                nabled_linalg::sparse::matvec_csc(&matrix, &vector_arr.as_array().to_owned())
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(vector_arr),
+        ) => {
+            let matrix = owned_csc_from_slices(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result =
+                nabled_linalg::sparse::matvec_csc(&matrix, &vector_arr.as_array().to_owned())
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(vector_arr),
+        ) => {
+            let matrix = owned_csc_from_slices(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result =
+                nabled_linalg::sparse::matvec_csc(&matrix, &vector_arr.as_array().to_owned())
+                    .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+            Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["data", "vector"])),
+    }
+}
+
+/// Sparse-sparse matrix multiplication over raw CSR components.
+#[pyfunction(name = "sparse_matmat_sparse")]
+#[expect(clippy::too_many_arguments)]
+#[expect(clippy::too_many_lines)]
+pub fn matmat_sparse<'py>(
+    py: Python<'py>,
+    left_nrows: usize,
+    left_ncols: usize,
+    left_indptr: &Bound<'py, PyAny>,
+    left_indices: &Bound<'py, PyAny>,
+    left_data: &Bound<'py, PyAny>,
+    right_nrows: usize,
+    right_ncols: usize,
+    right_indptr: &Bound<'py, PyAny>,
+    right_indices: &Bound<'py, PyAny>,
+    right_data: &Bound<'py, PyAny>,
+) -> PyResult<PyCsrParts> {
+    match (
+        utils::index_array1(left_indptr, "left_indptr")?,
+        utils::index_array1(left_indices, "left_indices")?,
+        utils::real_array1(left_data, "left_data")?,
+        utils::index_array1(right_indptr, "right_indptr")?,
+        utils::index_array1(right_indices, "right_indices")?,
+        utils::real_array1(right_data, "right_data")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(left_indptr_arr),
+            utils::IndexReadonlyArray1::I32(left_indices_arr),
+            utils::RealReadonlyArray1::F32(left_data_arr),
+            utils::IndexReadonlyArray1::I32(right_indptr_arr),
+            utils::IndexReadonlyArray1::I32(right_indices_arr),
+            utils::RealReadonlyArray1::F32(right_data_arr),
+        ) => {
+            let left = nabled_linalg::sparse::CsrMatrixView::new(
+                left_nrows,
+                left_ncols,
+                left_indptr_arr.as_slice().map_err(py_value_error)?,
+                left_indices_arr.as_slice().map_err(py_value_error)?,
+                left_data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let right = nabled_linalg::sparse::CsrMatrixView::new(
+                right_nrows,
+                right_ncols,
+                right_indptr_arr.as_slice().map_err(py_value_error)?,
+                right_indices_arr.as_slice().map_err(py_value_error)?,
+                right_data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result =
+                nabled_linalg::sparse::matmat_sparse_view(&left, &right).map_err(to_py_err)?;
+            py_csr_parts_i32_f32(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I32(left_indptr_arr),
+            utils::IndexReadonlyArray1::I32(left_indices_arr),
+            utils::RealReadonlyArray1::F64(left_data_arr),
+            utils::IndexReadonlyArray1::I32(right_indptr_arr),
+            utils::IndexReadonlyArray1::I32(right_indices_arr),
+            utils::RealReadonlyArray1::F64(right_data_arr),
+        ) => {
+            let left = nabled_linalg::sparse::CsrMatrixView::new(
+                left_nrows,
+                left_ncols,
+                left_indptr_arr.as_slice().map_err(py_value_error)?,
+                left_indices_arr.as_slice().map_err(py_value_error)?,
+                left_data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let right = nabled_linalg::sparse::CsrMatrixView::new(
+                right_nrows,
+                right_ncols,
+                right_indptr_arr.as_slice().map_err(py_value_error)?,
+                right_indices_arr.as_slice().map_err(py_value_error)?,
+                right_data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result =
+                nabled_linalg::sparse::matmat_sparse_view(&left, &right).map_err(to_py_err)?;
+            py_csr_parts_i32_f64(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I64(left_indptr_arr),
+            utils::IndexReadonlyArray1::I64(left_indices_arr),
+            utils::RealReadonlyArray1::F32(left_data_arr),
+            utils::IndexReadonlyArray1::I64(right_indptr_arr),
+            utils::IndexReadonlyArray1::I64(right_indices_arr),
+            utils::RealReadonlyArray1::F32(right_data_arr),
+        ) => {
+            let left = csr_view_from_slices_f32(
+                left_nrows,
+                left_ncols,
+                left_indptr_arr.as_slice().map_err(py_value_error)?,
+                left_indices_arr.as_slice().map_err(py_value_error)?,
+                left_data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let right = csr_view_from_slices_f32(
+                right_nrows,
+                right_ncols,
+                right_indptr_arr.as_slice().map_err(py_value_error)?,
+                right_indices_arr.as_slice().map_err(py_value_error)?,
+                right_data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result =
+                nabled_linalg::sparse::matmat_sparse_view(&left, &right).map_err(to_py_err)?;
+            py_csr_parts_f32(py, result)
+        }
+        (
+            utils::IndexReadonlyArray1::I64(left_indptr_arr),
+            utils::IndexReadonlyArray1::I64(left_indices_arr),
+            utils::RealReadonlyArray1::F64(left_data_arr),
+            utils::IndexReadonlyArray1::I64(right_indptr_arr),
+            utils::IndexReadonlyArray1::I64(right_indices_arr),
+            utils::RealReadonlyArray1::F64(right_data_arr),
+        ) => {
+            let left = csr_view_from_slices_f64(
+                left_nrows,
+                left_ncols,
+                left_indptr_arr.as_slice().map_err(py_value_error)?,
+                left_indices_arr.as_slice().map_err(py_value_error)?,
+                left_data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let right = csr_view_from_slices_f64(
+                right_nrows,
+                right_ncols,
+                right_indptr_arr.as_slice().map_err(py_value_error)?,
+                right_indices_arr.as_slice().map_err(py_value_error)?,
+                right_data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result =
+                nabled_linalg::sparse::matmat_sparse_view(&left, &right).map_err(to_py_err)?;
+            py_csr_parts_f64(py, result)
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _, _, _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _, _, _)
+        | (_, _, _, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _)
+        | (_, _, _, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _) => {
+            Err(utils::matching_index_dtype_error(&[
+                "left_indptr",
+                "left_indices",
+                "right_indptr",
+                "right_indices",
+            ]))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left_data", "right_data"])),
+    }
+}
+
 #[derive(Clone, Copy)]
 enum StoredIndexDtype {
     I32,
@@ -651,6 +1144,68 @@ fn py_csr_parts_ref_f64(
     match index_dtype {
         StoredIndexDtype::I32 => py_csr_parts_i32_f64(py, matrix.clone()),
         StoredIndexDtype::I64 => py_csr_parts_f64(py, matrix.clone()),
+    }
+}
+
+fn py_csc_parts_f32(
+    py: Python<'_>,
+    matrix: nabled_linalg::sparse::CscMatrix<f32>,
+    index_dtype: StoredIndexDtype,
+) -> PyResult<PyCsrParts> {
+    match index_dtype {
+        StoredIndexDtype::I32 => {
+            let indptr = Array1::from_vec(usize_vec_to_i32(matrix.indptr)?);
+            let indices = Array1::from_vec(usize_vec_to_i32(matrix.indices)?);
+            Ok((
+                matrix.nrows,
+                matrix.ncols,
+                PyArray1::from_owned_array(py, indptr).into_any().unbind(),
+                PyArray1::from_owned_array(py, indices).into_any().unbind(),
+                utils::pyarray1_from_owned(py, Array1::from_vec(matrix.data)),
+            ))
+        }
+        StoredIndexDtype::I64 => {
+            let indptr = Array1::from_vec(usize_vec_to_i64(matrix.indptr)?);
+            let indices = Array1::from_vec(usize_vec_to_i64(matrix.indices)?);
+            Ok((
+                matrix.nrows,
+                matrix.ncols,
+                PyArray1::from_owned_array(py, indptr).into_any().unbind(),
+                PyArray1::from_owned_array(py, indices).into_any().unbind(),
+                utils::pyarray1_from_owned(py, Array1::from_vec(matrix.data)),
+            ))
+        }
+    }
+}
+
+fn py_csc_parts_f64(
+    py: Python<'_>,
+    matrix: nabled_linalg::sparse::CscMatrix<f64>,
+    index_dtype: StoredIndexDtype,
+) -> PyResult<PyCsrParts> {
+    match index_dtype {
+        StoredIndexDtype::I32 => {
+            let indptr = Array1::from_vec(usize_vec_to_i32(matrix.indptr)?);
+            let indices = Array1::from_vec(usize_vec_to_i32(matrix.indices)?);
+            Ok((
+                matrix.nrows,
+                matrix.ncols,
+                PyArray1::from_owned_array(py, indptr).into_any().unbind(),
+                PyArray1::from_owned_array(py, indices).into_any().unbind(),
+                utils::pyarray1_from_owned(py, Array1::from_vec(matrix.data)),
+            ))
+        }
+        StoredIndexDtype::I64 => {
+            let indptr = Array1::from_vec(usize_vec_to_i64(matrix.indptr)?);
+            let indices = Array1::from_vec(usize_vec_to_i64(matrix.indices)?);
+            Ok((
+                matrix.nrows,
+                matrix.ncols,
+                PyArray1::from_owned_array(py, indptr).into_any().unbind(),
+                PyArray1::from_owned_array(py, indices).into_any().unbind(),
+                utils::pyarray1_from_owned(py, Array1::from_vec(matrix.data)),
+            ))
+        }
     }
 }
 
@@ -698,6 +1253,66 @@ where
         .collect::<Result<Vec<_>, _>>()
         .map_err(to_py_err)?;
     nabled_linalg::sparse::CsrMatrix::new(nrows, ncols, indptr, indices, values.to_vec())
+        .map_err(to_py_err)
+}
+
+fn owned_csc_from_slices<
+    T,
+    R: nabled_linalg::sparse::CsrIndex,
+    C: nabled_linalg::sparse::CsrIndex,
+>(
+    nrows: usize,
+    ncols: usize,
+    col_ptrs: &[R],
+    row_indices: &[C],
+    values: &[T],
+) -> PyResult<nabled_linalg::sparse::CscMatrix<T>>
+where
+    T: nabled_core::scalar::NabledReal + Clone,
+{
+    let indptr = col_ptrs
+        .iter()
+        .copied()
+        .map(nabled_linalg::sparse::CsrIndex::to_usize)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(to_py_err)?;
+    let indices = row_indices
+        .iter()
+        .copied()
+        .map(nabled_linalg::sparse::CsrIndex::to_usize)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(to_py_err)?;
+    nabled_linalg::sparse::CscMatrix::new(nrows, ncols, indptr, indices, values.to_vec())
+        .map_err(to_py_err)
+}
+
+fn owned_coo_from_slices<
+    T,
+    R: nabled_linalg::sparse::CsrIndex,
+    C: nabled_linalg::sparse::CsrIndex,
+>(
+    nrows: usize,
+    ncols: usize,
+    row_indices: &[R],
+    col_indices: &[C],
+    values: &[T],
+) -> PyResult<nabled_linalg::sparse::CooMatrix<T>>
+where
+    T: nabled_core::scalar::NabledReal + Clone,
+{
+    let row_indices = row_indices
+        .iter()
+        .copied()
+        .map(nabled_linalg::sparse::CsrIndex::to_usize)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(to_py_err)?;
+    let col_indices = col_indices
+        .iter()
+        .copied()
+        .map(nabled_linalg::sparse::CsrIndex::to_usize)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(to_py_err)?;
+    nabled_linalg::sparse::CooMatrix::new(nrows, ncols, row_indices, col_indices, values.to_vec())
         .map_err(to_py_err)
 }
 
@@ -821,6 +1436,522 @@ impl PyIlu0Factorization {
             _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
         }
     }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn gmres_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIlu0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::gmres_ilu0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::gmres_ilu0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::gmres_ilu0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::gmres_ilu0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn gmres_solve_multiple<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array2(rhs, "rhs")?,
+        ) {
+            (
+                PyIlu0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::gmres_ilu0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::gmres_ilu0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::gmres_ilu0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::gmres_ilu0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn bicgstab_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIlu0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::bicgstab_ilu0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::bicgstab_ilu0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::bicgstab_ilu0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::bicgstab_ilu0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn bicgstab_solve_multiple<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array2(rhs, "rhs")?,
+        ) {
+            (
+                PyIlu0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ilu0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ilu0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ilu0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlu0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ilu0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
 }
 
 enum PyIlutFactorizationInner {
@@ -888,6 +2019,522 @@ impl PyIlutFactorization {
                 Ok(utils::pyarray1_from_owned(py, result))
             }
             _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn gmres_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIlutFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::gmres_ilut_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::gmres_ilut_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::gmres_ilut_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::gmres_ilut_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn gmres_solve_multiple<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array2(rhs, "rhs")?,
+        ) {
+            (
+                PyIlutFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::gmres_ilut_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::gmres_ilut_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::gmres_ilut_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::gmres_ilut_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn bicgstab_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIlutFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::bicgstab_ilut_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::bicgstab_ilut_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::bicgstab_ilut_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::bicgstab_ilut_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn bicgstab_solve_multiple<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array2(rhs, "rhs")?,
+        ) {
+            (
+                PyIlutFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ilut_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ilut_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ilut_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlutFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ilut_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
         }
     }
 }
@@ -965,6 +2612,522 @@ impl PyIlukFactorization {
                 Ok(utils::pyarray1_from_owned(py, result))
             }
             _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn gmres_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIlukFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::gmres_iluk_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::gmres_iluk_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::gmres_iluk_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::gmres_iluk_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn gmres_solve_multiple<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array2(rhs, "rhs")?,
+        ) {
+            (
+                PyIlukFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::gmres_iluk_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::gmres_iluk_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::gmres_iluk_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::gmres_iluk_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn bicgstab_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIlukFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::bicgstab_iluk_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::bicgstab_iluk_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::bicgstab_iluk_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::bicgstab_iluk_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn bicgstab_solve_multiple<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array2(rhs, "rhs")?,
+        ) {
+            (
+                PyIlukFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_iluk_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_iluk_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_iluk_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIlukFactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_iluk_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
         }
     }
 }
@@ -1115,6 +3278,522 @@ impl PyIldl0Factorization {
                 Ok(utils::pyarray1_from_owned(py, result))
             }
             _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn gmres_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIldl0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::gmres_ildl0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::gmres_ildl0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::gmres_ildl0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::gmres_ildl0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(32),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn gmres_solve_multiple<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array2(rhs, "rhs")?,
+        ) {
+            (
+                PyIldl0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::gmres_ildl0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::gmres_ildl0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::gmres_ildl0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::gmres_ildl0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(32),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn bicgstab_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIldl0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::bicgstab_ildl0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::bicgstab_ildl0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::bicgstab_ildl0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::bicgstab_ildl0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array().to_owned(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn bicgstab_solve_multiple<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array2(rhs, "rhs")?,
+        ) {
+            (
+                PyIldl0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ildl0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ildl0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray2::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ildl0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance_f32(tolerance, 1e-6_f32),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (
+                PyIldl0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray2::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result =
+                    nabled_linalg::sparse::bicgstab_ildl0_solve_multiple_with_factorization_view(
+                        &matrix,
+                        &rhs_arr.as_array().to_owned(),
+                        tolerance.unwrap_or(1e-10),
+                        max_iterations.unwrap_or(5000),
+                        factorization,
+                    )
+                    .map_err(to_py_err)?;
+                Ok(utils::pyarray2_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
         }
     }
 }

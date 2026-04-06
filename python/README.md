@@ -70,6 +70,15 @@ trip back through canonical `CsrMatrix` carriers. `ILUTConfig` and `ILUKConfig` 
 configurable sparse setup profiles, and sparse LU reuse already covers both single-RHS and
 multi-RHS solve workflows.
 
+Sparse carrier breadth is now wider as well: `pynabled` also exposes first-class `CscMatrix` and
+`CooMatrix` carriers with SciPy-compatible ingress plus explicit `CSR -> CSC`, `CSC -> CSR`, and
+`COO -> CSR` conversions. CSC matvec stays native to the CSC carrier, sparse-sparse matmat returns
+the canonical `CsrMatrix`, and the reusable `ILU0` / `ILUT` / `ILUK` / `ILDL0` factor objects now
+also drive GMRES / `BiCGSTAB` solve and multi-RHS solve workflows without rebuilding the sparse
+factorization each call. Where a sparse kernel only admits the CSR form today, `pynabled` keeps
+that normalization explicit through the carrier methods rather than silently pretending the storage
+format is interchangeable.
+
 ## Documentation
 
 - Rust library API: [docs.rs/nabled](https://docs.rs/nabled)

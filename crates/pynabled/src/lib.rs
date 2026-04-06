@@ -213,8 +213,13 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Sparse
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::matvec, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::matvec_csc, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::matmat_dense, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::matmat_sparse, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::transpose, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::csr_to_csc, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::csc_to_csr, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::coo_to_csr, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::jacobi_solve, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::pcg_solve, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::jacobi_preconditioner, m)?)?;

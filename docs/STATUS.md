@@ -93,8 +93,13 @@ paths, sparse factor properties round-trip back through canonical `CsrMatrix` ca
 LU reuse now covers both single-RHS and multi-RHS solves. Validation is green end-to-end:
 `python-quality` passed (`158 passed, 3 skipped`, `95.07%` Python coverage, editable + Arrow +
 wheel/sdist +
-feature-smoke builds). Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure
-plan for that branch.
+feature-smoke builds). A thirteenth `N-PY-003` sparse breadth pass is now also landed: Python
+sparse now has first-class `CscMatrix` / `CooMatrix` carriers alongside `CsrMatrix`, explicit
+`CSR -> CSC`, `CSC -> CSR`, and `COO -> CSR` conversions, native CSC matvec, sparse-sparse matmat
+returning canonical `CsrMatrix`, and reusable GMRES / `BiCGSTAB` solve methods over the landed
+`ILU0` / `ILUT` / `ILUK` / `ILDL0` factor objects for both single-RHS and multi-RHS solves.
+Validation remains green on the editable Python 3.12 build (`160 passed, 3 skipped`). Treat
+`docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 7. Public `*_lapack` compatibility wrappers have been removed.

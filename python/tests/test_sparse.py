@@ -75,6 +75,26 @@ class _FakeSciPyCsc:
         )
 
 
+class _FakeSciPyCanonicalCsc:
+    format = "csc"
+
+    def __init__(self, shape, indptr, indices, data):
+        self.shape = shape
+        self.indptr = indptr
+        self.indices = indices
+        self.data = data
+
+
+class _FakeSciPyCoo:
+    format = "coo"
+
+    def __init__(self, shape, row, col, data):
+        self.shape = shape
+        self.row = row
+        self.col = col
+        self.data = data
+
+
 def test_sparse_carrier_and_matvec():
     matrix = pynabled.CsrMatrix.from_components(*_make_csr_diagonal(3))
     v = np.array([1.0, 2.0, 3.0], dtype=np.float64)
@@ -414,6 +434,349 @@ def test_sparse_carrier_helpers_and_dunders():
     assert components[1] == matrix.ncols
     assert matrix.__matmul__(np.zeros((1, 1, 1))) is NotImplemented
     assert "index_dtype=int64" in repr(matrix)
+
+
+def test_sparse_non_csr_carriers_and_sparse_product():
+    dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    csr = pynabled.CsrMatrix.from_components(*_csr_from_dense(dense, index_dtype=np.int32))
+    csc = csr.to_csc()
+    coo = pynabled.CooMatrix(
+        dense.shape,
+        np.array([0, 0, 1, 1, 1, 2, 2], dtype=np.int32),
+        np.array([0, 1, 0, 1, 2, 1, 2], dtype=np.int32),
+        np.array([4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0], dtype=np.float64),
+    )
+    vector = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+
+    assert isinstance(csc, pynabled.CscMatrix)
+    assert csc.index_dtype == np.dtype(np.int32)
+    np.testing.assert_allclose(csc.matvec(vector), dense @ vector, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        pynabled.sparse_matvec_csc(csc, vector), dense @ vector, rtol=1e-12, atol=1e-12
+    )
+    np.testing.assert_allclose(_dense_from_csr(csc.to_csr()), dense, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(_dense_from_csr(coo.to_csr()), dense, rtol=1e-12, atol=1e-12)
+
+    product = pynabled.sparse_matmat_sparse(csr, csc)
+    assert isinstance(product, pynabled.CsrMatrix)
+    np.testing.assert_allclose(
+        _dense_from_csr(product),
+        dense @ dense,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _dense_from_csr(csr @ coo),
+        dense @ dense,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(coo @ vector, dense @ vector, rtol=1e-12, atol=1e-12)
+
+    canonical_csc = pynabled.CscMatrix.from_scipy(
+        _FakeSciPyCanonicalCsc(csc.shape, csc.indptr, csc.indices, csc.data)
+    )
+    canonical_coo = pynabled.CooMatrix.from_scipy(
+        _FakeSciPyCoo(coo.shape, coo.row_indices, coo.col_indices, coo.data)
+    )
+    assert isinstance(canonical_csc, pynabled.CscMatrix)
+    assert isinstance(canonical_coo, pynabled.CooMatrix)
+    np.testing.assert_allclose(_dense_from_csr(canonical_csc.to_csr()), dense, rtol=1e-12)
+    np.testing.assert_allclose(_dense_from_csr(canonical_coo.to_csr()), dense, rtol=1e-12)
+
+
+def test_sparse_iterative_reuse_methods():
+    nonsymmetric_dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    nonsymmetric = pynabled.CsrMatrix.from_components(*_csr_from_dense(nonsymmetric_dense))
+    rhs = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+    rhs_multi = np.column_stack([rhs, rhs * 2.0])
+    expected = np.linalg.solve(nonsymmetric_dense, rhs)
+    expected_multi = np.linalg.solve(nonsymmetric_dense, rhs_multi)
+
+    for factorization in (
+        nonsymmetric.ilu0_factor(),
+        nonsymmetric.ilut_factor(config=pynabled.ILUTConfig(drop_tolerance=0.0, max_fill=8)),
+        nonsymmetric.iluk_factor(config=pynabled.ILUKConfig(level_of_fill=1)),
+    ):
+        np.testing.assert_allclose(
+            factorization.gmres_solve(rhs, tolerance=1e-10, max_iterations=16),
+            expected,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            factorization.gmres_solve_multiple(rhs_multi, tolerance=1e-10, max_iterations=16),
+            expected_multi,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            factorization.bicgstab_solve(rhs, tolerance=1e-10, max_iterations=512),
+            expected,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            factorization.bicgstab_solve_multiple(rhs_multi, tolerance=1e-10, max_iterations=512),
+            expected_multi,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+
+    symmetric_dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [1.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    symmetric = pynabled.CsrMatrix.from_components(*_csr_from_dense(symmetric_dense))
+    expected_symmetric = np.linalg.solve(symmetric_dense, rhs)
+    expected_symmetric_multi = np.linalg.solve(symmetric_dense, rhs_multi)
+    ildl0 = symmetric.ildl0_factor()
+    np.testing.assert_allclose(
+        ildl0.gmres_solve(rhs, tolerance=1e-10, max_iterations=32),
+        expected_symmetric,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        ildl0.gmres_solve_multiple(rhs_multi, tolerance=1e-10, max_iterations=32),
+        expected_symmetric_multi,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        ildl0.bicgstab_solve(rhs, tolerance=1e-10, max_iterations=512),
+        expected_symmetric,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        ildl0.bicgstab_solve_multiple(rhs_multi, tolerance=1e-10, max_iterations=512),
+        expected_symmetric_multi,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+
+
+def test_sparse_config_profiles_and_factorization_helpers():
+    assert pynabled.ILUTConfig.conservative() == pynabled.ILUTConfig(
+        drop_tolerance=1e-6, max_fill=8
+    )
+    assert pynabled.ILUTConfig.balanced() == pynabled.ILUTConfig(drop_tolerance=1e-8, max_fill=16)
+    assert pynabled.ILUTConfig.aggressive() == pynabled.ILUTConfig(
+        drop_tolerance=1e-10, max_fill=32
+    )
+    assert pynabled.ILUTConfig.for_dimension(16) == pynabled.ILUTConfig(
+        drop_tolerance=1e-8, max_fill=8
+    )
+    assert pynabled.ILUKConfig.conservative() == pynabled.ILUKConfig(level_of_fill=0)
+    assert pynabled.ILUKConfig.balanced() == pynabled.ILUKConfig(level_of_fill=1)
+    assert pynabled.ILUKConfig.aggressive() == pynabled.ILUKConfig(level_of_fill=2)
+
+    dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [1.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    matrix = pynabled.CsrMatrix.from_components(*_csr_from_dense(dense, index_dtype=np.int32))
+
+    with pytest.raises(TypeError, match="either config"):
+        matrix.ilut_factor(config=pynabled.ILUTConfig.balanced(), drop_tolerance=1e-8)
+    with pytest.raises(TypeError, match="either config"):
+        matrix.iluk_factor(config=pynabled.ILUKConfig.balanced(), level_of_fill=1)
+
+    ilu0 = matrix.ilu0_factor()
+    ilut = matrix.ilut_factor(config=pynabled.ILUTConfig.balanced())
+    iluk = matrix.iluk_factor(config=pynabled.ILUKConfig.balanced())
+    ic0 = matrix.ic0_factor()
+    ildl0 = matrix.ildl0_factor()
+    lu = matrix.lu_factor()
+
+    for factor in (ilu0, ilut, iluk):
+        assert factor.l.nnz > 0
+        assert factor.u.nnz > 0
+        assert "dtype=float64" in repr(factor)
+    assert iluk.level_of_fill == 1
+    assert ic0.l.nnz > 0
+    assert ic0.l_transpose.nnz > 0
+    assert "dtype=float64" in repr(ic0)
+    assert ildl0.l.nnz > 0
+    assert ildl0.l_transpose.nnz > 0
+    assert ildl0.d.shape == (3,)
+    assert "dtype=float64" in repr(ildl0)
+    assert lu.l.nnz > 0
+    assert lu.u.nnz > 0
+    assert lu.permutation.shape == (3,)
+    assert "dtype=float64" in repr(lu)
+
+
+def test_csc_carrier_helpers_and_error_paths(monkeypatch):
+    dense = np.array(
+        [
+            [4.0, 0.0, 1.0],
+            [2.0, 3.0, 0.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    csr = pynabled.CsrMatrix.from_components(*_csr_from_dense(dense))
+    csc = csr.to_csc()
+    copied = csc.copy()
+    assert copied is not csc
+    assert csc.astype(np.float64) is csc
+    assert csc.with_index_dtype(np.int64) is csc
+    assert csc.astype(np.float32).dtype == np.dtype(np.float32)
+    assert csc.with_index_dtype(np.int32).index_dtype == np.dtype(np.int32)
+    assert csc.to_components()[0:2] == (3, 3)
+    np.testing.assert_allclose(csc.matmat_dense(np.eye(3)), dense, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(_dense_from_csr(csc.T), dense.T, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        _dense_from_csr(csc @ csr),
+        dense @ dense,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    assert "index_dtype=int64" in repr(csc)
+
+    with pytest.raises(ImportError, match="scipy is required"):
+        csc.to_scipy()
+    scipy_sparse = types.SimpleNamespace(
+        csc_matrix=lambda payload, shape, copy: (payload, shape, copy)
+    )
+    monkeypatch.setitem(sys.modules, "scipy", types.SimpleNamespace(sparse=scipy_sparse))
+    payload, shape, copy = csc.to_scipy()
+    assert shape == csc.shape
+    assert copy is False
+    np.testing.assert_array_equal(payload[0], csc.data)
+
+    with pytest.raises(TypeError, match="from_components expects"):
+        pynabled.CscMatrix.from_components(1, 2, 3)
+    with pytest.raises(ValueError, match="indptr length must equal ncols \\+ 1"):
+        pynabled.CscMatrix((3, 3), np.array([0, 1, 2]), np.array([0, 1]), np.array([1.0, 2.0]))
+    with pytest.raises(ValueError, match="indices must lie within matrix row bounds"):
+        pynabled.CscMatrix(
+            (3, 3),
+            np.array([0, 1, 2, 3], dtype=np.int64),
+            np.array([0, 1, 3], dtype=np.int64),
+            np.array([1.0, 2.0, 3.0]),
+        )
+    with pytest.raises(TypeError, match="expected pynabled.CscMatrix"):
+        pynabled.CscMatrix.from_scipy(object())
+    incomplete = types.SimpleNamespace(format="csc", shape=(1, 1), indptr=np.array([0, 0]))
+    with pytest.raises(TypeError, match="expected pynabled.CscMatrix"):
+        pynabled.CscMatrix.from_scipy(incomplete)
+
+
+def test_coo_carrier_helpers_and_error_paths(monkeypatch):
+    coo = pynabled.CooMatrix(
+        (3, 3),
+        np.array([0, 0, 1, 2], dtype=np.int64),
+        np.array([0, 2, 1, 2], dtype=np.int64),
+        np.array([4.0, 1.0, 3.0, 2.0], dtype=np.float64),
+    )
+    copied = coo.copy()
+    assert copied is not coo
+    assert coo.astype(np.float64) is coo
+    assert coo.with_index_dtype(np.int64) is coo
+    assert coo.astype(np.float32).dtype == np.dtype(np.float32)
+    assert coo.with_index_dtype(np.int32).index_dtype == np.dtype(np.int32)
+    assert coo.to_components()[0:2] == (3, 3)
+    assert "index_dtype=int64" in repr(coo)
+
+    with pytest.raises(ImportError, match="scipy is required"):
+        coo.to_scipy()
+    scipy_sparse = types.SimpleNamespace(
+        coo_matrix=lambda payload, shape, copy: (payload, shape, copy)
+    )
+    monkeypatch.setitem(sys.modules, "scipy", types.SimpleNamespace(sparse=scipy_sparse))
+    payload, shape, copy = coo.to_scipy()
+    assert shape == coo.shape
+    assert copy is False
+    np.testing.assert_array_equal(payload[0], coo.data)
+
+    with pytest.raises(TypeError, match="from_components expects"):
+        pynabled.CooMatrix.from_components(1, 2, 3)
+    with pytest.raises(ValueError, match="row_indices and data must have matching lengths"):
+        pynabled.CooMatrix(
+            (3, 3),
+            np.array([0, 1], dtype=np.int64),
+            np.array([0, 1, 2], dtype=np.int64),
+            np.array([1.0, 2.0, 3.0]),
+        )
+    with pytest.raises(TypeError, match="row_indices and col_indices must share dtype"):
+        pynabled.CooMatrix(
+            (3, 3),
+            np.array([0, 1, 2], dtype=np.int32),
+            np.array([0, 1, 2], dtype=np.int64),
+            np.array([1.0, 2.0, 3.0]),
+        )
+    with pytest.raises(ValueError, match="row_indices must lie within matrix row bounds"):
+        pynabled.CooMatrix(
+            (3, 3),
+            np.array([0, 1, 3], dtype=np.int64),
+            np.array([0, 1, 2], dtype=np.int64),
+            np.array([1.0, 2.0, 3.0]),
+        )
+    with pytest.raises(TypeError, match="expected pynabled.CooMatrix"):
+        pynabled.CooMatrix.from_scipy(object())
+    incomplete = types.SimpleNamespace(format="coo", shape=(1, 1), row=np.array([0]))
+    with pytest.raises(TypeError, match="expected pynabled.CooMatrix"):
+        pynabled.CooMatrix.from_scipy(incomplete)
+
+
+def test_sparse_conversion_helpers_and_non_csr_coercion():
+    dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float32,
+    )
+    csr = pynabled.CsrMatrix.from_components(*_csr_from_dense(dense, index_dtype=np.int32))
+    csc = pynabled.sparse_csr_to_csc(csr)
+    coo = pynabled.CooMatrix(
+        dense.shape,
+        np.array([0, 0, 1, 1, 1, 2, 2], dtype=np.int32),
+        np.array([0, 1, 0, 1, 2, 1, 2], dtype=np.int32),
+        np.array([4.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0], dtype=np.float32),
+    )
+
+    np.testing.assert_allclose(_dense_from_csr(pynabled.sparse_csc_to_csr(csc)), dense, rtol=1e-5)
+    np.testing.assert_allclose(_dense_from_csr(pynabled.sparse_coo_to_csr(coo)), dense, rtol=1e-5)
+    np.testing.assert_allclose(
+        pynabled.sparse_matmat_dense(csc, np.eye(3, dtype=np.float32)),
+        dense,
+        rtol=1e-5,
+        atol=1e-6,
+    )
+    np.testing.assert_allclose(_dense_from_csr(pynabled.sparse_transpose(coo)), dense.T, rtol=1e-5)
+    np.testing.assert_allclose(
+        _dense_from_csr(pynabled.sparse_matmat_sparse(csc, coo)),
+        dense @ dense,
+        rtol=1e-5,
+        atol=1e-5,
+    )
 
 
 def test_sparse_to_scipy_import_error_and_success(monkeypatch):
