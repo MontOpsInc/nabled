@@ -505,13 +505,20 @@ class ILU0Factorization:
 
 
 class ILUTFactorization:
-    __slots__ = ("matrix", "_raw", "_l", "_u")
+    __slots__ = ("matrix", "_raw", "_l", "_u", "_config")
 
-    def __init__(self, matrix: "CsrMatrix", raw: _RawSparseILUTFactorization) -> None:
+    def __init__(
+        self,
+        matrix: "CsrMatrix",
+        raw: _RawSparseILUTFactorization,
+        *,
+        config: ILUTConfig,
+    ) -> None:
         self.matrix = matrix
         self._raw = raw
         self._l: CsrMatrix | None = None
         self._u: CsrMatrix | None = None
+        self._config = config
 
     @property
     def l(self) -> "CsrMatrix":
@@ -528,6 +535,18 @@ class ILUTFactorization:
     @property
     def dtype(self) -> np.dtype[Any]:
         return self.matrix.dtype
+
+    @property
+    def config(self) -> ILUTConfig:
+        return self._config
+
+    @property
+    def drop_tolerance(self) -> float:
+        return float(self._config.drop_tolerance)
+
+    @property
+    def max_fill(self) -> int:
+        return int(self._config.max_fill)
 
     def apply(self, rhs: Any) -> np.ndarray:
         return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
@@ -605,17 +624,30 @@ class ILUTFactorization:
         )
 
     def __repr__(self) -> str:
-        return f"ILUTFactorization(shape={self.matrix.shape}, dtype={self.dtype})"
+        return (
+            "ILUTFactorization("
+            f"shape={self.matrix.shape}, "
+            f"drop_tolerance={self.drop_tolerance}, "
+            f"max_fill={self.max_fill}, "
+            f"dtype={self.dtype})"
+        )
 
 
 class ILUKFactorization:
-    __slots__ = ("matrix", "_raw", "_l", "_u")
+    __slots__ = ("matrix", "_raw", "_l", "_u", "_config")
 
-    def __init__(self, matrix: "CsrMatrix", raw: _RawSparseILUKFactorization) -> None:
+    def __init__(
+        self,
+        matrix: "CsrMatrix",
+        raw: _RawSparseILUKFactorization,
+        *,
+        config: ILUKConfig,
+    ) -> None:
         self.matrix = matrix
         self._raw = raw
         self._l: CsrMatrix | None = None
         self._u: CsrMatrix | None = None
+        self._config = config
 
     @property
     def l(self) -> "CsrMatrix":
@@ -631,11 +663,15 @@ class ILUKFactorization:
 
     @property
     def level_of_fill(self) -> int:
-        return int(self._raw.level_of_fill)
+        return int(self._config.level_of_fill)
 
     @property
     def dtype(self) -> np.dtype[Any]:
         return self.matrix.dtype
+
+    @property
+    def config(self) -> ILUKConfig:
+        return self._config
 
     def apply(self, rhs: Any) -> np.ndarray:
         return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
@@ -1648,6 +1684,238 @@ class CsrMatrix:
     ) -> np.ndarray:
         return sparse_bicgstab_solve(self, rhs, tolerance=tolerance, max_iterations=max_iterations)
 
+    def gmres_ilu0_solve(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_gmres_ilu0_solve(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def gmres_ilu0_solve_multiple(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_gmres_ilu0_solve_multiple(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def bicgstab_ilu0_solve(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_ilu0_solve(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def bicgstab_ilu0_solve_multiple(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_ilu0_solve_multiple(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def gmres_ilut_solve(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+        drop_tolerance: float | None = None,
+        max_fill: int | None = None,
+        config: ILUTConfig | None = None,
+    ) -> np.ndarray:
+        return sparse_gmres_ilut_solve(
+            self,
+            rhs,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            drop_tolerance=drop_tolerance,
+            max_fill=max_fill,
+            config=config,
+        )
+
+    def gmres_ilut_solve_multiple(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+        drop_tolerance: float | None = None,
+        max_fill: int | None = None,
+        config: ILUTConfig | None = None,
+    ) -> np.ndarray:
+        return sparse_gmres_ilut_solve_multiple(
+            self,
+            rhs,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            drop_tolerance=drop_tolerance,
+            max_fill=max_fill,
+            config=config,
+        )
+
+    def bicgstab_ilut_solve(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+        drop_tolerance: float | None = None,
+        max_fill: int | None = None,
+        config: ILUTConfig | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_ilut_solve(
+            self,
+            rhs,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            drop_tolerance=drop_tolerance,
+            max_fill=max_fill,
+            config=config,
+        )
+
+    def bicgstab_ilut_solve_multiple(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+        drop_tolerance: float | None = None,
+        max_fill: int | None = None,
+        config: ILUTConfig | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_ilut_solve_multiple(
+            self,
+            rhs,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            drop_tolerance=drop_tolerance,
+            max_fill=max_fill,
+            config=config,
+        )
+
+    def gmres_iluk_solve(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+        level_of_fill: int | None = None,
+        config: ILUKConfig | None = None,
+    ) -> np.ndarray:
+        return sparse_gmres_iluk_solve(
+            self,
+            rhs,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            level_of_fill=level_of_fill,
+            config=config,
+        )
+
+    def gmres_iluk_solve_multiple(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+        level_of_fill: int | None = None,
+        config: ILUKConfig | None = None,
+    ) -> np.ndarray:
+        return sparse_gmres_iluk_solve_multiple(
+            self,
+            rhs,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            level_of_fill=level_of_fill,
+            config=config,
+        )
+
+    def bicgstab_iluk_solve(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+        level_of_fill: int | None = None,
+        config: ILUKConfig | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_iluk_solve(
+            self,
+            rhs,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            level_of_fill=level_of_fill,
+            config=config,
+        )
+
+    def bicgstab_iluk_solve_multiple(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+        level_of_fill: int | None = None,
+        config: ILUKConfig | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_iluk_solve_multiple(
+            self,
+            rhs,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            level_of_fill=level_of_fill,
+            config=config,
+        )
+
+    def gmres_ildl0_solve(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_gmres_ildl0_solve(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def gmres_ildl0_solve_multiple(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_gmres_ildl0_solve_multiple(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def bicgstab_ildl0_solve(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_ildl0_solve(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def bicgstab_ildl0_solve_multiple(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_ildl0_solve_multiple(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
     def jacobi_preconditioner(self) -> JacobiPreconditioner:
         return sparse_jacobi_preconditioner(self)
 
@@ -1923,6 +2191,54 @@ def sparse_bicgstab_solve(
     )
 
 
+def sparse_gmres_ilu0_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    return sparse_ilu0_factor(matrix).gmres_solve(
+        rhs, tolerance=tolerance, max_iterations=max_iterations
+    )
+
+
+def sparse_gmres_ilu0_solve_multiple(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    return sparse_ilu0_factor(matrix).gmres_solve_multiple(
+        rhs, tolerance=tolerance, max_iterations=max_iterations
+    )
+
+
+def sparse_bicgstab_ilu0_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    return sparse_ilu0_factor(matrix).bicgstab_solve(
+        rhs, tolerance=tolerance, max_iterations=max_iterations
+    )
+
+
+def sparse_bicgstab_ilu0_solve_multiple(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    return sparse_ilu0_factor(matrix).bicgstab_solve_multiple(
+        rhs, tolerance=tolerance, max_iterations=max_iterations
+    )
+
+
 def sparse_jacobi_preconditioner(matrix: Any) -> JacobiPreconditioner:
     csr = _coerce_csr_matrix(matrix)
     return JacobiPreconditioner(
@@ -1959,6 +2275,7 @@ def sparse_ilut_factor(
             float(resolved.drop_tolerance),
             int(resolved.max_fill),
         ),
+        config=resolved,
     )
 
 
@@ -1980,6 +2297,7 @@ def sparse_iluk_factor(
             csr.data,
             int(resolved.level_of_fill),
         ),
+        config=resolved,
     )
 
 
@@ -1994,6 +2312,190 @@ def sparse_ildl0_factor(matrix: Any) -> ILDL0Factorization:
     csr = _coerce_csr_matrix(matrix)
     return ILDL0Factorization(
         csr, _sparse_ildl0_factor_raw(csr.nrows, csr.ncols, csr.indptr, csr.indices, csr.data)
+    )
+
+
+def sparse_gmres_ilut_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+    drop_tolerance: float | None = None,
+    max_fill: int | None = None,
+    config: ILUTConfig | None = None,
+) -> np.ndarray:
+    return sparse_ilut_factor(
+        matrix,
+        drop_tolerance=drop_tolerance,
+        max_fill=max_fill,
+        config=config,
+    ).gmres_solve(rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+
+def sparse_gmres_ilut_solve_multiple(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+    drop_tolerance: float | None = None,
+    max_fill: int | None = None,
+    config: ILUTConfig | None = None,
+) -> np.ndarray:
+    return sparse_ilut_factor(
+        matrix,
+        drop_tolerance=drop_tolerance,
+        max_fill=max_fill,
+        config=config,
+    ).gmres_solve_multiple(rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+
+def sparse_bicgstab_ilut_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+    drop_tolerance: float | None = None,
+    max_fill: int | None = None,
+    config: ILUTConfig | None = None,
+) -> np.ndarray:
+    return sparse_ilut_factor(
+        matrix,
+        drop_tolerance=drop_tolerance,
+        max_fill=max_fill,
+        config=config,
+    ).bicgstab_solve(rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+
+def sparse_bicgstab_ilut_solve_multiple(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+    drop_tolerance: float | None = None,
+    max_fill: int | None = None,
+    config: ILUTConfig | None = None,
+) -> np.ndarray:
+    return sparse_ilut_factor(
+        matrix,
+        drop_tolerance=drop_tolerance,
+        max_fill=max_fill,
+        config=config,
+    ).bicgstab_solve_multiple(rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+
+def sparse_gmres_iluk_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+    level_of_fill: int | None = None,
+    config: ILUKConfig | None = None,
+) -> np.ndarray:
+    return sparse_iluk_factor(
+        matrix,
+        level_of_fill=level_of_fill,
+        config=config,
+    ).gmres_solve(rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+
+def sparse_gmres_iluk_solve_multiple(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+    level_of_fill: int | None = None,
+    config: ILUKConfig | None = None,
+) -> np.ndarray:
+    return sparse_iluk_factor(
+        matrix,
+        level_of_fill=level_of_fill,
+        config=config,
+    ).gmres_solve_multiple(rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+
+def sparse_bicgstab_iluk_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+    level_of_fill: int | None = None,
+    config: ILUKConfig | None = None,
+) -> np.ndarray:
+    return sparse_iluk_factor(
+        matrix,
+        level_of_fill=level_of_fill,
+        config=config,
+    ).bicgstab_solve(rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+
+def sparse_bicgstab_iluk_solve_multiple(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+    level_of_fill: int | None = None,
+    config: ILUKConfig | None = None,
+) -> np.ndarray:
+    return sparse_iluk_factor(
+        matrix,
+        level_of_fill=level_of_fill,
+        config=config,
+    ).bicgstab_solve_multiple(rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+
+def sparse_gmres_ildl0_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    return sparse_ildl0_factor(matrix).gmres_solve(
+        rhs, tolerance=tolerance, max_iterations=max_iterations
+    )
+
+
+def sparse_gmres_ildl0_solve_multiple(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    return sparse_ildl0_factor(matrix).gmres_solve_multiple(
+        rhs, tolerance=tolerance, max_iterations=max_iterations
+    )
+
+
+def sparse_bicgstab_ildl0_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    return sparse_ildl0_factor(matrix).bicgstab_solve(
+        rhs, tolerance=tolerance, max_iterations=max_iterations
+    )
+
+
+def sparse_bicgstab_ildl0_solve_multiple(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    return sparse_ildl0_factor(matrix).bicgstab_solve_multiple(
+        rhs, tolerance=tolerance, max_iterations=max_iterations
     )
 
 
@@ -2022,6 +2524,14 @@ __all__ = [
     "JacobiPreconditioner",
     "SparseLUFactorization",
     "sparse_bicgstab_solve",
+    "sparse_bicgstab_ildl0_solve",
+    "sparse_bicgstab_ildl0_solve_multiple",
+    "sparse_bicgstab_ilu0_solve",
+    "sparse_bicgstab_ilu0_solve_multiple",
+    "sparse_bicgstab_iluk_solve",
+    "sparse_bicgstab_iluk_solve_multiple",
+    "sparse_bicgstab_ilut_solve",
+    "sparse_bicgstab_ilut_solve_multiple",
     "sparse_conjugate_gradient_solve",
     "sparse_ic0_factor",
     "sparse_ildl0_factor",
@@ -2032,6 +2542,14 @@ __all__ = [
     "sparse_csc_to_csr",
     "sparse_csr_to_csc",
     "sparse_gauss_seidel_solve",
+    "sparse_gmres_ildl0_solve",
+    "sparse_gmres_ildl0_solve_multiple",
+    "sparse_gmres_ilu0_solve",
+    "sparse_gmres_ilu0_solve_multiple",
+    "sparse_gmres_iluk_solve",
+    "sparse_gmres_iluk_solve_multiple",
+    "sparse_gmres_ilut_solve",
+    "sparse_gmres_ilut_solve_multiple",
     "sparse_jacobi_preconditioner",
     "sparse_lu_factor",
     "sparse_lu_solve",

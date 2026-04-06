@@ -47,6 +47,11 @@ pairwise cosine distance, and row-wise batched dot/norm/cosine/distance/normaliz
 matrix APIs now include broadcast-left/right batched matmat alongside the earlier direct and
 batched kernels.
 
+The dense result-bearing surface is also less tuple-oriented now: QR exposes reduced/pivoted
+decomposition plus typed reconstruction/condition helpers, LU exposes signed log-determinant for
+real matrices, and non-symmetric eigen exposes explicit balancing plus matched left/right
+bi-eigen result objects.
+
 Where the admitted Rust surface already has direct complex kernels, the current Python dense API
 now also accepts `complex128` across the main vector/matrix/decomposition/function families
 (`dot`, `l2_norm`, `cosine_similarity`, `matvec`, `matmat`, `svd`, `qr`, `lu` solve/inverse/
@@ -88,7 +93,12 @@ that normalization explicit through the carrier methods rather than silently pre
 format is interchangeable. Direct sparse iterative entrypoints now also include Gauss-Seidel,
 conjugate-gradient, direct `BiCGSTAB`, and IC0-preconditioned `PCG`, and the reusable
 `IC0Factorization` object now supports `pcg_solve(...)` without refactorizing the matrix on every
-call.
+call. The direct preconditioned sparse convenience surface is now first-class too: Python exposes
+one-shot GMRES / `BiCGSTAB` entrypoints over `ILU0`, `ILUT`, `ILUK`, and `ILDL0` both as top-level
+functions and `CsrMatrix` methods, while `ILUTFactorization` / `ILUKFactorization` preserve their
+selected config objects on the Python side. Those one-shot helpers still rebuild the factorization
+each call, so repeated-RHS/performance-sensitive workflows should continue to use the reusable
+factorization objects directly.
 
 ## Documentation
 

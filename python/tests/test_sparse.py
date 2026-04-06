@@ -668,6 +668,233 @@ def test_sparse_iterative_reuse_methods():
     )
 
 
+def test_sparse_direct_preconditioned_solver_convenience_surface():
+    nonsymmetric_dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    nonsymmetric = pynabled.CsrMatrix.from_components(*_csr_from_dense(nonsymmetric_dense))
+    nonsymmetric_csc = nonsymmetric.to_csc()
+    rhs = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+    rhs_multi = np.column_stack([rhs, rhs * 2.0])
+    expected = np.linalg.solve(nonsymmetric_dense, rhs)
+    expected_multi = np.linalg.solve(nonsymmetric_dense, rhs_multi)
+    ilut_config = pynabled.ILUTConfig(drop_tolerance=0.0, max_fill=8)
+    iluk_config = pynabled.ILUKConfig(level_of_fill=1)
+
+    single_cases = [
+        (
+            pynabled.sparse_gmres_ilu0_solve,
+            nonsymmetric.gmres_ilu0_solve,
+            {},
+            expected,
+            nonsymmetric,
+        ),
+        (
+            pynabled.sparse_bicgstab_ilu0_solve,
+            nonsymmetric.bicgstab_ilu0_solve,
+            {},
+            expected,
+            nonsymmetric,
+        ),
+        (
+            pynabled.sparse_gmres_ilut_solve,
+            nonsymmetric.gmres_ilut_solve,
+            {"config": ilut_config},
+            expected,
+            nonsymmetric_csc,
+        ),
+        (
+            pynabled.sparse_bicgstab_ilut_solve,
+            nonsymmetric.bicgstab_ilut_solve,
+            {"config": ilut_config},
+            expected,
+            nonsymmetric,
+        ),
+        (
+            pynabled.sparse_gmres_iluk_solve,
+            nonsymmetric.gmres_iluk_solve,
+            {"config": iluk_config},
+            expected,
+            nonsymmetric,
+        ),
+        (
+            pynabled.sparse_bicgstab_iluk_solve,
+            nonsymmetric.bicgstab_iluk_solve,
+            {"config": iluk_config},
+            expected,
+            nonsymmetric,
+        ),
+    ]
+    for top_level, matrix_method, kwargs, expected_solution, matrix in single_cases:
+        np.testing.assert_allclose(
+            top_level(matrix, rhs, tolerance=1e-10, max_iterations=512, **kwargs),
+            expected_solution,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            matrix_method(rhs, tolerance=1e-10, max_iterations=512, **kwargs),
+            expected_solution,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+
+    multiple_cases = [
+        (
+            pynabled.sparse_gmres_ilu0_solve_multiple,
+            nonsymmetric.gmres_ilu0_solve_multiple,
+            {},
+            expected_multi,
+        ),
+        (
+            pynabled.sparse_bicgstab_ilu0_solve_multiple,
+            nonsymmetric.bicgstab_ilu0_solve_multiple,
+            {},
+            expected_multi,
+        ),
+        (
+            pynabled.sparse_gmres_ilut_solve_multiple,
+            nonsymmetric.gmres_ilut_solve_multiple,
+            {"config": ilut_config},
+            expected_multi,
+        ),
+        (
+            pynabled.sparse_bicgstab_ilut_solve_multiple,
+            nonsymmetric.bicgstab_ilut_solve_multiple,
+            {"config": ilut_config},
+            expected_multi,
+        ),
+        (
+            pynabled.sparse_gmres_iluk_solve_multiple,
+            nonsymmetric.gmres_iluk_solve_multiple,
+            {"config": iluk_config},
+            expected_multi,
+        ),
+        (
+            pynabled.sparse_bicgstab_iluk_solve_multiple,
+            nonsymmetric.bicgstab_iluk_solve_multiple,
+            {"config": iluk_config},
+            expected_multi,
+        ),
+    ]
+    for top_level, matrix_method, kwargs, expected_solution in multiple_cases:
+        np.testing.assert_allclose(
+            top_level(nonsymmetric, rhs_multi, tolerance=1e-10, max_iterations=512, **kwargs),
+            expected_solution,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            matrix_method(rhs_multi, tolerance=1e-10, max_iterations=512, **kwargs),
+            expected_solution,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+
+    symmetric_dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [1.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    symmetric = pynabled.CsrMatrix.from_components(*_csr_from_dense(symmetric_dense))
+    expected_symmetric = np.linalg.solve(symmetric_dense, rhs)
+    expected_symmetric_multi = np.linalg.solve(symmetric_dense, rhs_multi)
+
+    for top_level, matrix_method, expected_solution in (
+        (pynabled.sparse_gmres_ildl0_solve, symmetric.gmres_ildl0_solve, expected_symmetric),
+        (
+            pynabled.sparse_bicgstab_ildl0_solve,
+            symmetric.bicgstab_ildl0_solve,
+            expected_symmetric,
+        ),
+    ):
+        np.testing.assert_allclose(
+            top_level(symmetric, rhs, tolerance=1e-10, max_iterations=512),
+            expected_solution,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            matrix_method(rhs, tolerance=1e-10, max_iterations=512),
+            expected_solution,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+
+    for top_level, matrix_method, expected_solution in (
+        (
+            pynabled.sparse_gmres_ildl0_solve_multiple,
+            symmetric.gmres_ildl0_solve_multiple,
+            expected_symmetric_multi,
+        ),
+        (
+            pynabled.sparse_bicgstab_ildl0_solve_multiple,
+            symmetric.bicgstab_ildl0_solve_multiple,
+            expected_symmetric_multi,
+        ),
+    ):
+        np.testing.assert_allclose(
+            top_level(symmetric, rhs_multi, tolerance=1e-10, max_iterations=512),
+            expected_solution,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            matrix_method(rhs_multi, tolerance=1e-10, max_iterations=512),
+            expected_solution,
+            rtol=1e-8,
+            atol=1e-8,
+        )
+
+
+def test_sparse_factorization_config_round_trip_and_convenience_errors():
+    dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    matrix = pynabled.CsrMatrix.from_components(*_csr_from_dense(dense))
+    ilut_config = pynabled.ILUTConfig(drop_tolerance=1e-7, max_fill=10)
+    iluk_config = pynabled.ILUKConfig(level_of_fill=2)
+    ilut = matrix.ilut_factor(config=ilut_config)
+    iluk = matrix.iluk_factor(config=iluk_config)
+
+    assert ilut.config == ilut_config
+    assert ilut.drop_tolerance == pytest.approx(ilut_config.drop_tolerance)
+    assert ilut.max_fill == ilut_config.max_fill
+    assert "drop_tolerance=1e-07" in repr(ilut)
+    assert "max_fill=10" in repr(ilut)
+    assert iluk.config == iluk_config
+    assert iluk.level_of_fill == iluk_config.level_of_fill
+
+    rhs = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+    with pytest.raises(TypeError, match="either config"):
+        pynabled.sparse_gmres_ilut_solve(
+            matrix,
+            rhs,
+            config=ilut_config,
+            drop_tolerance=1e-8,
+        )
+    with pytest.raises(TypeError, match="either config"):
+        pynabled.sparse_bicgstab_iluk_solve(
+            matrix,
+            rhs,
+            config=iluk_config,
+            level_of_fill=1,
+        )
+
+
 def test_sparse_config_profiles_and_factorization_helpers():
     assert pynabled.ILUTConfig.conservative() == pynabled.ILUTConfig(
         drop_tolerance=1e-6, max_fill=8

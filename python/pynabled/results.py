@@ -29,6 +29,12 @@ class LuResult:
 
 
 @dataclass(slots=True)
+class LogDetResult:
+    sign: int
+    ln_abs_det: float
+
+
+@dataclass(slots=True)
 class CholeskyResult:
     l: np.ndarray
 
@@ -49,6 +55,21 @@ class GeneralizedEigenResult:
 class NonsymmetricEigenResult:
     eigenvalues: np.ndarray
     schur_vectors: np.ndarray
+
+
+@dataclass(slots=True)
+class BalancedNonsymmetricResult:
+    balanced_matrix: np.ndarray
+    balancing_diagonal: np.ndarray
+
+
+@dataclass(slots=True)
+class NonsymmetricBiEigenResult:
+    eigenvalues: np.ndarray
+    right_eigenvectors: np.ndarray
+    left_eigenvectors: np.ndarray
+    balancing_diagonal: np.ndarray
+    balanced_matrix: np.ndarray
 
 
 @dataclass(slots=True)
@@ -142,11 +163,14 @@ __all__ = [
     "CpAlsReport",
     "CpConvergenceReport",
     "CpErrorMetrics",
+    "BalancedNonsymmetricResult",
     "EigenResult",
     "GeneralizedEigenResult",
     "Hosvd3Result",
     "HosvdNdResult",
+    "LogDetResult",
     "LuResult",
+    "NonsymmetricBiEigenResult",
     "NonsymmetricEigenResult",
     "PcaResult",
     "PolarResult",

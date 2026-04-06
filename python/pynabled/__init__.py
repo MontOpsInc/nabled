@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 import pynabled._pynabled as _raw
 
 from .results import (
+    BalancedNonsymmetricResult,
     CholeskyResult,
     CpAls3Result,
     CpAlsNdResult,
@@ -15,7 +18,9 @@ from .results import (
     GeneralizedEigenResult,
     Hosvd3Result,
     HosvdNdResult,
+    LogDetResult,
     LuResult,
+    NonsymmetricBiEigenResult,
     NonsymmetricEigenResult,
     PcaResult,
     PolarResult,
@@ -39,11 +44,27 @@ from .sparse import (
     JacobiPreconditioner,
     SparseLUFactorization,
     sparse_bicgstab_solve,
+    sparse_bicgstab_ildl0_solve,
+    sparse_bicgstab_ildl0_solve_multiple,
+    sparse_bicgstab_ilu0_solve,
+    sparse_bicgstab_ilu0_solve_multiple,
+    sparse_bicgstab_iluk_solve,
+    sparse_bicgstab_iluk_solve_multiple,
+    sparse_bicgstab_ilut_solve,
+    sparse_bicgstab_ilut_solve_multiple,
     sparse_conjugate_gradient_solve,
     sparse_coo_to_csr,
     sparse_csc_to_csr,
     sparse_csr_to_csc,
     sparse_gauss_seidel_solve,
+    sparse_gmres_ildl0_solve,
+    sparse_gmres_ildl0_solve_multiple,
+    sparse_gmres_ilu0_solve,
+    sparse_gmres_ilu0_solve_multiple,
+    sparse_gmres_iluk_solve,
+    sparse_gmres_iluk_solve_multiple,
+    sparse_gmres_ilut_solve,
+    sparse_gmres_ilut_solve_multiple,
     sparse_ic0_factor,
     sparse_ildl0_factor,
     sparse_ilu0_factor,
@@ -127,13 +148,58 @@ def svd_null_space(a, tolerance=None):
     return _raw.svd_null_space(a, tolerance)
 
 
-def qr_decompose(a) -> QrResult:
-    q, r, rank = _raw.qr_decompose(a)
+def qr_decompose(a, rank_tolerance=None, max_iterations=None) -> QrResult:
+    q, r, rank = _raw.qr_decompose(
+        a,
+        rank_tolerance=rank_tolerance,
+        max_iterations=max_iterations,
+    )
     return QrResult(q=q, r=r, rank=rank)
 
 
-def qr_solve_least_squares(a, b):
-    return _raw.qr_solve_least_squares(a, b)
+def qr_decompose_reduced(a, rank_tolerance=None, max_iterations=None) -> QrResult:
+    q, r, rank = _raw.qr_decompose_reduced(
+        a,
+        rank_tolerance=rank_tolerance,
+        max_iterations=max_iterations,
+    )
+    return QrResult(q=q, r=r, rank=rank)
+
+
+def qr_decompose_pivoted(a, rank_tolerance=None, max_iterations=None) -> QrResult:
+    q, r, p, rank = _raw.qr_decompose_pivoted(
+        a,
+        rank_tolerance=rank_tolerance,
+        max_iterations=max_iterations,
+    )
+    return QrResult(q=q, r=r, rank=rank, p=p)
+
+
+def qr_reconstruct_matrix(result: QrResult):
+    reconstructed = result.q @ result.r
+    if result.p is not None:
+        return reconstructed @ result.p.T.conj()
+    return reconstructed
+
+
+def qr_condition_number(result: QrResult):
+    diagonal = np.abs(np.diag(result.r))
+    if diagonal.size == 0:
+        return 0.0
+    tolerance = max(1.0e-12, float(np.finfo(diagonal.dtype).eps))
+    finite = diagonal[diagonal > tolerance]
+    if finite.size == 0:
+        return float(np.inf)
+    return float(diagonal.max() / finite.min())
+
+
+def qr_solve_least_squares(a, b, rank_tolerance=None, max_iterations=None):
+    return _raw.qr_solve_least_squares(
+        a,
+        b,
+        rank_tolerance=rank_tolerance,
+        max_iterations=max_iterations,
+    )
 
 
 def lu_decompose(a) -> LuResult:
@@ -151,6 +217,11 @@ def lu_inverse(a):
 
 def lu_determinant(a):
     return _raw.lu_determinant(a)
+
+
+def lu_log_determinant(a) -> LogDetResult:
+    sign, ln_abs_det = _raw.lu_log_determinant(a)
+    return LogDetResult(sign=sign, ln_abs_det=ln_abs_det)
 
 
 def cholesky_decompose(a) -> CholeskyResult:
@@ -178,6 +249,51 @@ def eigen_generalized(a, b) -> GeneralizedEigenResult:
 def eigen_nonsymmetric(a) -> NonsymmetricEigenResult:
     eigenvalues, schur_vectors = _raw.eigen_nonsymmetric(a)
     return NonsymmetricEigenResult(eigenvalues=eigenvalues, schur_vectors=schur_vectors)
+
+
+def eigen_balance_nonsymmetric(
+    a,
+    balance=True,
+    balance_max_iterations=None,
+    balance_tolerance=None,
+) -> BalancedNonsymmetricResult:
+    balanced_matrix, balancing_diagonal = _raw.eigen_balance_nonsymmetric(
+        a,
+        balance=balance,
+        balance_max_iterations=balance_max_iterations,
+        balance_tolerance=balance_tolerance,
+    )
+    return BalancedNonsymmetricResult(
+        balanced_matrix=balanced_matrix,
+        balancing_diagonal=balancing_diagonal,
+    )
+
+
+def eigen_nonsymmetric_bi(
+    a,
+    balance=True,
+    balance_max_iterations=None,
+    balance_tolerance=None,
+) -> NonsymmetricBiEigenResult:
+    (
+        eigenvalues,
+        right_eigenvectors,
+        left_eigenvectors,
+        balancing_diagonal,
+        balanced_matrix,
+    ) = _raw.eigen_nonsymmetric_bi(
+        a,
+        balance=balance,
+        balance_max_iterations=balance_max_iterations,
+        balance_tolerance=balance_tolerance,
+    )
+    return NonsymmetricBiEigenResult(
+        eigenvalues=eigenvalues,
+        right_eigenvectors=right_eigenvectors,
+        left_eigenvectors=left_eigenvectors,
+        balancing_diagonal=balancing_diagonal,
+        balanced_matrix=balanced_matrix,
+    )
 
 
 def schur_compute(a) -> SchurResult:
@@ -543,11 +659,14 @@ triangular_solve_upper_matrix = _raw.triangular_solve_upper_matrix
 
 __all__ = [
     "SvdResult",
+    "BalancedNonsymmetricResult",
     "QrResult",
     "LuResult",
+    "LogDetResult",
     "CholeskyResult",
     "EigenResult",
     "GeneralizedEigenResult",
+    "NonsymmetricBiEigenResult",
     "NonsymmetricEigenResult",
     "SchurResult",
     "PolarResult",
@@ -569,17 +688,24 @@ __all__ = [
     "svd_rank",
     "svd_null_space",
     "qr_decompose",
+    "qr_decompose_reduced",
+    "qr_decompose_pivoted",
+    "qr_reconstruct_matrix",
+    "qr_condition_number",
     "qr_solve_least_squares",
     "lu_decompose",
     "lu_solve",
     "lu_inverse",
     "lu_determinant",
+    "lu_log_determinant",
     "cholesky_decompose",
     "cholesky_solve",
     "cholesky_inverse",
     "eigen_symmetric",
     "eigen_generalized",
     "eigen_nonsymmetric",
+    "eigen_balance_nonsymmetric",
+    "eigen_nonsymmetric_bi",
     "schur_compute",
     "polar_compute",
     "sylvester_solve",
@@ -672,6 +798,24 @@ __all__ = [
     "ILUTFactorization",
     "JacobiPreconditioner",
     "SparseLUFactorization",
+    "sparse_bicgstab_solve",
+    "sparse_bicgstab_ildl0_solve",
+    "sparse_bicgstab_ildl0_solve_multiple",
+    "sparse_bicgstab_ilu0_solve",
+    "sparse_bicgstab_ilu0_solve_multiple",
+    "sparse_bicgstab_iluk_solve",
+    "sparse_bicgstab_iluk_solve_multiple",
+    "sparse_bicgstab_ilut_solve",
+    "sparse_bicgstab_ilut_solve_multiple",
+    "sparse_conjugate_gradient_solve",
+    "sparse_gmres_ildl0_solve",
+    "sparse_gmres_ildl0_solve_multiple",
+    "sparse_gmres_ilu0_solve",
+    "sparse_gmres_ilu0_solve_multiple",
+    "sparse_gmres_iluk_solve",
+    "sparse_gmres_iluk_solve_multiple",
+    "sparse_gmres_ilut_solve",
+    "sparse_gmres_ilut_solve_multiple",
     "sparse_ic0_factor",
     "sparse_ildl0_factor",
     "sparse_ilu0_factor",

@@ -43,6 +43,8 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // QR
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::decompose, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::decompose_reduced, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::decompose_pivoted, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::solve_least_squares, m)?)?;
 
     // LU
@@ -50,6 +52,7 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::solve, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::inverse, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::determinant, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::log_determinant, m)?)?;
 
     // Cholesky
     m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::decompose, m)?)?;
@@ -60,6 +63,8 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::eigen::symmetric, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::eigen::generalized, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::eigen::nonsymmetric, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::eigen::balance_nonsymmetric, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::eigen::nonsymmetric_bi, m)?)?;
 
     // Schur
     m.add_function(pyo3::wrap_pyfunction!(linalg::schur::compute_schur, m)?)?;

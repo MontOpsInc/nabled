@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-05
+Last updated: 2026-04-06
 
 ## Summary
 
@@ -112,7 +112,24 @@ batched matmat kernels. `docs/PYNABLED_PARITY_MATRIX.md` was also corrected to c
 current Rust batch surface: batched decomposition rows and dense matrix batch kernels remain
 real-only unless the Rust admission expands. Validation is green on the Python package gate
 (`168 passed, 3 skipped`, `92.47%` Python coverage, editable + Arrow + wheel/sdist +
-feature-smoke builds), and full `just checks` is green on the same milestone.
+feature-smoke builds), and full `just checks` is green on the same milestone. A sixteenth
+`N-PY-003` dense configurable/result pass is now also landed: Python QR now exposes
+config-bearing full/reduced/pivoted decomposition rows plus typed reconstruction/condition
+helpers, LU now exposes signed log-determinant for real matrices, and non-symmetric eigen now
+exposes balancing plus matched left/right bi-eigen result objects. The parity docs were corrected
+to code truth in the same pass: QR reduced is currently real-only in Rust, LU complex
+decomposition is not an admitted public Rust row, and the remaining dense provider-bound
+mixed-precision rows are now tracked as coupled to later Python feature/build UX work rather than
+treated as standalone Python-only gaps. Validation is green on the Python package gate
+(`176 passed, 3 skipped`, `92.46%` Python coverage, editable + Arrow + wheel/sdist +
+feature-smoke builds). A seventeenth `N-PY-003` sparse solver/config pass is now also landed:
+Python sparse now exposes direct one-shot GMRES / `BiCGSTAB` convenience rows over `ILU0`,
+`ILUT`, `ILUK`, and `ILDL0` as both top-level functions and `CsrMatrix` methods, while
+`ILUTFactorization` / `ILUKFactorization` preserve the selected config metadata on the Python
+objects themselves. The sparse contract now makes one-shot refactorization explicit and keeps
+reusable factor objects as the performance-first path for repeated-RHS workloads. Validation is
+green end-to-end: full Python pytest passed (`181 passed`), the package gate passed (`178 passed,
+3 skipped`, `92.85%` Python coverage), and full `just checks` is green.
 Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).

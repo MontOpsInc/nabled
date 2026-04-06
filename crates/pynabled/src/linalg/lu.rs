@@ -6,7 +6,7 @@ use pyo3::types::PyAny;
 use crate::error::to_py_err;
 use crate::utils;
 
-/// Compute LU decomposition. Returns (L, U).
+/// Compute LU decomposition. Returns `(L, U)`.
 #[pyfunction(name = "lu_decompose")]
 pub fn decompose<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
     match utils::real_array2(a, "a")? {
@@ -21,7 +21,7 @@ pub fn decompose<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<(Py<Py
     }
 }
 
-/// Solve Ax = b using LU decomposition.
+/// Solve `Ax = b` using LU decomposition.
 #[pyfunction(name = "lu_solve")]
 pub fn solve<'py>(
     py: Python<'py>,
@@ -85,6 +85,23 @@ pub fn determinant<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Py<P
             let result =
                 nabled_linalg::lu::determinant_complex_view(&arr.as_array()).map_err(to_py_err)?;
             Ok(utils::py_complex(py, result))
+        }
+    }
+}
+
+/// Compute signed log-determinant. Returns `(sign, ln_abs_det)`.
+#[pyfunction(name = "lu_log_determinant")]
+pub fn log_determinant<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<(i8, Py<PyAny>)> {
+    match utils::real_array2(a, "a")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let result =
+                nabled_linalg::lu::log_determinant_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok((result.sign, utils::py_float(py, result.ln_abs_det.into())))
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let result =
+                nabled_linalg::lu::log_determinant_view(&arr.as_array()).map_err(to_py_err)?;
+            Ok((result.sign, utils::py_float(py, result.ln_abs_det)))
         }
     }
 }
