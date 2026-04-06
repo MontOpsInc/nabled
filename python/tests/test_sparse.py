@@ -138,6 +138,81 @@ def test_sparse_pcg_solve():
     np.testing.assert_allclose(matrix.pcg_solve(rhs), x, rtol=1e-10)
 
 
+def test_sparse_direct_iterative_solver_surface():
+    spd_dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [1.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    spd = pynabled.CsrMatrix.from_components(*_csr_from_dense(spd_dense))
+    rhs = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+    expected_spd = np.linalg.solve(spd_dense, rhs)
+
+    np.testing.assert_allclose(
+        pynabled.sparse_gauss_seidel_solve(spd, rhs, tolerance=1e-10, max_iterations=5000),
+        expected_spd,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        spd.gauss_seidel_solve(rhs, tolerance=1e-10, max_iterations=5000),
+        expected_spd,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        pynabled.sparse_conjugate_gradient_solve(spd, rhs, tolerance=1e-10, max_iterations=5000),
+        expected_spd,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        spd.conjugate_gradient_solve(rhs, tolerance=1e-10, max_iterations=5000),
+        expected_spd,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        pynabled.sparse_pcg_ic0_solve(spd, rhs, tolerance=1e-10, max_iterations=5000),
+        expected_spd,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        spd.pcg_ic0_solve(rhs, tolerance=1e-10, max_iterations=5000),
+        expected_spd,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+
+    nonsymmetric_dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    nonsymmetric = pynabled.CsrMatrix.from_components(*_csr_from_dense(nonsymmetric_dense))
+    expected_nonsymmetric = np.linalg.solve(nonsymmetric_dense, rhs)
+
+    np.testing.assert_allclose(
+        pynabled.sparse_bicgstab_solve(nonsymmetric, rhs, tolerance=1e-10, max_iterations=5000),
+        expected_nonsymmetric,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        nonsymmetric.bicgstab_solve(rhs, tolerance=1e-10, max_iterations=5000),
+        expected_nonsymmetric,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+
+
 def test_sparse_reusable_factorizations_and_direct_lu():
     dense = np.array(
         [
@@ -215,6 +290,24 @@ def test_sparse_symmetric_reusable_factorizations_preserve_dtype():
 
     np.testing.assert_allclose(ic0.apply(rhs), expected, rtol=1e-4, atol=1e-4)
     np.testing.assert_allclose(ildl0.apply(rhs), expected, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(
+        ic0.pcg_solve(rhs, tolerance=1e-5, max_iterations=5000),
+        expected,
+        rtol=1e-4,
+        atol=1e-4,
+    )
+    np.testing.assert_allclose(
+        matrix.pcg_ic0_solve(rhs, tolerance=1e-5, max_iterations=5000),
+        expected,
+        rtol=1e-4,
+        atol=1e-4,
+    )
+    np.testing.assert_allclose(
+        pynabled.sparse_pcg_ic0_solve(matrix, rhs, tolerance=1e-5, max_iterations=5000),
+        expected,
+        rtol=1e-4,
+        atol=1e-4,
+    )
 
 
 def test_sparse_accepts_scipy_compatible_objects():

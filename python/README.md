@@ -42,12 +42,20 @@ and their `float32` defaults use `float32`-appropriate finite-difference / conve
 instead of raw `float64` thresholds. Some higher-level wrappers still materialize owned arrays
 internally where the current Rust API shape requires it.
 
+Current dense primitive breadth is also wider: vector APIs now include cosine distance,
+pairwise cosine distance, and row-wise batched dot/norm/cosine/distance/normalize helpers, while
+matrix APIs now include broadcast-left/right batched matmat alongside the earlier direct and
+batched kernels.
+
 Where the admitted Rust surface already has direct complex kernels, the current Python dense API
 now also accepts `complex128` across the main vector/matrix/decomposition/function families
 (`dot`, `l2_norm`, `cosine_similarity`, `matvec`, `matmat`, `svd`, `qr`, `lu` solve/inverse/
 determinant, `cholesky`, non-symmetric `eigen`, `schur`, `polar`, `sylvester`, `lyapunov`,
 admitted complex `matrix_functions`, and `gram_schmidt`). Unsupported rows fail explicitly rather
 than silently casting or dropping back to a different numerical contract.
+
+For the current admitted Rust batch surface, complex support also extends to the batch-vector
+helpers (`batched_dot`, `batched_l2_norm`, `batched_cosine_similarity`, `batched_normalize`).
 
 Structured decomposition / ML / tensor workflows now return typed Python result objects with named
 fields instead of anonymous tuples. For example, `svd_decompose(...)` returns `pynabled.SvdResult`,
@@ -77,7 +85,10 @@ the canonical `CsrMatrix`, and the reusable `ILU0` / `ILUT` / `ILUK` / `ILDL0` f
 also drive GMRES / `BiCGSTAB` solve and multi-RHS solve workflows without rebuilding the sparse
 factorization each call. Where a sparse kernel only admits the CSR form today, `pynabled` keeps
 that normalization explicit through the carrier methods rather than silently pretending the storage
-format is interchangeable.
+format is interchangeable. Direct sparse iterative entrypoints now also include Gauss-Seidel,
+conjugate-gradient, direct `BiCGSTAB`, and IC0-preconditioned `PCG`, and the reusable
+`IC0Factorization` object now supports `pcg_solve(...)` without refactorizing the matrix on every
+call.
 
 ## Documentation
 

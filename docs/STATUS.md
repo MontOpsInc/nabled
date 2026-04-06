@@ -98,8 +98,22 @@ sparse now has first-class `CscMatrix` / `CooMatrix` carriers alongside `CsrMatr
 `CSR -> CSC`, `CSC -> CSR`, and `COO -> CSR` conversions, native CSC matvec, sparse-sparse matmat
 returning canonical `CsrMatrix`, and reusable GMRES / `BiCGSTAB` solve methods over the landed
 `ILU0` / `ILUT` / `ILUK` / `ILDL0` factor objects for both single-RHS and multi-RHS solves.
-Validation remains green on the editable Python 3.12 build (`160 passed, 3 skipped`). Treat
-`docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
+Validation remains green on the editable Python 3.12 build (`160 passed, 3 skipped`). A
+fourteenth `N-PY-003` sparse iterative pass is now also landed: direct matrix/top-level
+Gauss-Seidel, conjugate-gradient, direct `BiCGSTAB`, and IC0-preconditioned `PCG` entrypoints are
+now exposed on the Python side, and `IC0Factorization` itself now supports reusable `pcg_solve`
+backed by a new lower `pcg_ic0_solve_with_factorization(_view)` primitive in `nabled-linalg`. A
+fifteenth `N-PY-003` dense primitive breadth pass is now also landed: Python vector primitives now
+cover the admitted cosine-distance / pairwise-cosine-distance / batched dot-norm-cosine-distance-
+normalize surface under unified `float32` / `float64` public names, admitted complex batch-vector
+rows (`batched_dot`, `batched_l2_norm`, `batched_cosine_similarity`, `batched_normalize`) are now
+exposed for `complex128`, and matrix primitives now include the admitted broadcast-left/right
+batched matmat kernels. `docs/PYNABLED_PARITY_MATRIX.md` was also corrected to code truth for the
+current Rust batch surface: batched decomposition rows and dense matrix batch kernels remain
+real-only unless the Rust admission expands. Validation is green on the Python package gate
+(`168 passed, 3 skipped`, `92.47%` Python coverage, editable + Arrow + wheel/sdist +
+feature-smoke builds), and full `just checks` is green on the same milestone.
+Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).
 7. Public `*_lapack` compatibility wrappers have been removed.

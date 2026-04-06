@@ -149,13 +149,22 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::matmat, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_row_matvec, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_matmat, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_matmat_broadcast_right, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_matmat_broadcast_left, m)?)?;
 
     // Vector
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::dot, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::l2_norm, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::cosine_similarity, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::cosine_distance, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_l2_distance, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_cosine_similarity, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_cosine_distance, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_dot, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_l2_norm, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_cosine_similarity, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_cosine_distance, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_normalize, m)?)?;
 
     // ML
     m.add_function(pyo3::wrap_pyfunction!(ml::regression::linear_regression, m)?)?;
@@ -222,6 +231,10 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::coo_to_csr, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::jacobi_solve, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::pcg_solve, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::gauss_seidel_solve, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::conjugate_gradient_solve, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::pcg_ic0_solve, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(sparse::csr::bicgstab_solve, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::jacobi_preconditioner, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::ilu0_factor, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::ilut_factor, m)?)?;

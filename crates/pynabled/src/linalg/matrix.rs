@@ -149,3 +149,59 @@ pub fn batched_matmat<'py>(
         _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
     }
 }
+
+/// Batched matrix-matrix product with a broadcast right matrix.
+#[pyfunction]
+pub fn batched_matmat_broadcast_right<'py>(
+    py: Python<'py>,
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_array3(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray3::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let result = nabled_linalg::matrix::batched_matmat_broadcast_right_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray3::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let result = nabled_linalg::matrix::batched_matmat_broadcast_right_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Batched matrix-matrix product with a broadcast left matrix.
+#[pyfunction]
+pub fn batched_matmat_broadcast_left<'py>(
+    py: Python<'py>,
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_array2(left, "left")?, utils::real_array3(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray3::F32(right_arr)) => {
+            let result = nabled_linalg::matrix::batched_matmat_broadcast_left_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray3::F64(right_arr)) => {
+            let result = nabled_linalg::matrix::batched_matmat_broadcast_left_view(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray3_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}

@@ -119,6 +119,33 @@ def test_dense_kernels_accept_complex128():
     np.testing.assert_allclose(matmat, left @ right, rtol=1e-12, atol=1e-12)
 
 
+def test_batched_matrix_broadcast_kernels_accept_float32():
+    left_batches = np.arange(12, dtype=np.float32).reshape(2, 2, 3)
+    right = np.array(
+        [[1.0, 0.0], [0.0, 1.0], [1.0, -1.0]],
+        dtype=np.float32,
+    )
+    left = np.array(
+        [[1.0, 2.0, 0.0], [0.0, 1.0, 1.0]],
+        dtype=np.float32,
+    )
+    right_batches = np.array(
+        [
+            [[1.0, 0.0], [0.0, 1.0], [2.0, 1.0]],
+            [[0.0, 1.0], [1.0, 0.0], [1.0, -1.0]],
+        ],
+        dtype=np.float32,
+    )
+
+    broadcast_right = pynabled.batched_matmat_broadcast_right(left_batches, right)
+    broadcast_left = pynabled.batched_matmat_broadcast_left(left, right_batches)
+
+    assert broadcast_right.dtype == np.float32
+    assert broadcast_left.dtype == np.float32
+    np.testing.assert_allclose(broadcast_right, left_batches @ right, rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(broadcast_left, left @ right_batches, rtol=1e-5, atol=1e-6)
+
+
 def test_dense_kernels_reject_mixed_real_dtypes():
     matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
     vector = np.array([1.0, 1.0], dtype=np.float64)

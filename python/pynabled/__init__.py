@@ -38,9 +38,12 @@ from .sparse import (
     ILUTFactorization,
     JacobiPreconditioner,
     SparseLUFactorization,
+    sparse_bicgstab_solve,
+    sparse_conjugate_gradient_solve,
     sparse_coo_to_csr,
     sparse_csc_to_csr,
     sparse_csr_to_csc,
+    sparse_gauss_seidel_solve,
     sparse_ic0_factor,
     sparse_ildl0_factor,
     sparse_ilu0_factor,
@@ -54,6 +57,7 @@ from .sparse import (
     sparse_matmat_sparse,
     sparse_matvec,
     sparse_matvec_csc,
+    sparse_pcg_ic0_solve,
     sparse_pcg_solve,
     sparse_transpose,
 )
@@ -457,7 +461,14 @@ adam_complex = _raw.adam_complex
 backtracking_line_search = _raw.backtracking_line_search
 backtracking_line_search_complex = _raw.backtracking_line_search_complex
 batched_matmat = _raw.batched_matmat
+batched_matmat_broadcast_left = _raw.batched_matmat_broadcast_left
+batched_matmat_broadcast_right = _raw.batched_matmat_broadcast_right
 batched_row_matvec = _raw.batched_row_matvec
+batched_cosine_distance = _raw.batched_cosine_distance
+batched_cosine_similarity = _raw.batched_cosine_similarity
+batched_dot = _raw.batched_dot
+batched_l2_norm = _raw.batched_l2_norm
+batched_normalize = _raw.batched_normalize
 bfgs = _raw.bfgs
 bfgs_complex = _raw.bfgs_complex
 center_columns = _raw.center_columns
@@ -468,6 +479,7 @@ conjugate_gradient = _raw.conjugate_gradient
 conjugate_gradient_complex = _raw.conjugate_gradient_complex
 correlation_matrix = _raw.correlation_matrix
 correlation_matrix_complex = _raw.correlation_matrix_complex
+cosine_distance = _raw.cosine_distance
 cosine_similarity = _raw.cosine_similarity
 covariance_matrix = _raw.covariance_matrix
 covariance_matrix_complex = _raw.covariance_matrix_complex
@@ -495,6 +507,7 @@ numerical_hessian = _raw.numerical_hessian
 numerical_jacobian = _raw.numerical_jacobian
 numerical_jacobian_central = _raw.numerical_jacobian_central
 pairwise_cosine_similarity = _raw.pairwise_cosine_similarity
+pairwise_cosine_distance = _raw.pairwise_cosine_distance
 pairwise_l2_distance = _raw.pairwise_l2_distance
 projected_gradient_descent_box = _raw.projected_gradient_descent_box
 projected_gradient_descent_box_complex = _raw.projected_gradient_descent_box_complex
@@ -593,11 +606,20 @@ __all__ = [
     "matmat",
     "batched_row_matvec",
     "batched_matmat",
+    "batched_matmat_broadcast_right",
+    "batched_matmat_broadcast_left",
     "dot",
     "l2_norm",
     "cosine_similarity",
+    "cosine_distance",
     "pairwise_l2_distance",
     "pairwise_cosine_similarity",
+    "pairwise_cosine_distance",
+    "batched_dot",
+    "batched_l2_norm",
+    "batched_cosine_similarity",
+    "batched_cosine_distance",
+    "batched_normalize",
     "linear_regression",
     "linear_regression_complex",
     "compute_pca",

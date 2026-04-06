@@ -3477,6 +3477,28 @@ pub fn pcg_ic0_solve<T: NabledReal>(
     pcg_ic0_solve_view(&matrix.as_view(), rhs, tolerance, max_iterations)
 }
 
+/// Solve sparse linear system `A x = b` with a reusable IC(0) factorization.
+///
+/// This routine assumes an SPD matrix `A`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn pcg_ic0_solve_with_factorization<T: NabledReal>(
+    matrix: &CsrMatrix<T>,
+    rhs: &Array1<T>,
+    tolerance: T,
+    max_iterations: usize,
+    factorization: &IC0Factorization<T>,
+) -> Result<Array1<T>, SparseError> {
+    pcg_ic0_solve_with_factorization_view(
+        &matrix.as_view(),
+        rhs,
+        tolerance,
+        max_iterations,
+        factorization,
+    )
+}
+
 /// Solve sparse linear system `A x = b` with IC(0)-preconditioned conjugate gradient from a
 /// borrowed CSR view.
 ///
@@ -3484,9 +3506,9 @@ pub fn pcg_ic0_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
 ) -> Result<Array1<T>, SparseError> {
@@ -3502,10 +3524,43 @@ pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     }
 
     let factorization = ic0_factor_view(matrix)?;
+    pcg_ic0_solve_with_factorization_view(matrix, rhs, tolerance, max_iterations, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with a reusable IC(0) factorization from a borrowed CSR
+/// view.
+///
+/// This routine assumes an SPD matrix `A`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn pcg_ic0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
+    matrix: &CsrMatrixView<'_, R, T, C>,
+    rhs: &ArrayBase<S, Ix1>,
+    tolerance: T,
+    max_iterations: usize,
+    factorization: &IC0Factorization<T>,
+) -> Result<Array1<T>, SparseError> {
+    matrix.validate()?;
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
     let tolerance = tolerance.max(default_tolerance::<T>());
     let mut solution = Array1::<T>::zeros(matrix.ncols);
-    let mut residual = rhs.clone();
-    let mut preconditioned_residual = apply_ic0_preconditioner(&factorization, &residual)?;
+    let mut residual = rhs.to_owned();
+    let mut preconditioned_residual = apply_ic0_preconditioner(factorization, &residual)?;
     let mut direction = preconditioned_residual.clone();
     let mut rho = dot(&residual, &preconditioned_residual)?;
 
@@ -3530,7 +3585,7 @@ pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
             return Ok(solution);
         }
 
-        preconditioned_residual = apply_ic0_preconditioner(&factorization, &residual)?;
+        preconditioned_residual = apply_ic0_preconditioner(factorization, &residual)?;
         let rho_next = dot(&residual, &preconditioned_residual)?;
         let beta = rho_next / rho;
         for i in 0..direction.len() {
@@ -4309,9 +4364,9 @@ pub fn bicgstab_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, singular breakdown, or non-convergence.
-pub fn bicgstab_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
 ) -> Result<Array1<T>, SparseError> {
@@ -4329,7 +4384,7 @@ pub fn bicgstab_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -6157,6 +6212,20 @@ mod tests {
         let reconstructed = matvec(&matrix, &solution).unwrap();
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).abs() < 1e-6_f64);
+        }
+    }
+
+    #[test]
+    fn pcg_ic0_with_factorization_matches_direct() {
+        let matrix = toy_matrix();
+        let rhs = arr1(&[1.0_f64, 2.0_f64, 3.0_f64]);
+        let direct = pcg_ic0_solve(&matrix, &rhs, 1e-10_f64, 2000).unwrap();
+        let factorization = ic0_factor(&matrix).unwrap();
+        let reused =
+            pcg_ic0_solve_with_factorization(&matrix, &rhs, 1e-10_f64, 2000, &factorization)
+                .unwrap();
+        for i in 0..direct.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-10_f64);
         }
     }
 

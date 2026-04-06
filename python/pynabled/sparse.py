@@ -29,6 +29,12 @@ from pynabled._pynabled import (
     _SparseLUFactorization as _RawSparseLUFactorization,
 )
 from pynabled._pynabled import (
+    sparse_bicgstab_solve as _sparse_bicgstab_solve_raw,
+)
+from pynabled._pynabled import (
+    sparse_conjugate_gradient_solve as _sparse_conjugate_gradient_solve_raw,
+)
+from pynabled._pynabled import (
     sparse_coo_to_csr as _sparse_coo_to_csr_raw,
 )
 from pynabled._pynabled import (
@@ -36,6 +42,9 @@ from pynabled._pynabled import (
 )
 from pynabled._pynabled import (
     sparse_csr_to_csc as _sparse_csr_to_csc_raw,
+)
+from pynabled._pynabled import (
+    sparse_gauss_seidel_solve as _sparse_gauss_seidel_solve_raw,
 )
 from pynabled._pynabled import (
     sparse_ic0_factor as _sparse_ic0_factor_raw,
@@ -72,6 +81,9 @@ from pynabled._pynabled import (
 )
 from pynabled._pynabled import (
     sparse_pcg_solve as _sparse_pcg_solve_raw,
+)
+from pynabled._pynabled import (
+    sparse_pcg_ic0_solve as _sparse_pcg_ic0_solve_raw,
 )
 from pynabled._pynabled import (
     sparse_transpose as _sparse_transpose_raw,
@@ -734,6 +746,24 @@ class IC0Factorization:
 
     def apply(self, rhs: Any) -> np.ndarray:
         return self._raw.apply(_normalize_rhs(rhs, dtype=self.dtype))
+
+    def pcg_solve(
+        self,
+        rhs: Any,
+        *,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return self._raw.pcg_solve(
+            self.matrix.nrows,
+            self.matrix.ncols,
+            self.matrix.indptr,
+            self.matrix.indices,
+            self.matrix.data,
+            _normalize_rhs(rhs, dtype=self.dtype),
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+        )
 
     def __repr__(self) -> str:
         return f"IC0Factorization(shape={self.matrix.shape}, dtype={self.dtype})"
@@ -1582,6 +1612,42 @@ class CsrMatrix:
     ) -> np.ndarray:
         return sparse_pcg_solve(self, rhs, tolerance=tolerance, max_iterations=max_iterations)
 
+    def gauss_seidel_solve(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_gauss_seidel_solve(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def conjugate_gradient_solve(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_conjugate_gradient_solve(
+            self, rhs, tolerance=tolerance, max_iterations=max_iterations
+        )
+
+    def pcg_ic0_solve(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_pcg_ic0_solve(self, rhs, tolerance=tolerance, max_iterations=max_iterations)
+
+    def bicgstab_solve(
+        self,
+        rhs: Any,
+        tolerance: float | None = None,
+        max_iterations: int | None = None,
+    ) -> np.ndarray:
+        return sparse_bicgstab_solve(self, rhs, tolerance=tolerance, max_iterations=max_iterations)
+
     def jacobi_preconditioner(self) -> JacobiPreconditioner:
         return sparse_jacobi_preconditioner(self)
 
@@ -1777,6 +1843,86 @@ def sparse_pcg_solve(
     )
 
 
+def sparse_gauss_seidel_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    csr = _coerce_csr_matrix(matrix)
+    return _sparse_gauss_seidel_solve_raw(
+        csr.nrows,
+        csr.ncols,
+        csr.indptr,
+        csr.indices,
+        csr.data,
+        _normalize_rhs(rhs, dtype=csr.data.dtype),
+        tolerance,
+        max_iterations,
+    )
+
+
+def sparse_conjugate_gradient_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    csr = _coerce_csr_matrix(matrix)
+    return _sparse_conjugate_gradient_solve_raw(
+        csr.nrows,
+        csr.ncols,
+        csr.indptr,
+        csr.indices,
+        csr.data,
+        _normalize_rhs(rhs, dtype=csr.data.dtype),
+        tolerance,
+        max_iterations,
+    )
+
+
+def sparse_pcg_ic0_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    csr = _coerce_csr_matrix(matrix)
+    return _sparse_pcg_ic0_solve_raw(
+        csr.nrows,
+        csr.ncols,
+        csr.indptr,
+        csr.indices,
+        csr.data,
+        _normalize_rhs(rhs, dtype=csr.data.dtype),
+        tolerance,
+        max_iterations,
+    )
+
+
+def sparse_bicgstab_solve(
+    matrix: Any,
+    rhs: Any,
+    *,
+    tolerance: float | None = None,
+    max_iterations: int | None = None,
+) -> np.ndarray:
+    csr = _coerce_csr_matrix(matrix)
+    return _sparse_bicgstab_solve_raw(
+        csr.nrows,
+        csr.ncols,
+        csr.indptr,
+        csr.indices,
+        csr.data,
+        _normalize_rhs(rhs, dtype=csr.data.dtype),
+        tolerance,
+        max_iterations,
+    )
+
+
 def sparse_jacobi_preconditioner(matrix: Any) -> JacobiPreconditioner:
     csr = _coerce_csr_matrix(matrix)
     return JacobiPreconditioner(
@@ -1875,6 +2021,8 @@ __all__ = [
     "ILUTFactorization",
     "JacobiPreconditioner",
     "SparseLUFactorization",
+    "sparse_bicgstab_solve",
+    "sparse_conjugate_gradient_solve",
     "sparse_ic0_factor",
     "sparse_ildl0_factor",
     "sparse_ilu0_factor",
@@ -1883,6 +2031,7 @@ __all__ = [
     "sparse_coo_to_csr",
     "sparse_csc_to_csr",
     "sparse_csr_to_csc",
+    "sparse_gauss_seidel_solve",
     "sparse_jacobi_preconditioner",
     "sparse_lu_factor",
     "sparse_lu_solve",
@@ -1892,5 +2041,6 @@ __all__ = [
     "sparse_matmat_dense",
     "sparse_transpose",
     "sparse_jacobi_solve",
+    "sparse_pcg_ic0_solve",
     "sparse_pcg_solve",
 ]

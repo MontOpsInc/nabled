@@ -626,6 +626,478 @@ pub fn pcg_solve<'py>(
     }
 }
 
+/// Gauss-Seidel solve over raw CSR components.
+#[pyfunction(name = "sparse_gauss_seidel_solve")]
+#[expect(clippy::too_many_lines)]
+pub fn gauss_seidel_solve<'py>(
+    py: Python<'py>,
+    nrows: usize,
+    ncols: usize,
+    indptr: &Bound<'py, PyAny>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+    rhs: &Bound<'py, PyAny>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::index_array1(indptr, "indptr")?,
+        utils::index_array1(indices, "indices")?,
+        utils::real_array1(data, "data")?,
+        utils::real_array1(rhs, "rhs")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(rhs_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::gauss_seidel_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance_f32(tolerance, 1e-6_f32),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(rhs_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::gauss_seidel_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance.unwrap_or(1e-10),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(rhs_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f32(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::gauss_seidel_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance_f32(tolerance, 1e-6_f32),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(rhs_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f64(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::gauss_seidel_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance.unwrap_or(1e-10),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+            Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["data", "rhs"])),
+    }
+}
+
+/// Conjugate gradient solve over raw CSR components.
+#[pyfunction(name = "sparse_conjugate_gradient_solve")]
+#[expect(clippy::too_many_lines)]
+pub fn conjugate_gradient_solve<'py>(
+    py: Python<'py>,
+    nrows: usize,
+    ncols: usize,
+    indptr: &Bound<'py, PyAny>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+    rhs: &Bound<'py, PyAny>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::index_array1(indptr, "indptr")?,
+        utils::index_array1(indices, "indices")?,
+        utils::real_array1(data, "data")?,
+        utils::real_array1(rhs, "rhs")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(rhs_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::conjugate_gradient_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance_f32(tolerance, 1e-6_f32),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(rhs_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::conjugate_gradient_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance.unwrap_or(1e-10),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(rhs_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f32(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::conjugate_gradient_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance_f32(tolerance, 1e-6_f32),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(rhs_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f64(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::conjugate_gradient_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance.unwrap_or(1e-10),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+            Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["data", "rhs"])),
+    }
+}
+
+/// IC0-preconditioned conjugate gradient solve over raw CSR components.
+#[pyfunction(name = "sparse_pcg_ic0_solve")]
+#[expect(clippy::too_many_lines)]
+pub fn pcg_ic0_solve<'py>(
+    py: Python<'py>,
+    nrows: usize,
+    ncols: usize,
+    indptr: &Bound<'py, PyAny>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+    rhs: &Bound<'py, PyAny>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::index_array1(indptr, "indptr")?,
+        utils::index_array1(indices, "indices")?,
+        utils::real_array1(data, "data")?,
+        utils::real_array1(rhs, "rhs")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(rhs_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::pcg_ic0_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance_f32(tolerance, 1e-6_f32),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(rhs_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::pcg_ic0_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance.unwrap_or(1e-10),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(rhs_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f32(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::pcg_ic0_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance_f32(tolerance, 1e-6_f32),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(rhs_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f64(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::pcg_ic0_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance.unwrap_or(1e-10),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+            Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["data", "rhs"])),
+    }
+}
+
+/// BiCGSTAB solve over raw CSR components.
+#[pyfunction(name = "sparse_bicgstab_solve")]
+#[expect(clippy::too_many_lines)]
+pub fn bicgstab_solve<'py>(
+    py: Python<'py>,
+    nrows: usize,
+    ncols: usize,
+    indptr: &Bound<'py, PyAny>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+    rhs: &Bound<'py, PyAny>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::index_array1(indptr, "indptr")?,
+        utils::index_array1(indices, "indices")?,
+        utils::real_array1(data, "data")?,
+        utils::real_array1(rhs, "rhs")?,
+    ) {
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(rhs_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::bicgstab_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance_f32(tolerance, 1e-6_f32),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I32(indptr_arr),
+            utils::IndexReadonlyArray1::I32(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(rhs_arr),
+        ) => {
+            let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )
+            .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::bicgstab_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance.unwrap_or(1e-10),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F32(data_arr),
+            utils::RealReadonlyArray1::F32(rhs_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f32(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::bicgstab_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance_f32(tolerance, 1e-6_f32),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::IndexReadonlyArray1::I64(indptr_arr),
+            utils::IndexReadonlyArray1::I64(indices_arr),
+            utils::RealReadonlyArray1::F64(data_arr),
+            utils::RealReadonlyArray1::F64(rhs_arr),
+        ) => {
+            let matrix = csr_view_from_slices_f64(
+                nrows,
+                ncols,
+                indptr_arr.as_slice().map_err(py_value_error)?,
+                indices_arr.as_slice().map_err(py_value_error)?,
+                data_arr.as_slice().map_err(py_value_error)?,
+            )?;
+            let result = nabled_linalg::sparse::bicgstab_solve_view(
+                &matrix,
+                &rhs_arr.as_array(),
+                tolerance.unwrap_or(1e-10),
+                max_iterations.unwrap_or(5000),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+        | (utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+            Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["data", "rhs"])),
+    }
+}
+
 /// Convert CSR components to CSC.
 #[pyfunction(name = "sparse_csr_to_csc")]
 pub fn csr_to_csc<'py>(
@@ -3197,6 +3669,133 @@ impl PyIc0Factorization {
                 Ok(utils::pyarray1_from_owned(py, result))
             }
             _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+        }
+    }
+
+    #[pyo3(signature = (nrows, ncols, indptr, indices, data, rhs, tolerance=None, max_iterations=None))]
+    #[expect(clippy::too_many_lines)]
+    fn pcg_solve<'py>(
+        &self,
+        py: Python<'py>,
+        nrows: usize,
+        ncols: usize,
+        indptr: &Bound<'py, PyAny>,
+        indices: &Bound<'py, PyAny>,
+        data: &Bound<'py, PyAny>,
+        rhs: &Bound<'py, PyAny>,
+        tolerance: Option<f64>,
+        max_iterations: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        match (
+            &self.inner,
+            utils::index_array1(indptr, "indptr")?,
+            utils::index_array1(indices, "indices")?,
+            utils::real_array1(data, "data")?,
+            utils::real_array1(rhs, "rhs")?,
+        ) {
+            (
+                PyIc0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::pcg_ic0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIc0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I32(indptr_arr),
+                utils::IndexReadonlyArray1::I32(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = nabled_linalg::sparse::CsrMatrixView::new(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )
+                .map_err(to_py_err)?;
+                let result = nabled_linalg::sparse::pcg_ic0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIc0FactorizationInner::F32 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F32(data_arr),
+                utils::RealReadonlyArray1::F32(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f32(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::pcg_ic0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array(),
+                    tolerance_f32(tolerance, 1e-6_f32),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (
+                PyIc0FactorizationInner::F64 { factorization, .. },
+                utils::IndexReadonlyArray1::I64(indptr_arr),
+                utils::IndexReadonlyArray1::I64(indices_arr),
+                utils::RealReadonlyArray1::F64(data_arr),
+                utils::RealReadonlyArray1::F64(rhs_arr),
+            ) => {
+                let matrix = csr_view_from_slices_f64(
+                    nrows,
+                    ncols,
+                    indptr_arr.as_slice().map_err(py_value_error)?,
+                    indices_arr.as_slice().map_err(py_value_error)?,
+                    data_arr.as_slice().map_err(py_value_error)?,
+                )?;
+                let result = nabled_linalg::sparse::pcg_ic0_solve_with_factorization_view(
+                    &matrix,
+                    &rhs_arr.as_array(),
+                    tolerance.unwrap_or(1e-10),
+                    max_iterations.unwrap_or(5000),
+                    factorization,
+                )
+                .map_err(to_py_err)?;
+                Ok(utils::pyarray1_from_owned(py, result))
+            }
+            (_, utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
+            | (_, utils::IndexReadonlyArray1::I64(_), utils::IndexReadonlyArray1::I32(_), _, _) => {
+                Err(utils::matching_index_dtype_error(&["indptr", "indices"]))
+            }
+            _ => Err(utils::matching_real_dtype_error(&["factorization", "data", "rhs"])),
         }
     }
 }
