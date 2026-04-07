@@ -9,30 +9,96 @@ except ImportError:
     pa = None
 
 try:
+    from pynabled import (
+        AdamConfig,
+        BFGSConfig,
+        GradientDescentConfig,
+        IterativeConfig,
+        JacobianConfig,
+        LineSearchConfig,
+        MomentumConfig,
+        ProjectedGradientConfig,
+        RMSPropConfig,
+    )
     from pynabled.arrow import (
+        arrow_adam,
+        arrow_batched_cholesky,
         arrow_batched_cosine_distance,
         arrow_batched_cosine_similarity,
         arrow_batched_dot,
         arrow_batched_l2_norm,
+        arrow_batched_lu,
         arrow_batched_matmat,
         arrow_batched_matmat_broadcast_left,
         arrow_batched_matmat_broadcast_right,
         arrow_batched_normalize,
+        arrow_batched_qr,
         arrow_batched_row_matvec,
+        arrow_batched_svd,
+        arrow_batched_symmetric_eigen,
+        arrow_bfgs,
+        arrow_backtracking_line_search,
         arrow_center_columns,
+        arrow_cholesky_decompose,
+        arrow_cholesky_inverse,
+        arrow_cholesky_solve,
         arrow_column_means,
+        arrow_conjugate_gradient,
+        arrow_compute_pca,
         arrow_correlation_matrix,
         arrow_cosine_distance,
         arrow_cosine_similarity,
         arrow_covariance_matrix,
         arrow_dot,
+        arrow_eigen_generalized,
+        arrow_eigen_nonsymmetric,
+        arrow_eigen_nonsymmetric_bi,
+        arrow_eigen_symmetric,
+        arrow_gram_schmidt,
+        arrow_gmres,
+        arrow_gradient_descent,
         arrow_l2_norm,
+        arrow_linear_regression,
+        arrow_lu_decompose,
+        arrow_lu_determinant,
+        arrow_lu_inverse,
+        arrow_lu_log_determinant,
+        arrow_lu_solve,
         arrow_matmat,
         arrow_matvec,
+        arrow_matrix_exp,
+        arrow_matrix_exp_eigen,
+        arrow_matrix_log_eigen,
+        arrow_matrix_log_svd,
+        arrow_matrix_log_taylor,
+        arrow_matrix_power,
+        arrow_matrix_sign,
+        arrow_momentum_descent,
+        arrow_numerical_gradient,
+        arrow_numerical_hessian,
+        arrow_numerical_jacobian,
+        arrow_numerical_jacobian_central,
         arrow_pairwise_cosine_distance,
         arrow_pairwise_cosine_similarity,
         arrow_pairwise_l2_distance,
+        arrow_pca_inverse_transform,
+        arrow_pca_transform,
+        arrow_polar_compute,
+        arrow_projected_gradient_descent_box,
+        arrow_qr_decompose,
+        arrow_qr_decompose_pivoted,
+        arrow_qr_decompose_reduced,
+        arrow_qr_solve_least_squares,
+        arrow_rmsprop,
+        arrow_schur_compute,
+        arrow_solve_lower,
+        arrow_solve_upper,
+        arrow_stochastic_gradient_descent,
         arrow_svd_decompose,
+        arrow_svd_decompose_truncated,
+        arrow_svd_decompose_with_tolerance,
+        arrow_svd_null_space,
+        arrow_svd_pseudo_inverse,
     )
 except ImportError:
     arrow_dot = None
@@ -48,6 +114,72 @@ def _matrix_array(values, dtype):
     np_values = np.asarray(values, dtype=dtype)
     arrow_type = pa.float32() if np_values.dtype == np.float32 else pa.float64()
     return pa.array(np_values.tolist(), type=pa.list_(arrow_type, np_values.shape[1]))
+
+
+def _matrix_numpy(array, dtype):
+    return np.array(array.to_pylist(), dtype=dtype)
+
+
+class NdarrowComplex64Type(pa.ExtensionType):
+    def __init__(self):
+        super().__init__(
+            pa.list_(pa.field("item", pa.float64(), nullable=False), 2),
+            "ndarrow.complex64",
+        )
+
+    def __arrow_ext_serialize__(self):
+        return b""
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        return cls()
+
+    def __reduce__(self):
+        return NdarrowComplex64Type, ()
+
+
+if pa is not None:
+    try:
+        pa.unregister_extension_type("ndarrow.complex64")
+    except Exception:
+        pass
+    pa.register_extension_type(NdarrowComplex64Type())
+
+
+def _complex_vector_array(values):
+    np_values = np.asarray(values, dtype=np.complex128)
+    storage = pa.array(
+        [[float(value.real), float(value.imag)] for value in np_values],
+        type=pa.list_(pa.field("item", pa.float64(), nullable=False), 2),
+    )
+    return pa.ExtensionArray.from_storage(NdarrowComplex64Type(), storage)
+
+
+def _complex_vector_field(name):
+    return pa.field(
+        name,
+        pa.list_(pa.field("item", pa.float64(), nullable=False), 2),
+        nullable=False,
+        metadata={"ARROW:extension:name": "ndarrow.complex64"},
+    )
+
+
+def _complex_vector_numpy(array):
+    storage = array.storage if isinstance(array, pa.ExtensionArray) else array
+    return np.array([complex(real, imag) for real, imag in storage.to_pylist()], dtype=np.complex128)
+
+
+def _complex_matrix_array(values):
+    np_values = np.asarray(values, dtype=np.complex128)
+    return pa.FixedSizeListArray.from_arrays(
+        _complex_vector_array(np_values.reshape(-1)).storage,
+        type=pa.list_(_complex_vector_field("item"), np_values.shape[1]),
+    )
+
+
+def _complex_matrix_numpy(array):
+    flat = _complex_vector_numpy(array.values)
+    return flat.reshape(len(array), array.type.list_size)
 
 
 def test_arrow_vector_scalar_kernels():
@@ -261,3 +393,705 @@ def test_arrow_svd_decompose():
     assert vt32.dtype == np.float32
     recon32 = u32 @ np.diag(s32) @ vt32
     np.testing.assert_allclose(recon32, a.astype(np.float32), rtol=5e-5, atol=5e-5)
+
+
+def test_arrow_svd_qr_and_matrix_function_wrappers():
+    data = _matrix_array([[1.0, 2.0], [3.0, 4.0]], np.float64)
+
+    truncated = arrow_svd_decompose_truncated(data, 1)
+    assert truncated.singular_values.shape == (1,)
+
+    tolerant = arrow_svd_decompose_with_tolerance(data, 1e-12)
+    recon = np.asarray(tolerant.u) @ np.diag(np.asarray(tolerant.singular_values)) @ np.asarray(
+        tolerant.vt
+    )
+    np.testing.assert_allclose(recon, np.array([[1.0, 2.0], [3.0, 4.0]]), rtol=1e-10)
+
+    pinv = arrow_svd_pseudo_inverse(data)
+    np.testing.assert_allclose(
+        _matrix_numpy(pinv, np.float64),
+        np.linalg.pinv(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)),
+        rtol=1e-10,
+    )
+
+    rank_deficient = _matrix_array([[1.0, 1.0], [2.0, 2.0]], np.float64)
+    null_space = arrow_svd_null_space(rank_deficient)
+    basis = _matrix_numpy(null_space, np.float64)
+    np.testing.assert_allclose(
+        np.array([[1.0, 1.0], [2.0, 2.0]], dtype=np.float64) @ basis,
+        np.zeros((2, basis.shape[1]), dtype=np.float64),
+        atol=1e-10,
+    )
+
+    qr = arrow_qr_decompose(data)
+    np.testing.assert_allclose(np.asarray(qr.q) @ np.asarray(qr.r), np.array([[1.0, 2.0], [3.0, 4.0]]))
+
+    qr_reduced = arrow_qr_decompose_reduced(data)
+    assert qr_reduced.rank == 2
+
+    qr_pivoted = arrow_qr_decompose_pivoted(data)
+    assert qr_pivoted.p is not None
+    assert qr_pivoted.rank == 2
+
+    ls_matrix = _matrix_array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], np.float64)
+    ls_rhs = pa.array([1.0, 2.0, 3.0], type=pa.float64())
+    ls_solution = arrow_qr_solve_least_squares(ls_matrix, ls_rhs)
+    np.testing.assert_allclose(np.array(ls_solution.to_pylist(), dtype=np.float64), [1.0, 2.0])
+
+    identity = _matrix_array([[1.0, 0.0], [0.0, 1.0]], np.float64)
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_matrix_exp(identity), np.float64),
+        np.eye(2, dtype=np.float64) * np.e,
+        rtol=1e-10,
+    )
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_matrix_exp_eigen(identity), np.float64),
+        np.eye(2, dtype=np.float64) * np.e,
+        rtol=1e-10,
+    )
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_matrix_log_taylor(identity), np.float64),
+        np.zeros((2, 2), dtype=np.float64),
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_matrix_log_eigen(identity), np.float64),
+        np.zeros((2, 2), dtype=np.float64),
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_matrix_log_svd(identity), np.float64),
+        np.zeros((2, 2), dtype=np.float64),
+        atol=1e-10,
+    )
+    diagonal = _matrix_array([[2.0, 0.0], [0.0, -3.0]], np.float64)
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_matrix_power(diagonal, 2.0), np.float64),
+        np.array([[4.0, 0.0], [0.0, 9.0]], dtype=np.float64),
+        rtol=1e-10,
+    )
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_matrix_sign(diagonal), np.float64),
+        np.array([[1.0, 0.0], [0.0, -1.0]], dtype=np.float64),
+        rtol=1e-10,
+    )
+
+
+def test_arrow_real_decomposition_wrappers():
+    spd = np.array([[4.0, 1.0], [1.0, 3.0]], dtype=np.float64)
+    spd_arrow = _matrix_array(spd, np.float64)
+    rhs = pa.array([1.0, 2.0], type=pa.float64())
+
+    lu = arrow_lu_decompose(spd_arrow)
+    np.testing.assert_allclose(np.asarray(lu.l) @ np.asarray(lu.u), spd, rtol=1e-10)
+    np.testing.assert_allclose(
+        np.array(arrow_lu_solve(spd_arrow, rhs).to_pylist(), dtype=np.float64),
+        np.linalg.solve(spd, np.array([1.0, 2.0], dtype=np.float64)),
+        rtol=1e-10,
+    )
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_lu_inverse(spd_arrow), np.float64),
+        np.linalg.inv(spd),
+        rtol=1e-10,
+    )
+    assert arrow_lu_determinant(spd_arrow) == pytest.approx(np.linalg.det(spd))
+    logdet = arrow_lu_log_determinant(spd_arrow)
+    assert logdet.sign == 1
+    assert logdet.ln_abs_det == pytest.approx(np.log(np.linalg.det(spd)))
+
+    cholesky = arrow_cholesky_decompose(spd_arrow)
+    np.testing.assert_allclose(np.asarray(cholesky.l) @ np.asarray(cholesky.l).T, spd, rtol=1e-10)
+    np.testing.assert_allclose(
+        np.array(arrow_cholesky_solve(spd_arrow, rhs).to_pylist(), dtype=np.float64),
+        np.linalg.solve(spd, np.array([1.0, 2.0], dtype=np.float64)),
+        rtol=1e-10,
+    )
+    np.testing.assert_allclose(
+        _matrix_numpy(arrow_cholesky_inverse(spd_arrow), np.float64),
+        np.linalg.inv(spd),
+        rtol=1e-10,
+    )
+
+    symmetric = arrow_eigen_symmetric(spd_arrow)
+    np.testing.assert_allclose(
+        np.asarray(symmetric.eigenvectors)
+        @ np.diag(np.asarray(symmetric.eigenvalues))
+        @ np.asarray(symmetric.eigenvectors).T,
+        spd,
+        rtol=1e-10,
+    )
+
+    generalized = arrow_eigen_generalized(spd_arrow, _matrix_array(np.eye(2), np.float64))
+    np.testing.assert_allclose(
+        np.sort(np.asarray(generalized.eigenvalues)),
+        np.sort(np.linalg.eigvalsh(spd)),
+        rtol=1e-10,
+    )
+
+    nonsymmetric_matrix = np.array([[0.0, 1.0], [-2.0, -3.0]], dtype=np.float64)
+    nonsymmetric = arrow_eigen_nonsymmetric(_matrix_array(nonsymmetric_matrix, np.float64))
+    np.testing.assert_allclose(
+        np.sort(np.asarray(nonsymmetric.eigenvalues)),
+        np.sort(np.linalg.eigvals(nonsymmetric_matrix)),
+        rtol=1e-10,
+    )
+
+    bi = arrow_eigen_nonsymmetric_bi(_matrix_array(nonsymmetric_matrix, np.float64))
+    assert bi.right_eigenvectors.shape == (2, 2)
+    assert bi.left_eigenvectors.shape == (2, 2)
+    assert bi.balancing_diagonal.shape == (2,)
+
+    schur = arrow_schur_compute(_matrix_array(nonsymmetric_matrix, np.float64))
+    np.testing.assert_allclose(
+        np.asarray(schur.q) @ np.asarray(schur.t) @ np.asarray(schur.q).T,
+        nonsymmetric_matrix,
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+    polar = arrow_polar_compute(spd_arrow)
+    np.testing.assert_allclose(np.asarray(polar.u) @ np.asarray(polar.p), spd, rtol=1e-10)
+
+
+def test_arrow_pca_and_regression_wrappers():
+    x = np.array([[1.0, 0.0], [0.0, 1.0], [2.0, 1.0]], dtype=np.float32)
+    x_arrow = _matrix_array(x, np.float32)
+    pca = arrow_compute_pca(x_arrow, n_components=2)
+    assert pca.components.dtype == np.float32
+    transformed = arrow_pca_transform(x_arrow, pca)
+    reconstructed = arrow_pca_inverse_transform(transformed, pca)
+    np.testing.assert_allclose(_matrix_numpy(reconstructed, np.float32), x, rtol=1e-5, atol=1e-5)
+
+    y = pa.array([1.0, 3.0, 6.0], type=pa.float32())
+    regression = arrow_linear_regression(x_arrow, y)
+    np.testing.assert_allclose(
+        regression.fitted_values,
+        np.array([1.0, 3.0, 6.0], dtype=np.float32),
+        rtol=1e-5,
+        atol=1e-6,
+    )
+    np.testing.assert_allclose(regression.residuals, np.zeros(3, dtype=np.float32), atol=1e-5)
+    assert regression.r_squared == pytest.approx(1.0, abs=1e-6)
+
+
+def test_arrow_complex_vector_and_matrix_dispatch():
+    left = np.array([1.0 + 1.0j, 2.0 - 1.0j], dtype=np.complex128)
+    right = np.array([0.5 - 0.5j, -1.0 + 3.0j], dtype=np.complex128)
+    left_arrow = _complex_vector_array(left)
+    right_arrow = _complex_vector_array(right)
+
+    np.testing.assert_allclose(arrow_dot(left_arrow, right_arrow), np.vdot(left, right), rtol=1e-12)
+    np.testing.assert_allclose(arrow_l2_norm(left_arrow), np.linalg.norm(left), rtol=1e-12)
+    np.testing.assert_allclose(
+        _complex_vector_numpy(arrow_cosine_similarity(left_arrow, right_arrow))[0],
+        np.vdot(left, right) / (np.linalg.norm(left) * np.linalg.norm(right)),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    batch_left = np.array(
+        [[1.0 + 1.0j, 0.0 + 2.0j], [2.0 + 0.0j, 0.0 + 2.0j]],
+        dtype=np.complex128,
+    )
+    batch_right = np.array(
+        [[1.0 - 1.0j, 2.0 + 0.0j], [0.0 + 2.0j, 2.0 + 0.0j]],
+        dtype=np.complex128,
+    )
+    batch_left_arrow = _complex_matrix_array(batch_left)
+    batch_right_arrow = _complex_matrix_array(batch_right)
+
+    np.testing.assert_allclose(
+        _complex_vector_numpy(arrow_batched_dot(batch_left_arrow, batch_right_arrow)),
+        np.sum(np.conj(batch_left) * batch_right, axis=1),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        np.array(arrow_batched_l2_norm(batch_left_arrow).to_pylist(), dtype=np.float64),
+        np.linalg.norm(batch_left, axis=1),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _complex_vector_numpy(arrow_batched_cosine_similarity(batch_left_arrow, batch_right_arrow)),
+        np.sum(np.conj(batch_left) * batch_right, axis=1)
+        / (np.linalg.norm(batch_left, axis=1) * np.linalg.norm(batch_right, axis=1)),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    normalized = _complex_matrix_numpy(arrow_batched_normalize(batch_left_arrow))
+    np.testing.assert_allclose(
+        np.linalg.norm(normalized, axis=1),
+        np.ones(batch_left.shape[0], dtype=np.float64),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    matrix = np.array(
+        [[1.0 + 1.0j, 0.0 - 1.0j], [2.0 + 0.0j, 1.0 + 2.0j]],
+        dtype=np.complex128,
+    )
+    vector = np.array([1.0 + 0.0j, 0.5 - 0.5j], dtype=np.complex128)
+    other = np.array(
+        [[1.0 + 1.0j, 0.0 + 1.0j], [2.0 + 0.0j, 1.0 - 1.0j]],
+        dtype=np.complex128,
+    )
+    np.testing.assert_allclose(
+        _complex_vector_numpy(arrow_matvec(_complex_matrix_array(matrix), _complex_vector_array(vector))),
+        matrix @ vector,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_matmat(_complex_matrix_array(matrix), _complex_matrix_array(other))),
+        matrix @ other,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    with pytest.raises(TypeError, match="does not currently admit"):
+        arrow_cosine_distance(left_arrow, right_arrow)
+
+
+def test_arrow_complex_stats_orthogonalization_and_triangular_dispatch():
+    matrix = np.array(
+        [
+            [1.0 + 1.0j, 2.0 - 0.5j],
+            [3.0 + 0.0j, 4.0 + 1.0j],
+            [5.0 - 1.0j, 8.0 + 0.25j],
+        ],
+        dtype=np.complex128,
+    )
+    matrix_arrow = _complex_matrix_array(matrix)
+
+    np.testing.assert_allclose(
+        _complex_vector_numpy(arrow_column_means(matrix_arrow)),
+        matrix.mean(axis=0),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    centered = _complex_matrix_numpy(arrow_center_columns(matrix_arrow))
+    np.testing.assert_allclose(centered.mean(axis=0), np.zeros(2, dtype=np.complex128), atol=1e-12)
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_covariance_matrix(matrix_arrow)),
+        np.cov(matrix, rowvar=False).T,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_correlation_matrix(matrix_arrow)),
+        np.corrcoef(matrix, rowvar=False).T,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    orthogonalized = _complex_matrix_numpy(arrow_gram_schmidt(matrix_arrow))
+    np.testing.assert_allclose(
+        orthogonalized.conj().T @ orthogonalized,
+        np.eye(2, dtype=np.complex128),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    lower = np.array([[2.0 + 0.0j, 0.0], [1.0 - 1.0j, 3.0 + 0.0j]], dtype=np.complex128)
+    upper = np.array([[2.0 + 0.5j, 1.0 - 0.5j], [0.0, 3.0 - 1.0j]], dtype=np.complex128)
+    rhs = np.array([2.0 + 1.0j, 7.0 - 2.0j], dtype=np.complex128)
+    lower_solution = _complex_vector_numpy(
+        arrow_solve_lower(_complex_matrix_array(lower), _complex_vector_array(rhs))
+    )
+    upper_solution = _complex_vector_numpy(
+        arrow_solve_upper(_complex_matrix_array(upper), _complex_vector_array(rhs))
+    )
+    np.testing.assert_allclose(lower @ lower_solution, rhs, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(upper @ upper_solution, rhs, rtol=1e-12, atol=1e-12)
+
+
+def test_arrow_complex_decomposition_matrix_functions_and_ml_dispatch():
+    matrix = np.array(
+        [[2.0 + 1.0j, 1.0 - 0.5j], [0.0 + 0.25j, 3.0 - 1.0j]],
+        dtype=np.complex128,
+    )
+    matrix_arrow = _complex_matrix_array(matrix)
+    rhs = np.array([1.0 + 2.0j, -0.5 + 1.0j], dtype=np.complex128)
+    rhs_arrow = _complex_vector_array(rhs)
+
+    svd = arrow_svd_decompose(matrix_arrow)
+    np.testing.assert_allclose(
+        np.asarray(svd.u) @ np.diag(np.asarray(svd.singular_values)) @ np.asarray(svd.vt),
+        matrix,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    qr = arrow_qr_decompose(matrix_arrow)
+    np.testing.assert_allclose(np.asarray(qr.q) @ np.asarray(qr.r), matrix, rtol=1e-12, atol=1e-12)
+
+    lu_solution = _complex_vector_numpy(arrow_lu_solve(matrix_arrow, rhs_arrow))
+    np.testing.assert_allclose(lu_solution, np.linalg.solve(matrix, rhs), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_lu_inverse(matrix_arrow)),
+        np.linalg.inv(matrix),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(arrow_lu_determinant(matrix_arrow), np.linalg.det(matrix), rtol=1e-12)
+
+    hermitian = matrix.conj().T @ matrix + np.eye(2, dtype=np.complex128)
+    hermitian_arrow = _complex_matrix_array(hermitian)
+    cholesky = arrow_cholesky_decompose(hermitian_arrow)
+    np.testing.assert_allclose(
+        np.asarray(cholesky.l) @ np.asarray(cholesky.l).conj().T,
+        hermitian,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _complex_vector_numpy(arrow_cholesky_solve(hermitian_arrow, rhs_arrow)),
+        np.linalg.solve(hermitian, rhs),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_cholesky_inverse(hermitian_arrow)),
+        np.linalg.inv(hermitian),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    nonsymmetric = arrow_eigen_nonsymmetric(matrix_arrow)
+    np.testing.assert_allclose(
+        np.sort_complex(np.asarray(nonsymmetric.eigenvalues)),
+        np.sort_complex(np.linalg.eigvals(matrix)),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    schur = arrow_schur_compute(matrix_arrow)
+    np.testing.assert_allclose(
+        np.asarray(schur.q) @ np.asarray(schur.t) @ np.asarray(schur.q).conj().T,
+        matrix,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    polar = arrow_polar_compute(matrix_arrow)
+    np.testing.assert_allclose(np.asarray(polar.u) @ np.asarray(polar.p), matrix, rtol=1e-12, atol=1e-12)
+
+    diagonal = np.diag(np.array([1.0 + 1.0j, 2.0 - 0.25j], dtype=np.complex128))
+    diagonal_arrow = _complex_matrix_array(diagonal)
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_matrix_exp(diagonal_arrow)),
+        np.diag(np.exp(np.diag(diagonal))),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_matrix_exp_eigen(diagonal_arrow)),
+        np.diag(np.exp(np.diag(diagonal))),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    positive = np.diag(np.array([2.0 + 0.0j, 3.0 + 0.0j], dtype=np.complex128))
+    positive_arrow = _complex_matrix_array(positive)
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_matrix_log_eigen(positive_arrow)),
+        np.diag(np.log(np.diag(positive))),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_matrix_log_svd(positive_arrow)),
+        np.diag(np.log(np.diag(positive))),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_matrix_power(positive_arrow, 2.0)),
+        np.diag(np.diag(positive) ** 2),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    signed = np.diag(np.array([1.0 + 0.0j, -3.0 + 0.0j], dtype=np.complex128))
+    np.testing.assert_allclose(
+        _complex_matrix_numpy(arrow_matrix_sign(_complex_matrix_array(signed))),
+        np.diag(np.array([1.0 + 0.0j, -1.0 + 0.0j], dtype=np.complex128)),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    x = np.array([[1.0 + 0.0j, 0.0 + 0.0j], [0.0 + 1.0j, 1.0 + 0.0j], [2.0 - 1.0j, 1.0 + 1.0j]], dtype=np.complex128)
+    x_arrow = _complex_matrix_array(x)
+    pca = arrow_compute_pca(x_arrow, n_components=2)
+    transformed = arrow_pca_transform(x_arrow, pca)
+    reconstructed = arrow_pca_inverse_transform(transformed, pca)
+    np.testing.assert_allclose(_complex_matrix_numpy(reconstructed), x, rtol=1e-10, atol=1e-10)
+
+    x_reg = np.array([[1.0 + 0.0j], [2.0 - 1.0j], [3.0 + 1.0j]], dtype=np.complex128)
+    y_reg = (2.0 - 0.5j) * x_reg[:, 0]
+    regression = arrow_linear_regression(
+        _complex_matrix_array(x_reg),
+        _complex_vector_array(y_reg),
+        add_intercept=False,
+    )
+    np.testing.assert_allclose(regression.fitted_values, y_reg, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(regression.residuals, np.zeros_like(y_reg), atol=1e-12)
+    np.testing.assert_allclose(regression.coefficients, np.array([2.0 - 0.5j], dtype=np.complex128))
+    assert regression.r_squared == pytest.approx(1.0, abs=1e-12)
+
+    with pytest.raises(TypeError, match="does not currently admit"):
+        arrow_qr_decompose_reduced(matrix_arrow)
+
+
+def test_arrow_batched_result_wrappers_return_typed_objects():
+    matrices = pa.FixedShapeTensorArray.from_numpy_ndarray(
+        np.array(
+            [
+                [[4.0, 1.0], [1.0, 3.0]],
+                [[3.0, 0.0], [0.0, 2.0]],
+            ],
+            dtype=np.float64,
+        )
+    )
+
+    qr_results = arrow_batched_qr(matrices)
+    assert qr_results[0].rank == 2
+    np.testing.assert_allclose(
+        np.asarray(qr_results[0].q) @ np.asarray(qr_results[0].r),
+        matrices.to_numpy_ndarray()[0],
+        rtol=1e-10,
+    )
+
+    svd_results = arrow_batched_svd(matrices)
+    np.testing.assert_allclose(
+        np.asarray(svd_results[0].u)
+        @ np.diag(np.asarray(svd_results[0].singular_values))
+        @ np.asarray(svd_results[0].vt),
+        matrices.to_numpy_ndarray()[0],
+        rtol=1e-10,
+    )
+
+    lu_results = arrow_batched_lu(matrices)
+    np.testing.assert_allclose(
+        np.asarray(lu_results[0].l) @ np.asarray(lu_results[0].u),
+        matrices.to_numpy_ndarray()[0],
+        rtol=1e-10,
+    )
+
+    cholesky_results = arrow_batched_cholesky(matrices)
+    np.testing.assert_allclose(
+        np.asarray(cholesky_results[0].l) @ np.asarray(cholesky_results[0].l).T,
+        matrices.to_numpy_ndarray()[0],
+        rtol=1e-10,
+    )
+
+    eigen_results = arrow_batched_symmetric_eigen(matrices)
+    np.testing.assert_allclose(
+        np.asarray(eigen_results[0].eigenvectors)
+        @ np.diag(np.asarray(eigen_results[0].eigenvalues))
+        @ np.asarray(eigen_results[0].eigenvectors).T,
+        matrices.to_numpy_ndarray()[0],
+        rtol=1e-10,
+    )
+
+
+def test_arrow_iterative_wrappers_real_and_complex():
+    matrix = _matrix_array([[4.0, 1.0], [1.0, 3.0]], np.float64)
+    rhs = pa.array([1.0, 2.0], type=pa.float64())
+    expected = np.linalg.solve(np.array(matrix.to_pylist(), dtype=np.float64), np.array(rhs.to_pylist(), dtype=np.float64))
+
+    cg = arrow_conjugate_gradient(matrix, rhs, config=IterativeConfig(tolerance=1e-12, max_iterations=128))
+    gmres = arrow_gmres(matrix, rhs, tolerance=1e-12, max_iterations=128)
+    np.testing.assert_allclose(np.array(cg.to_pylist(), dtype=np.float64), expected, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(np.array(gmres.to_pylist(), dtype=np.float64), expected, rtol=1e-10, atol=1e-10)
+
+    complex_matrix = np.array([[5.0 + 0.0j, 1.0 - 1.0j], [1.0 + 1.0j, 4.0 + 0.0j]], dtype=np.complex128)
+    complex_rhs = np.array([1.0 + 1.0j, 2.0 - 1.0j], dtype=np.complex128)
+    complex_expected = np.linalg.solve(complex_matrix, complex_rhs)
+
+    cg_complex = arrow_conjugate_gradient(_complex_matrix_array(complex_matrix), _complex_vector_array(complex_rhs))
+    gmres_complex = arrow_gmres(
+        _complex_matrix_array(complex_matrix),
+        _complex_vector_array(complex_rhs),
+        config=IterativeConfig(tolerance=1e-12, max_iterations=128),
+    )
+    np.testing.assert_allclose(_complex_vector_numpy(cg_complex), complex_expected, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(_complex_vector_numpy(gmres_complex), complex_expected, rtol=1e-10, atol=1e-10)
+
+
+def test_arrow_jacobian_wrappers():
+    x = pa.array([1.5, -0.5], type=pa.float64())
+
+    def vector_fn(vector):
+        values = np.array(vector.to_pylist(), dtype=np.float64)
+        output = np.array([values[0] ** 2 + values[1], values[0] - values[1] ** 2], dtype=np.float64)
+        return pa.array(output.tolist(), type=pa.float64())
+
+    def scalar_fn(vector):
+        values = np.array(vector.to_pylist(), dtype=np.float64)
+        return float(values[0] ** 2 + 3.0 * values[1] ** 2)
+
+    expected_jacobian = np.array([[3.0, 1.0], [1.0, 1.0]], dtype=np.float64)
+    expected_gradient = np.array([3.0, -3.0], dtype=np.float64)
+    expected_hessian = np.array([[2.0, 0.0], [0.0, 6.0]], dtype=np.float64)
+
+    jacobian = arrow_numerical_jacobian(vector_fn, x, config=JacobianConfig(step_size=1e-6, tolerance=1e-12, max_iterations=64))
+    jacobian_central = arrow_numerical_jacobian_central(vector_fn, x, step_size=1e-6, tolerance=1e-12, max_iterations=64)
+    gradient = arrow_numerical_gradient(scalar_fn, x, config=JacobianConfig(step_size=1e-6, tolerance=1e-12, max_iterations=64))
+    hessian = arrow_numerical_hessian(scalar_fn, x, step_size=1e-4, tolerance=1e-10, max_iterations=64)
+
+    np.testing.assert_allclose(_matrix_numpy(jacobian, np.float64), expected_jacobian, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(_matrix_numpy(jacobian_central, np.float64), expected_jacobian, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(np.array(gradient.to_pylist(), dtype=np.float64), expected_gradient, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(_matrix_numpy(hessian, np.float64), expected_hessian, rtol=1e-3, atol=1e-4)
+
+
+def test_arrow_optimization_wrappers_real_and_complex():
+    target_real = np.array([3.0], dtype=np.float64)
+
+    def objective_real(vector):
+        values = np.array(vector.to_pylist(), dtype=np.float64)
+        return float(np.sum((values - target_real) ** 2))
+
+    def gradient_real(vector):
+        values = np.array(vector.to_pylist(), dtype=np.float64)
+        return pa.array((2.0 * (values - target_real)).tolist(), type=pa.float64())
+
+    def stochastic_gradient_real(vector, _iteration):
+        return gradient_real(vector)
+
+    point = pa.array([0.0], type=pa.float64())
+    direction = pa.array([6.0], type=pa.float64())
+    line_step = arrow_backtracking_line_search(
+        point,
+        direction,
+        objective_real,
+        gradient_real,
+        config=LineSearchConfig(initial_step=1.0, contraction=0.5, sufficient_decrease=1e-4, max_iterations=32),
+    )
+    assert line_step > 0.0
+
+    gd = arrow_gradient_descent(
+        pa.array([-5.0], type=pa.float64()),
+        objective_real,
+        gradient_real,
+        config=GradientDescentConfig(learning_rate=0.1, max_iterations=512, tolerance=1e-10),
+    )
+    adam = arrow_adam(
+        pa.array([-5.0], type=pa.float64()),
+        objective_real,
+        gradient_real,
+        config=AdamConfig(learning_rate=0.1, max_iterations=512, tolerance=1e-10),
+    )
+    momentum = arrow_momentum_descent(
+        pa.array([-5.0], type=pa.float64()),
+        objective_real,
+        gradient_real,
+        config=MomentumConfig(learning_rate=0.05, momentum=0.9, max_iterations=512, tolerance=1e-10),
+    )
+    rmsprop = arrow_rmsprop(
+        pa.array([-5.0], type=pa.float64()),
+        objective_real,
+        gradient_real,
+        config=RMSPropConfig(learning_rate=0.1, max_iterations=512, tolerance=1e-10),
+    )
+    bfgs = arrow_bfgs(
+        pa.array([-5.0], type=pa.float64()),
+        objective_real,
+        gradient_real,
+        config=BFGSConfig(step_size=0.5, max_iterations=256, tolerance=1e-12, curvature_tolerance=1e-9),
+    )
+    projected = arrow_projected_gradient_descent_box(
+        pa.array([-5.0], type=pa.float64()),
+        objective_real,
+        gradient_real,
+        pa.array([0.0], type=pa.float64()),
+        pa.array([2.5], type=pa.float64()),
+        config=ProjectedGradientConfig(learning_rate=0.1, max_iterations=512, tolerance=1e-10),
+    )
+    stochastic = arrow_stochastic_gradient_descent(
+        pa.array([-3.0], type=pa.float64()),
+        stochastic_gradient_real,
+        config=GradientDescentConfig(learning_rate=0.05, max_iterations=2_000, tolerance=1e-8),
+    )
+
+    for result in (gd, adam, momentum, rmsprop, bfgs, stochastic):
+        np.testing.assert_allclose(np.array(result.to_pylist(), dtype=np.float64), target_real, rtol=1e-3, atol=1e-3)
+    np.testing.assert_allclose(np.array(projected.to_pylist(), dtype=np.float64), np.array([2.5]), rtol=1e-3, atol=1e-3)
+
+    target_complex = np.array([3.0 + 2.0j], dtype=np.complex128)
+
+    def objective_complex(vector):
+        values = _complex_vector_numpy(vector)
+        delta = values - target_complex
+        return float(np.vdot(delta, delta).real)
+
+    def gradient_complex(vector):
+        values = _complex_vector_numpy(vector)
+        return _complex_vector_array(2.0 * (values - target_complex))
+
+    def stochastic_gradient_complex(vector, _iteration):
+        return gradient_complex(vector)
+
+    complex_point = _complex_vector_array([0.0 + 0.0j])
+    complex_direction = _complex_vector_array([6.0 + 4.0j])
+    complex_line_step = arrow_backtracking_line_search(
+        complex_point,
+        complex_direction,
+        objective_complex,
+        gradient_complex,
+        initial_step=1.0,
+        contraction=0.5,
+        sufficient_decrease=1e-4,
+        max_iterations=32,
+    )
+    assert complex_line_step > 0.0
+
+    gd_complex = arrow_gradient_descent(
+        _complex_vector_array([-5.0 - 5.0j]),
+        objective_complex,
+        gradient_complex,
+        config=GradientDescentConfig(learning_rate=0.1, max_iterations=512, tolerance=1e-10),
+    )
+    adam_complex = arrow_adam(
+        _complex_vector_array([-5.0 - 5.0j]),
+        objective_complex,
+        gradient_complex,
+        config=AdamConfig(learning_rate=0.1),
+    )
+    momentum_complex = arrow_momentum_descent(
+        _complex_vector_array([-5.0 - 5.0j]),
+        objective_complex,
+        gradient_complex,
+        config=MomentumConfig(learning_rate=0.05, momentum=0.9, max_iterations=512, tolerance=1e-10),
+    )
+    rmsprop_complex = arrow_rmsprop(
+        _complex_vector_array([-5.0 - 5.0j]),
+        objective_complex,
+        gradient_complex,
+        config=RMSPropConfig(learning_rate=0.1, max_iterations=512, tolerance=1e-10),
+    )
+    bfgs_complex = arrow_bfgs(
+        _complex_vector_array([-5.0 - 5.0j]),
+        objective_complex,
+        gradient_complex,
+        config=BFGSConfig(step_size=0.5, max_iterations=256, tolerance=1e-12, curvature_tolerance=1e-9),
+    )
+    projected_complex = arrow_projected_gradient_descent_box(
+        _complex_vector_array([-5.0 - 5.0j]),
+        objective_complex,
+        gradient_complex,
+        _complex_vector_array([0.0 + 0.0j]),
+        _complex_vector_array([2.5 + 2.5j]),
+        config=ProjectedGradientConfig(learning_rate=0.1, max_iterations=512, tolerance=1e-10),
+    )
+    stochastic_complex = arrow_stochastic_gradient_descent(
+        _complex_vector_array([-3.0 - 1.0j]),
+        stochastic_gradient_complex,
+        config=GradientDescentConfig(learning_rate=0.05, max_iterations=2_000, tolerance=1e-8),
+    )
+
+    for result in (gd_complex, adam_complex, momentum_complex, rmsprop_complex, bfgs_complex, stochastic_complex):
+        np.testing.assert_allclose(_complex_vector_numpy(result), target_complex, rtol=1e-3, atol=1e-3)
+    np.testing.assert_allclose(_complex_vector_numpy(projected_complex), np.array([2.5 + 2.0j]), rtol=1e-3, atol=1e-3)

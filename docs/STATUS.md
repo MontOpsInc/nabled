@@ -139,7 +139,32 @@ remaining `pynabled` merge-gate item is `N-PY-004` for Arrow/PyArrow parity. A f
 slice is now also landed: `pynabled.arrow` exposes real PyArrow vector, matrix, batched matrix,
 and statistics workflows beyond the earlier three-function baseline, keeps Arrow-native egress
 where those Rust Arrow rows are Arrow-native, and now validates fixed-shape-tensor batched matrix
-interop end-to-end on the editable Python 3.12 Arrow build (`6 passed` targeted Arrow pytest).
+interop end-to-end on the editable Python 3.12 Arrow build (`6 passed` targeted Arrow pytest). A
+second `N-PY-004` slice is now also landed: `pynabled.arrow` covers the admitted real
+decomposition/matrix-function/PCA/regression surface as well, including Arrow SVD
+truncated/toleranced/null-space/pseudo-inverse, QR full/reduced/pivoted plus least-squares, LU and
+Cholesky decompose/solve/inverse flows, real eigen/generalized/nonsymmetric/bi-eigen, Schur,
+polar, matrix exponential/log/power/sign families, and real PCA/regression workflows. Typed
+Python result objects are reused where the Rust Arrow facade itself stays ndarray-native, while
+solve/inverse/matrix-function/PCA-transform outputs stay Arrow-native. A third `N-PY-004` slice is
+now also landed: `pynabled.arrow` admits canonical complex Arrow carriers across the admitted dense
+vector/matrix/statistics/orthogonalization/triangular/decomposition/matrix-function/PCA/regression
+rows, while fixed-shape-tensor batched QR/SVD/LU/Cholesky/symmetric-eigen now return the same
+typed Python result objects as the NumPy-facing API. The Python wrapper now dispatches between
+real PyArrow carriers and canonical `ndarrow.complex64` dense carriers under the existing public
+names where Rust already admits both, and the Rust bridge now normalizes fixed-shape-tensor input
+nullability/field-storage alignment for the batched decomposition rows. Validation is green on the
+Arrow-focused and package gates (`13 passed` targeted Arrow pytest, full Python pytest `194
+passed`, and `python-quality` `181 passed, 13 skipped`, `93%` Python coverage). A fourth
+`N-PY-004` slice is now also landed: `pynabled.arrow` covers the admitted iterative, Jacobian, and
+optimization families over canonical PyArrow carriers, including real `float32` / `float64`
+callback flows plus canonical `ndarrow.complex64` carriers for complex iterative/optimization
+rows. The Python Arrow wrapper now exposes the same typed config objects as the NumPy-facing API,
+keeps Arrow-native scalar/vector/matrix outputs where the Rust Arrow facade already does so, and
+continues to document callback-driven Jacobian/optimization helpers as convenience APIs rather than
+no-compromise hot paths because objective/gradient evaluation still crosses back into Python.
+Validation is green on the Arrow-focused and repo/package gates (`16 passed` targeted Arrow pytest,
+`python-quality` `181 passed, 16 skipped`, `94%` Python coverage, and full `just checks`).
 Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).

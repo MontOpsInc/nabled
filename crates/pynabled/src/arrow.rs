@@ -2,7 +2,12 @@
 //!
 //! When built with the `arrow` feature, this module provides zero-copy conversion
 //! from PyArrow arrays to nabled's Arrow-facing APIs.
+#![expect(
+    unused_qualifications,
+    reason = "explicit ndarray type annotations keep the Arrow callback bridge readable"
+)]
 
+use std::cell::RefCell;
 use std::sync::Arc;
 
 use arrow_array::types::{ArrowPrimitiveType, Float32Type, Float64Type};
@@ -10,10 +15,23 @@ use arrow_array::{Array, FixedSizeListArray, PrimitiveArray, make_array};
 use arrow_data::ArrayData;
 use arrow_pyarrow::PyArrowType;
 use arrow_schema::Field;
+use ndarray::{Array1, Array2};
+use num_complex::Complex64;
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
 
 use crate::error::to_py_err;
+use crate::ml::callbacks::{
+    call_scalar_function_arrow_complex, call_scalar_function_arrow_f32,
+    call_scalar_function_arrow_f64, call_vector_function_arrow_complex,
+    call_vector_function_arrow_complex_with_iteration, call_vector_function_arrow_f32,
+    call_vector_function_arrow_f32_with_iteration, call_vector_function_arrow_f64,
+    call_vector_function_arrow_f64_with_iteration,
+};
 use crate::utils;
+
+const DEFAULT_MAX_TERMS: usize = 64;
+const DEFAULT_TOLERANCE: f64 = 1.0e-14;
 
 enum RealPrimitiveArray {
     F32(PrimitiveArray<Float32Type>),
@@ -78,6 +96,12 @@ fn extension_array_into_pyarrow(
     (PyArrowType(field), fixed_size_list_into_pyarrow(array))
 }
 
+fn extension_result_into_pyarrow(
+    result: (Field, FixedSizeListArray),
+) -> (PyArrowType<Field>, PyArrowType<ArrayData>) {
+    extension_array_into_pyarrow(result.0, result.1)
+}
+
 fn fixed_size_list_with_item_nullability(
     array: &FixedSizeListArray,
     nullable: bool,
@@ -101,6 +125,515 @@ fn fixed_size_list_with_nullable_item(array: &FixedSizeListArray) -> FixedSizeLi
 fn field_with_array_storage(field: &Field, array: &FixedSizeListArray) -> Field {
     Field::new(field.name(), array.data_type().clone(), false)
         .with_metadata(field.metadata().clone())
+}
+
+fn qr_config_f32(
+    rank_tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+    use_pivoting: bool,
+) -> PyResult<nabled_linalg::qr::QRConfig<f32>> {
+    let mut config = nabled_linalg::qr::QRConfig::<f32>::default();
+    if let Some(rank_tolerance) = rank_tolerance {
+        config.rank_tolerance = utils::f64_to_f32(rank_tolerance, "rank_tolerance")?;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.use_pivoting = use_pivoting;
+    Ok(config)
+}
+
+fn qr_config_f64(
+    rank_tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+    use_pivoting: bool,
+) -> nabled_linalg::qr::QRConfig<f64> {
+    let mut config = nabled_linalg::qr::QRConfig::<f64>::default();
+    if let Some(rank_tolerance) = rank_tolerance {
+        config.rank_tolerance = rank_tolerance;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.use_pivoting = use_pivoting;
+    config
+}
+
+fn qr_result_tuple<T: numpy::Element>(
+    py: Python<'_>,
+    result: nabled_linalg::qr::QRResult<T>,
+) -> (Py<PyAny>, Py<PyAny>, usize) {
+    (
+        utils::pyarray2_from_owned(py, result.q),
+        utils::pyarray2_from_owned(py, result.r),
+        result.rank,
+    )
+}
+
+fn qr_pivoted_result_tuple<T: numpy::Element>(
+    py: Python<'_>,
+    result: nabled_linalg::qr::QRResult<T>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>, usize)> {
+    let permutation = result.p.ok_or_else(|| {
+        pyo3::exceptions::PyTypeError::new_err("internal QR pivoting result missing permutation")
+    })?;
+    Ok((
+        utils::pyarray2_from_owned(py, result.q),
+        utils::pyarray2_from_owned(py, result.r),
+        utils::pyarray2_from_owned(py, permutation),
+        result.rank,
+    ))
+}
+
+fn nonsymmetric_config_f32(
+    balance: bool,
+    balance_max_iterations: Option<usize>,
+    balance_tolerance: Option<f64>,
+) -> PyResult<nabled_linalg::eigen::NonsymmetricEigenConfig<f32>> {
+    let mut config =
+        nabled_linalg::eigen::NonsymmetricEigenConfig::<f32> { balance, ..Default::default() };
+    if let Some(balance_max_iterations) = balance_max_iterations {
+        config.balance_max_iterations = balance_max_iterations;
+    }
+    if let Some(balance_tolerance) = balance_tolerance {
+        config.balance_tolerance = utils::f64_to_f32(balance_tolerance, "balance_tolerance")?;
+    }
+    Ok(config)
+}
+
+fn nonsymmetric_config_f64(
+    balance: bool,
+    balance_max_iterations: Option<usize>,
+    balance_tolerance: Option<f64>,
+) -> nabled_linalg::eigen::NonsymmetricEigenConfig<f64> {
+    let mut config =
+        nabled_linalg::eigen::NonsymmetricEigenConfig::<f64> { balance, ..Default::default() };
+    if let Some(balance_max_iterations) = balance_max_iterations {
+        config.balance_max_iterations = balance_max_iterations;
+    }
+    if let Some(balance_tolerance) = balance_tolerance {
+        config.balance_tolerance = balance_tolerance;
+    }
+    config
+}
+
+fn real_pca_result_f32(
+    components: Array2<f32>,
+    mean: Array1<f32>,
+) -> nabled_ml::pca::NdarrayPCAResult<f32> {
+    nabled_ml::pca::NdarrayPCAResult {
+        components,
+        explained_variance: Array1::<f32>::zeros(0),
+        explained_variance_ratio: Array1::<f32>::zeros(0),
+        mean,
+        scores: Array2::<f32>::zeros((0, 0)),
+    }
+}
+
+fn real_pca_result_f64(
+    components: Array2<f64>,
+    mean: Array1<f64>,
+) -> nabled_ml::pca::NdarrayPCAResult<f64> {
+    nabled_ml::pca::NdarrayPCAResult {
+        components,
+        explained_variance: Array1::<f64>::zeros(0),
+        explained_variance_ratio: Array1::<f64>::zeros(0),
+        mean,
+        scores: Array2::<f64>::zeros((0, 0)),
+    }
+}
+
+fn complex_pca_result(
+    components: Array2<Complex64>,
+    mean: Array1<Complex64>,
+) -> nabled_ml::pca::NdarrayComplexPCAResult {
+    nabled_ml::pca::NdarrayComplexPCAResult {
+        components,
+        explained_variance: Array1::zeros(0),
+        explained_variance_ratio: Array1::zeros(0),
+        mean,
+        scores: Array2::zeros((0, 0)),
+    }
+}
+
+fn iterative_config_f32(
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<nabled_ml::iterative::IterativeConfig<f32>> {
+    let default = nabled_ml::iterative::IterativeConfig::<f32>::default_f32();
+    Ok(nabled_ml::iterative::IterativeConfig {
+        tolerance:      tolerance
+            .map_or(Ok(default.tolerance), |value| utils::f64_to_f32(value, "tolerance"))?,
+        max_iterations: max_iterations.unwrap_or(default.max_iterations),
+    })
+}
+
+fn iterative_config_f64(
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> nabled_ml::iterative::IterativeConfig<f64> {
+    let default = nabled_ml::iterative::IterativeConfig::<f64>::default_f64();
+    nabled_ml::iterative::IterativeConfig {
+        tolerance:      tolerance.unwrap_or(default.tolerance),
+        max_iterations: max_iterations.unwrap_or(default.max_iterations),
+    }
+}
+
+fn jacobian_config_f32(
+    step_size: Option<f64>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<nabled_ml::jacobian::JacobianConfig<f32>> {
+    let mut config = nabled_ml::jacobian::JacobianConfig::<f32>::default();
+    if let Some(step_size) = step_size {
+        config.step_size = utils::f64_to_f32(step_size, "step_size")?;
+    }
+    if let Some(tolerance) = tolerance {
+        config.tolerance = utils::f64_to_f32(tolerance, "tolerance")?;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.validate().map_err(to_py_err)?;
+    Ok(config)
+}
+
+fn jacobian_config_f64(
+    step_size: Option<f64>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<nabled_ml::jacobian::JacobianConfig<f64>> {
+    let mut config = nabled_ml::jacobian::JacobianConfig::<f64>::default();
+    if let Some(step_size) = step_size {
+        config.step_size = step_size;
+    }
+    if let Some(tolerance) = tolerance {
+        config.tolerance = tolerance;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.validate().map_err(to_py_err)?;
+    Ok(config)
+}
+
+fn line_search_config_f32(
+    initial_step: Option<f64>,
+    contraction: Option<f64>,
+    sufficient_decrease: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<nabled_ml::optimization::LineSearchConfig<f32>> {
+    let mut config = nabled_ml::optimization::LineSearchConfig::<f32>::default();
+    if let Some(initial_step) = initial_step {
+        config.initial_step = utils::f64_to_f32(initial_step, "initial_step")?;
+    }
+    if let Some(contraction) = contraction {
+        config.contraction = utils::f64_to_f32(contraction, "contraction")?;
+    }
+    if let Some(sufficient_decrease) = sufficient_decrease {
+        config.sufficient_decrease = utils::f64_to_f32(sufficient_decrease, "sufficient_decrease")?;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    Ok(config)
+}
+
+fn line_search_config_f64(
+    initial_step: Option<f64>,
+    contraction: Option<f64>,
+    sufficient_decrease: Option<f64>,
+    max_iterations: Option<usize>,
+) -> nabled_ml::optimization::LineSearchConfig<f64> {
+    let mut config = nabled_ml::optimization::LineSearchConfig::<f64>::default();
+    if let Some(initial_step) = initial_step {
+        config.initial_step = initial_step;
+    }
+    if let Some(contraction) = contraction {
+        config.contraction = contraction;
+    }
+    if let Some(sufficient_decrease) = sufficient_decrease {
+        config.sufficient_decrease = sufficient_decrease;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config
+}
+
+fn sgd_config_f32(
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<nabled_ml::optimization::SGDConfig<f32>> {
+    let mut config = nabled_ml::optimization::SGDConfig::<f32>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = utils::f64_to_f32(learning_rate, "learning_rate")?;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.tolerance =
+        tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?.unwrap_or(1e-5);
+    Ok(config)
+}
+
+fn sgd_config_f64(
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> nabled_ml::optimization::SGDConfig<f64> {
+    let mut config = nabled_ml::optimization::SGDConfig::<f64>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = learning_rate;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    if let Some(tolerance) = tolerance {
+        config.tolerance = tolerance;
+    }
+    config
+}
+
+fn adam_config_f32(
+    learning_rate: Option<f64>,
+    beta1: Option<f64>,
+    beta2: Option<f64>,
+    epsilon: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<nabled_ml::optimization::AdamConfig<f32>> {
+    let mut config = nabled_ml::optimization::AdamConfig::<f32>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = utils::f64_to_f32(learning_rate, "learning_rate")?;
+    }
+    if let Some(beta1) = beta1 {
+        config.beta1 = utils::f64_to_f32(beta1, "beta1")?;
+    }
+    if let Some(beta2) = beta2 {
+        config.beta2 = utils::f64_to_f32(beta2, "beta2")?;
+    }
+    config.epsilon =
+        epsilon.map(|value| utils::f64_to_f32(value, "epsilon")).transpose()?.unwrap_or(1e-6);
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.tolerance =
+        tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?.unwrap_or(1e-5);
+    Ok(config)
+}
+
+fn adam_config_f64(
+    learning_rate: Option<f64>,
+    beta1: Option<f64>,
+    beta2: Option<f64>,
+    epsilon: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> nabled_ml::optimization::AdamConfig<f64> {
+    let mut config = nabled_ml::optimization::AdamConfig::<f64>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = learning_rate;
+    }
+    if let Some(beta1) = beta1 {
+        config.beta1 = beta1;
+    }
+    if let Some(beta2) = beta2 {
+        config.beta2 = beta2;
+    }
+    if let Some(epsilon) = epsilon {
+        config.epsilon = epsilon;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    if let Some(tolerance) = tolerance {
+        config.tolerance = tolerance;
+    }
+    config
+}
+
+fn momentum_config_f32(
+    learning_rate: Option<f64>,
+    momentum: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<nabled_ml::optimization::MomentumConfig<f32>> {
+    let mut config = nabled_ml::optimization::MomentumConfig::<f32>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = utils::f64_to_f32(learning_rate, "learning_rate")?;
+    }
+    if let Some(momentum) = momentum {
+        config.momentum = utils::f64_to_f32(momentum, "momentum")?;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.tolerance =
+        tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?.unwrap_or(1e-5);
+    Ok(config)
+}
+
+fn momentum_config_f64(
+    learning_rate: Option<f64>,
+    momentum: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> nabled_ml::optimization::MomentumConfig<f64> {
+    let mut config = nabled_ml::optimization::MomentumConfig::<f64>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = learning_rate;
+    }
+    if let Some(momentum) = momentum {
+        config.momentum = momentum;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    if let Some(tolerance) = tolerance {
+        config.tolerance = tolerance;
+    }
+    config
+}
+
+fn rmsprop_config_f32(
+    learning_rate: Option<f64>,
+    rho: Option<f64>,
+    epsilon: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<nabled_ml::optimization::RMSPropConfig<f32>> {
+    let mut config = nabled_ml::optimization::RMSPropConfig::<f32>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = utils::f64_to_f32(learning_rate, "learning_rate")?;
+    }
+    if let Some(rho) = rho {
+        config.rho = utils::f64_to_f32(rho, "rho")?;
+    }
+    config.epsilon =
+        epsilon.map(|value| utils::f64_to_f32(value, "epsilon")).transpose()?.unwrap_or(1e-6);
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.tolerance =
+        tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?.unwrap_or(1e-5);
+    Ok(config)
+}
+
+fn rmsprop_config_f64(
+    learning_rate: Option<f64>,
+    rho: Option<f64>,
+    epsilon: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> nabled_ml::optimization::RMSPropConfig<f64> {
+    let mut config = nabled_ml::optimization::RMSPropConfig::<f64>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = learning_rate;
+    }
+    if let Some(rho) = rho {
+        config.rho = rho;
+    }
+    if let Some(epsilon) = epsilon {
+        config.epsilon = epsilon;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    if let Some(tolerance) = tolerance {
+        config.tolerance = tolerance;
+    }
+    config
+}
+
+fn projected_gradient_config_f32(
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<nabled_ml::optimization::ProjectedGradientConfig<f32>> {
+    let mut config = nabled_ml::optimization::ProjectedGradientConfig::<f32>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = utils::f64_to_f32(learning_rate, "learning_rate")?;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.tolerance =
+        tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?.unwrap_or(1e-5);
+    Ok(config)
+}
+
+fn projected_gradient_config_f64(
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> nabled_ml::optimization::ProjectedGradientConfig<f64> {
+    let mut config = nabled_ml::optimization::ProjectedGradientConfig::<f64>::default();
+    if let Some(learning_rate) = learning_rate {
+        config.learning_rate = learning_rate;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    if let Some(tolerance) = tolerance {
+        config.tolerance = tolerance;
+    }
+    config
+}
+
+fn bfgs_config_f32(
+    step_size: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+    curvature_tolerance: Option<f64>,
+) -> PyResult<nabled_ml::optimization::BFGSConfig<f32>> {
+    let mut config = nabled_ml::optimization::BFGSConfig::<f32>::default();
+    if let Some(step_size) = step_size {
+        config.step_size = utils::f64_to_f32(step_size, "step_size")?;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    config.tolerance =
+        tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?.unwrap_or(1e-5);
+    config.curvature_tolerance = curvature_tolerance
+        .map(|value| utils::f64_to_f32(value, "curvature_tolerance"))
+        .transpose()?
+        .unwrap_or(1e-6);
+    Ok(config)
+}
+
+fn bfgs_config_f64(
+    step_size: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+    curvature_tolerance: Option<f64>,
+) -> nabled_ml::optimization::BFGSConfig<f64> {
+    let mut config = nabled_ml::optimization::BFGSConfig::<f64>::default();
+    if let Some(step_size) = step_size {
+        config.step_size = step_size;
+    }
+    if let Some(max_iterations) = max_iterations {
+        config.max_iterations = max_iterations;
+    }
+    if let Some(tolerance) = tolerance {
+        config.tolerance = tolerance;
+    }
+    if let Some(curvature_tolerance) = curvature_tolerance {
+        config.curvature_tolerance = curvature_tolerance;
+    }
+    config
+}
+
+fn map_callback_error<T, E: std::fmt::Display>(
+    callback_error: &RefCell<Option<PyErr>>,
+    result: Result<T, E>,
+) -> PyResult<T> {
+    if let Some(err) = callback_error.borrow_mut().take() {
+        return Err(err);
+    }
+    result.map_err(to_py_err)
 }
 
 /// Compute dot product of two real PyArrow arrays.
@@ -646,4 +1179,2910 @@ pub fn svd_decompose(
             ))
         }
     }
+}
+
+/// Compute truncated SVD of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_svd_decompose_truncated")]
+pub fn svd_decompose_truncated(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+    k: usize,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::svd::decompose_truncated_f32(&fsl, k).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.u),
+                utils::pyarray1_from_owned(py, result.singular_values),
+                utils::pyarray2_from_owned(py, result.vt),
+            ))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::svd::decompose_truncated_f64(&fsl, k).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.u),
+                utils::pyarray1_from_owned(py, result.singular_values),
+                utils::pyarray2_from_owned(py, result.vt),
+            ))
+        }
+    }
+}
+
+/// Compute tolerance-driven SVD of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_svd_decompose_with_tolerance")]
+pub fn svd_decompose_with_tolerance(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+    tolerance: f64,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let tolerance = utils::f64_to_f32(tolerance, "tolerance")?;
+            let result = nabled::arrow::svd::decompose_with_tolerance_f32(&fsl, tolerance)
+                .map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.u),
+                utils::pyarray1_from_owned(py, result.singular_values),
+                utils::pyarray2_from_owned(py, result.vt),
+            ))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::svd::decompose_with_tolerance_f64(&fsl, tolerance)
+                .map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.u),
+                utils::pyarray1_from_owned(py, result.singular_values),
+                utils::pyarray2_from_owned(py, result.vt),
+            ))
+        }
+    }
+}
+
+/// Compute pseudo-inverse of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_svd_pseudo_inverse")]
+pub fn svd_pseudo_inverse(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::svd::pseudo_inverse_f32(
+                &fsl,
+                nabled_linalg::svd::PseudoInverseConfig::default(),
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::svd::pseudo_inverse_f64(
+                &fsl,
+                nabled_linalg::svd::PseudoInverseConfig::default(),
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute right null-space basis of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_svd_null_space", signature = (matrix, tolerance=None))]
+pub fn svd_null_space(
+    matrix: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::svd::null_space_f32(
+                &fsl,
+                tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::svd::null_space_f64(&fsl, tolerance).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute QR decomposition of a real PyArrow dense matrix. Returns `(Q, R, rank)`.
+#[pyfunction(name = "arrow_qr_decompose", signature = (matrix, rank_tolerance=None, max_iterations=None))]
+pub fn qr_decompose(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+    rank_tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, usize)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(qr_result_tuple(
+            py,
+            nabled::arrow::qr::decompose_f32(
+                &fsl,
+                &qr_config_f32(rank_tolerance, max_iterations, false)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(qr_result_tuple(
+            py,
+            nabled::arrow::qr::decompose_f64(
+                &fsl,
+                &qr_config_f64(rank_tolerance, max_iterations, false),
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute reduced QR decomposition of a real PyArrow dense matrix. Returns `(Q, R, rank)`.
+#[pyfunction(
+    name = "arrow_qr_decompose_reduced",
+    signature = (matrix, rank_tolerance=None, max_iterations=None)
+)]
+pub fn qr_decompose_reduced(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+    rank_tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, usize)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(qr_result_tuple(
+            py,
+            nabled::arrow::qr::decompose_reduced_f32(
+                &fsl,
+                &qr_config_f32(rank_tolerance, max_iterations, false)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(qr_result_tuple(
+            py,
+            nabled::arrow::qr::decompose_reduced_f64(
+                &fsl,
+                &qr_config_f64(rank_tolerance, max_iterations, false),
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute pivoted QR decomposition of a real PyArrow dense matrix. Returns `(Q, R, P, rank)`.
+#[pyfunction(
+    name = "arrow_qr_decompose_pivoted",
+    signature = (matrix, rank_tolerance=None, max_iterations=None)
+)]
+pub fn qr_decompose_pivoted(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+    rank_tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>, usize)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => qr_pivoted_result_tuple(
+            py,
+            nabled::arrow::qr::decompose_with_pivoting_f32(
+                &fsl,
+                &qr_config_f32(rank_tolerance, max_iterations, true)?,
+            )
+            .map_err(to_py_err)?,
+        ),
+        RealFixedSizeListArray::F64(fsl) => qr_pivoted_result_tuple(
+            py,
+            nabled::arrow::qr::decompose_with_pivoting_f64(
+                &fsl,
+                &qr_config_f64(rank_tolerance, max_iterations, true),
+            )
+            .map_err(to_py_err)?,
+        ),
+    }
+}
+
+/// Solve least-squares from real PyArrow dense inputs.
+#[pyfunction(
+    name = "arrow_qr_solve_least_squares",
+    signature = (matrix, rhs, rank_tolerance=None, max_iterations=None)
+)]
+pub fn qr_solve_least_squares(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    rank_tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (array_data_to_real_fixed_size_list(matrix.0)?, array_data_to_real_primitive(rhs.0)?) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow(
+                nabled::arrow::qr::solve_least_squares_f32(
+                    &matrix_arr,
+                    &rhs_arr,
+                    &qr_config_f32(rank_tolerance, max_iterations, false)?,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow(
+                nabled::arrow::qr::solve_least_squares_f64(
+                    &matrix_arr,
+                    &rhs_arr,
+                    &qr_config_f64(rank_tolerance, max_iterations, false),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Compute LU decomposition of a real PyArrow dense matrix. Returns `(L, U)`.
+#[pyfunction(name = "arrow_lu_decompose")]
+pub fn lu_decompose(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::lu::decompose_f32(&fsl).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.l), utils::pyarray2_from_owned(py, result.u)))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::lu::decompose_f64(&fsl).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.l), utils::pyarray2_from_owned(py, result.u)))
+        }
+    }
+}
+
+/// Solve a real dense system from PyArrow LU inputs.
+#[pyfunction(name = "arrow_lu_solve")]
+pub fn lu_solve(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (array_data_to_real_fixed_size_list(matrix.0)?, array_data_to_real_primitive(rhs.0)?) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow(
+                nabled::arrow::lu::solve_f32(&matrix_arr, &rhs_arr).map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow(
+                nabled::arrow::lu::solve_f64(&matrix_arr, &rhs_arr).map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Compute inverse of a real dense PyArrow matrix via LU.
+#[pyfunction(name = "arrow_lu_inverse")]
+pub fn lu_inverse(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::lu::inverse_f32(&fsl).map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::lu::inverse_f64(&fsl).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute determinant of a real dense PyArrow matrix via LU.
+#[pyfunction(name = "arrow_lu_determinant")]
+pub fn lu_determinant(matrix: PyArrowType<ArrayData>) -> PyResult<f64> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            Ok(f64::from(nabled::arrow::lu::determinant_f32(&fsl).map_err(to_py_err)?))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            nabled::arrow::lu::determinant_f64(&fsl).map_err(to_py_err)
+        }
+    }
+}
+
+/// Compute signed log-determinant of a real dense PyArrow matrix via LU.
+#[pyfunction(name = "arrow_lu_log_determinant")]
+pub fn lu_log_determinant(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(i8, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::lu::log_determinant_f32(&fsl).map_err(to_py_err)?;
+            Ok((result.sign, utils::py_float(py, f64::from(result.ln_abs_det))))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::lu::log_determinant_f64(&fsl).map_err(to_py_err)?;
+            Ok((result.sign, utils::py_float(py, result.ln_abs_det)))
+        }
+    }
+}
+
+/// Compute Cholesky decomposition of a real PyArrow dense matrix. Returns `L`.
+#[pyfunction(name = "arrow_cholesky_decompose")]
+pub fn cholesky_decompose(py: Python<'_>, matrix: PyArrowType<ArrayData>) -> PyResult<Py<PyAny>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::cholesky::decompose_f32(&fsl).map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result.l))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::cholesky::decompose_f64(&fsl).map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result.l))
+        }
+    }
+}
+
+/// Solve a real SPD system from PyArrow dense inputs using Cholesky.
+#[pyfunction(name = "arrow_cholesky_solve")]
+pub fn cholesky_solve(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (array_data_to_real_fixed_size_list(matrix.0)?, array_data_to_real_primitive(rhs.0)?) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow(
+                nabled::arrow::cholesky::solve_f32(&matrix_arr, &rhs_arr).map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow(
+                nabled::arrow::cholesky::solve_f64(&matrix_arr, &rhs_arr).map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Compute inverse of a real SPD PyArrow matrix using Cholesky.
+#[pyfunction(name = "arrow_cholesky_inverse")]
+pub fn cholesky_inverse(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::cholesky::inverse_f32(&fsl).map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::cholesky::inverse_f64(&fsl).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute symmetric eigen decomposition of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_eigen_symmetric")]
+pub fn eigen_symmetric(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::eigen::symmetric_f32(&fsl).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.eigenvectors),
+            ))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::eigen::symmetric_f64(&fsl).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.eigenvectors),
+            ))
+        }
+    }
+}
+
+/// Compute generalized eigen decomposition of real PyArrow dense matrices.
+#[pyfunction(name = "arrow_eigen_generalized")]
+pub fn eigen_generalized(
+    py: Python<'_>,
+    matrix_a: PyArrowType<ArrayData>,
+    matrix_b: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    match (
+        array_data_to_real_fixed_size_list(matrix_a.0)?,
+        array_data_to_real_fixed_size_list(matrix_b.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(a), RealFixedSizeListArray::F32(b)) => {
+            let result = nabled::arrow::eigen::generalized_f32(&a, &b).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.eigenvectors),
+            ))
+        }
+        (RealFixedSizeListArray::F64(a), RealFixedSizeListArray::F64(b)) => {
+            let result = nabled::arrow::eigen::generalized_f64(&a, &b).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.eigenvectors),
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix_a", "matrix_b"])),
+    }
+}
+
+/// Compute non-symmetric eigen decomposition of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_eigen_nonsymmetric")]
+pub fn eigen_nonsymmetric(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::eigen::nonsymmetric_f32(&fsl).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.schur_vectors),
+            ))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::eigen::nonsymmetric_f64(&fsl).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.schur_vectors),
+            ))
+        }
+    }
+}
+
+/// Compute matched left/right non-symmetric eigenvectors of a real PyArrow dense matrix.
+#[pyfunction(
+    name = "arrow_eigen_nonsymmetric_bi",
+    signature = (matrix, balance=true, balance_max_iterations=None, balance_tolerance=None)
+)]
+pub fn eigen_nonsymmetric_bi(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+    balance: bool,
+    balance_max_iterations: Option<usize>,
+    balance_tolerance: Option<f64>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::eigen::nonsymmetric_bi_f32(
+                &fsl,
+                &nonsymmetric_config_f32(balance, balance_max_iterations, balance_tolerance)?,
+            )
+            .map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.right_eigenvectors),
+                utils::pyarray2_from_owned(py, result.left_eigenvectors),
+                utils::pyarray1_from_owned(py, result.balancing_diagonal),
+                utils::pyarray2_from_owned(py, result.balanced_matrix),
+            ))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::eigen::nonsymmetric_bi_f64(
+                &fsl,
+                &nonsymmetric_config_f64(balance, balance_max_iterations, balance_tolerance),
+            )
+            .map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.eigenvalues),
+                utils::pyarray2_from_owned(py, result.right_eigenvectors),
+                utils::pyarray2_from_owned(py, result.left_eigenvectors),
+                utils::pyarray1_from_owned(py, result.balancing_diagonal),
+                utils::pyarray2_from_owned(py, result.balanced_matrix),
+            ))
+        }
+    }
+}
+
+/// Compute Schur decomposition of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_schur_compute")]
+pub fn schur_compute(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::schur::compute_f32(&fsl).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.t), utils::pyarray2_from_owned(py, result.q)))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::schur::compute_f64(&fsl).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.t), utils::pyarray2_from_owned(py, result.q)))
+        }
+    }
+}
+
+/// Compute polar decomposition of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_polar_compute")]
+pub fn polar_compute(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::polar::compute_f32(&fsl).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.u), utils::pyarray2_from_owned(py, result.p)))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::polar::compute_f64(&fsl).map_err(to_py_err)?;
+            Ok((utils::pyarray2_from_owned(py, result.u), utils::pyarray2_from_owned(py, result.p)))
+        }
+    }
+}
+
+/// Compute matrix exponential of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_matrix_exp", signature = (matrix, max_terms=None, tolerance=None))]
+pub fn matrix_exp(
+    matrix: PyArrowType<ArrayData>,
+    max_terms: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let max_terms = max_terms.unwrap_or(DEFAULT_MAX_TERMS);
+    let tolerance = tolerance.unwrap_or(DEFAULT_TOLERANCE);
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::exp_f32(
+                &fsl,
+                max_terms,
+                utils::f64_to_f32(tolerance, "tolerance")?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::exp_f64(&fsl, max_terms, tolerance)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute matrix exponential via eigendecomposition of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_matrix_exp_eigen")]
+pub fn matrix_exp_eigen(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::exp_eigen_f32(&fsl).map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::exp_eigen_f64(&fsl).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute matrix logarithm via Taylor expansion of a real PyArrow dense matrix.
+#[pyfunction(
+    name = "arrow_matrix_log_taylor",
+    signature = (matrix, max_terms=None, tolerance=None)
+)]
+pub fn matrix_log_taylor(
+    matrix: PyArrowType<ArrayData>,
+    max_terms: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let max_terms = max_terms.unwrap_or(DEFAULT_MAX_TERMS);
+    let tolerance = tolerance.unwrap_or(DEFAULT_TOLERANCE);
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::log_taylor_f32(
+                &fsl,
+                max_terms,
+                utils::f64_to_f32(tolerance, "tolerance")?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::log_taylor_f64(&fsl, max_terms, tolerance)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute matrix logarithm via eigendecomposition of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_matrix_log_eigen")]
+pub fn matrix_log_eigen(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::log_eigen_f32(&fsl).map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::log_eigen_f64(&fsl).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute matrix logarithm via SVD of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_matrix_log_svd")]
+pub fn matrix_log_svd(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::log_svd_f32(&fsl).map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::log_svd_f64(&fsl).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute a real matrix power from a PyArrow dense matrix.
+#[pyfunction(name = "arrow_matrix_power")]
+pub fn matrix_power(
+    matrix: PyArrowType<ArrayData>,
+    power: f64,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::power_f32(&fsl, utils::f64_to_f32(power, "power")?)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::power_f64(&fsl, power).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute the matrix sign function of a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_matrix_sign")]
+pub fn matrix_sign(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::sign_f32(&fsl).map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(fsl) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::matrix_functions::sign_f64(&fsl).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute PCA from a real PyArrow dense matrix.
+#[pyfunction(name = "arrow_compute_pca", signature = (matrix, n_components=None))]
+pub fn compute_pca(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+    n_components: Option<usize>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(fsl) => {
+            let result = nabled::arrow::pca::compute_f32(&fsl, n_components).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.components),
+                utils::pyarray1_from_owned(py, result.explained_variance),
+                utils::pyarray1_from_owned(py, result.explained_variance_ratio),
+                utils::pyarray1_from_owned(py, result.mean),
+                utils::pyarray2_from_owned(py, result.scores),
+            ))
+        }
+        RealFixedSizeListArray::F64(fsl) => {
+            let result = nabled::arrow::pca::compute_f64(&fsl, n_components).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.components),
+                utils::pyarray1_from_owned(py, result.explained_variance),
+                utils::pyarray1_from_owned(py, result.explained_variance_ratio),
+                utils::pyarray1_from_owned(py, result.mean),
+                utils::pyarray2_from_owned(py, result.scores),
+            ))
+        }
+    }
+}
+
+/// Project Arrow dense data into PCA score space using a typed PCA result.
+#[pyfunction(name = "arrow_pca_transform")]
+pub fn pca_transform(
+    matrix: PyArrowType<ArrayData>,
+    components: &Bound<'_, PyAny>,
+    mean: &Bound<'_, PyAny>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (
+        array_data_to_real_fixed_size_list(matrix.0)?,
+        utils::real_array2(components, "components")?,
+        utils::real_array1(mean, "mean")?,
+    ) {
+        (
+            RealFixedSizeListArray::F32(matrix_arr),
+            utils::RealReadonlyArray2::F32(components_arr),
+            utils::RealReadonlyArray1::F32(mean_arr),
+        ) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::pca::transform_f32(
+                &matrix_arr,
+                &real_pca_result_f32(
+                    components_arr.as_array().to_owned(),
+                    mean_arr.as_array().to_owned(),
+                ),
+            )
+            .map_err(to_py_err)?,
+        )),
+        (
+            RealFixedSizeListArray::F64(matrix_arr),
+            utils::RealReadonlyArray2::F64(components_arr),
+            utils::RealReadonlyArray1::F64(mean_arr),
+        ) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::pca::transform_f64(
+                &matrix_arr,
+                &real_pca_result_f64(
+                    components_arr.as_array().to_owned(),
+                    mean_arr.as_array().to_owned(),
+                ),
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "components", "mean"])),
+    }
+}
+
+/// Reconstruct Arrow dense data from PCA scores using a typed PCA result.
+#[pyfunction(name = "arrow_pca_inverse_transform")]
+pub fn pca_inverse_transform(
+    scores: PyArrowType<ArrayData>,
+    components: &Bound<'_, PyAny>,
+    mean: &Bound<'_, PyAny>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (
+        array_data_to_real_fixed_size_list(scores.0)?,
+        utils::real_array2(components, "components")?,
+        utils::real_array1(mean, "mean")?,
+    ) {
+        (
+            RealFixedSizeListArray::F32(scores_arr),
+            utils::RealReadonlyArray2::F32(components_arr),
+            utils::RealReadonlyArray1::F32(mean_arr),
+        ) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::pca::inverse_transform_f32(
+                &scores_arr,
+                &real_pca_result_f32(
+                    components_arr.as_array().to_owned(),
+                    mean_arr.as_array().to_owned(),
+                ),
+            )
+            .map_err(to_py_err)?,
+        )),
+        (
+            RealFixedSizeListArray::F64(scores_arr),
+            utils::RealReadonlyArray2::F64(components_arr),
+            utils::RealReadonlyArray1::F64(mean_arr),
+        ) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::pca::inverse_transform_f64(
+                &scores_arr,
+                &real_pca_result_f64(
+                    components_arr.as_array().to_owned(),
+                    mean_arr.as_array().to_owned(),
+                ),
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["scores", "components", "mean"])),
+    }
+}
+
+/// Solve linear regression directly from real PyArrow dense inputs.
+#[pyfunction(name = "arrow_linear_regression", signature = (x, y, add_intercept=true))]
+pub fn linear_regression(
+    py: Python<'_>,
+    x: PyArrowType<ArrayData>,
+    y: PyArrowType<ArrayData>,
+    add_intercept: bool,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>, f64)> {
+    match (array_data_to_real_fixed_size_list(x.0)?, array_data_to_real_primitive(y.0)?) {
+        (RealFixedSizeListArray::F32(x_arr), RealPrimitiveArray::F32(y_arr)) => {
+            let result =
+                nabled::arrow::regression::linear_regression_f32(&x_arr, &y_arr, add_intercept)
+                    .map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.coefficients),
+                utils::pyarray1_from_owned(py, result.fitted_values),
+                utils::pyarray1_from_owned(py, result.residuals),
+                f64::from(result.r_squared),
+            ))
+        }
+        (RealFixedSizeListArray::F64(x_arr), RealPrimitiveArray::F64(y_arr)) => {
+            let result =
+                nabled::arrow::regression::linear_regression_f64(&x_arr, &y_arr, add_intercept)
+                    .map_err(to_py_err)?;
+            Ok((
+                utils::pyarray1_from_owned(py, result.coefficients),
+                utils::pyarray1_from_owned(py, result.fitted_values),
+                utils::pyarray1_from_owned(py, result.residuals),
+                result.r_squared,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["x", "y"])),
+    }
+}
+
+/// Compute the Hermitian dot product of two complex PyArrow vectors.
+#[pyfunction(name = "arrow_dot_hermitian")]
+pub fn dot_hermitian(
+    py: Python<'_>,
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<Py<PyAny>> {
+    let left_arr = array_data_to_fixed_size_list(left.0)?;
+    let right_arr = array_data_to_fixed_size_list(right.0)?;
+    Ok(utils::py_complex(
+        py,
+        nabled::arrow::vector::dot_hermitian(&left_field.0, &left_arr, &right_field.0, &right_arr)
+            .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the L2 norm of a complex PyArrow vector.
+#[pyfunction(name = "arrow_l2_norm_complex")]
+pub fn l2_norm_complex(field: PyArrowType<Field>, vector: PyArrowType<ArrayData>) -> PyResult<f64> {
+    let vector_arr = array_data_to_fixed_size_list(vector.0)?;
+    nabled::arrow::vector::l2_norm_complex(&field.0, &vector_arr).map_err(to_py_err)
+}
+
+/// Compute the cosine similarity of two complex PyArrow vectors.
+#[pyfunction(name = "arrow_cosine_similarity_complex")]
+pub fn cosine_similarity_complex(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let left_arr = array_data_to_fixed_size_list(left.0)?;
+    let right_arr = array_data_to_fixed_size_list(right.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::vector::cosine_similarity_complex(
+            &left_field.0,
+            &left_arr,
+            &right_field.0,
+            &right_arr,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute row-wise Hermitian dot products for complex Arrow row batches.
+#[pyfunction(name = "arrow_batched_dot_hermitian")]
+pub fn batched_dot_hermitian(
+    left: PyArrowType<ArrayData>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let left_arr = array_data_to_fixed_size_list(left.0)?;
+    let right_arr = array_data_to_fixed_size_list(right.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::vector::batched_dot_hermitian(&left_arr, &right_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute row-wise complex-vector norms for Arrow row batches.
+#[pyfunction(name = "arrow_batched_l2_norm_complex")]
+pub fn batched_l2_norm_complex(rows: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    let rows_arr = array_data_to_fixed_size_list(rows.0)?;
+    Ok(primitive_array_into_pyarrow::<Float64Type>(
+        nabled::arrow::vector::batched_l2_norm_complex(&rows_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute row-wise complex cosine similarities for Arrow row batches.
+#[pyfunction(name = "arrow_batched_cosine_similarity_complex")]
+pub fn batched_cosine_similarity_complex(
+    left: PyArrowType<ArrayData>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let left_arr = array_data_to_fixed_size_list(left.0)?;
+    let right_arr = array_data_to_fixed_size_list(right.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::vector::batched_cosine_similarity_complex(&left_arr, &right_arr)
+            .map_err(to_py_err)?,
+    ))
+}
+
+/// Normalize each row of a complex Arrow dense matrix.
+#[pyfunction(name = "arrow_batched_normalize_complex")]
+pub fn batched_normalize_complex(rows: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    let rows_arr = array_data_to_fixed_size_list(rows.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::vector::batched_normalize_complex(&rows_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute a complex matrix-vector product directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_matvec_complex")]
+pub fn matvec_complex(
+    matrix: PyArrowType<ArrayData>,
+    vector_field: PyArrowType<Field>,
+    vector: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let vector_arr = array_data_to_fixed_size_list(vector.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::matrix::matvec_complex(&matrix_arr, &vector_field.0, &vector_arr)
+            .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute a complex matrix-matrix product directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_matmat_complex")]
+pub fn matmat_complex(
+    left: PyArrowType<ArrayData>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let left_arr = array_data_to_fixed_size_list(left.0)?;
+    let right_arr = array_data_to_fixed_size_list(right.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::matrix::matmat_complex(&left_arr, &right_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute complex column means directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_column_means_complex")]
+pub fn column_means_complex(
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::stats::column_means_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Center complex columns directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_center_columns_complex")]
+pub fn center_columns_complex(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::stats::center_columns_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute a complex covariance matrix directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_covariance_matrix_complex")]
+pub fn covariance_matrix_complex(
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::stats::covariance_matrix_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute a complex correlation matrix directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_correlation_matrix_complex")]
+pub fn correlation_matrix_complex(
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::stats::correlation_matrix_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute modified Gram-Schmidt orthogonalization directly from real PyArrow dense inputs.
+#[pyfunction(name = "arrow_gram_schmidt")]
+pub fn gram_schmidt(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(matrix_arr) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::orthogonalization::gram_schmidt_f32(&matrix_arr).map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(matrix_arr) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::orthogonalization::gram_schmidt_f64(&matrix_arr).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute modified Gram-Schmidt orthogonalization directly from complex PyArrow dense inputs.
+#[pyfunction(name = "arrow_gram_schmidt_complex")]
+pub fn gram_schmidt_complex(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::orthogonalization::gram_schmidt_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute classical Gram-Schmidt orthogonalization directly from real PyArrow dense inputs.
+#[pyfunction(name = "arrow_gram_schmidt_classic")]
+pub fn gram_schmidt_classic(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(matrix.0)? {
+        RealFixedSizeListArray::F32(matrix_arr) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::orthogonalization::gram_schmidt_classic_f32(&matrix_arr)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(matrix_arr) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::orthogonalization::gram_schmidt_classic_f64(&matrix_arr)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Solve a lower-triangular real system directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_solve_lower")]
+pub fn solve_lower(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (array_data_to_real_fixed_size_list(matrix.0)?, array_data_to_real_primitive(rhs.0)?) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::triangular::solve_lower_f32(&matrix_arr, &rhs_arr)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::triangular::solve_lower_f64(&matrix_arr, &rhs_arr)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve a lower-triangular complex system directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_solve_lower_complex")]
+pub fn solve_lower_complex(
+    matrix: PyArrowType<ArrayData>,
+    rhs_field: PyArrowType<Field>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let rhs_arr = array_data_to_fixed_size_list(rhs.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::triangular::solve_lower_complex(&matrix_arr, &rhs_field.0, &rhs_arr)
+            .map_err(to_py_err)?,
+    ))
+}
+
+/// Solve an upper-triangular real system directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_solve_upper")]
+pub fn solve_upper(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (array_data_to_real_fixed_size_list(matrix.0)?, array_data_to_real_primitive(rhs.0)?) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::triangular::solve_upper_f32(&matrix_arr, &rhs_arr)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::triangular::solve_upper_f64(&matrix_arr, &rhs_arr)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve an upper-triangular complex system directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_solve_upper_complex")]
+pub fn solve_upper_complex(
+    matrix: PyArrowType<ArrayData>,
+    rhs_field: PyArrowType<Field>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let rhs_arr = array_data_to_fixed_size_list(rhs.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::triangular::solve_upper_complex(&matrix_arr, &rhs_field.0, &rhs_arr)
+            .map_err(to_py_err)?,
+    ))
+}
+
+/// Solve a lower-triangular matrix-RHS system directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_solve_lower_matrix")]
+pub fn solve_lower_matrix(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (
+        array_data_to_real_fixed_size_list(matrix.0)?,
+        array_data_to_real_fixed_size_list(rhs.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealFixedSizeListArray::F32(rhs_arr)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::triangular::solve_lower_matrix_f32(&matrix_arr, &rhs_arr)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealFixedSizeListArray::F64(rhs_arr)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::triangular::solve_lower_matrix_f64(&matrix_arr, &rhs_arr)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve an upper-triangular matrix-RHS system directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_solve_upper_matrix")]
+pub fn solve_upper_matrix(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (
+        array_data_to_real_fixed_size_list(matrix.0)?,
+        array_data_to_real_fixed_size_list(rhs.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealFixedSizeListArray::F32(rhs_arr)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::triangular::solve_upper_matrix_f32(&matrix_arr, &rhs_arr)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealFixedSizeListArray::F64(rhs_arr)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::triangular::solve_upper_matrix_f64(&matrix_arr, &rhs_arr)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Compute batched QR decomposition directly from Arrow fixed-shape tensor input.
+#[pyfunction(name = "arrow_batched_qr", signature = (field, matrices, rank_tolerance=None, max_iterations=None))]
+pub fn batched_qr(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    matrices: PyArrowType<ArrayData>,
+    rank_tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<Vec<(Py<PyAny>, Py<PyAny>, usize)>> {
+    let matrices_arr =
+        fixed_size_list_with_non_null_item(&array_data_to_fixed_size_list(matrices.0)?);
+    let field = field_with_array_storage(&field.0, &matrices_arr);
+    match matrices_arr.value_type() {
+        arrow_schema::DataType::Float32 => {
+            let config = qr_config_f32(rank_tolerance, max_iterations, false)?;
+            Ok(nabled::arrow::batched::qr_f32(&field, &matrices_arr, &config)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| qr_result_tuple(py, result))
+                .collect())
+        }
+        arrow_schema::DataType::Float64 => {
+            let config = qr_config_f64(rank_tolerance, max_iterations, false);
+            Ok(nabled::arrow::batched::qr_f64(&field, &matrices_arr, &config)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| qr_result_tuple(py, result))
+                .collect())
+        }
+        _ => Err(pyo3::exceptions::PyTypeError::new_err(
+            "expected fixed-shape tensor with float32 or float64 values",
+        )),
+    }
+}
+
+/// Compute batched SVD directly from Arrow fixed-shape tensor input.
+#[pyfunction(name = "arrow_batched_svd")]
+pub fn batched_svd(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    matrices: PyArrowType<ArrayData>,
+) -> PyResult<Vec<(Py<PyAny>, Py<PyAny>, Py<PyAny>)>> {
+    let matrices_arr =
+        fixed_size_list_with_non_null_item(&array_data_to_fixed_size_list(matrices.0)?);
+    let field = field_with_array_storage(&field.0, &matrices_arr);
+    match matrices_arr.value_type() {
+        arrow_schema::DataType::Float32 => {
+            Ok(nabled::arrow::batched::svd_f32(&field, &matrices_arr)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| {
+                    (
+                        utils::pyarray2_from_owned(py, result.u),
+                        utils::pyarray1_from_owned(py, result.singular_values),
+                        utils::pyarray2_from_owned(py, result.vt),
+                    )
+                })
+                .collect())
+        }
+        arrow_schema::DataType::Float64 => {
+            Ok(nabled::arrow::batched::svd_f64(&field, &matrices_arr)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| {
+                    (
+                        utils::pyarray2_from_owned(py, result.u),
+                        utils::pyarray1_from_owned(py, result.singular_values),
+                        utils::pyarray2_from_owned(py, result.vt),
+                    )
+                })
+                .collect())
+        }
+        _ => Err(pyo3::exceptions::PyTypeError::new_err(
+            "expected fixed-shape tensor with float32 or float64 values",
+        )),
+    }
+}
+
+/// Compute batched LU decomposition directly from Arrow fixed-shape tensor input.
+#[pyfunction(name = "arrow_batched_lu")]
+pub fn batched_lu(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    matrices: PyArrowType<ArrayData>,
+) -> PyResult<Vec<(Py<PyAny>, Py<PyAny>)>> {
+    let matrices_arr =
+        fixed_size_list_with_non_null_item(&array_data_to_fixed_size_list(matrices.0)?);
+    let field = field_with_array_storage(&field.0, &matrices_arr);
+    match matrices_arr.value_type() {
+        arrow_schema::DataType::Float32 => {
+            Ok(nabled::arrow::batched::lu_f32(&field, &matrices_arr)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| {
+                    (
+                        utils::pyarray2_from_owned(py, result.l),
+                        utils::pyarray2_from_owned(py, result.u),
+                    )
+                })
+                .collect())
+        }
+        arrow_schema::DataType::Float64 => {
+            Ok(nabled::arrow::batched::lu_f64(&field, &matrices_arr)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| {
+                    (
+                        utils::pyarray2_from_owned(py, result.l),
+                        utils::pyarray2_from_owned(py, result.u),
+                    )
+                })
+                .collect())
+        }
+        _ => Err(pyo3::exceptions::PyTypeError::new_err(
+            "expected fixed-shape tensor with float32 or float64 values",
+        )),
+    }
+}
+
+/// Compute batched Cholesky decomposition directly from Arrow fixed-shape tensor input.
+#[pyfunction(name = "arrow_batched_cholesky")]
+pub fn batched_cholesky(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    matrices: PyArrowType<ArrayData>,
+) -> PyResult<Vec<Py<PyAny>>> {
+    let matrices_arr =
+        fixed_size_list_with_non_null_item(&array_data_to_fixed_size_list(matrices.0)?);
+    let field = field_with_array_storage(&field.0, &matrices_arr);
+    match matrices_arr.value_type() {
+        arrow_schema::DataType::Float32 => {
+            Ok(nabled::arrow::batched::cholesky_f32(&field, &matrices_arr)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| utils::pyarray2_from_owned(py, result.l))
+                .collect())
+        }
+        arrow_schema::DataType::Float64 => {
+            Ok(nabled::arrow::batched::cholesky_f64(&field, &matrices_arr)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| utils::pyarray2_from_owned(py, result.l))
+                .collect())
+        }
+        _ => Err(pyo3::exceptions::PyTypeError::new_err(
+            "expected fixed-shape tensor with float32 or float64 values",
+        )),
+    }
+}
+
+/// Compute batched symmetric eigen decomposition directly from Arrow fixed-shape tensor input.
+#[pyfunction(name = "arrow_batched_symmetric_eigen")]
+pub fn batched_symmetric_eigen(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    matrices: PyArrowType<ArrayData>,
+) -> PyResult<Vec<(Py<PyAny>, Py<PyAny>)>> {
+    let matrices_arr =
+        fixed_size_list_with_non_null_item(&array_data_to_fixed_size_list(matrices.0)?);
+    let field = field_with_array_storage(&field.0, &matrices_arr);
+    match matrices_arr.value_type() {
+        arrow_schema::DataType::Float32 => {
+            Ok(nabled::arrow::batched::symmetric_eigen_f32(&field, &matrices_arr)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| {
+                    (
+                        utils::pyarray1_from_owned(py, result.eigenvalues),
+                        utils::pyarray2_from_owned(py, result.eigenvectors),
+                    )
+                })
+                .collect())
+        }
+        arrow_schema::DataType::Float64 => {
+            Ok(nabled::arrow::batched::symmetric_eigen_f64(&field, &matrices_arr)
+                .map_err(to_py_err)?
+                .into_iter()
+                .map(|result| {
+                    (
+                        utils::pyarray1_from_owned(py, result.eigenvalues),
+                        utils::pyarray2_from_owned(py, result.eigenvectors),
+                    )
+                })
+                .collect())
+        }
+        _ => Err(pyo3::exceptions::PyTypeError::new_err(
+            "expected fixed-shape tensor with float32 or float64 values",
+        )),
+    }
+}
+
+/// Compute complex SVD directly from PyArrow dense input.
+#[pyfunction(name = "arrow_svd_decompose_complex")]
+pub fn svd_decompose_complex(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let result = nabled::arrow::svd::decompose_complex(&matrix_arr).map_err(to_py_err)?;
+    Ok((
+        utils::pyarray2_from_owned(py, result.u),
+        utils::pyarray1_from_owned(py, result.singular_values),
+        utils::pyarray2_from_owned(py, result.vt),
+    ))
+}
+
+/// Compute complex QR directly from PyArrow dense input.
+#[pyfunction(name = "arrow_qr_decompose_complex")]
+pub fn qr_decompose_complex(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, usize)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let config = nabled_linalg::qr::QRConfig::<f64>::default();
+    let result = nabled::arrow::qr::decompose_complex(&matrix_arr, &config).map_err(to_py_err)?;
+    Ok((
+        utils::pyarray2_from_owned(py, result.q),
+        utils::pyarray2_from_owned(py, result.r),
+        result.rank,
+    ))
+}
+
+/// Solve a complex linear system directly from PyArrow dense input.
+#[pyfunction(name = "arrow_lu_solve_complex")]
+pub fn lu_solve_complex(
+    matrix: PyArrowType<ArrayData>,
+    rhs_field: PyArrowType<Field>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let rhs_arr = array_data_to_fixed_size_list(rhs.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::lu::solve_complex(&matrix_arr, &rhs_field.0, &rhs_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the complex inverse of a PyArrow dense matrix.
+#[pyfunction(name = "arrow_lu_inverse_complex")]
+pub fn lu_inverse_complex(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::lu::inverse_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the complex determinant of a PyArrow dense matrix.
+#[pyfunction(name = "arrow_lu_determinant_complex")]
+pub fn lu_determinant_complex(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<Py<PyAny>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(utils::py_complex(
+        py,
+        nabled::arrow::lu::determinant_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute complex Cholesky decomposition directly from PyArrow dense input.
+#[pyfunction(name = "arrow_cholesky_decompose_complex")]
+pub fn cholesky_decompose_complex(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<Py<PyAny>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let result = nabled::arrow::cholesky::decompose_complex(&matrix_arr).map_err(to_py_err)?;
+    Ok(utils::pyarray2_from_owned(py, result.l))
+}
+
+/// Solve a complex Hermitian system directly from PyArrow dense input.
+#[pyfunction(name = "arrow_cholesky_solve_complex")]
+pub fn cholesky_solve_complex(
+    matrix: PyArrowType<ArrayData>,
+    rhs_field: PyArrowType<Field>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let rhs_arr = array_data_to_fixed_size_list(rhs.0)?;
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::cholesky::solve_complex(&matrix_arr, &rhs_field.0, &rhs_arr)
+            .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the complex inverse of a Hermitian positive-definite PyArrow matrix.
+#[pyfunction(name = "arrow_cholesky_inverse_complex")]
+pub fn cholesky_inverse_complex(
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::cholesky::inverse_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute complex non-symmetric eigen decomposition directly from PyArrow dense input.
+#[pyfunction(name = "arrow_eigen_nonsymmetric_complex")]
+pub fn eigen_nonsymmetric_complex(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let result = nabled::arrow::eigen::nonsymmetric_complex(&matrix_arr).map_err(to_py_err)?;
+    Ok((
+        utils::pyarray1_from_owned(py, result.eigenvalues),
+        utils::pyarray2_from_owned(py, result.schur_vectors),
+    ))
+}
+
+/// Compute complex Schur decomposition directly from PyArrow dense input.
+#[pyfunction(name = "arrow_schur_compute_complex")]
+pub fn schur_compute_complex(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let result = nabled::arrow::schur::compute_complex(&matrix_arr).map_err(to_py_err)?;
+    Ok((utils::pyarray2_from_owned(py, result.t), utils::pyarray2_from_owned(py, result.q)))
+}
+
+/// Compute complex polar decomposition directly from PyArrow dense input.
+#[pyfunction(name = "arrow_polar_compute_complex")]
+pub fn polar_compute_complex(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let result = nabled::arrow::polar::compute_complex(&matrix_arr).map_err(to_py_err)?;
+    Ok((utils::pyarray2_from_owned(py, result.u), utils::pyarray2_from_owned(py, result.p)))
+}
+
+/// Compute the complex matrix exponential directly from PyArrow dense input.
+#[pyfunction(name = "arrow_matrix_exp_complex", signature = (matrix, max_terms=None, tolerance=None))]
+pub fn matrix_exp_complex(
+    matrix: PyArrowType<ArrayData>,
+    max_terms: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::matrix_functions::exp_complex(
+            &matrix_arr,
+            max_terms.unwrap_or(DEFAULT_MAX_TERMS),
+            tolerance.unwrap_or(DEFAULT_TOLERANCE),
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the complex matrix exponential via eigen decomposition.
+#[pyfunction(name = "arrow_matrix_exp_eigen_complex")]
+pub fn matrix_exp_eigen_complex(
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::matrix_functions::exp_eigen_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the complex matrix logarithm via eigen decomposition.
+#[pyfunction(name = "arrow_matrix_log_eigen_complex")]
+pub fn matrix_log_eigen_complex(
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::matrix_functions::log_eigen_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the complex matrix logarithm via SVD.
+#[pyfunction(name = "arrow_matrix_log_svd_complex")]
+pub fn matrix_log_svd_complex(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::matrix_functions::log_svd_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the complex matrix power.
+#[pyfunction(name = "arrow_matrix_power_complex")]
+pub fn matrix_power_complex(
+    matrix: PyArrowType<ArrayData>,
+    power: f64,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::matrix_functions::power_complex(&matrix_arr, power).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute the complex matrix sign.
+#[pyfunction(name = "arrow_matrix_sign_complex")]
+pub fn matrix_sign_complex(matrix: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::matrix_functions::sign_complex(&matrix_arr).map_err(to_py_err)?,
+    ))
+}
+
+/// Compute complex PCA directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_compute_pca_complex", signature = (matrix, n_components=None))]
+pub fn compute_pca_complex(
+    py: Python<'_>,
+    matrix: PyArrowType<ArrayData>,
+    n_components: Option<usize>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let result =
+        nabled::arrow::pca::compute_complex(&matrix_arr, n_components).map_err(to_py_err)?;
+    Ok((
+        utils::pyarray2_from_owned(py, result.components),
+        utils::pyarray1_from_owned(py, result.explained_variance),
+        utils::pyarray1_from_owned(py, result.explained_variance_ratio),
+        utils::pyarray1_from_owned(py, result.mean),
+        utils::pyarray2_from_owned(py, result.scores),
+    ))
+}
+
+/// Project complex Arrow dense data into PCA score space.
+#[pyfunction(name = "arrow_pca_transform_complex")]
+pub fn pca_transform_complex(
+    matrix: PyArrowType<ArrayData>,
+    components: &Bound<'_, PyAny>,
+    mean: &Bound<'_, PyAny>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    match (utils::numeric_array2(components, "components")?, utils::numeric_array1(mean, "mean")?) {
+        (
+            utils::NumericReadonlyArray2::C64(components_arr),
+            utils::NumericReadonlyArray1::C64(mean_arr),
+        ) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::pca::transform_complex(
+                &matrix_arr,
+                &complex_pca_result(
+                    components_arr.as_array().to_owned(),
+                    mean_arr.as_array().to_owned(),
+                ),
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(pyo3::exceptions::PyTypeError::new_err(
+            "components and mean must both have dtype complex128",
+        )),
+    }
+}
+
+/// Reconstruct complex Arrow dense data from PCA scores.
+#[pyfunction(name = "arrow_pca_inverse_transform_complex")]
+pub fn pca_inverse_transform_complex(
+    scores: PyArrowType<ArrayData>,
+    components: &Bound<'_, PyAny>,
+    mean: &Bound<'_, PyAny>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let scores_arr = array_data_to_fixed_size_list(scores.0)?;
+    match (utils::numeric_array2(components, "components")?, utils::numeric_array1(mean, "mean")?) {
+        (
+            utils::NumericReadonlyArray2::C64(components_arr),
+            utils::NumericReadonlyArray1::C64(mean_arr),
+        ) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::pca::inverse_transform_complex(
+                &scores_arr,
+                &complex_pca_result(
+                    components_arr.as_array().to_owned(),
+                    mean_arr.as_array().to_owned(),
+                ),
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(pyo3::exceptions::PyTypeError::new_err(
+            "components and mean must both have dtype complex128",
+        )),
+    }
+}
+
+/// Solve complex linear regression directly from PyArrow dense inputs.
+#[pyfunction(name = "arrow_linear_regression_complex", signature = (x, y_field, y, add_intercept=true))]
+pub fn linear_regression_complex(
+    py: Python<'_>,
+    x: PyArrowType<ArrayData>,
+    y_field: PyArrowType<Field>,
+    y: PyArrowType<ArrayData>,
+    add_intercept: bool,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>, f64)> {
+    let x_arr = array_data_to_fixed_size_list(x.0)?;
+    let y_arr = array_data_to_fixed_size_list(y.0)?;
+    let result = nabled::arrow::regression::linear_regression_complex(
+        &x_arr,
+        &y_field.0,
+        &y_arr,
+        add_intercept,
+    )
+    .map_err(to_py_err)?;
+    Ok((
+        utils::pyarray1_from_owned(py, result.coefficients),
+        utils::pyarray1_from_owned(py, result.fitted_values),
+        utils::pyarray1_from_owned(py, result.residuals),
+        result.r_squared,
+    ))
+}
+
+/// Solve an SPD system directly from PyArrow dense inputs via conjugate gradient.
+#[pyfunction(name = "arrow_conjugate_gradient", signature = (matrix, rhs, tolerance=None, max_iterations=None))]
+pub fn conjugate_gradient(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (array_data_to_real_fixed_size_list(matrix.0)?, array_data_to_real_primitive(rhs.0)?) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealPrimitiveArray::F32(rhs_arr)) => {
+            let config = iterative_config_f32(tolerance, max_iterations)?;
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::iterative::conjugate_gradient_f32(&matrix_arr, &rhs_arr, &config)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealPrimitiveArray::F64(rhs_arr)) => {
+            let config = iterative_config_f64(tolerance, max_iterations);
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::iterative::conjugate_gradient_f64(&matrix_arr, &rhs_arr, &config)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve a complex SPD system directly from canonical complex PyArrow carriers.
+#[pyfunction(name = "arrow_conjugate_gradient_complex", signature = (matrix, rhs_field, rhs, tolerance=None, max_iterations=None))]
+pub fn conjugate_gradient_complex_arrow(
+    matrix: PyArrowType<ArrayData>,
+    rhs_field: PyArrowType<Field>,
+    rhs: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let rhs_arr = array_data_to_fixed_size_list(rhs.0)?;
+    let config = iterative_config_f64(tolerance, max_iterations);
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::iterative::conjugate_gradient_complex(
+            &matrix_arr,
+            &rhs_field.0,
+            &rhs_arr,
+            &config,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Solve a general linear system directly from PyArrow dense inputs via GMRES.
+#[pyfunction(name = "arrow_gmres", signature = (matrix, rhs, tolerance=None, max_iterations=None))]
+pub fn gmres_arrow(
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (array_data_to_real_fixed_size_list(matrix.0)?, array_data_to_real_primitive(rhs.0)?) {
+        (RealFixedSizeListArray::F32(matrix_arr), RealPrimitiveArray::F32(rhs_arr)) => {
+            let config = iterative_config_f32(tolerance, max_iterations)?;
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::iterative::gmres_f32(&matrix_arr, &rhs_arr, &config)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(matrix_arr), RealPrimitiveArray::F64(rhs_arr)) => {
+            let config = iterative_config_f64(tolerance, max_iterations);
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::iterative::gmres_f64(&matrix_arr, &rhs_arr, &config)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve a general complex linear system directly from canonical complex PyArrow carriers.
+#[pyfunction(name = "arrow_gmres_complex", signature = (matrix, rhs_field, rhs, tolerance=None, max_iterations=None))]
+pub fn gmres_complex_arrow(
+    matrix: PyArrowType<ArrayData>,
+    rhs_field: PyArrowType<Field>,
+    rhs: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrix_arr = array_data_to_fixed_size_list(matrix.0)?;
+    let rhs_arr = array_data_to_fixed_size_list(rhs.0)?;
+    let config = iterative_config_f64(tolerance, max_iterations);
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::iterative::gmres_complex(&matrix_arr, &rhs_field.0, &rhs_arr, &config)
+            .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute a numerical Jacobian via forward differences from a PyArrow dense vector.
+#[pyfunction(name = "arrow_numerical_jacobian", signature = (function, x, step_size=None, tolerance=None, max_iterations=None))]
+pub fn numerical_jacobian_arrow(
+    function: &Bound<'_, PyAny>,
+    x: PyArrowType<ArrayData>,
+    step_size: Option<f64>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(x.0)? {
+        RealPrimitiveArray::F32(x_arr) => {
+            let config = jacobian_config_f32(step_size, tolerance, max_iterations)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let wrapped = |input: &ndarray::Array1<f32>| -> Result<ndarray::Array1<f32>, _> {
+                match call_vector_function_arrow_f32(function, input) {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        Err(nabled_ml::jacobian::JacobianError::FunctionError(
+                            "python callback raised".to_string(),
+                        ))
+                    }
+                }
+            };
+            Ok(fixed_size_list_into_pyarrow(map_callback_error(
+                &callback_error,
+                nabled::arrow::jacobian::numerical_jacobian(&wrapped, &x_arr, &config),
+            )?))
+        }
+        RealPrimitiveArray::F64(x_arr) => {
+            let config = jacobian_config_f64(step_size, tolerance, max_iterations)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let wrapped = |input: &ndarray::Array1<f64>| -> Result<ndarray::Array1<f64>, _> {
+                match call_vector_function_arrow_f64(function, input) {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        Err(nabled_ml::jacobian::JacobianError::FunctionError(
+                            "python callback raised".to_string(),
+                        ))
+                    }
+                }
+            };
+            Ok(fixed_size_list_into_pyarrow(map_callback_error(
+                &callback_error,
+                nabled::arrow::jacobian::numerical_jacobian(&wrapped, &x_arr, &config),
+            )?))
+        }
+    }
+}
+
+/// Compute a numerical Jacobian via central differences from a PyArrow dense vector.
+#[pyfunction(name = "arrow_numerical_jacobian_central", signature = (function, x, step_size=None, tolerance=None, max_iterations=None))]
+pub fn numerical_jacobian_central_arrow(
+    function: &Bound<'_, PyAny>,
+    x: PyArrowType<ArrayData>,
+    step_size: Option<f64>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(x.0)? {
+        RealPrimitiveArray::F32(x_arr) => {
+            let config = jacobian_config_f32(step_size, tolerance, max_iterations)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let wrapped = |input: &ndarray::Array1<f32>| -> Result<ndarray::Array1<f32>, _> {
+                match call_vector_function_arrow_f32(function, input) {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        Err(nabled_ml::jacobian::JacobianError::FunctionError(
+                            "python callback raised".to_string(),
+                        ))
+                    }
+                }
+            };
+            Ok(fixed_size_list_into_pyarrow(map_callback_error(
+                &callback_error,
+                nabled::arrow::jacobian::numerical_jacobian_central(&wrapped, &x_arr, &config),
+            )?))
+        }
+        RealPrimitiveArray::F64(x_arr) => {
+            let config = jacobian_config_f64(step_size, tolerance, max_iterations)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let wrapped = |input: &ndarray::Array1<f64>| -> Result<ndarray::Array1<f64>, _> {
+                match call_vector_function_arrow_f64(function, input) {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        Err(nabled_ml::jacobian::JacobianError::FunctionError(
+                            "python callback raised".to_string(),
+                        ))
+                    }
+                }
+            };
+            Ok(fixed_size_list_into_pyarrow(map_callback_error(
+                &callback_error,
+                nabled::arrow::jacobian::numerical_jacobian_central(&wrapped, &x_arr, &config),
+            )?))
+        }
+    }
+}
+
+/// Compute a numerical gradient from a scalar-valued Python callback over a PyArrow vector.
+#[pyfunction(name = "arrow_numerical_gradient", signature = (function, x, step_size=None, tolerance=None, max_iterations=None))]
+pub fn numerical_gradient_arrow(
+    function: &Bound<'_, PyAny>,
+    x: PyArrowType<ArrayData>,
+    step_size: Option<f64>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(x.0)? {
+        RealPrimitiveArray::F32(x_arr) => {
+            let config = jacobian_config_f32(step_size, tolerance, max_iterations)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let wrapped = |input: &ndarray::Array1<f32>| -> Result<f32, _> {
+                match call_scalar_function_arrow_f32(function, input) {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        Err(nabled_ml::jacobian::JacobianError::FunctionError(
+                            "python callback raised".to_string(),
+                        ))
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float32Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::jacobian::numerical_gradient(&wrapped, &x_arr, &config),
+            )?))
+        }
+        RealPrimitiveArray::F64(x_arr) => {
+            let config = jacobian_config_f64(step_size, tolerance, max_iterations)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let wrapped = |input: &ndarray::Array1<f64>| -> Result<f64, _> {
+                match call_scalar_function_arrow_f64(function, input) {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        Err(nabled_ml::jacobian::JacobianError::FunctionError(
+                            "python callback raised".to_string(),
+                        ))
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float64Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::jacobian::numerical_gradient(&wrapped, &x_arr, &config),
+            )?))
+        }
+    }
+}
+
+/// Compute a numerical Hessian from a scalar-valued Python callback over a PyArrow vector.
+#[pyfunction(name = "arrow_numerical_hessian", signature = (function, x, step_size=None, tolerance=None, max_iterations=None))]
+pub fn numerical_hessian_arrow(
+    function: &Bound<'_, PyAny>,
+    x: PyArrowType<ArrayData>,
+    step_size: Option<f64>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(x.0)? {
+        RealPrimitiveArray::F32(x_arr) => {
+            let config = jacobian_config_f32(step_size, tolerance, max_iterations)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let wrapped = |input: &ndarray::Array1<f32>| -> Result<f32, _> {
+                match call_scalar_function_arrow_f32(function, input) {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        Err(nabled_ml::jacobian::JacobianError::FunctionError(
+                            "python callback raised".to_string(),
+                        ))
+                    }
+                }
+            };
+            Ok(fixed_size_list_into_pyarrow(map_callback_error(
+                &callback_error,
+                nabled::arrow::jacobian::numerical_hessian(&wrapped, &x_arr, &config),
+            )?))
+        }
+        RealPrimitiveArray::F64(x_arr) => {
+            let config = jacobian_config_f64(step_size, tolerance, max_iterations)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let wrapped = |input: &ndarray::Array1<f64>| -> Result<f64, _> {
+                match call_scalar_function_arrow_f64(function, input) {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        Err(nabled_ml::jacobian::JacobianError::FunctionError(
+                            "python callback raised".to_string(),
+                        ))
+                    }
+                }
+            };
+            Ok(fixed_size_list_into_pyarrow(map_callback_error(
+                &callback_error,
+                nabled::arrow::jacobian::numerical_hessian(&wrapped, &x_arr, &config),
+            )?))
+        }
+    }
+}
+
+/// Perform Armijo backtracking line search from Arrow dense vectors.
+#[pyfunction(name = "arrow_backtracking_line_search", signature = (point, direction, objective, gradient, initial_step=None, contraction=None, sufficient_decrease=None, max_iterations=None))]
+pub fn backtracking_line_search_arrow(
+    point: PyArrowType<ArrayData>,
+    direction: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    initial_step: Option<f64>,
+    contraction: Option<f64>,
+    sufficient_decrease: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<f64> {
+    match (array_data_to_real_primitive(point.0)?, array_data_to_real_primitive(direction.0)?) {
+        (RealPrimitiveArray::F32(point_arr), RealPrimitiveArray::F32(direction_arr)) => {
+            let config = line_search_config_f32(
+                initial_step,
+                contraction,
+                sufficient_decrease,
+                max_iterations,
+            )?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f32>| -> f32 {
+                match call_scalar_function_arrow_f32(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f32::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f32>| -> ndarray::Array1<f32> {
+                match call_vector_function_arrow_f32(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f32::NAN)
+                    }
+                }
+            };
+            map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::backtracking_line_search(
+                    &point_arr,
+                    &direction_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &config,
+                ),
+            )
+            .map(f64::from)
+        }
+        (RealPrimitiveArray::F64(point_arr), RealPrimitiveArray::F64(direction_arr)) => {
+            let config = line_search_config_f64(
+                initial_step,
+                contraction,
+                sufficient_decrease,
+                max_iterations,
+            );
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f64>| -> f64 {
+                match call_scalar_function_arrow_f64(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f64::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f64>| -> ndarray::Array1<f64> {
+                match call_vector_function_arrow_f64(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f64::NAN)
+                    }
+                }
+            };
+            map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::backtracking_line_search(
+                    &point_arr,
+                    &direction_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &config,
+                ),
+            )
+        }
+        _ => Err(utils::matching_real_dtype_error(&["point", "direction"])),
+    }
+}
+
+/// Perform Armijo backtracking line search from complex Arrow dense vectors.
+#[pyfunction(name = "arrow_backtracking_line_search_complex", signature = (point_field, point, direction_field, direction, objective, gradient, initial_step=None, contraction=None, sufficient_decrease=None, max_iterations=None))]
+pub fn backtracking_line_search_complex_arrow(
+    point_field: PyArrowType<Field>,
+    point: PyArrowType<ArrayData>,
+    direction_field: PyArrowType<Field>,
+    direction: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    initial_step: Option<f64>,
+    contraction: Option<f64>,
+    sufficient_decrease: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<f64> {
+    let point_arr = array_data_to_fixed_size_list(point.0)?;
+    let direction_arr = array_data_to_fixed_size_list(direction.0)?;
+    let config =
+        line_search_config_f64(initial_step, contraction, sufficient_decrease, max_iterations);
+    let callback_error = RefCell::<Option<PyErr>>::default();
+    let objective_fn = |input: &ndarray::Array1<Complex64>| -> f64 {
+        match call_scalar_function_arrow_complex(objective, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                f64::NAN
+            }
+        }
+    };
+    let gradient_fn = |input: &ndarray::Array1<Complex64>| -> ndarray::Array1<Complex64> {
+        match call_vector_function_arrow_complex(gradient, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                ndarray::Array1::from_elem(input.len(), Complex64::new(f64::NAN, f64::NAN))
+            }
+        }
+    };
+    map_callback_error(
+        &callback_error,
+        nabled::arrow::optimization::backtracking_line_search_complex(
+            &point_field.0,
+            &point_arr,
+            &direction_field.0,
+            &direction_arr,
+            objective_fn,
+            gradient_fn,
+            &config,
+        ),
+    )
+}
+
+/// Minimize an objective with gradient descent from an Arrow dense vector.
+#[pyfunction(name = "arrow_gradient_descent", signature = (initial, objective, gradient, learning_rate=None, max_iterations=None, tolerance=None))]
+pub fn gradient_descent_arrow(
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(initial.0)? {
+        RealPrimitiveArray::F32(initial_arr) => {
+            let config = sgd_config_f32(learning_rate, max_iterations, tolerance)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f32>| -> f32 {
+                match call_scalar_function_arrow_f32(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f32::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f32>| -> ndarray::Array1<f32> {
+                match call_vector_function_arrow_f32(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f32::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float32Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::gradient_descent(
+                    &initial_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &config,
+                ),
+            )?))
+        }
+        RealPrimitiveArray::F64(initial_arr) => {
+            let config = sgd_config_f64(learning_rate, max_iterations, tolerance);
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f64>| -> f64 {
+                match call_scalar_function_arrow_f64(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f64::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f64>| -> ndarray::Array1<f64> {
+                match call_vector_function_arrow_f64(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f64::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float64Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::gradient_descent(
+                    &initial_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &config,
+                ),
+            )?))
+        }
+    }
+}
+
+/// Minimize an objective with gradient descent from a complex Arrow dense vector.
+#[pyfunction(name = "arrow_gradient_descent_complex", signature = (initial_field, initial, objective, gradient, learning_rate=None, max_iterations=None, tolerance=None))]
+pub fn gradient_descent_complex_arrow(
+    initial_field: PyArrowType<Field>,
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let initial_arr = array_data_to_fixed_size_list(initial.0)?;
+    let config = sgd_config_f64(learning_rate, max_iterations, tolerance);
+    let callback_error = RefCell::<Option<PyErr>>::default();
+    let objective_fn = |input: &ndarray::Array1<Complex64>| -> f64 {
+        match call_scalar_function_arrow_complex(objective, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                f64::NAN
+            }
+        }
+    };
+    let gradient_fn = |input: &ndarray::Array1<Complex64>| -> ndarray::Array1<Complex64> {
+        match call_vector_function_arrow_complex(gradient, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                ndarray::Array1::from_elem(input.len(), Complex64::new(f64::NAN, f64::NAN))
+            }
+        }
+    };
+    Ok(extension_result_into_pyarrow(map_callback_error(
+        &callback_error,
+        nabled::arrow::optimization::gradient_descent_complex(
+            &initial_field.0,
+            &initial_arr,
+            objective_fn,
+            gradient_fn,
+            &config,
+        ),
+    )?))
+}
+
+/// Minimize an objective with Adam from an Arrow dense vector.
+#[pyfunction(name = "arrow_adam", signature = (initial, objective, gradient, learning_rate=None, beta1=None, beta2=None, epsilon=None, max_iterations=None, tolerance=None))]
+pub fn adam_arrow(
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    beta1: Option<f64>,
+    beta2: Option<f64>,
+    epsilon: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(initial.0)? {
+        RealPrimitiveArray::F32(initial_arr) => {
+            let config =
+                adam_config_f32(learning_rate, beta1, beta2, epsilon, max_iterations, tolerance)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f32>| -> f32 {
+                match call_scalar_function_arrow_f32(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f32::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f32>| -> ndarray::Array1<f32> {
+                match call_vector_function_arrow_f32(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f32::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float32Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::adam(&initial_arr, objective_fn, gradient_fn, &config),
+            )?))
+        }
+        RealPrimitiveArray::F64(initial_arr) => {
+            let config =
+                adam_config_f64(learning_rate, beta1, beta2, epsilon, max_iterations, tolerance);
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f64>| -> f64 {
+                match call_scalar_function_arrow_f64(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f64::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f64>| -> ndarray::Array1<f64> {
+                match call_vector_function_arrow_f64(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f64::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float64Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::adam(&initial_arr, objective_fn, gradient_fn, &config),
+            )?))
+        }
+    }
+}
+
+/// Minimize an objective with Adam from a complex Arrow dense vector.
+#[pyfunction(name = "arrow_adam_complex", signature = (initial_field, initial, objective, gradient, learning_rate=None, beta1=None, beta2=None, epsilon=None, max_iterations=None, tolerance=None))]
+pub fn adam_complex_arrow(
+    initial_field: PyArrowType<Field>,
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    beta1: Option<f64>,
+    beta2: Option<f64>,
+    epsilon: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let initial_arr = array_data_to_fixed_size_list(initial.0)?;
+    let config = adam_config_f64(learning_rate, beta1, beta2, epsilon, max_iterations, tolerance);
+    let callback_error = RefCell::<Option<PyErr>>::default();
+    let objective_fn = |input: &ndarray::Array1<Complex64>| -> f64 {
+        match call_scalar_function_arrow_complex(objective, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                f64::NAN
+            }
+        }
+    };
+    let gradient_fn = |input: &ndarray::Array1<Complex64>| -> ndarray::Array1<Complex64> {
+        match call_vector_function_arrow_complex(gradient, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                ndarray::Array1::from_elem(input.len(), Complex64::new(f64::NAN, f64::NAN))
+            }
+        }
+    };
+    Ok(extension_result_into_pyarrow(map_callback_error(
+        &callback_error,
+        nabled::arrow::optimization::adam_complex(
+            &initial_field.0,
+            &initial_arr,
+            objective_fn,
+            gradient_fn,
+            &config,
+        ),
+    )?))
+}
+
+/// Minimize an objective with momentum descent from an Arrow dense vector.
+#[pyfunction(name = "arrow_momentum_descent", signature = (initial, objective, gradient, learning_rate=None, momentum=None, max_iterations=None, tolerance=None))]
+pub fn momentum_descent_arrow(
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    momentum: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(initial.0)? {
+        RealPrimitiveArray::F32(initial_arr) => {
+            let config = momentum_config_f32(learning_rate, momentum, max_iterations, tolerance)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f32>| -> f32 {
+                match call_scalar_function_arrow_f32(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f32::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f32>| -> ndarray::Array1<f32> {
+                match call_vector_function_arrow_f32(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f32::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float32Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::momentum_descent(
+                    &initial_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &config,
+                ),
+            )?))
+        }
+        RealPrimitiveArray::F64(initial_arr) => {
+            let config = momentum_config_f64(learning_rate, momentum, max_iterations, tolerance);
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f64>| -> f64 {
+                match call_scalar_function_arrow_f64(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f64::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f64>| -> ndarray::Array1<f64> {
+                match call_vector_function_arrow_f64(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f64::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float64Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::momentum_descent(
+                    &initial_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &config,
+                ),
+            )?))
+        }
+    }
+}
+
+/// Minimize an objective with momentum descent from a complex Arrow dense vector.
+#[pyfunction(name = "arrow_momentum_descent_complex", signature = (initial_field, initial, objective, gradient, learning_rate=None, momentum=None, max_iterations=None, tolerance=None))]
+pub fn momentum_descent_complex_arrow(
+    initial_field: PyArrowType<Field>,
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    momentum: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let initial_arr = array_data_to_fixed_size_list(initial.0)?;
+    let config = momentum_config_f64(learning_rate, momentum, max_iterations, tolerance);
+    let callback_error = RefCell::<Option<PyErr>>::default();
+    let objective_fn = |input: &ndarray::Array1<Complex64>| -> f64 {
+        match call_scalar_function_arrow_complex(objective, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                f64::NAN
+            }
+        }
+    };
+    let gradient_fn = |input: &ndarray::Array1<Complex64>| -> ndarray::Array1<Complex64> {
+        match call_vector_function_arrow_complex(gradient, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                ndarray::Array1::from_elem(input.len(), Complex64::new(f64::NAN, f64::NAN))
+            }
+        }
+    };
+    Ok(extension_result_into_pyarrow(map_callback_error(
+        &callback_error,
+        nabled::arrow::optimization::momentum_descent_complex(
+            &initial_field.0,
+            &initial_arr,
+            objective_fn,
+            gradient_fn,
+            &config,
+        ),
+    )?))
+}
+
+/// Minimize an objective with RMSProp from an Arrow dense vector.
+#[pyfunction(name = "arrow_rmsprop", signature = (initial, objective, gradient, learning_rate=None, rho=None, epsilon=None, max_iterations=None, tolerance=None))]
+pub fn rmsprop_arrow(
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    rho: Option<f64>,
+    epsilon: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(initial.0)? {
+        RealPrimitiveArray::F32(initial_arr) => {
+            let config =
+                rmsprop_config_f32(learning_rate, rho, epsilon, max_iterations, tolerance)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f32>| -> f32 {
+                match call_scalar_function_arrow_f32(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f32::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f32>| -> ndarray::Array1<f32> {
+                match call_vector_function_arrow_f32(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f32::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float32Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::rmsprop(
+                    &initial_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &config,
+                ),
+            )?))
+        }
+        RealPrimitiveArray::F64(initial_arr) => {
+            let config = rmsprop_config_f64(learning_rate, rho, epsilon, max_iterations, tolerance);
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f64>| -> f64 {
+                match call_scalar_function_arrow_f64(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f64::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f64>| -> ndarray::Array1<f64> {
+                match call_vector_function_arrow_f64(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f64::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float64Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::rmsprop(
+                    &initial_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &config,
+                ),
+            )?))
+        }
+    }
+}
+
+/// Minimize an objective with RMSProp from a complex Arrow dense vector.
+#[pyfunction(name = "arrow_rmsprop_complex", signature = (initial_field, initial, objective, gradient, learning_rate=None, rho=None, epsilon=None, max_iterations=None, tolerance=None))]
+pub fn rmsprop_complex_arrow(
+    initial_field: PyArrowType<Field>,
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    rho: Option<f64>,
+    epsilon: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let initial_arr = array_data_to_fixed_size_list(initial.0)?;
+    let config = rmsprop_config_f64(learning_rate, rho, epsilon, max_iterations, tolerance);
+    let callback_error = RefCell::<Option<PyErr>>::default();
+    let objective_fn = |input: &ndarray::Array1<Complex64>| -> f64 {
+        match call_scalar_function_arrow_complex(objective, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                f64::NAN
+            }
+        }
+    };
+    let gradient_fn = |input: &ndarray::Array1<Complex64>| -> ndarray::Array1<Complex64> {
+        match call_vector_function_arrow_complex(gradient, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                ndarray::Array1::from_elem(input.len(), Complex64::new(f64::NAN, f64::NAN))
+            }
+        }
+    };
+    Ok(extension_result_into_pyarrow(map_callback_error(
+        &callback_error,
+        nabled::arrow::optimization::rmsprop_complex(
+            &initial_field.0,
+            &initial_arr,
+            objective_fn,
+            gradient_fn,
+            &config,
+        ),
+    )?))
+}
+
+/// Minimize an objective with projected gradient descent and box constraints from Arrow vectors.
+#[pyfunction(name = "arrow_projected_gradient_descent_box", signature = (initial, objective, gradient, lower_bounds, upper_bounds, learning_rate=None, max_iterations=None, tolerance=None))]
+pub fn projected_gradient_descent_box_arrow(
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    lower_bounds: PyArrowType<ArrayData>,
+    upper_bounds: PyArrowType<ArrayData>,
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (
+        array_data_to_real_primitive(initial.0)?,
+        array_data_to_real_primitive(lower_bounds.0)?,
+        array_data_to_real_primitive(upper_bounds.0)?,
+    ) {
+        (
+            RealPrimitiveArray::F32(initial_arr),
+            RealPrimitiveArray::F32(lower_arr),
+            RealPrimitiveArray::F32(upper_arr),
+        ) => {
+            let config = projected_gradient_config_f32(learning_rate, max_iterations, tolerance)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f32>| -> f32 {
+                match call_scalar_function_arrow_f32(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f32::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f32>| -> ndarray::Array1<f32> {
+                match call_vector_function_arrow_f32(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f32::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float32Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::projected_gradient_descent_box(
+                    &initial_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &lower_arr,
+                    &upper_arr,
+                    &config,
+                ),
+            )?))
+        }
+        (
+            RealPrimitiveArray::F64(initial_arr),
+            RealPrimitiveArray::F64(lower_arr),
+            RealPrimitiveArray::F64(upper_arr),
+        ) => {
+            let config = projected_gradient_config_f64(learning_rate, max_iterations, tolerance);
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f64>| -> f64 {
+                match call_scalar_function_arrow_f64(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f64::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f64>| -> ndarray::Array1<f64> {
+                match call_vector_function_arrow_f64(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f64::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float64Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::projected_gradient_descent_box(
+                    &initial_arr,
+                    objective_fn,
+                    gradient_fn,
+                    &lower_arr,
+                    &upper_arr,
+                    &config,
+                ),
+            )?))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["initial", "lower_bounds", "upper_bounds"])),
+    }
+}
+
+/// Minimize an objective with projected gradient descent and box constraints from complex Arrow
+/// vectors.
+#[pyfunction(name = "arrow_projected_gradient_descent_box_complex", signature = (field, initial, objective, gradient, lower_bounds, upper_bounds, learning_rate=None, max_iterations=None, tolerance=None))]
+pub fn projected_gradient_descent_box_complex_arrow(
+    field: PyArrowType<Field>,
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    lower_bounds: PyArrowType<ArrayData>,
+    upper_bounds: PyArrowType<ArrayData>,
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let initial_arr = array_data_to_fixed_size_list(initial.0)?;
+    let lower_arr = array_data_to_fixed_size_list(lower_bounds.0)?;
+    let upper_arr = array_data_to_fixed_size_list(upper_bounds.0)?;
+    let config = projected_gradient_config_f64(learning_rate, max_iterations, tolerance);
+    let callback_error = RefCell::<Option<PyErr>>::default();
+    let objective_fn = |input: &ndarray::Array1<Complex64>| -> f64 {
+        match call_scalar_function_arrow_complex(objective, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                f64::NAN
+            }
+        }
+    };
+    let gradient_fn = |input: &ndarray::Array1<Complex64>| -> ndarray::Array1<Complex64> {
+        match call_vector_function_arrow_complex(gradient, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                ndarray::Array1::from_elem(input.len(), Complex64::new(f64::NAN, f64::NAN))
+            }
+        }
+    };
+    Ok(extension_result_into_pyarrow(map_callback_error(
+        &callback_error,
+        nabled::arrow::optimization::projected_gradient_descent_box_complex(
+            &field.0,
+            &initial_arr,
+            objective_fn,
+            gradient_fn,
+            &lower_arr,
+            &upper_arr,
+            &config,
+        ),
+    )?))
+}
+
+/// Run stochastic gradient descent from an Arrow dense vector.
+#[pyfunction(name = "arrow_stochastic_gradient_descent", signature = (initial, stochastic_gradient, learning_rate=None, max_iterations=None, tolerance=None))]
+pub fn stochastic_gradient_descent_arrow(
+    initial: PyArrowType<ArrayData>,
+    stochastic_gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(initial.0)? {
+        RealPrimitiveArray::F32(initial_arr) => {
+            let config = sgd_config_f32(learning_rate, max_iterations, tolerance)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let gradient_fn =
+                |input: &ndarray::Array1<f32>, iteration: usize| -> ndarray::Array1<f32> {
+                    match call_vector_function_arrow_f32_with_iteration(
+                        stochastic_gradient,
+                        input,
+                        iteration,
+                    ) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            *callback_error.borrow_mut() = Some(err);
+                            ndarray::Array1::from_elem(input.len(), f32::NAN)
+                        }
+                    }
+                };
+            Ok(primitive_array_into_pyarrow::<Float32Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::stochastic_gradient_descent(
+                    &initial_arr,
+                    gradient_fn,
+                    &config,
+                ),
+            )?))
+        }
+        RealPrimitiveArray::F64(initial_arr) => {
+            let config = sgd_config_f64(learning_rate, max_iterations, tolerance);
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let gradient_fn =
+                |input: &ndarray::Array1<f64>, iteration: usize| -> ndarray::Array1<f64> {
+                    match call_vector_function_arrow_f64_with_iteration(
+                        stochastic_gradient,
+                        input,
+                        iteration,
+                    ) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            *callback_error.borrow_mut() = Some(err);
+                            ndarray::Array1::from_elem(input.len(), f64::NAN)
+                        }
+                    }
+                };
+            Ok(primitive_array_into_pyarrow::<Float64Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::stochastic_gradient_descent(
+                    &initial_arr,
+                    gradient_fn,
+                    &config,
+                ),
+            )?))
+        }
+    }
+}
+
+/// Run stochastic gradient descent from a complex Arrow dense vector.
+#[pyfunction(name = "arrow_stochastic_gradient_descent_complex", signature = (initial_field, initial, stochastic_gradient, learning_rate=None, max_iterations=None, tolerance=None))]
+pub fn stochastic_gradient_descent_complex_arrow(
+    initial_field: PyArrowType<Field>,
+    initial: PyArrowType<ArrayData>,
+    stochastic_gradient: &Bound<'_, PyAny>,
+    learning_rate: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let initial_arr = array_data_to_fixed_size_list(initial.0)?;
+    let config = sgd_config_f64(learning_rate, max_iterations, tolerance);
+    let callback_error = RefCell::<Option<PyErr>>::default();
+    let gradient_fn =
+        |input: &ndarray::Array1<Complex64>, iteration: usize| -> ndarray::Array1<Complex64> {
+            match call_vector_function_arrow_complex_with_iteration(
+                stochastic_gradient,
+                input,
+                iteration,
+            ) {
+                Ok(value) => value,
+                Err(err) => {
+                    *callback_error.borrow_mut() = Some(err);
+                    ndarray::Array1::from_elem(input.len(), Complex64::new(f64::NAN, f64::NAN))
+                }
+            }
+        };
+    Ok(extension_result_into_pyarrow(map_callback_error(
+        &callback_error,
+        nabled::arrow::optimization::stochastic_gradient_descent_complex(
+            &initial_field.0,
+            &initial_arr,
+            gradient_fn,
+            &config,
+        ),
+    )?))
+}
+
+/// Minimize an objective with BFGS from an Arrow dense vector.
+#[pyfunction(name = "arrow_bfgs", signature = (initial, objective, gradient, step_size=None, max_iterations=None, tolerance=None, curvature_tolerance=None))]
+pub fn bfgs_arrow(
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    step_size: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+    curvature_tolerance: Option<f64>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_primitive(initial.0)? {
+        RealPrimitiveArray::F32(initial_arr) => {
+            let config =
+                bfgs_config_f32(step_size, max_iterations, tolerance, curvature_tolerance)?;
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f32>| -> f32 {
+                match call_scalar_function_arrow_f32(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f32::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f32>| -> ndarray::Array1<f32> {
+                match call_vector_function_arrow_f32(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f32::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float32Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::bfgs(&initial_arr, objective_fn, gradient_fn, &config),
+            )?))
+        }
+        RealPrimitiveArray::F64(initial_arr) => {
+            let config = bfgs_config_f64(step_size, max_iterations, tolerance, curvature_tolerance);
+            let callback_error = RefCell::<Option<PyErr>>::default();
+            let objective_fn = |input: &ndarray::Array1<f64>| -> f64 {
+                match call_scalar_function_arrow_f64(objective, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        f64::NAN
+                    }
+                }
+            };
+            let gradient_fn = |input: &ndarray::Array1<f64>| -> ndarray::Array1<f64> {
+                match call_vector_function_arrow_f64(gradient, input) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        *callback_error.borrow_mut() = Some(err);
+                        ndarray::Array1::from_elem(input.len(), f64::NAN)
+                    }
+                }
+            };
+            Ok(primitive_array_into_pyarrow::<Float64Type>(map_callback_error(
+                &callback_error,
+                nabled::arrow::optimization::bfgs(&initial_arr, objective_fn, gradient_fn, &config),
+            )?))
+        }
+    }
+}
+
+/// Minimize an objective with BFGS from a complex Arrow dense vector.
+#[pyfunction(name = "arrow_bfgs_complex", signature = (initial_field, initial, objective, gradient, step_size=None, max_iterations=None, tolerance=None, curvature_tolerance=None))]
+pub fn bfgs_complex_arrow(
+    initial_field: PyArrowType<Field>,
+    initial: PyArrowType<ArrayData>,
+    objective: &Bound<'_, PyAny>,
+    gradient: &Bound<'_, PyAny>,
+    step_size: Option<f64>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+    curvature_tolerance: Option<f64>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let initial_arr = array_data_to_fixed_size_list(initial.0)?;
+    let config = bfgs_config_f64(step_size, max_iterations, tolerance, curvature_tolerance);
+    let callback_error = RefCell::<Option<PyErr>>::default();
+    let objective_fn = |input: &ndarray::Array1<Complex64>| -> f64 {
+        match call_scalar_function_arrow_complex(objective, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                f64::NAN
+            }
+        }
+    };
+    let gradient_fn = |input: &ndarray::Array1<Complex64>| -> ndarray::Array1<Complex64> {
+        match call_vector_function_arrow_complex(gradient, input) {
+            Ok(value) => value,
+            Err(err) => {
+                *callback_error.borrow_mut() = Some(err);
+                ndarray::Array1::from_elem(input.len(), Complex64::new(f64::NAN, f64::NAN))
+            }
+        }
+    };
+    Ok(extension_result_into_pyarrow(map_callback_error(
+        &callback_error,
+        nabled::arrow::optimization::bfgs_complex(
+            &initial_field.0,
+            &initial_arr,
+            objective_fn,
+            gradient_fn,
+            &config,
+        ),
+    )?))
 }

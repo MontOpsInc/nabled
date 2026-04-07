@@ -102,6 +102,7 @@ build_and_smoke() {
 main() {
     local dev_venv="${VENV_ROOT}/dev"
     local python_version
+    local coverage_file
 
     python_version="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
     if ! "${PYTHON_BIN}" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
@@ -111,10 +112,12 @@ main() {
 
     mkdir -p "${COVERAGE_DIR}" "${DIST_DIR}"
     mkdir -p "${CARGO_HOME}" "${CARGO_TARGET_DIR}"
-    rm -f "${COVERAGE_DIR}/python-coverage.xml"
+    coverage_file="${COVERAGE_DIR}/.coverage"
+    rm -f "${coverage_file}" "${COVERAGE_DIR}/python-coverage.xml"
 
     export CARGO_HOME
     export CARGO_TARGET_DIR
+    export COVERAGE_FILE="${coverage_file}"
 
     create_venv "${dev_venv}"
     install_dev_tools "${dev_venv}"
@@ -123,15 +126,26 @@ main() {
     run_in_repo \
         "${dev_venv}/bin/python" -m pytest python/tests \
         --cov=pynabled \
-        --cov-report=term-missing \
-        --cov-report=xml:"${COVERAGE_DIR}/python-coverage.xml" \
-        --cov-fail-under="${COVERAGE_THRESHOLD}" \
+        --cov-report= \
+        --cov-fail-under=0 \
         -q
 
     run_in_repo \
         env VIRTUAL_ENV="${dev_venv}" PATH="${dev_venv}/bin:${PATH}" \
         "${dev_venv}/bin/maturin" develop --features arrow
-    run_in_repo "${dev_venv}/bin/python" -m pytest python/tests/test_arrow.py -q
+    run_in_repo \
+        "${dev_venv}/bin/python" -m pytest python/tests/test_arrow.py \
+        --cov=pynabled \
+        --cov-append \
+        --cov-report= \
+        --cov-fail-under=0 \
+        -q
+    run_in_repo \
+        "${dev_venv}/bin/python" -m coverage xml -o "${COVERAGE_DIR}/python-coverage.xml"
+    run_in_repo \
+        "${dev_venv}/bin/python" -m coverage report \
+        --show-missing \
+        --fail-under="${COVERAGE_THRESHOLD}"
 
     build_and_smoke "wheel-default" "wheel" "0"
     build_and_smoke "sdist-default" "sdist" "0"

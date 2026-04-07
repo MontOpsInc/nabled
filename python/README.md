@@ -34,12 +34,16 @@ print("singular values:", result.singular_values)
 where the Rust API admits them, including non-C-contiguous inputs for the view-based dense paths.
 Current real-valued vector/matrix/decomposition/function/batched/statistics/regression/PCA/
 iterative/callable-ML/tensor bindings all accept both `float32` and `float64` under the same
-public function names. The current Arrow slice now also exposes real PyArrow vector/matrix/stats
-rows (`arrow_dot`, `arrow_l2_norm`, cosine/pairwise/batched vector kernels, dense matvec/matmat,
-fixed-shape-tensor batched matmat/broadcast kernels, column/stats workflows, and
-`arrow_svd_decompose`) under both real dtypes; Arrow-native outputs stay Arrow-native where the
-Rust Arrow facade already does so, while current Arrow SVD NumPy egress preserves the caller's
-real dtype. Mixed real dtypes are rejected explicitly instead of being silently cast.
+public function names. The current Arrow slice now also exposes the admitted real dense/
+decomposition/matrix-function/PCA/regression rows plus canonical complex dense Arrow carriers
+across vector/matrix/statistics/orthogonalization/triangular/decomposition/matrix-function/PCA/
+regression workflows, callback-driven iterative/Jacobian/optimization rows over PyArrow carriers,
+and fixed-shape-tensor batched QR/SVD/LU/Cholesky/symmetric-eigen result wrappers. Arrow-native
+outputs stay Arrow-native where the Rust Arrow facade already does so, while ndarray-native
+decomposition/PCA/regression rows reuse the same typed Python result objects as the NumPy-facing
+API. Mixed real dtypes are rejected explicitly instead of being silently cast, and complex Arrow
+ingress follows canonical `ndarrow.complex64` storage/field contracts rather than silently
+materializing NumPy buffers.
 Callable-driven `jacobian` / `optimization` workflows preserve the caller's real dtype end-to-end,
 and their `float32` defaults use `float32`-appropriate finite-difference / convergence settings
 instead of raw `float64` thresholds. Some higher-level wrappers still materialize owned arrays
