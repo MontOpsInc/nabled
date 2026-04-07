@@ -135,7 +135,11 @@ and optimization entrypoints expose typed Python config objects instead of raw R
 production-facing contract, conflicting `config=` plus explicit tuning kwargs now fail fast, and
 callback-driven Jacobian/optimization helpers are explicitly documented as convenience APIs rather
 than no-compromise hot-path equivalents. This closes the current `N-PY-003` scope; the next
-remaining `pynabled` merge-gate item is `N-PY-004` for Arrow/PyArrow parity.
+remaining `pynabled` merge-gate item is `N-PY-004` for Arrow/PyArrow parity. A first `N-PY-004`
+slice is now also landed: `pynabled.arrow` exposes real PyArrow vector, matrix, batched matrix,
+and statistics workflows beyond the earlier three-function baseline, keeps Arrow-native egress
+where those Rust Arrow rows are Arrow-native, and now validates fixed-shape-tensor batched matrix
+interop end-to-end on the editable Python 3.12 Arrow build (`6 passed` targeted Arrow pytest).
 Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).

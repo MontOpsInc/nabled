@@ -251,7 +251,27 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[cfg(feature = "arrow")]
     {
         m.add_function(pyo3::wrap_pyfunction!(arrow::dot, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::cosine_similarity, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::l2_norm, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::cosine_distance, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::pairwise_l2_distance, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::pairwise_cosine_similarity, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::pairwise_cosine_distance, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_dot, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_l2_norm, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_cosine_similarity, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_cosine_distance, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_normalize, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::matvec, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::matmat, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_row_matvec, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_matmat, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_matmat_broadcast_right, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::batched_matmat_broadcast_left, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::column_means, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::center_columns, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::covariance_matrix, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::correlation_matrix, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::svd_decompose, m)?)?;
     }
 

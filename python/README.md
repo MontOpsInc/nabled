@@ -34,9 +34,12 @@ print("singular values:", result.singular_values)
 where the Rust API admits them, including non-C-contiguous inputs for the view-based dense paths.
 Current real-valued vector/matrix/decomposition/function/batched/statistics/regression/PCA/
 iterative/callable-ML/tensor bindings all accept both `float32` and `float64` under the same
-public function names. The currently exposed Arrow rows (`arrow_dot`, `arrow_l2_norm`,
-`arrow_svd_decompose`) also accept both real dtypes, and current Arrow SVD NumPy egress preserves
-the caller's real dtype. Mixed real dtypes are rejected explicitly instead of being silently cast.
+public function names. The current Arrow slice now also exposes real PyArrow vector/matrix/stats
+rows (`arrow_dot`, `arrow_l2_norm`, cosine/pairwise/batched vector kernels, dense matvec/matmat,
+fixed-shape-tensor batched matmat/broadcast kernels, column/stats workflows, and
+`arrow_svd_decompose`) under both real dtypes; Arrow-native outputs stay Arrow-native where the
+Rust Arrow facade already does so, while current Arrow SVD NumPy egress preserves the caller's
+real dtype. Mixed real dtypes are rejected explicitly instead of being silently cast.
 Callable-driven `jacobian` / `optimization` workflows preserve the caller's real dtype end-to-end,
 and their `float32` defaults use `float32`-appropriate finite-difference / convergence settings
 instead of raw `float64` thresholds. Some higher-level wrappers still materialize owned arrays
