@@ -11,7 +11,7 @@ use pyo3::types::PyAny;
 use crate::error::to_py_err;
 use crate::utils;
 
-type PyCsrParts = (usize, usize, Py<PyAny>, Py<PyAny>, Py<PyAny>);
+pub(crate) type PyCsrParts = (usize, usize, Py<PyAny>, Py<PyAny>, Py<PyAny>);
 
 fn py_value_error(message: impl ToString) -> PyErr { PyValueError::new_err(message.to_string()) }
 
@@ -56,7 +56,7 @@ fn usize_vec_to_i64(values: Vec<usize>) -> PyResult<Vec<i64>> {
         .collect()
 }
 
-fn py_csr_parts_i32_f32(
+pub(crate) fn py_csr_parts_i32_f32(
     py: Python<'_>,
     matrix: nabled_linalg::sparse::CsrMatrix<f32>,
 ) -> PyResult<PyCsrParts> {
@@ -71,7 +71,7 @@ fn py_csr_parts_i32_f32(
     ))
 }
 
-fn py_csr_parts_f32(
+pub(crate) fn py_csr_parts_f32(
     py: Python<'_>,
     matrix: nabled_linalg::sparse::CsrMatrix<f32>,
 ) -> PyResult<PyCsrParts> {
@@ -86,7 +86,7 @@ fn py_csr_parts_f32(
     ))
 }
 
-fn py_csr_parts_i32_f64(
+pub(crate) fn py_csr_parts_i32_f64(
     py: Python<'_>,
     matrix: nabled_linalg::sparse::CsrMatrix<f64>,
 ) -> PyResult<PyCsrParts> {
@@ -101,7 +101,7 @@ fn py_csr_parts_i32_f64(
     ))
 }
 
-fn py_csr_parts_f64(
+pub(crate) fn py_csr_parts_f64(
     py: Python<'_>,
     matrix: nabled_linalg::sparse::CsrMatrix<f64>,
 ) -> PyResult<PyCsrParts> {
@@ -1592,7 +1592,7 @@ pub fn matmat_sparse<'py>(
 }
 
 #[derive(Clone, Copy)]
-enum StoredIndexDtype {
+pub(crate) enum StoredIndexDtype {
     I32,
     I64,
 }
@@ -1619,7 +1619,7 @@ fn py_csr_parts_ref_f64(
     }
 }
 
-fn py_csc_parts_f32(
+pub(crate) fn py_csc_parts_f32(
     py: Python<'_>,
     matrix: nabled_linalg::sparse::CscMatrix<f32>,
     index_dtype: StoredIndexDtype,
@@ -1650,7 +1650,7 @@ fn py_csc_parts_f32(
     }
 }
 
-fn py_csc_parts_f64(
+pub(crate) fn py_csc_parts_f64(
     py: Python<'_>,
     matrix: nabled_linalg::sparse::CscMatrix<f64>,
     index_dtype: StoredIndexDtype,
@@ -1788,14 +1788,29 @@ where
         .map_err(to_py_err)
 }
 
-enum PyJacobiPreconditionerInner {
+pub(crate) enum PyJacobiPreconditionerInner {
     F32(nabled_linalg::sparse::JacobiPreconditioner<f32>),
     F64(nabled_linalg::sparse::JacobiPreconditioner<f64>),
 }
 
 #[pyclass(module = "pynabled._pynabled", name = "_SparseJacobiPreconditioner")]
 pub(crate) struct PyJacobiPreconditioner {
-    inner: PyJacobiPreconditionerInner,
+    pub(crate) inner: PyJacobiPreconditionerInner,
+}
+
+#[cfg(feature = "arrow")]
+impl PyJacobiPreconditioner {
+    pub(crate) fn from_f32(
+        preconditioner: nabled_linalg::sparse::JacobiPreconditioner<f32>,
+    ) -> Self {
+        Self { inner: PyJacobiPreconditionerInner::F32(preconditioner) }
+    }
+
+    pub(crate) fn from_f64(
+        preconditioner: nabled_linalg::sparse::JacobiPreconditioner<f64>,
+    ) -> Self {
+        Self { inner: PyJacobiPreconditionerInner::F64(preconditioner) }
+    }
 }
 
 #[pymethods]
@@ -1841,7 +1856,7 @@ impl PyJacobiPreconditioner {
     }
 }
 
-enum PyIlu0FactorizationInner {
+pub(crate) enum PyIlu0FactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::ILU0Factorization<f32>,
         index_dtype:   StoredIndexDtype,
@@ -1854,7 +1869,28 @@ enum PyIlu0FactorizationInner {
 
 #[pyclass(module = "pynabled._pynabled", name = "_SparseILU0Factorization")]
 pub(crate) struct PyIlu0Factorization {
-    inner: PyIlu0FactorizationInner,
+    pub(crate) inner: PyIlu0FactorizationInner,
+}
+
+#[cfg(feature = "arrow")]
+impl PyIlu0Factorization {
+    pub(crate) fn from_f32(factorization: nabled_linalg::sparse::ILU0Factorization<f32>) -> Self {
+        Self {
+            inner: PyIlu0FactorizationInner::F32 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
+
+    pub(crate) fn from_f64(factorization: nabled_linalg::sparse::ILU0Factorization<f64>) -> Self {
+        Self {
+            inner: PyIlu0FactorizationInner::F64 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
 }
 
 #[pymethods]
@@ -2426,7 +2462,7 @@ impl PyIlu0Factorization {
     }
 }
 
-enum PyIlutFactorizationInner {
+pub(crate) enum PyIlutFactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::ILUTFactorization<f32>,
         index_dtype:   StoredIndexDtype,
@@ -2439,7 +2475,28 @@ enum PyIlutFactorizationInner {
 
 #[pyclass(module = "pynabled._pynabled", name = "_SparseILUTFactorization")]
 pub(crate) struct PyIlutFactorization {
-    inner: PyIlutFactorizationInner,
+    pub(crate) inner: PyIlutFactorizationInner,
+}
+
+#[cfg(feature = "arrow")]
+impl PyIlutFactorization {
+    pub(crate) fn from_f32(factorization: nabled_linalg::sparse::ILUTFactorization<f32>) -> Self {
+        Self {
+            inner: PyIlutFactorizationInner::F32 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
+
+    pub(crate) fn from_f64(factorization: nabled_linalg::sparse::ILUTFactorization<f64>) -> Self {
+        Self {
+            inner: PyIlutFactorizationInner::F64 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
 }
 
 #[pymethods]
@@ -3011,7 +3068,7 @@ impl PyIlutFactorization {
     }
 }
 
-enum PyIlukFactorizationInner {
+pub(crate) enum PyIlukFactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::ILUKFactorization<f32>,
         index_dtype:   StoredIndexDtype,
@@ -3024,7 +3081,28 @@ enum PyIlukFactorizationInner {
 
 #[pyclass(module = "pynabled._pynabled", name = "_SparseILUKFactorization")]
 pub(crate) struct PyIlukFactorization {
-    inner: PyIlukFactorizationInner,
+    pub(crate) inner: PyIlukFactorizationInner,
+}
+
+#[cfg(feature = "arrow")]
+impl PyIlukFactorization {
+    pub(crate) fn from_f32(factorization: nabled_linalg::sparse::ILUKFactorization<f32>) -> Self {
+        Self {
+            inner: PyIlukFactorizationInner::F32 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
+
+    pub(crate) fn from_f64(factorization: nabled_linalg::sparse::ILUKFactorization<f64>) -> Self {
+        Self {
+            inner: PyIlukFactorizationInner::F64 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
 }
 
 #[pymethods]
@@ -3604,7 +3682,7 @@ impl PyIlukFactorization {
     }
 }
 
-enum PyIc0FactorizationInner {
+pub(crate) enum PyIc0FactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::IC0Factorization<f32>,
         index_dtype:   StoredIndexDtype,
@@ -3617,7 +3695,28 @@ enum PyIc0FactorizationInner {
 
 #[pyclass(module = "pynabled._pynabled", name = "_SparseIC0Factorization")]
 pub(crate) struct PyIc0Factorization {
-    inner: PyIc0FactorizationInner,
+    pub(crate) inner: PyIc0FactorizationInner,
+}
+
+#[cfg(feature = "arrow")]
+impl PyIc0Factorization {
+    pub(crate) fn from_f32(factorization: nabled_linalg::sparse::IC0Factorization<f32>) -> Self {
+        Self {
+            inner: PyIc0FactorizationInner::F32 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
+
+    pub(crate) fn from_f64(factorization: nabled_linalg::sparse::IC0Factorization<f64>) -> Self {
+        Self {
+            inner: PyIc0FactorizationInner::F64 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
 }
 
 #[pymethods]
@@ -3800,7 +3899,7 @@ impl PyIc0Factorization {
     }
 }
 
-enum PyIldl0FactorizationInner {
+pub(crate) enum PyIldl0FactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::ILDL0Factorization<f32>,
         index_dtype:   StoredIndexDtype,
@@ -3813,7 +3912,28 @@ enum PyIldl0FactorizationInner {
 
 #[pyclass(module = "pynabled._pynabled", name = "_SparseILDL0Factorization")]
 pub(crate) struct PyIldl0Factorization {
-    inner: PyIldl0FactorizationInner,
+    pub(crate) inner: PyIldl0FactorizationInner,
+}
+
+#[cfg(feature = "arrow")]
+impl PyIldl0Factorization {
+    pub(crate) fn from_f32(factorization: nabled_linalg::sparse::ILDL0Factorization<f32>) -> Self {
+        Self {
+            inner: PyIldl0FactorizationInner::F32 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
+
+    pub(crate) fn from_f64(factorization: nabled_linalg::sparse::ILDL0Factorization<f64>) -> Self {
+        Self {
+            inner: PyIldl0FactorizationInner::F64 {
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
 }
 
 #[pymethods]
@@ -4397,7 +4517,7 @@ impl PyIldl0Factorization {
     }
 }
 
-enum PySparseLuFactorizationInner {
+pub(crate) enum PySparseLuFactorizationInner {
     F32 {
         matrix:        nabled_linalg::sparse::CsrMatrix<f32>,
         factorization: nabled_linalg::sparse::SparseLUFactorization<f32>,
@@ -4412,7 +4532,36 @@ enum PySparseLuFactorizationInner {
 
 #[pyclass(module = "pynabled._pynabled", name = "_SparseLUFactorization")]
 pub(crate) struct PySparseLuFactorization {
-    inner: PySparseLuFactorizationInner,
+    pub(crate) inner: PySparseLuFactorizationInner,
+}
+
+#[cfg(feature = "arrow")]
+impl PySparseLuFactorization {
+    pub(crate) fn from_f32(
+        matrix: nabled_linalg::sparse::CsrMatrix<f32>,
+        factorization: nabled_linalg::sparse::SparseLUFactorization<f32>,
+    ) -> Self {
+        Self {
+            inner: PySparseLuFactorizationInner::F32 {
+                matrix,
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
+
+    pub(crate) fn from_f64(
+        matrix: nabled_linalg::sparse::CsrMatrix<f64>,
+        factorization: nabled_linalg::sparse::SparseLUFactorization<f64>,
+    ) -> Self {
+        Self {
+            inner: PySparseLuFactorizationInner::F64 {
+                matrix,
+                factorization,
+                index_dtype: StoredIndexDtype::I32,
+            },
+        }
+    }
 }
 
 #[pymethods]

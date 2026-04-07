@@ -12,7 +12,10 @@ try:
     from pynabled import (
         AdamConfig,
         BFGSConfig,
+        CsrMatrix,
         GradientDescentConfig,
+        ILUKConfig,
+        ILUTConfig,
         IterativeConfig,
         JacobianConfig,
         LineSearchConfig,
@@ -49,6 +52,10 @@ try:
         arrow_cosine_distance,
         arrow_cosine_similarity,
         arrow_covariance_matrix,
+        arrow_csr_matrix_array,
+        arrow_csr_matrix_batch_array,
+        arrow_csr_matrix_batch_rows,
+        arrow_csr_matrix_from_array,
         arrow_dot,
         arrow_eigen_generalized,
         arrow_eigen_nonsymmetric,
@@ -93,12 +100,44 @@ try:
         arrow_schur_compute,
         arrow_solve_lower,
         arrow_solve_upper,
+        arrow_sparse_apply_ic0_preconditioner,
+        arrow_sparse_apply_ildl0_preconditioner,
+        arrow_sparse_apply_ilu0_preconditioner,
+        arrow_sparse_apply_iluk_preconditioner,
+        arrow_sparse_apply_ilut_preconditioner,
+        arrow_sparse_apply_jacobi_preconditioner,
+        arrow_sparse_batch_matmat_dense,
+        arrow_sparse_batch_matmat_sparse,
+        arrow_sparse_batch_matvec,
+        arrow_sparse_batch_transpose,
+        arrow_sparse_batched_matvec,
+        arrow_sparse_conjugate_gradient_solve,
+        arrow_sparse_csr_to_csc,
+        arrow_sparse_gauss_seidel_solve,
+        arrow_sparse_ic0_factor,
+        arrow_sparse_ildl0_factor,
+        arrow_sparse_ilu0_factor,
+        arrow_sparse_iluk_factor,
+        arrow_sparse_ilut_factor,
+        arrow_sparse_jacobi_preconditioner,
+        arrow_sparse_jacobi_solve,
+        arrow_sparse_lu_factor,
+        arrow_sparse_lu_solve,
+        arrow_sparse_lu_solve_multiple_with_factorization,
+        arrow_sparse_lu_solve_with_factorization,
+        arrow_sparse_matmat_dense,
+        arrow_sparse_matmat_sparse,
+        arrow_sparse_matvec,
+        arrow_sparse_pcg_solve,
+        arrow_sparse_transpose,
         arrow_stochastic_gradient_descent,
         arrow_svd_decompose,
         arrow_svd_decompose_truncated,
         arrow_svd_decompose_with_tolerance,
         arrow_svd_null_space,
         arrow_svd_pseudo_inverse,
+        arrow_variable_shape_tensor_array,
+        arrow_variable_shape_tensor_rows,
     )
 except ImportError:
     arrow_dot = None
@@ -1095,3 +1134,183 @@ def test_arrow_optimization_wrappers_real_and_complex():
     for result in (gd_complex, adam_complex, momentum_complex, rmsprop_complex, bfgs_complex, stochastic_complex):
         np.testing.assert_allclose(_complex_vector_numpy(result), target_complex, rtol=1e-3, atol=1e-3)
     np.testing.assert_allclose(_complex_vector_numpy(projected_complex), np.array([2.5 + 2.0j]), rtol=1e-3, atol=1e-3)
+
+
+def test_arrow_sparse_extension_helpers_and_object_kernels():
+    matrix = CsrMatrix(
+        (3, 4),
+        np.array([0, 2, 3, 5], dtype=np.int32),
+        np.array([0, 2, 1, 0, 3], dtype=np.int32),
+        np.array([1.0, 5.0, 2.0, 3.0, 4.0], dtype=np.float64),
+    )
+    matrix_arrow = arrow_csr_matrix_array(matrix)
+    roundtrip = arrow_csr_matrix_from_array(matrix_arrow)
+    np.testing.assert_array_equal(roundtrip.indptr, matrix.indptr)
+    np.testing.assert_array_equal(roundtrip.indices, matrix.indices)
+    np.testing.assert_allclose(roundtrip.data, matrix.data)
+
+    vector = pa.array([1.0, 2.0, 3.0, 4.0], type=pa.float64())
+    matvec = arrow_sparse_matvec(matrix_arrow, vector)
+    np.testing.assert_allclose(np.array(matvec.to_pylist(), dtype=np.float64), [16.0, 4.0, 19.0])
+
+    dense = _matrix_array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, 1.0]], np.float64)
+    dense_out = arrow_sparse_matmat_dense(matrix_arrow, dense)
+    np.testing.assert_allclose(
+        _matrix_numpy(dense_out, np.float64),
+        np.array([[6.0, 5.0], [0.0, 2.0], [11.0, 4.0]], dtype=np.float64),
+    )
+
+    dense_batch = _matrix_array([[1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]], np.float64)
+    batched = arrow_sparse_batched_matvec(matrix_arrow, dense_batch)
+    np.testing.assert_allclose(
+        _matrix_numpy(batched, np.float64),
+        np.array([[1.0, 0.0, 3.0], [6.0, 2.0, 7.0]], dtype=np.float64),
+    )
+
+    transposed = arrow_sparse_transpose(matrix_arrow)
+    assert transposed.shape == (4, 3)
+    csc = arrow_sparse_csr_to_csc(matrix_arrow)
+    assert csc.shape == (3, 4)
+
+    product = arrow_sparse_matmat_sparse(matrix_arrow, arrow_csr_matrix_array(transposed))
+    dense_product = product.matmat_dense(np.eye(product.ncols, dtype=np.float64))
+    np.testing.assert_allclose(
+        dense_product,
+        np.array([[26.0, 0.0, 3.0], [0.0, 4.0, 0.0], [3.0, 0.0, 25.0]], dtype=np.float64),
+    )
+
+
+def test_arrow_sparse_factorization_and_reuse_wrappers():
+    matrix = CsrMatrix(
+        (2, 2),
+        np.array([0, 2, 4], dtype=np.int32),
+        np.array([0, 1, 0, 1], dtype=np.int32),
+        np.array([4.0, 1.0, 1.0, 3.0], dtype=np.float64),
+    )
+    matrix_arrow = arrow_csr_matrix_array(matrix)
+    rhs = pa.array([1.0, 2.0], type=pa.float64())
+
+    direct = arrow_sparse_lu_solve(matrix_arrow, rhs)
+    np.testing.assert_allclose(
+        np.array(direct.to_pylist(), dtype=np.float64),
+        np.array([1.0 / 11.0, 7.0 / 11.0], dtype=np.float64),
+        rtol=1e-10,
+    )
+
+    jacobi = arrow_sparse_jacobi_solve(matrix_arrow, rhs, tolerance=1e-12, max_iterations=100)
+    gauss = arrow_sparse_gauss_seidel_solve(
+        matrix_arrow, rhs, tolerance=1e-12, max_iterations=100
+    )
+    cg = arrow_sparse_conjugate_gradient_solve(
+        matrix_arrow, rhs, tolerance=1e-12, max_iterations=20
+    )
+    pcg = arrow_sparse_pcg_solve(matrix_arrow, rhs, tolerance=1e-12, max_iterations=20)
+    for result in (jacobi, gauss, cg, pcg):
+        np.testing.assert_allclose(
+            np.array(result.to_pylist(), dtype=np.float64),
+            np.array([1.0 / 11.0, 7.0 / 11.0], dtype=np.float64),
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
+    jacobi_pre = arrow_sparse_jacobi_preconditioner(matrix_arrow)
+    jacobi_applied = arrow_sparse_apply_jacobi_preconditioner(jacobi_pre, rhs)
+    np.testing.assert_allclose(
+        np.array(jacobi_applied.to_pylist(), dtype=np.float64),
+        np.array([0.25, 2.0 / 3.0], dtype=np.float64),
+        rtol=1e-10,
+    )
+
+    ilu0 = arrow_sparse_ilu0_factor(matrix_arrow)
+    ilu0_applied = arrow_sparse_apply_ilu0_preconditioner(ilu0, rhs)
+    assert ilu0.matrix.shape == (2, 2)
+    np.testing.assert_allclose(
+        np.array(ilu0_applied.to_pylist(), dtype=np.float64),
+        np.array([1.0 / 11.0, 7.0 / 11.0], dtype=np.float64),
+        rtol=1e-10,
+    )
+
+    ilut = arrow_sparse_ilut_factor(matrix_arrow, config=ILUTConfig.balanced())
+    iluk = arrow_sparse_iluk_factor(matrix_arrow, config=ILUKConfig.balanced())
+    ic0 = arrow_sparse_ic0_factor(matrix_arrow)
+    ildl0 = arrow_sparse_ildl0_factor(matrix_arrow)
+    for result in (
+        arrow_sparse_apply_ilut_preconditioner(ilut, rhs),
+        arrow_sparse_apply_iluk_preconditioner(iluk, rhs),
+        arrow_sparse_apply_ic0_preconditioner(ic0, rhs),
+        arrow_sparse_apply_ildl0_preconditioner(ildl0, rhs),
+    ):
+        assert isinstance(result, pa.Array)
+
+    lu = arrow_sparse_lu_factor(matrix_arrow)
+    solved = arrow_sparse_lu_solve_with_factorization(matrix_arrow, rhs, lu)
+    np.testing.assert_allclose(
+        np.array(solved.to_pylist(), dtype=np.float64),
+        np.array([1.0 / 11.0, 7.0 / 11.0], dtype=np.float64),
+        rtol=1e-10,
+    )
+    rhs_multi = _matrix_array([[1.0, 0.0], [2.0, 1.0]], np.float64)
+    solved_multi = arrow_sparse_lu_solve_multiple_with_factorization(matrix_arrow, rhs_multi, lu)
+    np.testing.assert_allclose(
+        _matrix_numpy(solved_multi, np.float64),
+        np.array([[1.0 / 11.0, -1.0 / 11.0], [7.0 / 11.0, 4.0 / 11.0]], dtype=np.float64),
+        rtol=1e-10,
+    )
+
+
+def test_arrow_sparse_batch_wrappers():
+    batch = arrow_csr_matrix_batch_array(
+        [
+            CsrMatrix(
+                (2, 2),
+                np.array([0, 1, 2], dtype=np.int32),
+                np.array([0, 1], dtype=np.int32),
+                np.array([2.0, 3.0], dtype=np.float64),
+            ),
+            CsrMatrix(
+                (1, 3),
+                np.array([0, 2], dtype=np.int32),
+                np.array([0, 2], dtype=np.int32),
+                np.array([1.0, 4.0], dtype=np.float64),
+            ),
+        ]
+    )
+    vectors = arrow_variable_shape_tensor_array(
+        [
+            np.array([1.0, 2.0], dtype=np.float64),
+            np.array([1.0, 0.0, 1.0], dtype=np.float64),
+        ],
+        uniform_shape=[None],
+    )
+    matvec = arrow_sparse_batch_matvec(batch, vectors)
+    matvec_rows = arrow_variable_shape_tensor_rows(matvec)
+    np.testing.assert_allclose(matvec_rows[0], np.array([2.0, 6.0], dtype=np.float64))
+    np.testing.assert_allclose(matvec_rows[1], np.array([5.0], dtype=np.float64))
+
+    dense_rhs = arrow_variable_shape_tensor_array(
+        [
+            np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float64),
+            np.array([[1.0], [0.0], [1.0]], dtype=np.float64),
+        ],
+        uniform_shape=[None, None],
+    )
+    dense_out = arrow_sparse_batch_matmat_dense(batch, dense_rhs)
+    dense_rows = arrow_variable_shape_tensor_rows(dense_out)
+    np.testing.assert_allclose(
+        dense_rows[0],
+        np.array([[2.0, 0.0], [0.0, 3.0]], dtype=np.float64),
+    )
+    np.testing.assert_allclose(dense_rows[1], np.array([[5.0]], dtype=np.float64))
+
+    transposed = arrow_sparse_batch_transpose(batch)
+    transpose_rows = arrow_csr_matrix_batch_rows(transposed)
+    assert transpose_rows[0].shape == (2, 2)
+    assert transpose_rows[1].shape == (3, 1)
+
+    product = arrow_sparse_batch_matmat_sparse(batch, transposed)
+    product_rows = arrow_csr_matrix_batch_rows(product)
+    first_product_dense = product_rows[0].matmat_dense(np.eye(2, dtype=np.float64))
+    np.testing.assert_allclose(
+        first_product_dense,
+        np.array([[4.0, 0.0], [0.0, 9.0]], dtype=np.float64),
+    )

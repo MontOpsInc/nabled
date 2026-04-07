@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-06
+Last updated: 2026-04-07
 
 ## Summary
 
@@ -15,9 +15,10 @@ Branch note:
 and parity-target definition `N-PY-002` are now complete: the branch is merged to current `main`,
 `pyproject.toml` version truth is aligned to `0.0.8`, tracked native `dSYM` artifacts were removed
 from the Python sdist path, and `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative
-release target. Remaining blocking work is Python API parity implementation, Arrow/PyArrow
-coverage, feature exposure, performance contracts, documentation, and PyPI
-supply-chain hardening. The first `N-PY-003` implementation pass is also landed: Python now has
+release target. Remaining blocking work is the final Arrow tensor carrier slice, truthful
+provider/backend feature exposure, Python performance/copy-contract hardening, documentation
+polish, and PyPI supply-chain hardening. The first `N-PY-003` implementation pass is also landed:
+Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across
 iterative solves, PCA transform/inverse-transform, regression, and stats. A second `N-PY-003`
 pass is also landed: Python tensor coverage now includes complex tensor kernels plus real tensor
@@ -165,6 +166,18 @@ continues to document callback-driven Jacobian/optimization helpers as convenien
 no-compromise hot paths because objective/gradient evaluation still crosses back into Python.
 Validation is green on the Arrow-focused and repo/package gates (`16 passed` targeted Arrow pytest,
 `python-quality` `181 passed, 16 skipped`, `94%` Python coverage, and full `just checks`).
+A fifth `N-PY-004` slice is now also landed: `pynabled.arrow` now exposes canonical
+`ndarrow.csr_matrix` / `ndarrow.csr_matrix_batch` helpers plus the admitted sparse Arrow object
+and batch workflows, including sparse matvec / sparse-dense matmat / sparse-sparse matmat /
+transpose / CSR->CSC conversion, direct sparse LU and iterative solves, reusable
+`JacobiPreconditioner`, `ILU0` / `ILUT` / `ILUK` / `IC0` / `ILDL0` / `SparseLUFactorization`
+wrappers, and factorization-backed single-RHS / multi-RHS reuse flows over PyArrow carriers. The
+Python Arrow bridge now matches `ndarrow`'s sparse storage/metadata contract explicitly instead of
+depending on default PyArrow extension-field serialization, and validation is green on the
+Arrow-focused and repo/package gates (`19 passed` targeted Arrow pytest, `python-quality`
+`181 passed, 19 skipped`, `92%` Python coverage, Rust Arrow integration tests `17 passed` in both
+`arrow` and `openblas-system + arrow` modes, and full `just checks`). The remaining `N-PY-004`
+scope is now concentrated in the tensor-side Arrow carrier families.
 Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).

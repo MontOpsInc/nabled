@@ -11,12 +11,13 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use arrow_array::types::{ArrowPrimitiveType, Float32Type, Float64Type};
-use arrow_array::{Array, FixedSizeListArray, PrimitiveArray, make_array};
+use arrow_array::{Array, FixedSizeListArray, ListArray, PrimitiveArray, StructArray, make_array};
 use arrow_data::ArrayData;
 use arrow_pyarrow::PyArrowType;
-use arrow_schema::Field;
+use arrow_schema::{DataType, Field};
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
@@ -28,6 +29,7 @@ use crate::ml::callbacks::{
     call_vector_function_arrow_f32_with_iteration, call_vector_function_arrow_f64,
     call_vector_function_arrow_f64_with_iteration,
 };
+use crate::sparse::csr;
 use crate::utils;
 
 const DEFAULT_MAX_TERMS: usize = 64;
@@ -49,6 +51,14 @@ fn array_data_to_fixed_size_list(data: ArrayData) -> PyResult<FixedSizeListArray
         .downcast_ref::<FixedSizeListArray>()
         .cloned()
         .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("expected FixedSizeList array"))
+}
+
+fn array_data_to_struct(data: ArrayData) -> PyResult<StructArray> {
+    make_array(data)
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .cloned()
+        .ok_or_else(|| PyTypeError::new_err("expected Struct array"))
 }
 
 fn array_data_to_real_primitive(data: ArrayData) -> PyResult<RealPrimitiveArray> {
@@ -102,6 +112,23 @@ fn extension_result_into_pyarrow(
     extension_array_into_pyarrow(result.0, result.1)
 }
 
+fn struct_array_into_pyarrow(array: StructArray) -> PyArrowType<ArrayData> {
+    PyArrowType(array.into_data())
+}
+
+fn struct_extension_array_into_pyarrow(
+    field: Field,
+    array: StructArray,
+) -> (PyArrowType<Field>, PyArrowType<ArrayData>) {
+    (PyArrowType(field), struct_array_into_pyarrow(array))
+}
+
+fn struct_extension_result_into_pyarrow(
+    result: (Field, StructArray),
+) -> (PyArrowType<Field>, PyArrowType<ArrayData>) {
+    struct_extension_array_into_pyarrow(result.0, result.1)
+}
+
 fn fixed_size_list_with_item_nullability(
     array: &FixedSizeListArray,
     nullable: bool,
@@ -126,6 +153,109 @@ fn field_with_array_storage(field: &Field, array: &FixedSizeListArray) -> Field 
     Field::new(field.name(), array.data_type().clone(), false)
         .with_metadata(field.metadata().clone())
 }
+
+fn sparse_values_list<'a>(matrix: &'a StructArray, column_name: &str) -> PyResult<&'a ListArray> {
+    matrix
+        .column_by_name(column_name)
+        .ok_or_else(|| {
+            PyTypeError::new_err(format!("expected sparse storage column '{column_name}'"))
+        })?
+        .as_any()
+        .downcast_ref::<ListArray>()
+        .ok_or_else(|| {
+            PyTypeError::new_err(format!(
+                "expected sparse storage column '{column_name}' as ListArray"
+            ))
+        })
+}
+
+fn sparse_value_type(matrix: &StructArray, column_name: &str) -> PyResult<DataType> {
+    Ok(sparse_values_list(matrix, column_name)?.value_type())
+}
+
+fn owned_csr_from_extension_f32(
+    field: &Field,
+    array: &StructArray,
+) -> PyResult<nabled_linalg::sparse::CsrMatrix<f32>> {
+    let view =
+        nabled::ndarrow::csr_view_from_extension::<Float32Type>(field, array).map_err(to_py_err)?;
+    let row_ptrs = view
+        .row_ptrs
+        .iter()
+        .copied()
+        .map(|value| {
+            usize::try_from(value).map_err(|_| PyTypeError::new_err("csr row_ptr exceeds usize"))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let col_indices = view
+        .col_indices
+        .iter()
+        .copied()
+        .map(|value| {
+            usize::try_from(value)
+                .map_err(|_| PyTypeError::new_err("csr column index exceeds usize"))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    nabled_linalg::sparse::CsrMatrix::new(
+        view.nrows,
+        view.ncols,
+        row_ptrs,
+        col_indices,
+        view.values.to_vec(),
+    )
+    .map_err(to_py_err)
+}
+
+fn owned_csr_from_extension_f64(
+    field: &Field,
+    array: &StructArray,
+) -> PyResult<nabled_linalg::sparse::CsrMatrix<f64>> {
+    let view =
+        nabled::ndarrow::csr_view_from_extension::<Float64Type>(field, array).map_err(to_py_err)?;
+    let row_ptrs = view
+        .row_ptrs
+        .iter()
+        .copied()
+        .map(|value| {
+            usize::try_from(value).map_err(|_| PyTypeError::new_err("csr row_ptr exceeds usize"))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let col_indices = view
+        .col_indices
+        .iter()
+        .copied()
+        .map(|value| {
+            usize::try_from(value)
+                .map_err(|_| PyTypeError::new_err("csr column index exceeds usize"))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    nabled_linalg::sparse::CsrMatrix::new(
+        view.nrows,
+        view.ncols,
+        row_ptrs,
+        col_indices,
+        view.values.to_vec(),
+    )
+    .map_err(to_py_err)
+}
+
+fn sparse_tolerance_f32(tolerance: Option<f64>) -> PyResult<f32> {
+    tolerance.map_or(Ok(1.0e-6_f32), |value| utils::f64_to_f32(value, "tolerance"))
+}
+
+fn sparse_tolerance_f64(tolerance: Option<f64>) -> f64 { tolerance.unwrap_or(1.0e-10) }
+
+fn sparse_max_iterations(max_iterations: Option<usize>) -> usize { max_iterations.unwrap_or(5000) }
+
+fn ilut_drop_tolerance_f32(drop_tolerance: Option<f64>) -> PyResult<f32> {
+    drop_tolerance.map_or(Ok(1.0e-8_f32), |value| utils::f64_to_f32(value, "drop_tolerance"))
+}
+
+fn ilut_drop_tolerance_f64(drop_tolerance: Option<f64>) -> f64 { drop_tolerance.unwrap_or(1.0e-8) }
+
+fn ilut_max_fill(max_fill: Option<usize>) -> usize { max_fill.unwrap_or(16) }
+
+fn iluk_level_of_fill(level_of_fill: Option<usize>) -> usize { level_of_fill.unwrap_or(1) }
 
 fn qr_config_f32(
     rank_tolerance: Option<f64>,
@@ -1967,6 +2097,968 @@ pub fn linear_regression(
             ))
         }
         _ => Err(utils::matching_real_dtype_error(&["x", "y"])),
+    }
+}
+
+/// Compute a sparse matrix-vector product directly from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_matvec")]
+pub fn sparse_matvec_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (sparse_value_type(&matrix_arr, "values")?, array_data_to_real_primitive(rhs.0)?) {
+        (DataType::Float32, RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::sparse::matvec_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (DataType::Float64, RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::sparse::matvec_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Compute a sparse-dense matrix product directly from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_matmat_dense")]
+pub fn sparse_matmat_dense_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    dense: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (sparse_value_type(&matrix_arr, "values")?, array_data_to_real_fixed_size_list(dense.0)?)
+    {
+        (DataType::Float32, RealFixedSizeListArray::F32(dense_arr)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::sparse::matmat_dense_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &dense_arr,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (DataType::Float64, RealFixedSizeListArray::F64(dense_arr)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::sparse::matmat_dense_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &dense_arr,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "dense"])),
+    }
+}
+
+/// Solve a sparse linear system directly from a canonical Arrow CSR extension via sparse LU.
+#[pyfunction(name = "arrow_sparse_lu_solve")]
+pub fn sparse_lu_solve_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (sparse_value_type(&matrix_arr, "values")?, array_data_to_real_primitive(rhs.0)?) {
+        (DataType::Float32, RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::sparse::sparse_lu_solve_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (DataType::Float64, RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::sparse::sparse_lu_solve_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve a sparse linear system via Jacobi iteration from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_jacobi_solve", signature = (field, matrix, rhs, tolerance=None, max_iterations=None))]
+pub fn sparse_jacobi_solve_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (sparse_value_type(&matrix_arr, "values")?, array_data_to_real_primitive(rhs.0)?) {
+        (DataType::Float32, RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::sparse::jacobi_solve_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                    sparse_tolerance_f32(tolerance)?,
+                    sparse_max_iterations(max_iterations),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (DataType::Float64, RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::sparse::jacobi_solve_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                    sparse_tolerance_f64(tolerance),
+                    sparse_max_iterations(max_iterations),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve a sparse linear system via Gauss-Seidel iteration from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_gauss_seidel_solve", signature = (field, matrix, rhs, tolerance=None, max_iterations=None))]
+pub fn sparse_gauss_seidel_solve_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (sparse_value_type(&matrix_arr, "values")?, array_data_to_real_primitive(rhs.0)?) {
+        (DataType::Float32, RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::sparse::gauss_seidel_solve_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                    sparse_tolerance_f32(tolerance)?,
+                    sparse_max_iterations(max_iterations),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (DataType::Float64, RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::sparse::gauss_seidel_solve_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                    sparse_tolerance_f64(tolerance),
+                    sparse_max_iterations(max_iterations),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve a sparse linear system via conjugate gradient from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_conjugate_gradient_solve", signature = (field, matrix, rhs, tolerance=None, max_iterations=None))]
+pub fn sparse_conjugate_gradient_solve_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (sparse_value_type(&matrix_arr, "values")?, array_data_to_real_primitive(rhs.0)?) {
+        (DataType::Float32, RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::sparse::conjugate_gradient_solve_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                    sparse_tolerance_f32(tolerance)?,
+                    sparse_max_iterations(max_iterations),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (DataType::Float64, RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::sparse::conjugate_gradient_solve_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                    sparse_tolerance_f64(tolerance),
+                    sparse_max_iterations(max_iterations),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Solve a sparse linear system via PCG from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_pcg_solve", signature = (field, matrix, rhs, tolerance=None, max_iterations=None))]
+pub fn sparse_pcg_solve_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (sparse_value_type(&matrix_arr, "values")?, array_data_to_real_primitive(rhs.0)?) {
+        (DataType::Float32, RealPrimitiveArray::F32(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::sparse::pcg_solve_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                    sparse_tolerance_f32(tolerance)?,
+                    sparse_max_iterations(max_iterations),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (DataType::Float64, RealPrimitiveArray::F64(rhs_arr)) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::sparse::pcg_solve_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &rhs_arr,
+                    sparse_tolerance_f64(tolerance),
+                    sparse_max_iterations(max_iterations),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "rhs"])),
+    }
+}
+
+/// Compute batched sparse matrix-vector products from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_batched_matvec")]
+pub fn sparse_batched_matvec_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    batch_vectors: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (
+        sparse_value_type(&matrix_arr, "values")?,
+        array_data_to_real_fixed_size_list(batch_vectors.0)?,
+    ) {
+        (DataType::Float32, RealFixedSizeListArray::F32(batch_vectors_arr)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::sparse::batched_matvec_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &batch_vectors_arr,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (DataType::Float64, RealFixedSizeListArray::F64(batch_vectors_arr)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::sparse::batched_matvec_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                    &batch_vectors_arr,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["matrix", "batch_vectors"])),
+    }
+}
+
+/// Transpose a canonical Arrow CSR extension and return canonical Python CSR components.
+#[pyfunction(name = "arrow_sparse_transpose")]
+pub fn sparse_transpose_arrow(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<csr::PyCsrParts> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => {
+            let result = nabled::arrow::sparse::transpose_csr_extension::<Float32Type>(
+                &field.0,
+                &matrix_arr,
+            )
+            .map_err(to_py_err)?;
+            csr::py_csr_parts_i32_f32(py, result)
+        }
+        DataType::Float64 => {
+            let result = nabled::arrow::sparse::transpose_csr_extension::<Float64Type>(
+                &field.0,
+                &matrix_arr,
+            )
+            .map_err(to_py_err)?;
+            csr::py_csr_parts_i32_f64(py, result)
+        }
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Convert a canonical Arrow CSR extension to canonical Python CSC components.
+#[pyfunction(name = "arrow_sparse_csr_to_csc")]
+pub fn sparse_csr_to_csc_arrow(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<csr::PyCsrParts> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => {
+            let result = nabled::arrow::sparse::csr_to_csc_csr_extension::<Float32Type>(
+                &field.0,
+                &matrix_arr,
+            )
+            .map_err(to_py_err)?;
+            csr::py_csc_parts_f32(py, result, csr::StoredIndexDtype::I32)
+        }
+        DataType::Float64 => {
+            let result = nabled::arrow::sparse::csr_to_csc_csr_extension::<Float64Type>(
+                &field.0,
+                &matrix_arr,
+            )
+            .map_err(to_py_err)?;
+            csr::py_csc_parts_f64(py, result, csr::StoredIndexDtype::I32)
+        }
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Compute a sparse-sparse matrix product directly from canonical Arrow CSR extensions.
+#[pyfunction(name = "arrow_sparse_matmat_sparse")]
+pub fn sparse_matmat_sparse_arrow(
+    py: Python<'_>,
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<csr::PyCsrParts> {
+    let left_arr = array_data_to_struct(left.0)?;
+    let right_arr = array_data_to_struct(right.0)?;
+    match (sparse_value_type(&left_arr, "values")?, sparse_value_type(&right_arr, "values")?) {
+        (DataType::Float32, DataType::Float32) => {
+            let result = nabled::arrow::sparse::matmat_sparse_csr_extension::<Float32Type>(
+                &left_field.0,
+                &left_arr,
+                &right_field.0,
+                &right_arr,
+            )
+            .map_err(to_py_err)?;
+            csr::py_csr_parts_i32_f32(py, result)
+        }
+        (DataType::Float64, DataType::Float64) => {
+            let result = nabled::arrow::sparse::matmat_sparse_csr_extension::<Float64Type>(
+                &left_field.0,
+                &left_arr,
+                &right_field.0,
+                &right_arr,
+            )
+            .map_err(to_py_err)?;
+            csr::py_csr_parts_i32_f64(py, result)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Build a reusable Jacobi preconditioner from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_jacobi_preconditioner")]
+pub fn sparse_jacobi_preconditioner_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<csr::PyJacobiPreconditioner> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => Ok(csr::PyJacobiPreconditioner::from_f32(
+            nabled::arrow::sparse::jacobi_preconditioner_csr_extension::<Float32Type>(
+                &field.0,
+                &matrix_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(csr::PyJacobiPreconditioner::from_f64(
+            nabled::arrow::sparse::jacobi_preconditioner_csr_extension::<Float64Type>(
+                &field.0,
+                &matrix_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Apply a reusable Jacobi preconditioner to an Arrow dense vector.
+#[pyfunction(name = "arrow_sparse_apply_jacobi_preconditioner")]
+pub fn sparse_apply_jacobi_preconditioner_arrow(
+    preconditioner: &csr::PyJacobiPreconditioner,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (&preconditioner.inner, array_data_to_real_primitive(rhs.0)?) {
+        (
+            csr::PyJacobiPreconditionerInner::F32(preconditioner),
+            RealPrimitiveArray::F32(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float32Type>(
+            nabled::arrow::sparse::apply_jacobi_preconditioner::<Float32Type>(
+                preconditioner,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        (
+            csr::PyJacobiPreconditionerInner::F64(preconditioner),
+            RealPrimitiveArray::F64(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float64Type>(
+            nabled::arrow::sparse::apply_jacobi_preconditioner::<Float64Type>(
+                preconditioner,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["preconditioner", "rhs"])),
+    }
+}
+
+/// Build a reusable ILU(0) factorization from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_ilu0_factor")]
+pub fn sparse_ilu0_factor_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<csr::PyIlu0Factorization> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => Ok(csr::PyIlu0Factorization::from_f32(
+            nabled::arrow::sparse::ilu0_factor_csr_extension::<Float32Type>(&field.0, &matrix_arr)
+                .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(csr::PyIlu0Factorization::from_f64(
+            nabled::arrow::sparse::ilu0_factor_csr_extension::<Float64Type>(&field.0, &matrix_arr)
+                .map_err(to_py_err)?,
+        )),
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Apply a reusable ILU(0) factorization to an Arrow dense vector.
+#[pyfunction(name = "arrow_sparse_apply_ilu0_preconditioner")]
+pub fn sparse_apply_ilu0_preconditioner_arrow(
+    factorization: &csr::PyIlu0Factorization,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (&factorization.inner, array_data_to_real_primitive(rhs.0)?) {
+        (
+            csr::PyIlu0FactorizationInner::F32 { factorization, .. },
+            RealPrimitiveArray::F32(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float32Type>(
+            nabled::arrow::sparse::apply_ilu0_preconditioner::<Float32Type>(
+                factorization,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        (
+            csr::PyIlu0FactorizationInner::F64 { factorization, .. },
+            RealPrimitiveArray::F64(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float64Type>(
+            nabled::arrow::sparse::apply_ilu0_preconditioner::<Float64Type>(
+                factorization,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+    }
+}
+
+/// Build a reusable ILUT factorization from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_ilut_factor", signature = (field, matrix, drop_tolerance=None, max_fill=None))]
+pub fn sparse_ilut_factor_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    drop_tolerance: Option<f64>,
+    max_fill: Option<usize>,
+) -> PyResult<csr::PyIlutFactorization> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => Ok(csr::PyIlutFactorization::from_f32(
+            nabled::arrow::sparse::ilut_factor_csr_extension::<Float32Type>(
+                &field.0,
+                &matrix_arr,
+                ilut_drop_tolerance_f32(drop_tolerance)?,
+                ilut_max_fill(max_fill),
+            )
+            .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(csr::PyIlutFactorization::from_f64(
+            nabled::arrow::sparse::ilut_factor_csr_extension::<Float64Type>(
+                &field.0,
+                &matrix_arr,
+                ilut_drop_tolerance_f64(drop_tolerance),
+                ilut_max_fill(max_fill),
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Apply a reusable ILUT factorization to an Arrow dense vector.
+#[pyfunction(name = "arrow_sparse_apply_ilut_preconditioner")]
+pub fn sparse_apply_ilut_preconditioner_arrow(
+    factorization: &csr::PyIlutFactorization,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (&factorization.inner, array_data_to_real_primitive(rhs.0)?) {
+        (
+            csr::PyIlutFactorizationInner::F32 { factorization, .. },
+            RealPrimitiveArray::F32(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float32Type>(
+            nabled::arrow::sparse::apply_ilut_preconditioner::<Float32Type>(
+                factorization,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        (
+            csr::PyIlutFactorizationInner::F64 { factorization, .. },
+            RealPrimitiveArray::F64(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float64Type>(
+            nabled::arrow::sparse::apply_ilut_preconditioner::<Float64Type>(
+                factorization,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+    }
+}
+
+/// Build a reusable ILU(k) factorization from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_iluk_factor", signature = (field, matrix, level_of_fill=None))]
+pub fn sparse_iluk_factor_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    level_of_fill: Option<usize>,
+) -> PyResult<csr::PyIlukFactorization> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => Ok(csr::PyIlukFactorization::from_f32(
+            nabled::arrow::sparse::iluk_factor_csr_extension::<Float32Type>(
+                &field.0,
+                &matrix_arr,
+                iluk_level_of_fill(level_of_fill),
+            )
+            .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(csr::PyIlukFactorization::from_f64(
+            nabled::arrow::sparse::iluk_factor_csr_extension::<Float64Type>(
+                &field.0,
+                &matrix_arr,
+                iluk_level_of_fill(level_of_fill),
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Apply a reusable ILU(k) factorization to an Arrow dense vector.
+#[pyfunction(name = "arrow_sparse_apply_iluk_preconditioner")]
+pub fn sparse_apply_iluk_preconditioner_arrow(
+    factorization: &csr::PyIlukFactorization,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (&factorization.inner, array_data_to_real_primitive(rhs.0)?) {
+        (
+            csr::PyIlukFactorizationInner::F32 { factorization, .. },
+            RealPrimitiveArray::F32(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float32Type>(
+            nabled::arrow::sparse::apply_iluk_preconditioner::<Float32Type>(
+                factorization,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        (
+            csr::PyIlukFactorizationInner::F64 { factorization, .. },
+            RealPrimitiveArray::F64(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float64Type>(
+            nabled::arrow::sparse::apply_iluk_preconditioner::<Float64Type>(
+                factorization,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+    }
+}
+
+/// Build a reusable IC(0) factorization from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_ic0_factor")]
+pub fn sparse_ic0_factor_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<csr::PyIc0Factorization> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => Ok(csr::PyIc0Factorization::from_f32(
+            nabled::arrow::sparse::ic0_factor_csr_extension::<Float32Type>(&field.0, &matrix_arr)
+                .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(csr::PyIc0Factorization::from_f64(
+            nabled::arrow::sparse::ic0_factor_csr_extension::<Float64Type>(&field.0, &matrix_arr)
+                .map_err(to_py_err)?,
+        )),
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Apply a reusable IC(0) factorization to an Arrow dense vector.
+#[pyfunction(name = "arrow_sparse_apply_ic0_preconditioner")]
+pub fn sparse_apply_ic0_preconditioner_arrow(
+    factorization: &csr::PyIc0Factorization,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (&factorization.inner, array_data_to_real_primitive(rhs.0)?) {
+        (
+            csr::PyIc0FactorizationInner::F32 { factorization, .. },
+            RealPrimitiveArray::F32(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float32Type>(
+            nabled::arrow::sparse::apply_ic0_preconditioner::<Float32Type>(factorization, &rhs_arr)
+                .map_err(to_py_err)?,
+        )),
+        (
+            csr::PyIc0FactorizationInner::F64 { factorization, .. },
+            RealPrimitiveArray::F64(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float64Type>(
+            nabled::arrow::sparse::apply_ic0_preconditioner::<Float64Type>(factorization, &rhs_arr)
+                .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+    }
+}
+
+/// Build a reusable ILDL(0) factorization from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_ildl0_factor")]
+pub fn sparse_ildl0_factor_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<csr::PyIldl0Factorization> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => Ok(csr::PyIldl0Factorization::from_f32(
+            nabled::arrow::sparse::ildl0_factor_csr_extension::<Float32Type>(&field.0, &matrix_arr)
+                .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(csr::PyIldl0Factorization::from_f64(
+            nabled::arrow::sparse::ildl0_factor_csr_extension::<Float64Type>(&field.0, &matrix_arr)
+                .map_err(to_py_err)?,
+        )),
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Apply a reusable ILDL(0) factorization to an Arrow dense vector.
+#[pyfunction(name = "arrow_sparse_apply_ildl0_preconditioner")]
+pub fn sparse_apply_ildl0_preconditioner_arrow(
+    factorization: &csr::PyIldl0Factorization,
+    rhs: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (&factorization.inner, array_data_to_real_primitive(rhs.0)?) {
+        (
+            csr::PyIldl0FactorizationInner::F32 { factorization, .. },
+            RealPrimitiveArray::F32(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float32Type>(
+            nabled::arrow::sparse::apply_ildl0_preconditioner::<Float32Type>(
+                factorization,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        (
+            csr::PyIldl0FactorizationInner::F64 { factorization, .. },
+            RealPrimitiveArray::F64(rhs_arr),
+        ) => Ok(primitive_array_into_pyarrow::<Float64Type>(
+            nabled::arrow::sparse::apply_ildl0_preconditioner::<Float64Type>(
+                factorization,
+                &rhs_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+    }
+}
+
+/// Build a reusable sparse LU factorization from a canonical Arrow CSR extension.
+#[pyfunction(name = "arrow_sparse_lu_factor")]
+pub fn sparse_lu_factor_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+) -> PyResult<csr::PySparseLuFactorization> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match sparse_value_type(&matrix_arr, "values")? {
+        DataType::Float32 => {
+            let owned_matrix = owned_csr_from_extension_f32(&field.0, &matrix_arr)?;
+            let factorization =
+                nabled::arrow::sparse::sparse_lu_factor_csr_extension::<Float32Type>(
+                    &field.0,
+                    &matrix_arr,
+                )
+                .map_err(to_py_err)?;
+            Ok(csr::PySparseLuFactorization::from_f32(owned_matrix, factorization))
+        }
+        DataType::Float64 => {
+            let owned_matrix = owned_csr_from_extension_f64(&field.0, &matrix_arr)?;
+            let factorization =
+                nabled::arrow::sparse::sparse_lu_factor_csr_extension::<Float64Type>(
+                    &field.0,
+                    &matrix_arr,
+                )
+                .map_err(to_py_err)?;
+            Ok(csr::PySparseLuFactorization::from_f64(owned_matrix, factorization))
+        }
+        _ => {
+            Err(PyTypeError::new_err("expected sparse Arrow values with float32 or float64 dtype"))
+        }
+    }
+}
+
+/// Solve a sparse linear system using a reusable sparse LU factorization.
+#[pyfunction(name = "arrow_sparse_lu_solve_with_factorization")]
+pub fn sparse_lu_solve_with_factorization_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    factorization: &csr::PySparseLuFactorization,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (&factorization.inner, array_data_to_real_primitive(rhs.0)?) {
+        (
+            csr::PySparseLuFactorizationInner::F32 { factorization, .. },
+            RealPrimitiveArray::F32(rhs_arr),
+        ) => {
+            Ok(primitive_array_into_pyarrow::<Float32Type>(
+                nabled::arrow::sparse::sparse_lu_solve_with_factorization_csr_extension::<
+                    Float32Type,
+                >(&field.0, &matrix_arr, &rhs_arr, factorization)
+                .map_err(to_py_err)?,
+            ))
+        }
+        (
+            csr::PySparseLuFactorizationInner::F64 { factorization, .. },
+            RealPrimitiveArray::F64(rhs_arr),
+        ) => {
+            Ok(primitive_array_into_pyarrow::<Float64Type>(
+                nabled::arrow::sparse::sparse_lu_solve_with_factorization_csr_extension::<
+                    Float64Type,
+                >(&field.0, &matrix_arr, &rhs_arr, factorization)
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+    }
+}
+
+/// Solve multiple sparse right-hand sides using a reusable sparse LU factorization.
+#[pyfunction(name = "arrow_sparse_lu_solve_multiple_with_factorization")]
+pub fn sparse_lu_solve_multiple_with_factorization_arrow(
+    field: PyArrowType<Field>,
+    matrix: PyArrowType<ArrayData>,
+    rhs: PyArrowType<ArrayData>,
+    factorization: &csr::PySparseLuFactorization,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let matrix_arr = array_data_to_struct(matrix.0)?;
+    match (&factorization.inner, array_data_to_real_fixed_size_list(rhs.0)?) {
+        (
+            csr::PySparseLuFactorizationInner::F32 { factorization, .. },
+            RealFixedSizeListArray::F32(rhs_arr),
+        ) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::sparse::sparse_lu_solve_multiple_with_factorization_csr_extension::<
+                Float32Type,
+            >(&field.0, &matrix_arr, &rhs_arr, factorization)
+            .map_err(to_py_err)?,
+        )),
+        (
+            csr::PySparseLuFactorizationInner::F64 { factorization, .. },
+            RealFixedSizeListArray::F64(rhs_arr),
+        ) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::sparse::sparse_lu_solve_multiple_with_factorization_csr_extension::<
+                Float64Type,
+            >(&field.0, &matrix_arr, &rhs_arr, factorization)
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["factorization", "rhs"])),
+    }
+}
+
+/// Compute row-wise sparse matrix-vector products from a canonical Arrow CSR batch extension.
+#[pyfunction(name = "arrow_sparse_batch_matvec")]
+pub fn sparse_batch_matvec_arrow(
+    field: PyArrowType<Field>,
+    matrices: PyArrowType<ArrayData>,
+    vectors_field: PyArrowType<Field>,
+    vectors: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrices_arr = array_data_to_struct(matrices.0)?;
+    let vectors_arr = array_data_to_struct(vectors.0)?;
+    match sparse_value_type(&matrices_arr, "values")? {
+        DataType::Float32 => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::sparse::matvec_csr_batch_extension::<Float32Type>(
+                &field.0,
+                &matrices_arr,
+                &vectors_field.0,
+                &vectors_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::sparse::matvec_csr_batch_extension::<Float64Type>(
+                &field.0,
+                &matrices_arr,
+                &vectors_field.0,
+                &vectors_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(PyTypeError::new_err(
+            "expected sparse Arrow batch values with float32 or float64 dtype",
+        )),
+    }
+}
+
+/// Compute row-wise sparse-dense matrix products from a canonical Arrow CSR batch extension.
+#[pyfunction(name = "arrow_sparse_batch_matmat_dense")]
+pub fn sparse_batch_matmat_dense_arrow(
+    field: PyArrowType<Field>,
+    matrices: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrices_arr = array_data_to_struct(matrices.0)?;
+    let right_arr = array_data_to_struct(right.0)?;
+    match sparse_value_type(&matrices_arr, "values")? {
+        DataType::Float32 => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::sparse::matmat_dense_csr_batch_extension::<Float32Type>(
+                &field.0,
+                &matrices_arr,
+                &right_field.0,
+                &right_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::sparse::matmat_dense_csr_batch_extension::<Float64Type>(
+                &field.0,
+                &matrices_arr,
+                &right_field.0,
+                &right_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(PyTypeError::new_err(
+            "expected sparse Arrow batch values with float32 or float64 dtype",
+        )),
+    }
+}
+
+/// Transpose each sparse matrix in a canonical Arrow CSR batch extension.
+#[pyfunction(name = "arrow_sparse_batch_transpose")]
+pub fn sparse_batch_transpose_arrow(
+    field: PyArrowType<Field>,
+    matrices: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let matrices_arr = array_data_to_struct(matrices.0)?;
+    match sparse_value_type(&matrices_arr, "values")? {
+        DataType::Float32 => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::sparse::transpose_csr_batch_extension::<Float32Type>(
+                &field.0,
+                &matrices_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        DataType::Float64 => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::sparse::transpose_csr_batch_extension::<Float64Type>(
+                &field.0,
+                &matrices_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(PyTypeError::new_err(
+            "expected sparse Arrow batch values with float32 or float64 dtype",
+        )),
+    }
+}
+
+/// Compute row-wise sparse-sparse products from canonical Arrow CSR batch extensions.
+#[pyfunction(name = "arrow_sparse_batch_matmat_sparse")]
+pub fn sparse_batch_matmat_sparse_arrow(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let left_arr = array_data_to_struct(left.0)?;
+    let right_arr = array_data_to_struct(right.0)?;
+    match (sparse_value_type(&left_arr, "values")?, sparse_value_type(&right_arr, "values")?) {
+        (DataType::Float32, DataType::Float32) => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::sparse::matmat_sparse_csr_batch_extension::<Float32Type>(
+                &left_field.0,
+                &left_arr,
+                &right_field.0,
+                &right_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        (DataType::Float64, DataType::Float64) => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::sparse::matmat_sparse_csr_batch_extension::<Float64Type>(
+                &left_field.0,
+                &left_arr,
+                &right_field.0,
+                &right_arr,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
     }
 }
 

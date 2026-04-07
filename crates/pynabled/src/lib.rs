@@ -354,6 +354,45 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(pyo3::wrap_pyfunction!(arrow::pca_inverse_transform_complex, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::linear_regression, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::linear_regression_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_matvec_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_matmat_dense_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_lu_solve_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_jacobi_solve_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_gauss_seidel_solve_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_conjugate_gradient_solve_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_pcg_solve_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_batched_matvec_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_transpose_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_csr_to_csc_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_matmat_sparse_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_jacobi_preconditioner_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::sparse_apply_jacobi_preconditioner_arrow,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_ilu0_factor_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_apply_ilu0_preconditioner_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_ilut_factor_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_apply_ilut_preconditioner_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_iluk_factor_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_apply_iluk_preconditioner_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_ic0_factor_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_apply_ic0_preconditioner_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_ildl0_factor_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_apply_ildl0_preconditioner_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_lu_factor_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::sparse_lu_solve_with_factorization_arrow,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::sparse_lu_solve_multiple_with_factorization_arrow,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_batch_matvec_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_batch_matmat_dense_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_batch_transpose_arrow, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::sparse_batch_matmat_sparse_arrow, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::conjugate_gradient, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::conjugate_gradient_complex_arrow, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::gmres_arrow, m)?)?;

@@ -38,12 +38,15 @@ public function names. The current Arrow slice now also exposes the admitted rea
 decomposition/matrix-function/PCA/regression rows plus canonical complex dense Arrow carriers
 across vector/matrix/statistics/orthogonalization/triangular/decomposition/matrix-function/PCA/
 regression workflows, callback-driven iterative/Jacobian/optimization rows over PyArrow carriers,
-and fixed-shape-tensor batched QR/SVD/LU/Cholesky/symmetric-eigen result wrappers. Arrow-native
-outputs stay Arrow-native where the Rust Arrow facade already does so, while ndarray-native
-decomposition/PCA/regression rows reuse the same typed Python result objects as the NumPy-facing
-API. Mixed real dtypes are rejected explicitly instead of being silently cast, and complex Arrow
-ingress follows canonical `ndarrow.complex64` storage/field contracts rather than silently
-materializing NumPy buffers.
+canonical `ndarrow.csr_matrix` / `ndarrow.csr_matrix_batch` sparse carriers with direct sparse
+solve/product/reuse workflows, and fixed-shape-tensor batched QR/SVD/LU/Cholesky/symmetric-eigen
+result wrappers. Arrow-native outputs stay Arrow-native where the Rust Arrow facade already does
+so, while ndarray-native decomposition/PCA/regression rows reuse the same typed Python result
+objects as the NumPy-facing API. Mixed real dtypes are rejected explicitly instead of being
+silently cast, complex Arrow ingress follows canonical `ndarrow.complex64` storage/field
+contracts rather than silently materializing NumPy buffers, and sparse Arrow ingress now matches
+`ndarrow`'s sparse field/storage metadata contract explicitly instead of depending on default
+PyArrow extension-field serialization.
 Callable-driven `jacobian` / `optimization` workflows preserve the caller's real dtype end-to-end,
 and their `float32` defaults use `float32`-appropriate finite-difference / convergence settings
 instead of raw `float64` thresholds. Some higher-level wrappers still materialize owned arrays

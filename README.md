@@ -72,7 +72,7 @@ result = pynabled.svd_decompose(a)
 print("singular values:", result.singular_values)
 ```
 
-The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, dense vector/matrix primitives (including batched vector helpers and broadcasted batched matmat), batched decompositions, tensor ops, regression, PCA, statistics, and a widened sparse surface with first-class CSR/CSC/COO carriers, direct sparse iterative solvers, reusable sparse factorization/preconditioner workflows, and direct ILU(0)/ILUT/ILUK/ILDL0 GMRES / `BiCGSTAB` convenience rows. The Arrow-facing `pynabled.arrow` module now also covers the admitted real dense/decomposition slice plus canonical complex dense/vector/matrix/statistics/orthogonalization/triangular/decomposition/matrix-function/PCA/regression rows, typed batched QR/SVD/LU/Cholesky/symmetric-eigen results over PyArrow fixed-shape tensors, and callback-driven iterative/Jacobian/optimization rows over PyArrow carriers. Arrow-native outputs stay Arrow-native where the Rust Arrow facade already defines them, while ndarray-native decomposition/PCA/regression results are exposed through the same typed Python result objects used by the NumPy-facing API. See `python/pynabled/__init__.py` and `python/pynabled/arrow.py` for the full API surface.
+The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, dense vector/matrix primitives (including batched vector helpers and broadcasted batched matmat), batched decompositions, tensor ops, regression, PCA, statistics, and a widened sparse surface with first-class CSR/CSC/COO carriers, direct sparse iterative solvers, reusable sparse factorization/preconditioner workflows, and direct ILU(0)/ILUT/ILUK/ILDL0 GMRES / `BiCGSTAB` convenience rows. The Arrow-facing `pynabled.arrow` module now also covers the admitted real dense/decomposition slice plus canonical complex dense/vector/matrix/statistics/orthogonalization/triangular/decomposition/matrix-function/PCA/regression rows, typed batched QR/SVD/LU/Cholesky/symmetric-eigen results over PyArrow fixed-shape tensors, callback-driven iterative/Jacobian/optimization rows, and canonical sparse CSR object/batch carriers with direct sparse solve/product/reuse workflows over PyArrow. Arrow-native outputs stay Arrow-native where the Rust Arrow facade already defines them, while ndarray-native decomposition/PCA/regression results are exposed through the same typed Python result objects used by the NumPy-facing API. See `python/pynabled/__init__.py` and `python/pynabled/arrow.py` for the full API surface.
 
 Dense iterative plus callable-driven Jacobian/optimization rows now also expose typed Python
 config objects (`IterativeConfig`, `JacobianConfig`, `LineSearchConfig`, `GradientDescentConfig`,
@@ -142,7 +142,7 @@ Feature behavior:
 Current Arrow-ingress coverage includes:
 
 1. Canonical dense vector batches over `FixedSizeList<T>(D)`
-2. Canonical sparse vector rows and sparse matrix batches over CSR carriers, including `ndarrow.csr_matrix_batch`
+2. Canonical sparse CSR object rows and sparse matrix batches, including `ndarrow.csr_matrix` and `ndarrow.csr_matrix_batch`, with direct sparse solve/product/reuse workflows
 3. Canonical dense fixed-shape and variable-shape tensor batches
 4. LU, Cholesky, QR, SVD, Eigen, Schur, Polar, matrix-functions, triangular solves
 5. Batched decomposition helpers
