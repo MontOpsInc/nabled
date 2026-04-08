@@ -214,3 +214,49 @@ def test_gram_schmidt_accepts_float32_and_complex128():
         rtol=1e-10,
         atol=1e-12,
     )
+
+
+def test_matrix_out_reuses_dense_output_buffers():
+    matrix = np.asfortranarray(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
+    vector = np.array([1.0, 1.0], dtype=np.float32)
+    left_batches = np.asfortranarray(np.arange(12, dtype=np.float32).reshape(2, 2, 3))
+    right = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, -1.0]], dtype=np.float32)
+
+    matvec_out = np.empty(2, dtype=np.float32)
+    returned_matvec = pynabled.matvec(matrix, vector, out=matvec_out)
+    assert returned_matvec is matvec_out
+    np.testing.assert_allclose(matvec_out, matrix @ vector, rtol=1e-5, atol=1e-6)
+
+    matmat_out = np.empty((2, 2), dtype=np.float32, order="F")
+    returned_matmat = pynabled.matmat(matrix, matrix, out=matmat_out)
+    assert returned_matmat is matmat_out
+    np.testing.assert_allclose(matmat_out, matrix @ matrix, rtol=1e-5, atol=1e-6)
+
+    broadcast_out = np.empty((2, 2, 2), dtype=np.float32, order="F")
+    returned_broadcast = pynabled.batched_matmat_broadcast_right(
+        left_batches,
+        right,
+        out=broadcast_out,
+    )
+    assert returned_broadcast is broadcast_out
+    np.testing.assert_allclose(broadcast_out, left_batches @ right, rtol=1e-5, atol=1e-6)
+
+
+def test_matrix_out_reuses_complex_buffers_and_rejects_aliasing():
+    matrix = np.array([[1.0 + 1.0j, 0.0 - 1.0j], [2.0 + 0.0j, 1.0 + 2.0j]], dtype=np.complex128)
+    vector = np.array([1.0 + 0.0j, 0.5 - 0.5j], dtype=np.complex128)
+    right = np.array([[1.0 + 1.0j, 0.0 + 1.0j], [2.0 + 0.0j, 1.0 - 1.0j]], dtype=np.complex128)
+
+    matvec_out = np.empty(2, dtype=np.complex128)
+    returned_matvec = pynabled.matvec(matrix, vector, out=matvec_out)
+    assert returned_matvec is matvec_out
+    np.testing.assert_allclose(matvec_out, matrix @ vector, rtol=1e-12, atol=1e-12)
+
+    matmat_out = np.empty((2, 2), dtype=np.complex128, order="F")
+    returned_matmat = pynabled.matmat(matrix, right, out=matmat_out)
+    assert returned_matmat is matmat_out
+    np.testing.assert_allclose(matmat_out, matrix @ right, rtol=1e-12, atol=1e-12)
+
+    aliased = np.ones((2, 2), dtype=np.float64)
+    with pytest.raises(TypeError, match="already borrowed"):
+        pynabled.matmat(aliased, aliased, out=aliased)

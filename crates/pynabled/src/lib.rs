@@ -193,11 +193,20 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Matrix
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::matvec, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::matvec_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::matmat, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::matmat_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_row_matvec, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_row_matvec_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_matmat, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_matmat_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_matmat_broadcast_right, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix::batched_matmat_broadcast_right_into,
+        m
+    )?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_matmat_broadcast_left, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix::batched_matmat_broadcast_left_into, m)?)?;
 
     // Vector
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::dot, m)?)?;
@@ -205,13 +214,21 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::cosine_similarity, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::cosine_distance, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_l2_distance, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_l2_distance_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_cosine_similarity, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_cosine_similarity_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_cosine_distance, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::pairwise_cosine_distance_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_dot, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_dot_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_l2_norm, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_l2_norm_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_cosine_similarity, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_cosine_similarity_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_cosine_distance, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_cosine_distance_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_normalize, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::vector::batched_normalize_into, m)?)?;
 
     // ML
     m.add_function(pyo3::wrap_pyfunction!(ml::regression::linear_regression, m)?)?;

@@ -134,6 +134,36 @@ pub fn pairwise_l2_distance<'py>(
     }
 }
 
+/// Compute pairwise L2 distances into a caller-provided output array.
+#[pyfunction(name = "pairwise_l2_distance_into")]
+pub fn pairwise_l2_distance_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::vector::pairwise_l2_distance_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::pairwise_l2_distance_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Compute pairwise cosine distances between rows of two matrices.
 #[pyfunction]
 pub fn pairwise_cosine_distance<'py>(
@@ -162,6 +192,36 @@ pub fn pairwise_cosine_distance<'py>(
     }
 }
 
+/// Compute pairwise cosine distances into a caller-provided output array.
+#[pyfunction(name = "pairwise_cosine_distance_into")]
+pub fn pairwise_cosine_distance_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::vector::pairwise_cosine_distance_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::pairwise_cosine_distance_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Compute pairwise cosine similarity between rows of two matrices.
 #[pyfunction]
 pub fn pairwise_cosine_similarity<'py>(
@@ -187,6 +247,36 @@ pub fn pairwise_cosine_similarity<'py>(
             Ok(utils::pyarray2_from_owned(py, result))
         }
         _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Compute pairwise cosine similarities into a caller-provided output array.
+#[pyfunction(name = "pairwise_cosine_similarity_into")]
+pub fn pairwise_cosine_similarity_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::vector::pairwise_cosine_similarity_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::pairwise_cosine_similarity_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
     }
 }
 
@@ -235,6 +325,55 @@ pub fn batched_dot<'py>(
     }
 }
 
+/// Compute row-wise dot products into a caller-provided output array.
+#[pyfunction(name = "batched_dot_into")]
+pub fn batched_dot_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::numeric_array2(left, "left")?, utils::numeric_array2(right, "right")?) {
+        (
+            utils::NumericReadonlyArray2::F32(left_arr),
+            utils::NumericReadonlyArray2::F32(right_arr),
+        ) => {
+            let mut output_arr = utils::output_array1::<f32>(output, "output", "float32")?;
+            nabled_linalg::vector::batched_dot_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::F64(left_arr),
+            utils::NumericReadonlyArray2::F64(right_arr),
+        ) => {
+            let mut output_arr = utils::output_array1::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::batched_dot_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::C64(left_arr),
+            utils::NumericReadonlyArray2::C64(right_arr),
+        ) => {
+            let mut output_arr =
+                utils::output_array1::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_linalg::vector::batched_dot_hermitian_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_numeric_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Compute row-wise L2 norms for a batch of vectors.
 #[pyfunction]
 pub fn batched_l2_norm<'py>(py: Python<'py>, rows: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
@@ -253,6 +392,37 @@ pub fn batched_l2_norm<'py>(py: Python<'py>, rows: &Bound<'py, PyAny>) -> PyResu
             let result = nabled_linalg::vector::batched_l2_norm_complex_view(&arr.as_array())
                 .map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, result))
+        }
+    }
+}
+
+/// Compute row-wise L2 norms into a caller-provided output array.
+#[pyfunction(name = "batched_l2_norm_into")]
+pub fn batched_l2_norm_into(rows: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> PyResult<()> {
+    match utils::numeric_array2(rows, "rows")? {
+        utils::NumericReadonlyArray2::F32(arr) => {
+            let mut output_arr = utils::output_array1::<f32>(output, "output", "float32")?;
+            nabled_linalg::vector::batched_l2_norm_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::NumericReadonlyArray2::F64(arr) => {
+            let mut output_arr = utils::output_array1::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::batched_l2_norm_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let mut output_arr = utils::output_array1::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::batched_l2_norm_complex_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
         }
     }
 }
@@ -302,6 +472,55 @@ pub fn batched_cosine_similarity<'py>(
     }
 }
 
+/// Compute row-wise cosine similarities into a caller-provided output array.
+#[pyfunction(name = "batched_cosine_similarity_into")]
+pub fn batched_cosine_similarity_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::numeric_array2(left, "left")?, utils::numeric_array2(right, "right")?) {
+        (
+            utils::NumericReadonlyArray2::F32(left_arr),
+            utils::NumericReadonlyArray2::F32(right_arr),
+        ) => {
+            let mut output_arr = utils::output_array1::<f32>(output, "output", "float32")?;
+            nabled_linalg::vector::batched_cosine_similarity_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::F64(left_arr),
+            utils::NumericReadonlyArray2::F64(right_arr),
+        ) => {
+            let mut output_arr = utils::output_array1::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::batched_cosine_similarity_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::C64(left_arr),
+            utils::NumericReadonlyArray2::C64(right_arr),
+        ) => {
+            let mut output_arr =
+                utils::output_array1::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_linalg::vector::batched_cosine_similarity_complex_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_numeric_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Compute row-wise cosine distances for paired batches of vectors.
 #[pyfunction]
 pub fn batched_cosine_distance<'py>(
@@ -330,6 +549,36 @@ pub fn batched_cosine_distance<'py>(
     }
 }
 
+/// Compute row-wise cosine distances into a caller-provided output array.
+#[pyfunction(name = "batched_cosine_distance_into")]
+pub fn batched_cosine_distance_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let mut output_arr = utils::output_array1::<f32>(output, "output", "float32")?;
+            nabled_linalg::vector::batched_cosine_distance_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let mut output_arr = utils::output_array1::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::batched_cosine_distance_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Normalize a batch of vectors row-wise.
 #[pyfunction]
 pub fn batched_normalize<'py>(py: Python<'py>, rows: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
@@ -348,6 +597,38 @@ pub fn batched_normalize<'py>(py: Python<'py>, rows: &Bound<'py, PyAny>) -> PyRe
             let result = nabled_linalg::vector::batched_normalize_complex_view(&arr.as_array())
                 .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, result))
+        }
+    }
+}
+
+/// Normalize a batch of vectors row-wise into a caller-provided output array.
+#[pyfunction(name = "batched_normalize_into")]
+pub fn batched_normalize_into(rows: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> PyResult<()> {
+    match utils::numeric_array2(rows, "rows")? {
+        utils::NumericReadonlyArray2::F32(arr) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::vector::batched_normalize_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::NumericReadonlyArray2::F64(arr) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::vector::batched_normalize_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let mut output_arr =
+                utils::output_array2::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_linalg::vector::batched_normalize_complex_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
         }
     }
 }

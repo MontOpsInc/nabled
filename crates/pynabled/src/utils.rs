@@ -5,7 +5,8 @@ use num_complex::Complex64;
 use num_traits::{FromPrimitive, ToPrimitive};
 use numpy::{
     Element, PyArray1, PyArray2, PyArray3, PyArrayDyn, PyArrayMethods, PyReadonlyArray1,
-    PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArrayDyn, PyUntypedArrayMethods,
+    PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArrayDyn, PyReadwriteArray1, PyReadwriteArray2,
+    PyReadwriteArray3, PyUntypedArrayMethods,
 };
 use pyo3::exceptions::{PyOverflowError, PyTypeError};
 use pyo3::prelude::*;
@@ -237,6 +238,54 @@ pub fn pyarray3_from_owned<T: Element>(py: Python<'_>, array: Array3<T>) -> Py<P
 
 pub fn pyarrayd_from_owned<T: Element>(py: Python<'_>, array: ArrayD<T>) -> Py<PyAny> {
     PyArrayDyn::from_owned_array(py, array).into_any().unbind()
+}
+
+pub fn output_array1<'py, T: Element>(
+    array: &Bound<'py, PyAny>,
+    name: &str,
+    dtype_label: &str,
+) -> PyResult<PyReadwriteArray1<'py, T>> {
+    array
+        .cast::<PyArray1<T>>()
+        .map_err(|_| {
+            PyTypeError::new_err(format!(
+                "{name} must be a writable NumPy array with dtype {dtype_label} and rank 1",
+            ))
+        })?
+        .try_readwrite()
+        .map_err(Into::into)
+}
+
+pub fn output_array2<'py, T: Element>(
+    array: &Bound<'py, PyAny>,
+    name: &str,
+    dtype_label: &str,
+) -> PyResult<PyReadwriteArray2<'py, T>> {
+    array
+        .cast::<PyArray2<T>>()
+        .map_err(|_| {
+            PyTypeError::new_err(format!(
+                "{name} must be a writable NumPy array with dtype {dtype_label} and rank 2",
+            ))
+        })?
+        .try_readwrite()
+        .map_err(Into::into)
+}
+
+pub fn output_array3<'py, T: Element>(
+    array: &Bound<'py, PyAny>,
+    name: &str,
+    dtype_label: &str,
+) -> PyResult<PyReadwriteArray3<'py, T>> {
+    array
+        .cast::<PyArray3<T>>()
+        .map_err(|_| {
+            PyTypeError::new_err(format!(
+                "{name} must be a writable NumPy array with dtype {dtype_label} and rank 3",
+            ))
+        })?
+        .try_readwrite()
+        .map_err(Into::into)
 }
 
 pub fn py_float(py: Python<'_>, value: f64) -> Py<PyAny> {

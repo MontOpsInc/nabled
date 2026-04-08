@@ -143,6 +143,20 @@ def _resolve_config(config, config_type, **kwargs):
     return {name: getattr(config, name) for name in kwargs}
 
 
+def _array_unary_out(raw, raw_into, array, *, out=None):
+    if out is None:
+        return raw(array)
+    raw_into(array, out)
+    return out
+
+
+def _array_binary_out(raw, raw_into, left, right, *, out=None):
+    if out is None:
+        return raw(left, right)
+    raw_into(left, right, out)
+    return out
+
+
 def build_features() -> tuple[str, ...]:
     """Return the Cargo feature names compiled into the installed extension."""
     return tuple(_raw.build_features())
@@ -648,15 +662,70 @@ def backtracking_line_search_complex(
     return _raw.backtracking_line_search_complex(point, direction, objective, gradient, **kwargs)
 
 
-batched_matmat = _raw.batched_matmat
-batched_matmat_broadcast_left = _raw.batched_matmat_broadcast_left
-batched_matmat_broadcast_right = _raw.batched_matmat_broadcast_right
-batched_row_matvec = _raw.batched_row_matvec
-batched_cosine_distance = _raw.batched_cosine_distance
-batched_cosine_similarity = _raw.batched_cosine_similarity
-batched_dot = _raw.batched_dot
-batched_l2_norm = _raw.batched_l2_norm
-batched_normalize = _raw.batched_normalize
+def batched_matmat(left, right, *, out=None):
+    return _array_binary_out(_raw.batched_matmat, _raw.batched_matmat_into, left, right, out=out)
+
+
+def batched_matmat_broadcast_left(left, right, *, out=None):
+    return _array_binary_out(
+        _raw.batched_matmat_broadcast_left,
+        _raw.batched_matmat_broadcast_left_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def batched_matmat_broadcast_right(left, right, *, out=None):
+    return _array_binary_out(
+        _raw.batched_matmat_broadcast_right,
+        _raw.batched_matmat_broadcast_right_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def batched_row_matvec(matrix, vectors, *, out=None):
+    return _array_binary_out(
+        _raw.batched_row_matvec,
+        _raw.batched_row_matvec_into,
+        matrix,
+        vectors,
+        out=out,
+    )
+
+
+def batched_cosine_distance(left, right, *, out=None):
+    return _array_binary_out(
+        _raw.batched_cosine_distance,
+        _raw.batched_cosine_distance_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def batched_cosine_similarity(left, right, *, out=None):
+    return _array_binary_out(
+        _raw.batched_cosine_similarity,
+        _raw.batched_cosine_similarity_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def batched_dot(left, right, *, out=None):
+    return _array_binary_out(_raw.batched_dot, _raw.batched_dot_into, left, right, out=out)
+
+
+def batched_l2_norm(rows, *, out=None):
+    return _array_unary_out(_raw.batched_l2_norm, _raw.batched_l2_norm_into, rows, out=out)
+
+
+def batched_normalize(rows, *, out=None):
+    return _array_unary_out(_raw.batched_normalize, _raw.batched_normalize_into, rows, out=out)
 
 
 def bfgs(
@@ -829,7 +898,10 @@ def gradient_descent_complex(
 gram_schmidt = _raw.gram_schmidt
 gram_schmidt_classic = _raw.gram_schmidt_classic
 l2_norm = _raw.l2_norm
-matmat = _raw.matmat
+def matmat(left, right, *, out=None):
+    return _array_binary_out(_raw.matmat, _raw.matmat_into, left, right, out=out)
+
+
 matrix_exp = _raw.matrix_exp
 matrix_exp_eigen = _raw.matrix_exp_eigen
 matrix_log_eigen = _raw.matrix_log_eigen
@@ -837,7 +909,8 @@ matrix_log_svd = _raw.matrix_log_svd
 matrix_log_taylor = _raw.matrix_log_taylor
 matrix_power = _raw.matrix_power
 matrix_sign = _raw.matrix_sign
-matvec = _raw.matvec
+def matvec(matrix, vector, *, out=None):
+    return _array_binary_out(_raw.matvec, _raw.matvec_into, matrix, vector, out=out)
 
 
 def momentum_descent(
@@ -960,9 +1033,34 @@ def numerical_jacobian_central(
     return _raw.numerical_jacobian_central(function, x, **kwargs)
 
 
-pairwise_cosine_similarity = _raw.pairwise_cosine_similarity
-pairwise_cosine_distance = _raw.pairwise_cosine_distance
-pairwise_l2_distance = _raw.pairwise_l2_distance
+def pairwise_cosine_similarity(left, right, *, out=None):
+    return _array_binary_out(
+        _raw.pairwise_cosine_similarity,
+        _raw.pairwise_cosine_similarity_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def pairwise_cosine_distance(left, right, *, out=None):
+    return _array_binary_out(
+        _raw.pairwise_cosine_distance,
+        _raw.pairwise_cosine_distance_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def pairwise_l2_distance(left, right, *, out=None):
+    return _array_binary_out(
+        _raw.pairwise_l2_distance,
+        _raw.pairwise_l2_distance_into,
+        left,
+        right,
+        out=out,
+    )
 
 
 def projected_gradient_descent_box(

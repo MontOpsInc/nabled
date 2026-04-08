@@ -25,8 +25,12 @@ smokes `accelerator-wgpu` alongside the existing default/provider/Arrow paths. T
 caller-provided `out=` arrays for output reuse across cube kernels, last-axis reductions/
 normalization, permutation, contraction, and batched matmul, including Fortran-order output
 buffers, while aliasing/writeability conflicts now fail explicitly instead of being papered over
-with silent copies. Remaining `N-PY-007` work is now concentrated in the broader copy-elision and
-allocation-control gaps outside that direct tensor primitive slice. The first
+with silent copies. A second `N-PY-007` dense-kernel pass is also landed: direct NumPy vector and
+matrix hot kernels now accept caller-provided `out=` arrays for pairwise/batched vector rows and
+direct/batched matrix rows, including Fortran-order 2D/3D outputs, while aliasing/writeability
+conflicts again fail explicitly instead of being papered over with silent copies. Remaining
+`N-PY-007` work is now concentrated in the broader copy-elision and reusable-workspace/reuse-object
+gaps outside those direct dense primitive slices. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across

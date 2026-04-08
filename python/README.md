@@ -62,6 +62,10 @@ buffers for cube kernels, last-axis reductions/normalization, permutation, contr
 batched matmul. `out` must already have the expected dtype/rank/shape contract for the selected
 kernel, writable Fortran-order outputs are accepted, and aliasing an input as `out` fails
 explicitly instead of silently copying around the overlap.
+The direct NumPy vector/matrix hot kernels now follow the same pattern: pairwise/batched vector
+rows and direct/batched matrix kernels accept `out=` for caller-provided result reuse under the
+same public names. Writable Fortran-order 2D/3D outputs are accepted where rank permits, and
+aliasing an input as `out` fails explicitly instead of silently materializing around the overlap.
 
 The iterative and callable-driven ML surface now uses typed config objects instead of exposing raw
 parameter shims as the production contract. `conjugate_gradient(...)` / `gmres(...)` accept

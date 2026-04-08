@@ -148,3 +148,61 @@ def test_batched_vector_primitives_accept_complex128():
     np.testing.assert_allclose(
         np.linalg.norm(normalized, axis=1), np.ones(2), rtol=1e-12, atol=1e-12
     )
+
+
+def test_vector_out_reuses_pairwise_and_batched_output_buffers():
+    left = np.asfortranarray(np.array([[1.0, 0.0], [1.0, 1.0]], dtype=np.float32))
+    right = np.asfortranarray(np.array([[0.0, 1.0], [1.0, 1.0]], dtype=np.float32))
+
+    pairwise_out = np.empty((2, 2), dtype=np.float32, order="F")
+    returned_pairwise = pynabled.pairwise_l2_distance(left, right, out=pairwise_out)
+    assert returned_pairwise is pairwise_out
+    np.testing.assert_allclose(pairwise_out, np.linalg.norm(left[:, None, :] - right[None, :, :], axis=2))
+
+    cosine_out = np.empty((2, 2), dtype=np.float32, order="F")
+    returned_cosine = pynabled.pairwise_cosine_similarity(left, right, out=cosine_out)
+    assert returned_cosine is cosine_out
+    expected_cosine = (left @ right.T) / (
+        np.linalg.norm(left, axis=1)[:, None] * np.linalg.norm(right, axis=1)[None, :]
+    )
+    np.testing.assert_allclose(cosine_out, expected_cosine, rtol=1e-6, atol=1e-6)
+
+    dot_out = np.empty(2, dtype=np.float32)
+    returned_dot = pynabled.batched_dot(left, right, out=dot_out)
+    assert returned_dot is dot_out
+    np.testing.assert_allclose(dot_out, np.sum(left * right, axis=1), rtol=1e-6, atol=1e-6)
+
+    normalize_out = np.empty_like(left, order="F")
+    returned_normalized = pynabled.batched_normalize(left, out=normalize_out)
+    assert returned_normalized is normalize_out
+    np.testing.assert_allclose(
+        np.linalg.norm(normalize_out, axis=1),
+        np.ones(left.shape[0], dtype=np.float32),
+        rtol=1e-5,
+        atol=1e-6,
+    )
+
+
+def test_vector_out_reuses_complex_buffers_and_rejects_aliasing():
+    left = np.array(
+        [[1.0 + 1.0j, 0.0 + 2.0j], [2.0 + 0.0j, 0.0 + 2.0j]],
+        dtype=np.complex128,
+    )
+    right = np.array(
+        [[1.0 - 1.0j, 2.0 + 0.0j], [0.0 + 2.0j, 2.0 + 0.0j]],
+        dtype=np.complex128,
+    )
+
+    dot_out = np.empty(2, dtype=np.complex128)
+    returned_dot = pynabled.batched_dot(left, right, out=dot_out)
+    assert returned_dot is dot_out
+    np.testing.assert_allclose(dot_out, np.sum(np.conj(left) * right, axis=1), rtol=1e-12, atol=1e-12)
+
+    norm_out = np.empty(2, dtype=np.float64)
+    returned_norm = pynabled.batched_l2_norm(left, out=norm_out)
+    assert returned_norm is norm_out
+    np.testing.assert_allclose(norm_out, np.linalg.norm(left, axis=1), rtol=1e-12, atol=1e-12)
+
+    aliased = np.ones((2, 2), dtype=np.float64)
+    with pytest.raises(TypeError, match="already borrowed"):
+        pynabled.batched_normalize(aliased, out=aliased)
