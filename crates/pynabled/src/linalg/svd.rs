@@ -81,21 +81,115 @@ pub fn decompose_truncated<'py>(
 pub fn pseudo_inverse<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
     match utils::real_array2(a, "a")? {
         utils::RealReadonlyArray2::F32(arr) => {
-            let result = nabled_linalg::svd::pseudo_inverse_view(
+            let mut output =
+                ndarray::Array2::<f32>::zeros((arr.as_array().ncols(), arr.as_array().nrows()));
+            nabled_linalg::svd::pseudo_inverse_view_into(
                 &arr.as_array(),
                 &nabled_linalg::svd::PseudoInverseConfig::default(),
+                &mut output,
             )
             .map_err(to_py_err)?;
-            Ok(utils::pyarray2_from_owned(py, result))
+            Ok(utils::pyarray2_from_owned(py, output))
         }
         utils::RealReadonlyArray2::F64(arr) => {
-            let result = nabled_linalg::svd::pseudo_inverse_view(
+            let mut output =
+                ndarray::Array2::<f64>::zeros((arr.as_array().ncols(), arr.as_array().nrows()));
+            nabled_linalg::svd::pseudo_inverse_view_into(
                 &arr.as_array(),
                 &nabled_linalg::svd::PseudoInverseConfig::default(),
+                &mut output,
             )
             .map_err(to_py_err)?;
-            Ok(utils::pyarray2_from_owned(py, result))
+            Ok(utils::pyarray2_from_owned(py, output))
         }
+    }
+}
+
+/// Compute pseudo-inverse of a matrix into `output`.
+#[pyfunction(name = "svd_pseudo_inverse_into")]
+pub fn pseudo_inverse_into(a: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> PyResult<()> {
+    match utils::real_array2(a, "a")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let mut out_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::svd::pseudo_inverse_view_into(
+                &arr.as_array(),
+                &nabled_linalg::svd::PseudoInverseConfig::default(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let mut out_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::svd::pseudo_inverse_view_into(
+                &arr.as_array(),
+                &nabled_linalg::svd::PseudoInverseConfig::default(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+    }
+}
+
+/// Reconstruct matrix from SVD components into `output`.
+#[pyfunction(name = "svd_reconstruct_matrix_into")]
+pub fn reconstruct_matrix_into(
+    u: &Bound<'_, PyAny>,
+    singular_values: &Bound<'_, PyAny>,
+    vt: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::numeric_array2(u, "u")?,
+        utils::real_array1(singular_values, "singular_values")?,
+        utils::numeric_array2(vt, "vt")?,
+    ) {
+        (
+            utils::NumericReadonlyArray2::F32(u_arr),
+            utils::RealReadonlyArray1::F32(s_arr),
+            utils::NumericReadonlyArray2::F32(vt_arr),
+        ) => {
+            let mut out_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::svd::reconstruct_matrix_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::F64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::F64(vt_arr),
+        ) => {
+            let mut out_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::svd::reconstruct_matrix_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::C64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::C64(vt_arr),
+        ) => {
+            let mut out_arr =
+                utils::output_array2::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_linalg::svd::reconstruct_matrix_complex_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::NumericReadonlyArray2::C64(_), _, utils::NumericReadonlyArray2::C64(_)) => {
+            Err(complex_svd_component_error())
+        }
+        _ => Err(utils::matching_real_dtype_error(&["u", "singular_values", "vt"])),
     }
 }
 
@@ -117,36 +211,54 @@ pub fn reconstruct_matrix<'py>(
             utils::RealReadonlyArray1::F32(s_arr),
             utils::NumericReadonlyArray2::F32(vt_arr),
         ) => {
-            let svd = nabled_linalg::svd::NdarraySVD {
-                u:               u_arr.as_array().to_owned(),
-                singular_values: s_arr.as_array().to_owned(),
-                vt:              vt_arr.as_array().to_owned(),
-            };
-            Ok(utils::pyarray2_from_owned(py, nabled_linalg::svd::reconstruct_matrix(&svd)))
+            let mut output = ndarray::Array2::<f32>::zeros((
+                u_arr.as_array().nrows(),
+                vt_arr.as_array().ncols(),
+            ));
+            nabled_linalg::svd::reconstruct_matrix_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut output,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, output))
         }
         (
             utils::NumericReadonlyArray2::F64(u_arr),
             utils::RealReadonlyArray1::F64(s_arr),
             utils::NumericReadonlyArray2::F64(vt_arr),
         ) => {
-            let svd = nabled_linalg::svd::NdarraySVD {
-                u:               u_arr.as_array().to_owned(),
-                singular_values: s_arr.as_array().to_owned(),
-                vt:              vt_arr.as_array().to_owned(),
-            };
-            Ok(utils::pyarray2_from_owned(py, nabled_linalg::svd::reconstruct_matrix(&svd)))
+            let mut output = ndarray::Array2::<f64>::zeros((
+                u_arr.as_array().nrows(),
+                vt_arr.as_array().ncols(),
+            ));
+            nabled_linalg::svd::reconstruct_matrix_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut output,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, output))
         }
         (
             utils::NumericReadonlyArray2::C64(u_arr),
             utils::RealReadonlyArray1::F64(s_arr),
             utils::NumericReadonlyArray2::C64(vt_arr),
         ) => {
-            let svd = nabled_linalg::svd::NdarrayComplexSVD {
-                u:               u_arr.as_array().to_owned(),
-                singular_values: s_arr.as_array().to_owned(),
-                vt:              vt_arr.as_array().to_owned(),
-            };
-            Ok(utils::pyarray2_from_owned(py, nabled_linalg::svd::reconstruct_matrix_complex(&svd)))
+            let mut output = ndarray::Array2::<num_complex::Complex64>::zeros((
+                u_arr.as_array().nrows(),
+                vt_arr.as_array().ncols(),
+            ));
+            nabled_linalg::svd::reconstruct_matrix_complex_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut output,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, output))
         }
         (utils::NumericReadonlyArray2::C64(_), _, utils::NumericReadonlyArray2::C64(_)) => {
             Err(complex_svd_component_error())
@@ -157,62 +269,14 @@ pub fn reconstruct_matrix<'py>(
 
 /// Compute condition number from SVD.
 #[pyfunction(name = "svd_condition_number")]
-pub fn condition_number(
-    u: &Bound<'_, PyAny>,
-    singular_values: &Bound<'_, PyAny>,
-    vt: &Bound<'_, PyAny>,
-) -> PyResult<f64> {
-    match (
-        utils::numeric_array2(u, "u")?,
-        utils::real_array1(singular_values, "singular_values")?,
-        utils::numeric_array2(vt, "vt")?,
-    ) {
-        (
-            utils::NumericReadonlyArray2::F32(u_arr),
-            utils::RealReadonlyArray1::F32(s_arr),
-            utils::NumericReadonlyArray2::F32(vt_arr),
-        ) => {
-            let svd = nabled_linalg::svd::NdarraySVD {
-                u:               u_arr.as_array().to_owned(),
-                singular_values: s_arr.as_array().to_owned(),
-                vt:              vt_arr.as_array().to_owned(),
-            };
-            Ok(nabled_linalg::svd::condition_number(&svd).into())
+pub fn condition_number(singular_values: &Bound<'_, PyAny>) -> PyResult<f64> {
+    match utils::real_array1(singular_values, "singular_values")? {
+        utils::RealReadonlyArray1::F32(s_arr) => {
+            Ok(nabled_linalg::svd::condition_number_from_singular_values(&s_arr.as_array()).into())
         }
-        (
-            utils::NumericReadonlyArray2::F64(u_arr),
-            utils::RealReadonlyArray1::F64(s_arr),
-            utils::NumericReadonlyArray2::F64(vt_arr),
-        ) => {
-            let svd = nabled_linalg::svd::NdarraySVD {
-                u:               u_arr.as_array().to_owned(),
-                singular_values: s_arr.as_array().to_owned(),
-                vt:              vt_arr.as_array().to_owned(),
-            };
-            Ok(nabled_linalg::svd::condition_number(&svd))
+        utils::RealReadonlyArray1::F64(s_arr) => {
+            Ok(nabled_linalg::svd::condition_number_from_singular_values(&s_arr.as_array()))
         }
-        (
-            utils::NumericReadonlyArray2::C64(_),
-            utils::RealReadonlyArray1::F64(s_arr),
-            utils::NumericReadonlyArray2::C64(_),
-        ) => {
-            let singular_values = s_arr.as_array();
-            if singular_values.is_empty() {
-                return Ok(0.0);
-            }
-            let max_sv = singular_values.iter().copied().fold(0.0, f64::max);
-            let tolerance = 1.0e-14_f64;
-            let min_sv = singular_values
-                .iter()
-                .copied()
-                .filter(|value| *value > tolerance)
-                .fold(f64::INFINITY, f64::min);
-            if min_sv.is_finite() { Ok(max_sv / min_sv) } else { Ok(f64::INFINITY) }
-        }
-        (utils::NumericReadonlyArray2::C64(_), _, utils::NumericReadonlyArray2::C64(_)) => {
-            Err(complex_svd_component_error())
-        }
-        _ => Err(utils::matching_real_dtype_error(&["u", "singular_values", "vt"])),
     }
 }
 
@@ -221,26 +285,12 @@ pub fn condition_number(
 pub fn rank(singular_values: &Bound<'_, PyAny>, tolerance: Option<f64>) -> PyResult<usize> {
     match utils::real_array1(singular_values, "singular_values")? {
         utils::RealReadonlyArray1::F32(s_arr) => {
-            let s = s_arr.as_array().to_owned();
-            let len = s.len();
-            let svd = nabled_linalg::svd::NdarraySVD {
-                u:               ndarray::Array2::zeros((1, len)),
-                singular_values: s,
-                vt:              ndarray::Array2::zeros((len, 1)),
-            };
             let tolerance =
                 tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?;
-            Ok(nabled_linalg::svd::rank(&svd, tolerance))
+            Ok(nabled_linalg::svd::rank_from_singular_values(&s_arr.as_array(), tolerance))
         }
         utils::RealReadonlyArray1::F64(s_arr) => {
-            let s = s_arr.as_array().to_owned();
-            let len = s.len();
-            let svd = nabled_linalg::svd::NdarraySVD {
-                u:               ndarray::Array2::zeros((1, len)),
-                singular_values: s,
-                vt:              ndarray::Array2::zeros((len, 1)),
-            };
-            Ok(nabled_linalg::svd::rank(&svd, tolerance))
+            Ok(nabled_linalg::svd::rank_from_singular_values(&s_arr.as_array(), tolerance))
         }
     }
 }

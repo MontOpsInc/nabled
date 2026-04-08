@@ -157,6 +157,27 @@ def _array_binary_out(raw, raw_into, left, right, *, out=None):
     return out
 
 
+def _array_ternary_out(raw, raw_into, left, middle, right, *, out=None):
+    if out is None:
+        return raw(left, middle, right)
+    raw_into(left, middle, right, out)
+    return out
+
+
+def _array_unary_out_kwargs(raw, raw_into, array, *, out=None, **kwargs):
+    if out is None:
+        return raw(array, **kwargs)
+    raw_into(array, out, **kwargs)
+    return out
+
+
+def _array_binary_scalar_out(raw, raw_into, array, scalar, *, out=None):
+    if out is None:
+        return raw(array, scalar)
+    raw_into(array, scalar, out)
+    return out
+
+
 def build_features() -> tuple[str, ...]:
     """Return the Cargo feature names compiled into the installed extension."""
     return tuple(_raw.build_features())
@@ -172,16 +193,19 @@ def svd_decompose_truncated(a, k) -> SvdResult:
     return SvdResult(u=u, singular_values=singular_values, vt=vt)
 
 
-def svd_pseudo_inverse(a):
-    return _raw.svd_pseudo_inverse(a)
+def svd_pseudo_inverse(a, *, out=None):
+    return _array_unary_out(_raw.svd_pseudo_inverse, _raw.svd_pseudo_inverse_into, a, out=out)
 
 
-def svd_reconstruct_matrix(result: SvdResult):
-    return _raw.svd_reconstruct_matrix(result.u, result.singular_values, result.vt)
+def svd_reconstruct_matrix(result: SvdResult, *, out=None):
+    if out is None:
+        return _raw.svd_reconstruct_matrix(result.u, result.singular_values, result.vt)
+    _raw.svd_reconstruct_matrix_into(result.u, result.singular_values, result.vt, out)
+    return out
 
 
 def svd_condition_number(result: SvdResult):
-    return _raw.svd_condition_number(result.u, result.singular_values, result.vt)
+    return _raw.svd_condition_number(result.singular_values)
 
 
 def svd_rank(result: SvdResult, tolerance=None):
@@ -350,12 +374,12 @@ def polar_compute(a) -> PolarResult:
     return PolarResult(u=u, p=p)
 
 
-def sylvester_solve(a, b, c):
-    return _raw.sylvester_solve(a, b, c)
+def sylvester_solve(a, b, c, *, out=None):
+    return _array_ternary_out(_raw.sylvester_solve, _raw.sylvester_solve_into, a, b, c, out=out)
 
 
-def lyapunov_solve(a, q):
-    return _raw.lyapunov_solve(a, q)
+def lyapunov_solve(a, q, *, out=None):
+    return _array_binary_out(_raw.lyapunov_solve, _raw.lyapunov_solve_into, a, q, out=out)
 
 
 def batched_qr(matrices) -> list[QrResult]:
@@ -902,13 +926,45 @@ def matmat(left, right, *, out=None):
     return _array_binary_out(_raw.matmat, _raw.matmat_into, left, right, out=out)
 
 
-matrix_exp = _raw.matrix_exp
+def matrix_exp(matrix, max_terms=None, tolerance=None, *, out=None):
+    return _array_unary_out_kwargs(
+        _raw.matrix_exp,
+        _raw.matrix_exp_into,
+        matrix,
+        out=out,
+        max_terms=max_terms,
+        tolerance=tolerance,
+    )
+
+
 matrix_exp_eigen = _raw.matrix_exp_eigen
-matrix_log_eigen = _raw.matrix_log_eigen
-matrix_log_svd = _raw.matrix_log_svd
-matrix_log_taylor = _raw.matrix_log_taylor
-matrix_power = _raw.matrix_power
-matrix_sign = _raw.matrix_sign
+
+
+def matrix_log_eigen(matrix, *, out=None):
+    return _array_unary_out(_raw.matrix_log_eigen, _raw.matrix_log_eigen_into, matrix, out=out)
+
+
+def matrix_log_svd(matrix, *, out=None):
+    return _array_unary_out(_raw.matrix_log_svd, _raw.matrix_log_svd_into, matrix, out=out)
+
+
+def matrix_log_taylor(matrix, max_terms=None, tolerance=None, *, out=None):
+    return _array_unary_out_kwargs(
+        _raw.matrix_log_taylor,
+        _raw.matrix_log_taylor_into,
+        matrix,
+        out=out,
+        max_terms=max_terms,
+        tolerance=tolerance,
+    )
+
+
+def matrix_power(matrix, power, *, out=None):
+    return _array_binary_scalar_out(_raw.matrix_power, _raw.matrix_power_into, matrix, power, out=out)
+
+
+def matrix_sign(matrix, *, out=None):
+    return _array_unary_out(_raw.matrix_sign, _raw.matrix_sign_into, matrix, out=out)
 def matvec(matrix, vector, *, out=None):
     return _array_binary_out(_raw.matvec, _raw.matvec_into, matrix, vector, out=out)
 

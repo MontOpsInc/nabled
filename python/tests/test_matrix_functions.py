@@ -140,3 +140,64 @@ def test_matrix_functions_accept_complex128_where_admitted():
         rtol=1e-10,
         atol=1e-12,
     )
+
+
+def test_matrix_functions_reuse_output_buffers_and_reject_aliasing():
+    rotation = np.array([[0.0, 1.0], [-1.0, 0.0]], dtype=np.float64)
+    identity_like = np.eye(2, dtype=np.float64) + 0.1 * np.ones((2, 2), dtype=np.float64)
+    spd = _make_spd(2, dtype=np.float64)
+    symmetric = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+    sign_input = np.array([[1.0, 0.0], [0.0, -1.0]], dtype=np.float64)
+
+    exp_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_exp = pynabled.matrix_exp(rotation, None, None, out=exp_out)
+    assert returned_exp is exp_out
+    np.testing.assert_allclose(exp_out.T @ exp_out, np.eye(2), rtol=1e-10, atol=1e-14)
+
+    log_taylor_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_log_taylor = pynabled.matrix_log_taylor(identity_like, None, None, out=log_taylor_out)
+    assert returned_log_taylor is log_taylor_out
+    np.testing.assert_allclose(
+        pynabled.matrix_exp(log_taylor_out, None, None),
+        identity_like,
+        rtol=1e-8,
+        atol=1e-10,
+    )
+
+    log_eigen_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_log_eigen = pynabled.matrix_log_eigen(spd, out=log_eigen_out)
+    assert returned_log_eigen is log_eigen_out
+    np.testing.assert_allclose(pynabled.matrix_exp_eigen(log_eigen_out), spd, rtol=1e-9, atol=1e-11)
+
+    log_svd_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_log_svd = pynabled.matrix_log_svd(spd, out=log_svd_out)
+    assert returned_log_svd is log_svd_out
+    np.testing.assert_allclose(pynabled.matrix_exp(log_svd_out, None, None), spd, rtol=1e-9, atol=1e-11)
+
+    power_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_power = pynabled.matrix_power(symmetric, 2.0, out=power_out)
+    assert returned_power is power_out
+    np.testing.assert_allclose(power_out, symmetric @ symmetric, rtol=1e-10, atol=1e-12)
+
+    sign_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_sign = pynabled.matrix_sign(sign_input, out=sign_out)
+    assert returned_sign is sign_out
+    np.testing.assert_allclose(sign_out, sign_input, rtol=1e-10, atol=1e-12)
+
+    with pytest.raises(TypeError, match="already borrowed"):
+        pynabled.matrix_sign(sign_input, out=sign_input)
+
+
+def test_matrix_sign_reuses_complex_output_buffers():
+    hermitian_signed = np.array([[2.0 + 0.0j, 0.0], [0.0, -3.0 + 0.0j]], dtype=np.complex128)
+    sign_out = np.empty((2, 2), dtype=np.complex128, order="F")
+
+    returned = pynabled.matrix_sign(hermitian_signed, out=sign_out)
+
+    assert returned is sign_out
+    np.testing.assert_allclose(
+        sign_out,
+        np.array([[1.0 + 0.0j, 0.0], [0.0, -1.0 + 0.0j]], dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )

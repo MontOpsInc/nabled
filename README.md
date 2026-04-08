@@ -81,6 +81,13 @@ of treating raw tuning-parameter shims as the long-term contract. The callback-d
 optimizer helpers remain convenience APIs rather than no-compromise hot-path equivalents, because
 their objective/gradient evaluations still cross back into Python.
 
+The Python NumPy-facing API now also exposes explicit output-buffer reuse beyond the primitive
+vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `matrix_exp`,
+`matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`, `matrix_sign`,
+`sylvester_solve`, and `lyapunov_solve` all accept `out=` wherever the Rust core already has
+`*_into` coverage. `matrix_exp_eigen` remains allocating-only because the Rust core does not yet
+expose an equivalent `into` path.
+
 Optional provider/backend/Arrow support on the Python side is a source-build workflow using the
 same Cargo feature names as the Rust facade (`openblas-system`, `openblas-static`,
 `netlib-system`, `netlib-static`, `magma-system`, `accelerator-rayon`, `accelerator-wgpu`,

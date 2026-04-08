@@ -2,6 +2,7 @@
 
 import numpy as np
 import pynabled
+import pytest
 
 
 def test_svd_decompose():
@@ -118,3 +119,35 @@ def test_svd_decompose_accepts_complex128():
     assert np.isfinite(kappa)
     assert rank == 2
     np.testing.assert_allclose(recon, a, rtol=1e-10, atol=1e-12)
+
+
+def test_svd_helpers_reuse_output_buffers_and_reject_aliasing():
+    a = np.array([[1.0, 2.0], [3.0, 5.0]], dtype=np.float64)
+    result = pynabled.svd_decompose(a)
+
+    recon_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_recon = pynabled.svd_reconstruct_matrix(result, out=recon_out)
+    assert returned_recon is recon_out
+    np.testing.assert_allclose(recon_out, a, rtol=1e-10, atol=1e-12)
+
+    pinv_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_pinv = pynabled.svd_pseudo_inverse(a, out=pinv_out)
+    assert returned_pinv is pinv_out
+    np.testing.assert_allclose(a @ pinv_out @ a, a, rtol=1e-10, atol=1e-12)
+
+    with pytest.raises(TypeError, match="already borrowed"):
+        pynabled.svd_pseudo_inverse(a, out=a)
+
+
+def test_svd_reconstruct_matrix_reuses_complex_output_buffers():
+    a = np.array(
+        [[1.0 + 1.0j, 2.0 - 1.0j], [0.5 + 0.25j, -1.0 + 2.0j]],
+        dtype=np.complex128,
+    )
+    result = pynabled.svd_decompose(a)
+    recon_out = np.empty((2, 2), dtype=np.complex128, order="F")
+
+    returned = pynabled.svd_reconstruct_matrix(result, out=recon_out)
+
+    assert returned is recon_out
+    np.testing.assert_allclose(recon_out, a, rtol=1e-10, atol=1e-12)

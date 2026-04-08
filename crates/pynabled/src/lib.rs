@@ -57,7 +57,9 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::decompose, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::decompose_truncated, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::pseudo_inverse, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::svd::pseudo_inverse_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::reconstruct_matrix, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::svd::reconstruct_matrix_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::condition_number, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::rank, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::null_space, m)?)?;
@@ -95,7 +97,9 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Sylvester
     m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_sylvester, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_sylvester_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_lyapunov, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_lyapunov_into, m)?)?;
 
     // Triangular
     m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_lower, m)?)?;
@@ -105,12 +109,18 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Matrix functions
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_exp, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_exp_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_exp_eigen, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_taylor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_taylor_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_eigen, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_eigen_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_svd, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_svd_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_power, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_power_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_sign, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_sign_into, m)?)?;
 
     // Orthogonalization
     m.add_function(pyo3::wrap_pyfunction!(linalg::orthogonalization::gram_schmidt, m)?)?;

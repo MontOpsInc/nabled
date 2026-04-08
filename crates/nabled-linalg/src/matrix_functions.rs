@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView2};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView2, DataMut, Ix2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, identity, is_symmetric};
@@ -402,6 +402,24 @@ where
     matrix_exp_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
 }
 
+/// Compute matrix exponential from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    max_terms: usize,
+    tolerance: T,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
+    matrix_exp_view_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
+}
+
 /// Compute complex matrix exponential into `output`.
 ///
 /// # Errors
@@ -414,6 +432,29 @@ pub fn matrix_exp_complex_into(
 ) -> Result<(), MatrixFunctionError> {
     let mut workspace = MatrixFunctionComplexWorkspace::default();
     matrix_exp_complex_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
+}
+
+/// Compute complex matrix exponential from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    max_terms: usize,
+    tolerance: f64,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_exp_complex_view_with_workspace_into(
+        matrix,
+        max_terms,
+        tolerance,
+        output,
+        &mut workspace,
+    )
 }
 
 /// Compute matrix exponential into `output` using reusable `workspace`.
@@ -438,6 +479,33 @@ where
     Ok(())
 }
 
+/// Compute matrix exponential from a view into `output` using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_view_with_workspace_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    max_terms: usize,
+    tolerance: T,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_exp_impl(matrix, max_terms, tolerance)?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
 /// Compute complex matrix exponential into `output` using reusable `workspace`.
 ///
 /// # Errors
@@ -452,6 +520,32 @@ pub fn matrix_exp_complex_with_workspace_into(
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_exp_complex_impl(&matrix.view(), max_terms, tolerance)?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute complex matrix exponential from a view into `output` using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_complex_view_with_workspace_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    max_terms: usize,
+    tolerance: f64,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_exp_complex_impl(matrix, max_terms, tolerance)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -626,6 +720,24 @@ where
     matrix_log_taylor_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
 }
 
+/// Compute matrix logarithm via Taylor expansion from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_log_taylor_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    max_terms: usize,
+    tolerance: T,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
+    matrix_log_taylor_view_with_workspace_into(matrix, max_terms, tolerance, output, &mut workspace)
+}
+
 /// Compute matrix logarithm via Taylor expansion into `output` with reusable `workspace`.
 ///
 /// # Errors
@@ -643,6 +755,34 @@ where
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_log_taylor_impl(&matrix.view(), max_terms, tolerance)?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute matrix logarithm via Taylor expansion from a view into `output` with reusable
+/// `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_log_taylor_view_with_workspace_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    max_terms: usize,
+    tolerance: T,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_log_taylor_impl(matrix, max_terms, tolerance)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -708,6 +848,22 @@ where
     matrix_log_eigen_with_workspace_into(matrix, output, &mut workspace)
 }
 
+/// Compute matrix logarithm via eigen decomposition from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_log_eigen_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
+    matrix_log_eigen_view_with_workspace_into(matrix, output, &mut workspace)
+}
+
 /// Compute matrix logarithm via eigen decomposition into `output` with reusable `workspace`.
 ///
 /// # Errors
@@ -723,6 +879,32 @@ where
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_log_eigen_impl(&matrix.view())?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute matrix logarithm via eigen decomposition from a view into `output` with reusable
+/// `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_log_eigen_view_with_workspace_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_log_eigen_impl(matrix)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -779,6 +961,22 @@ pub fn matrix_log_eigen_complex_into(
     matrix_log_eigen_complex_with_workspace_into(matrix, output, &mut workspace)
 }
 
+/// Compute complex matrix logarithm via Hermitian eigen decomposition from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
+/// or non-positive-definite inputs.
+pub fn matrix_log_eigen_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_log_eigen_complex_view_with_workspace_into(matrix, output, &mut workspace)
+}
+
 /// Compute complex matrix logarithm via Hermitian eigen decomposition into `output`.
 ///
 /// # Errors
@@ -792,6 +990,32 @@ pub fn matrix_log_eigen_complex_with_workspace_into(
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_log_eigen_complex_impl(&matrix.view())?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute complex matrix logarithm via Hermitian eigen decomposition from a view into `output`
+/// using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
+/// or non-positive-definite inputs.
+pub fn matrix_log_eigen_complex_view_with_workspace_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_log_eigen_complex_impl(matrix)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -887,6 +1111,22 @@ where
     matrix_log_svd_with_workspace_into(matrix, output, &mut workspace)
 }
 
+/// Compute matrix logarithm via SVD from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_log_svd_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
+    matrix_log_svd_view_with_workspace_into(matrix, output, &mut workspace)
+}
+
 /// Compute complex matrix logarithm via SVD into `output`.
 ///
 /// # Errors
@@ -898,6 +1138,22 @@ pub fn matrix_log_svd_complex_into(
 ) -> Result<(), MatrixFunctionError> {
     let mut workspace = MatrixFunctionComplexWorkspace::default();
     matrix_log_svd_complex_with_workspace_into(matrix, output, &mut workspace)
+}
+
+/// Compute complex matrix logarithm via SVD from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, decomposition
+/// failure.
+pub fn matrix_log_svd_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_log_svd_complex_view_with_workspace_into(matrix, output, &mut workspace)
 }
 
 /// Compute matrix logarithm via SVD into `output` with reusable `workspace`.
@@ -920,6 +1176,31 @@ where
     Ok(())
 }
 
+/// Compute matrix logarithm via SVD from a view into `output` with reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_log_svd_view_with_workspace_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_log_svd_impl(matrix)?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
 /// Compute complex matrix logarithm via SVD into `output` with reusable `workspace`.
 ///
 /// # Errors
@@ -933,6 +1214,31 @@ pub fn matrix_log_svd_complex_with_workspace_into(
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_log_svd_complex_impl(&matrix.view())?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute complex matrix logarithm via SVD from a view into `output` with reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, decomposition
+/// failure.
+pub fn matrix_log_svd_complex_view_with_workspace_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_log_svd_complex_impl(matrix)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -999,6 +1305,23 @@ where
     matrix_power_with_workspace_into(matrix, power, output, &mut workspace)
 }
 
+/// Compute matrix power from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_power_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    power: T,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
+    matrix_power_view_with_workspace_into(matrix, power, output, &mut workspace)
+}
+
 /// Compute matrix power into `output` using reusable `workspace`.
 ///
 /// # Errors
@@ -1015,6 +1338,32 @@ where
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_power_impl(&matrix.view(), power)?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute matrix power from a view into `output` using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_power_view_with_workspace_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    power: T,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_power_impl(matrix, power)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -1072,6 +1421,23 @@ pub fn matrix_power_complex_into(
     matrix_power_complex_with_workspace_into(matrix, power, output, &mut workspace)
 }
 
+/// Compute complex matrix power from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
+/// inputs.
+pub fn matrix_power_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    power: f64,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_power_complex_view_with_workspace_into(matrix, power, output, &mut workspace)
+}
+
 /// Compute complex matrix power into `output` using reusable `workspace`.
 ///
 /// # Errors
@@ -1086,6 +1452,32 @@ pub fn matrix_power_complex_with_workspace_into(
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_power_complex_impl(&matrix.view(), power)?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute complex matrix power from a view into `output` using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
+/// inputs.
+pub fn matrix_power_complex_view_with_workspace_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    power: f64,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_power_complex_impl(matrix, power)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -1153,6 +1545,22 @@ where
     matrix_sign_with_workspace_into(matrix, output, &mut workspace)
 }
 
+/// Compute matrix sign from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_sign_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
+    matrix_sign_view_with_workspace_into(matrix, output, &mut workspace)
+}
+
 /// Compute matrix sign into `output` using reusable `workspace`.
 ///
 /// # Errors
@@ -1168,6 +1576,31 @@ where
     validate_output_shape(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_sign_impl(&matrix.view())?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute matrix sign from a view into `output` using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_sign_view_with_workspace_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_sign_impl(matrix)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -1229,6 +1662,22 @@ pub fn matrix_sign_complex_into(
     matrix_sign_complex_with_workspace_into(matrix, output, &mut workspace)
 }
 
+/// Compute complex matrix sign from a view into `output`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
+/// inputs.
+pub fn matrix_sign_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_sign_complex_view_with_workspace_into(matrix, output, &mut workspace)
+}
+
 /// Compute complex matrix sign into `output` using reusable `workspace`.
 ///
 /// # Errors
@@ -1242,6 +1691,31 @@ pub fn matrix_sign_complex_with_workspace_into(
     validate_output_shape_complex(matrix, output)?;
     workspace.ensure_square(matrix.nrows());
     let result = matrix_sign_complex_impl(&matrix.view())?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
+/// Compute complex matrix sign from a view into `output` using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shape mismatch, non-Hermitian
+/// inputs.
+pub fn matrix_sign_complex_view_with_workspace_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    if output.dim() != matrix.dim() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match input matrix shape".to_string(),
+        ));
+    }
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_sign_complex_impl(matrix)?;
     workspace.scratch.assign(&result);
     output.assign(&workspace.scratch);
     Ok(())
@@ -1709,5 +2183,328 @@ mod tests {
                 assert!((sign_owned[[i, j]] - sign_ws[[i, j]]).norm() < 1e-12_f64);
             }
         }
+    }
+
+    #[test]
+    #[expect(clippy::too_many_lines)]
+    fn real_view_into_and_workspace_view_into_variants_match_allocating_paths() {
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![2.0_f64, 0.2_f64, 0.2_f64, 3.0_f64]).unwrap();
+
+        let exp_expected = matrix_exp(&matrix, 64, 1e-12_f64).unwrap();
+        let mut exp_into = Array2::<f64>::zeros((2, 2));
+        {
+            let mut out = exp_into.view_mut();
+            matrix_exp_view_into(&matrix.view(), 64, 1e-12_f64, &mut out).unwrap();
+        }
+        let mut exp_ws = Array2::<f64>::zeros((2, 2));
+        let mut exp_workspace = MatrixFunctionWorkspace::default();
+        {
+            let mut out = exp_ws.view_mut();
+            matrix_exp_view_with_workspace_into(
+                &matrix.view(),
+                64,
+                1e-12_f64,
+                &mut out,
+                &mut exp_workspace,
+            )
+            .unwrap();
+        }
+
+        let log_taylor_expected = matrix_log_taylor(&matrix, 64, 1e-12_f64).unwrap();
+        let mut log_taylor_into = Array2::<f64>::zeros((2, 2));
+        {
+            let mut out = log_taylor_into.view_mut();
+            matrix_log_taylor_view_into(&matrix.view(), 64, 1e-12_f64, &mut out).unwrap();
+        }
+        let mut log_taylor_ws = Array2::<f64>::zeros((2, 2));
+        let mut log_taylor_workspace = MatrixFunctionWorkspace::default();
+        {
+            let mut out = log_taylor_ws.view_mut();
+            matrix_log_taylor_view_with_workspace_into(
+                &matrix.view(),
+                64,
+                1e-12_f64,
+                &mut out,
+                &mut log_taylor_workspace,
+            )
+            .unwrap();
+        }
+
+        let log_eigen_expected = matrix_log_eigen(&matrix).unwrap();
+        let mut log_eigen_into = Array2::<f64>::zeros((2, 2));
+        {
+            let mut out = log_eigen_into.view_mut();
+            matrix_log_eigen_view_into(&matrix.view(), &mut out).unwrap();
+        }
+        let mut log_eigen_ws = Array2::<f64>::zeros((2, 2));
+        let mut log_eigen_workspace = MatrixFunctionWorkspace::default();
+        {
+            let mut out = log_eigen_ws.view_mut();
+            matrix_log_eigen_view_with_workspace_into(
+                &matrix.view(),
+                &mut out,
+                &mut log_eigen_workspace,
+            )
+            .unwrap();
+        }
+
+        let log_svd_expected = matrix_log_svd(&matrix).unwrap();
+        let mut log_svd_into = Array2::<f64>::zeros((2, 2));
+        {
+            let mut out = log_svd_into.view_mut();
+            matrix_log_svd_view_into(&matrix.view(), &mut out).unwrap();
+        }
+        let mut log_svd_ws = Array2::<f64>::zeros((2, 2));
+        let mut log_svd_workspace = MatrixFunctionWorkspace::default();
+        {
+            let mut out = log_svd_ws.view_mut();
+            matrix_log_svd_view_with_workspace_into(
+                &matrix.view(),
+                &mut out,
+                &mut log_svd_workspace,
+            )
+            .unwrap();
+        }
+
+        let power_expected = matrix_power(&matrix, 0.5_f64).unwrap();
+        let mut power_into = Array2::<f64>::zeros((2, 2));
+        {
+            let mut out = power_into.view_mut();
+            matrix_power_view_into(&matrix.view(), 0.5_f64, &mut out).unwrap();
+        }
+        let mut power_ws = Array2::<f64>::zeros((2, 2));
+        let mut power_workspace = MatrixFunctionWorkspace::default();
+        {
+            let mut out = power_ws.view_mut();
+            matrix_power_view_with_workspace_into(
+                &matrix.view(),
+                0.5_f64,
+                &mut out,
+                &mut power_workspace,
+            )
+            .unwrap();
+        }
+
+        let sign_expected = matrix_sign(&matrix).unwrap();
+        let mut sign_into = Array2::<f64>::zeros((2, 2));
+        {
+            let mut out = sign_into.view_mut();
+            matrix_sign_view_into(&matrix.view(), &mut out).unwrap();
+        }
+        let mut sign_ws = Array2::<f64>::zeros((2, 2));
+        let mut sign_workspace = MatrixFunctionWorkspace::default();
+        {
+            let mut out = sign_ws.view_mut();
+            matrix_sign_view_with_workspace_into(&matrix.view(), &mut out, &mut sign_workspace)
+                .unwrap();
+        }
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((exp_expected[[i, j]] - exp_into[[i, j]]).abs() < 1e-12_f64);
+                assert!((exp_expected[[i, j]] - exp_ws[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_taylor_expected[[i, j]] - log_taylor_into[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_taylor_expected[[i, j]] - log_taylor_ws[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_eigen_expected[[i, j]] - log_eigen_into[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_eigen_expected[[i, j]] - log_eigen_ws[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_svd_expected[[i, j]] - log_svd_into[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_svd_expected[[i, j]] - log_svd_ws[[i, j]]).abs() < 1e-12_f64);
+                assert!((power_expected[[i, j]] - power_into[[i, j]]).abs() < 1e-12_f64);
+                assert!((power_expected[[i, j]] - power_ws[[i, j]]).abs() < 1e-12_f64);
+                assert!((sign_expected[[i, j]] - sign_into[[i, j]]).abs() < 1e-12_f64);
+                assert!((sign_expected[[i, j]] - sign_ws[[i, j]]).abs() < 1e-12_f64);
+            }
+        }
+    }
+
+    #[test]
+    #[expect(clippy::too_many_lines)]
+    fn complex_view_into_and_workspace_view_into_variants_match_allocating_paths() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(4.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(9.0_f64, 0.0_f64),
+        ])
+        .unwrap();
+        let signed_matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(-4.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(9.0_f64, 0.0_f64),
+        ])
+        .unwrap();
+
+        let exp_expected = matrix_exp_complex(&matrix, 32, 1e-12_f64).unwrap();
+        let mut exp_into = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = exp_into.view_mut();
+            matrix_exp_complex_view_into(&matrix.view(), 32, 1e-12_f64, &mut out).unwrap();
+        }
+        let mut exp_ws = Array2::<Complex64>::zeros((2, 2));
+        let mut complex_workspace = MatrixFunctionComplexWorkspace::default();
+        {
+            let mut out = exp_ws.view_mut();
+            matrix_exp_complex_view_with_workspace_into(
+                &matrix.view(),
+                32,
+                1e-12_f64,
+                &mut out,
+                &mut complex_workspace,
+            )
+            .unwrap();
+        }
+
+        let log_eigen_expected = matrix_log_eigen_complex(&matrix).unwrap();
+        let mut log_eigen_into = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = log_eigen_into.view_mut();
+            matrix_log_eigen_complex_view_into(&matrix.view(), &mut out).unwrap();
+        }
+        let mut log_eigen_ws = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = log_eigen_ws.view_mut();
+            matrix_log_eigen_complex_view_with_workspace_into(
+                &matrix.view(),
+                &mut out,
+                &mut complex_workspace,
+            )
+            .unwrap();
+        }
+
+        let log_svd_expected = matrix_log_svd_complex(&matrix).unwrap();
+        let mut log_svd_into = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = log_svd_into.view_mut();
+            matrix_log_svd_complex_view_into(&matrix.view(), &mut out).unwrap();
+        }
+        let mut log_svd_ws = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = log_svd_ws.view_mut();
+            matrix_log_svd_complex_view_with_workspace_into(
+                &matrix.view(),
+                &mut out,
+                &mut complex_workspace,
+            )
+            .unwrap();
+        }
+
+        let power_expected = matrix_power_complex(&matrix, 0.5_f64).unwrap();
+        let mut power_into = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = power_into.view_mut();
+            matrix_power_complex_view_into(&matrix.view(), 0.5_f64, &mut out).unwrap();
+        }
+        let mut power_ws = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = power_ws.view_mut();
+            matrix_power_complex_view_with_workspace_into(
+                &matrix.view(),
+                0.5_f64,
+                &mut out,
+                &mut complex_workspace,
+            )
+            .unwrap();
+        }
+
+        let sign_expected = matrix_sign_complex(&signed_matrix).unwrap();
+        let mut sign_into = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = sign_into.view_mut();
+            matrix_sign_complex_view_into(&signed_matrix.view(), &mut out).unwrap();
+        }
+        let mut sign_ws = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = sign_ws.view_mut();
+            matrix_sign_complex_view_with_workspace_into(
+                &signed_matrix.view(),
+                &mut out,
+                &mut complex_workspace,
+            )
+            .unwrap();
+        }
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((exp_expected[[i, j]] - exp_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((exp_expected[[i, j]] - exp_ws[[i, j]]).norm() < 1e-12_f64);
+                assert!((log_eigen_expected[[i, j]] - log_eigen_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((log_eigen_expected[[i, j]] - log_eigen_ws[[i, j]]).norm() < 1e-12_f64);
+                assert!((log_svd_expected[[i, j]] - log_svd_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((log_svd_expected[[i, j]] - log_svd_ws[[i, j]]).norm() < 1e-12_f64);
+                assert!((power_expected[[i, j]] - power_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((power_expected[[i, j]] - power_ws[[i, j]]).norm() < 1e-12_f64);
+                assert!((sign_expected[[i, j]] - sign_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((sign_expected[[i, j]] - sign_ws[[i, j]]).norm() < 1e-12_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn view_into_variants_reject_bad_output_shape() {
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![2.0_f64, 0.2_f64, 0.2_f64, 3.0_f64]).unwrap();
+        let mut bad = Array2::<f64>::zeros((1, 1));
+        let mut bad_view = bad.view_mut();
+        assert!(matches!(
+            matrix_exp_view_into(&matrix.view(), 32, 1e-8_f64, &mut bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_log_taylor_view_into(&matrix.view(), 32, 1e-8_f64, &mut bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_log_eigen_view_into(&matrix.view(), &mut bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_log_svd_view_into(&matrix.view(), &mut bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_power_view_into(&matrix.view(), 0.5_f64, &mut bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_sign_view_into(&matrix.view(), &mut bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+
+        let complex_matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(4.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 0.0_f64),
+            Complex64::new(9.0_f64, 0.0_f64),
+        ])
+        .unwrap();
+        let mut complex_bad = Array2::<Complex64>::zeros((1, 1));
+        let mut complex_bad_view = complex_bad.view_mut();
+        assert!(matches!(
+            matrix_exp_complex_view_into(
+                &complex_matrix.view(),
+                32,
+                1e-8_f64,
+                &mut complex_bad_view
+            ),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_log_eigen_complex_view_into(&complex_matrix.view(), &mut complex_bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_log_svd_complex_view_into(&complex_matrix.view(), &mut complex_bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_power_complex_view_into(&complex_matrix.view(), 0.5_f64, &mut complex_bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_sign_complex_view_into(&complex_matrix.view(), &mut complex_bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
     }
 }

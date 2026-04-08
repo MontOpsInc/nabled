@@ -28,9 +28,18 @@ buffers, while aliasing/writeability conflicts now fail explicitly instead of be
 with silent copies. A second `N-PY-007` dense-kernel pass is also landed: direct NumPy vector and
 matrix hot kernels now accept caller-provided `out=` arrays for pairwise/batched vector rows and
 direct/batched matrix rows, including Fortran-order 2D/3D outputs, while aliasing/writeability
-conflicts again fail explicitly instead of being papered over with silent copies. Remaining
-`N-PY-007` work is now concentrated in the broader copy-elision and reusable-workspace/reuse-object
-gaps outside those direct dense primitive slices. The first
+conflicts again fail explicitly instead of being papered over with silent copies. A third
+`N-PY-007` higher-level dense-helper pass is now also landed: `svd_pseudo_inverse`,
+`svd_reconstruct_matrix`, `matrix_exp`, `matrix_log_taylor`, `matrix_log_eigen`,
+`matrix_log_svd`, `matrix_power`, `matrix_sign`, `sylvester_solve`, and `lyapunov_solve` now
+accept caller-provided `out=` arrays where the Rust core already exposes `*_into` execution, and
+the SVD helper rank/condition paths now operate directly on singular values instead of rebuilding
+owned intermediary decomposition structs. The repo gate is green again (`just checks`), the Rust
+coverage gate is back above threshold (`90.71%` line coverage), and the Python package gate
+remains green (`194 passed, 22 skipped`, `92%` Python coverage). Remaining `N-PY-007` work is now
+concentrated in reusable-workspace/reuse-object exposure and the smaller set of allocation-control
+holes that still do not have Python-visible equivalents; `matrix_exp_eigen` remains
+allocation-only because the Rust core does not yet expose an `into` path for that row. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across

@@ -66,6 +66,14 @@ The direct NumPy vector/matrix hot kernels now follow the same pattern: pairwise
 rows and direct/batched matrix kernels accept `out=` for caller-provided result reuse under the
 same public names. Writable Fortran-order 2D/3D outputs are accepted where rank permits, and
 aliasing an input as `out` fails explicitly instead of silently materializing around the overlap.
+The currently admitted higher-level dense helpers now follow the same explicit reuse contract where
+the Rust core already exposes `*_into`: `svd_pseudo_inverse`, `svd_reconstruct_matrix`,
+`matrix_exp`, `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`,
+`matrix_sign`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` with the same
+writeability/shape/dtype requirements. `svd_condition_number(...)` and `svd_rank(...)` now read
+singular values directly instead of rebuilding owned intermediary SVD objects, while
+`matrix_exp_eigen(...)` remains allocating-only because the Rust core does not yet expose an
+equivalent `into` path.
 
 The iterative and callable-driven ML surface now uses typed config objects instead of exposing raw
 parameter shims as the production contract. `conjugate_gradient(...)` / `gmres(...)` accept
