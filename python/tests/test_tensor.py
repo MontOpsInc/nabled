@@ -79,6 +79,77 @@ def test_tensor_batched_matmul_last_two():
         np.testing.assert_allclose(out[i], left[i] @ right[i], rtol=1e-10)
 
 
+def test_tensor_out_reuses_real_output_buffers():
+    tensor = np.asfortranarray(np.random.randn(2, 3, 4).astype(np.float32))
+    sum_out = np.empty((2, 3), dtype=np.float32, order="F")
+    returned_sum = pynabled.tensor_sum_last_axis(tensor, out=sum_out)
+    assert returned_sum is sum_out
+    np.testing.assert_allclose(sum_out, tensor.sum(axis=-1), rtol=5e-5, atol=5e-5)
+
+    norm_out = np.empty((2, 3), dtype=np.float32, order="F")
+    returned_norm = pynabled.tensor_l2_norm_last_axis(tensor, out=norm_out)
+    assert returned_norm is norm_out
+    np.testing.assert_allclose(norm_out, np.linalg.norm(tensor, axis=-1), rtol=5e-5, atol=5e-5)
+
+    normalized_out = np.empty_like(tensor, order="F")
+    returned_normalized = pynabled.tensor_normalize_last_axis(tensor, out=normalized_out)
+    assert returned_normalized is normalized_out
+    np.testing.assert_allclose(
+        np.linalg.norm(normalized_out, axis=-1),
+        np.ones(tensor.shape[:-1], dtype=np.float32),
+        rtol=5e-5,
+        atol=5e-5,
+    )
+
+
+def test_tensor_out_reuses_binary_output_buffers():
+    cube = np.random.randn(2, 3, 4).astype(np.float64)
+    vectors = np.random.randn(2, 4).astype(np.float64)
+    matvec_out = np.empty((2, 3), dtype=np.float64, order="F")
+    returned_matvec = pynabled.tensor_cube_matvec(cube, vectors, out=matvec_out)
+    assert returned_matvec is matvec_out
+    np.testing.assert_allclose(matvec_out, np.einsum("bij,bj->bi", cube, vectors), rtol=1e-10)
+
+    right = np.random.randn(2, 4, 5).astype(np.float64)
+    matmul_out = np.empty((2, 3, 5), dtype=np.float64, order="F")
+    returned_matmul = pynabled.tensor_batched_matmul_last_two(cube, right, out=matmul_out)
+    assert returned_matmul is matmul_out
+    np.testing.assert_allclose(matmul_out, np.matmul(cube, right), rtol=1e-10)
+
+    contract_left = np.random.randn(2, 3, 4).astype(np.float64)
+    contract_right = np.random.randn(4, 5).astype(np.float64)
+    contract_out = np.empty((2, 3, 5), dtype=np.float64, order="F")
+    returned_contract = pynabled.tensor_contract_axes(
+        contract_left, contract_right, [2], [0], out=contract_out
+    )
+    assert returned_contract is contract_out
+    np.testing.assert_allclose(
+        contract_out,
+        np.einsum("ijk,kl->ijl", contract_left, contract_right),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+
+def test_tensor_out_reuses_complex_output_buffers_and_rejects_aliasing():
+    tensor = (np.random.randn(2, 3, 4) + 1j * np.random.randn(2, 3, 4)).astype(np.complex128)
+    complex_sum_out = np.empty((2, 3), dtype=np.complex128, order="F")
+    returned_sum = pynabled.tensor_sum_last_axis_complex(tensor, out=complex_sum_out)
+    assert returned_sum is complex_sum_out
+    np.testing.assert_allclose(complex_sum_out, tensor.sum(axis=-1), rtol=1e-10, atol=1e-10)
+
+    complex_norm_out = np.empty((2, 3), dtype=np.float64, order="F")
+    returned_norm = pynabled.tensor_l2_norm_last_axis_complex(tensor, out=complex_norm_out)
+    assert returned_norm is complex_norm_out
+    np.testing.assert_allclose(
+        complex_norm_out, np.linalg.norm(tensor, axis=-1), rtol=1e-10, atol=1e-10
+    )
+
+    aliased = np.ones((2, 3, 4), dtype=np.float64)
+    with pytest.raises(TypeError, match="already borrowed"):
+        pynabled.tensor_normalize_last_axis(aliased, out=aliased)
+
+
 def test_tensor_hosvd3():
     cube = np.random.randn(3, 4, 5).astype(np.float64)
     result = pynabled.tensor_hosvd3(cube, 2, 2, 2)

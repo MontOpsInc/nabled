@@ -118,23 +118,44 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Tensor
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matvec, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matvec_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matvec_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matvec_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matmat, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matmat_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matmat_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matmat_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::sum_last_axis, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::sum_last_axis_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::sum_last_axis_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::sum_last_axis_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::l2_norm_last_axis, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::l2_norm_last_axis_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::l2_norm_last_axis_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::l2_norm_last_axis_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::normalize_last_axis, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::normalize_last_axis_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::normalize_last_axis_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::normalize_last_axis_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_dot_last_axis, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_dot_last_axis_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_dot_last_axis_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_dot_last_axis_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::permute_axes, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::permute_axes_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::permute_axes_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::permute_axes_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::contract_axes, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::contract_axes_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::contract_axes_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::contract_axes_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_matmul_last_two, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_matmul_last_two_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::batched_matmul_last_two_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::tensor::batched_matmul_last_two_complex_into,
+        m
+    )?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::einsum, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::einsum_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd3, m)?)?;

@@ -5,8 +5,8 @@ use std::ops::{AddAssign, Mul};
 
 use nabled_core::scalar::NabledReal;
 use ndarray::{
-    Array1, Array2, Array3, ArrayD, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2,
-    ArrayViewMut3, Axis, IxDyn, s,
+    Array1, Array2, Array3, ArrayBase, ArrayD, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2,
+    ArrayViewMut3, Axis, DataMut, IxDyn, s,
 };
 use num_complex::Complex64;
 
@@ -410,15 +410,29 @@ fn uncontracted_axes(ndim: usize, contracted: &[usize]) -> Vec<usize> {
 
 fn shape_product(shape: &[usize]) -> usize { shape.iter().copied().product::<usize>().max(1) }
 
-pub(crate) fn contract_view_into_impl<T>(
+fn unflatten_prefix_index(mut flat: usize, shape: &[usize]) -> Vec<usize> {
+    if shape.is_empty() {
+        return Vec::new();
+    }
+
+    let mut index = vec![0; shape.len()];
+    for axis in (0..shape.len()).rev() {
+        index[axis] = flat % shape[axis];
+        flat /= shape[axis];
+    }
+    index
+}
+
+pub(crate) fn contract_view_into_impl<T, S>(
     left: &ArrayViewD<'_, T>,
     right: &ArrayViewD<'_, T>,
     left_axes: &[usize],
     right_axes: &[usize],
-    output: &mut ArrayD<T>,
+    output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError>
 where
     T: Copy + Default + AddAssign + Mul<Output = T>,
+    S: DataMut<Elem = T>,
 {
     if left_axes.len() != right_axes.len() {
         return Err(TensorError::DimensionMismatch);
@@ -454,6 +468,9 @@ where
         shape_product(&right_free_axes.iter().map(|axis| right.shape()[*axis]).collect::<Vec<_>>());
     let contract_size =
         shape_product(&left_axes.iter().map(|axis| left.shape()[*axis]).collect::<Vec<_>>());
+    let left_free_shape = left_free_axes.iter().map(|axis| left.shape()[*axis]).collect::<Vec<_>>();
+    let right_free_shape =
+        right_free_axes.iter().map(|axis| right.shape()[*axis]).collect::<Vec<_>>();
 
     let left_width = if left_axes.is_empty() { 1 } else { contract_size };
     let right_height = if right_axes.is_empty() { 1 } else { contract_size };
@@ -472,31 +489,37 @@ where
         .into_shape_with_order((right_height, right_outer))
         .map_err(|_| TensorError::DimensionMismatch)?;
 
-    let mut output_2d = output
-        .view_mut()
-        .into_shape_with_order((left_outer, right_outer))
-        .map_err(|_| TensorError::DimensionMismatch)?;
-    output_2d.fill(T::default());
-
     for i in 0..left_outer {
-        for k in 0..left_width {
-            let lhs = left_2d[[i, k]];
-            for j in 0..right_outer {
-                output_2d[[i, j]] += lhs * right_2d[[k, j]];
+        let left_index = unflatten_prefix_index(i, &left_free_shape);
+        let left_len = left_index.len();
+        let mut output_index = left_index;
+        output_index.resize(left_len + right_free_shape.len(), 0);
+
+        for j in 0..right_outer {
+            let right_index = unflatten_prefix_index(j, &right_free_shape);
+            if !right_index.is_empty() {
+                output_index[left_len..].copy_from_slice(&right_index);
             }
+
+            let mut accumulated = T::default();
+            for k in 0..left_width {
+                accumulated += left_2d[[i, k]] * right_2d[[k, j]];
+            }
+            output[IxDyn(&output_index)] = accumulated;
         }
     }
 
     Ok(())
 }
 
-pub(crate) fn batched_matmul_last_two_view_into_impl<T>(
+pub(crate) fn batched_matmul_last_two_view_into_impl<T, S>(
     left: &ArrayViewD<'_, T>,
     right: &ArrayViewD<'_, T>,
-    output: &mut ArrayD<T>,
+    output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError>
 where
     T: Copy + Default + AddAssign + Mul<Output = T>,
+    S: DataMut<Elem = T>,
 {
     if left.ndim() < 2 || right.ndim() < 2 || left.ndim() != right.ndim() {
         return Err(TensorError::DimensionMismatch);
@@ -533,18 +556,22 @@ where
         .view()
         .into_shape_with_order((batches, inner, cols))
         .map_err(|_| TensorError::DimensionMismatch)?;
-    let mut output_3d = output
-        .view_mut()
-        .into_shape_with_order((batches, rows, cols))
-        .map_err(|_| TensorError::DimensionMismatch)?;
-    output_3d.fill(T::default());
+    output.fill(T::default());
 
     for batch in 0..batches {
+        let batch_index = unflatten_prefix_index(batch, &left.shape()[..batch_ndim]);
+        let mut output_index = batch_index;
+        output_index.push(0);
+        output_index.push(0);
         for row in 0..rows {
+            let row_axis = output_index.len() - 2;
+            let col_axis = output_index.len() - 1;
+            output_index[row_axis] = row;
             for k in 0..inner {
                 let lhs = left_3d[[batch, row, k]];
                 for col in 0..cols {
-                    output_3d[[batch, row, col]] += lhs * right_3d[[batch, k, col]];
+                    output_index[col_axis] = col;
+                    output[IxDyn(&output_index)] += lhs * right_3d[[batch, k, col]];
                 }
             }
         }
@@ -920,10 +947,14 @@ pub fn sum_last_axis_view<T: NabledReal + Default>(
 ///
 /// # Errors
 /// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
-pub fn sum_last_axis_view_into<T: NabledReal>(
+pub fn sum_last_axis_view_into<T, S>(
     tensor: &ArrayViewD<'_, T>,
-    output: &mut ArrayD<T>,
-) -> Result<(), TensorError> {
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
     let axis = Axis(tensor_view.ndim() - 1);
@@ -953,10 +984,34 @@ pub fn l2_norm_last_axis_view<T: NabledReal>(
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty(&tensor_view)?;
 
-    let axis = Axis(tensor_view.ndim() - 1);
     let mut output_shape = tensor_view.shape().to_vec();
     let _ = output_shape.pop();
     let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
+    l2_norm_last_axis_view_into(tensor, &mut output)?;
+    Ok(output)
+}
+
+/// Compute L2 norm along the last axis of a tensor view into `output`.
+///
+/// # Errors
+/// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
+pub fn l2_norm_last_axis_view_into<T, S>(
+    tensor: &ArrayViewD<'_, T>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty(&tensor_view)?;
+
+    let axis = Axis(tensor_view.ndim() - 1);
+    let mut output_shape = tensor_view.shape().to_vec();
+    let _ = output_shape.pop();
+    if output.shape() != output_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
     for (out_value, lane) in output.iter_mut().zip(tensor_view.lanes(axis)) {
         let sum_sq = lane
             .iter()
@@ -965,7 +1020,7 @@ pub fn l2_norm_last_axis_view<T: NabledReal>(
             .fold(T::zero(), |acc, value| acc + value);
         *out_value = sum_sq.sqrt();
     }
-    Ok(output)
+    Ok(())
 }
 
 /// Normalize tensor values along the last axis.
@@ -987,6 +1042,29 @@ pub fn normalize_last_axis_view<T: NabledReal>(
     validate_tensor_nd_non_empty(&tensor_view)?;
 
     let mut output = tensor.to_owned();
+    normalize_last_axis_view_into(tensor, &mut output)?;
+    Ok(output)
+}
+
+/// Normalize tensor values along the last axis into `output`.
+///
+/// # Errors
+/// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
+pub fn normalize_last_axis_view_into<T, S>(
+    tensor: &ArrayViewD<'_, T>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty(&tensor_view)?;
+    if output.shape() != tensor_view.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    output.assign(&tensor_view);
     let axis = Axis(tensor_view.ndim() - 1);
     for mut lane in output.lanes_mut(axis) {
         let norm = lane
@@ -1000,7 +1078,7 @@ pub fn normalize_last_axis_view<T: NabledReal>(
             *value /= denominator;
         }
     }
-    Ok(output)
+    Ok(())
 }
 
 /// Compute batched dot products along the last axis of two tensors.
@@ -1036,10 +1114,40 @@ pub fn batched_dot_last_axis_view<T: NabledReal>(
         return Err(TensorError::DimensionMismatch);
     }
 
-    let axis = Axis(left_view.ndim() - 1);
     let mut output_shape = left_view.shape().to_vec();
     let _ = output_shape.pop();
     let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
+    batched_dot_last_axis_view_into(left, right, &mut output)?;
+    Ok(output)
+}
+
+/// Compute batched dot products along the last axis of two tensor views into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty, dimensions are incompatible, or output shape mismatches.
+pub fn batched_dot_last_axis_view_into<T, S>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    if left_view.shape() != right_view.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let axis = Axis(left_view.ndim() - 1);
+    let mut output_shape = left_view.shape().to_vec();
+    let _ = output_shape.pop();
+    if output.shape() != output_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
     for ((out_value, left_lane), right_lane) in
         output.iter_mut().zip(left_view.lanes(axis)).zip(right_view.lanes(axis))
     {
@@ -1050,7 +1158,7 @@ pub fn batched_dot_last_axis_view<T: NabledReal>(
             .fold(T::zero(), |acc, value| acc + value);
         *out_value = dot;
     }
-    Ok(output)
+    Ok(())
 }
 
 /// Permute tensor axes using an explicit axis ordering.
@@ -1077,7 +1185,38 @@ pub fn permute_axes_view<T: NabledReal>(
     if !validate_permutation(tensor_view.ndim(), permutation) {
         return Err(TensorError::DimensionMismatch);
     }
-    Ok(tensor_view.permuted_axes(permutation.to_vec()).to_owned())
+    let mut output = ArrayD::<T>::zeros(IxDyn(
+        &permutation.iter().map(|axis| tensor_view.shape()[*axis]).collect::<Vec<_>>(),
+    ));
+    permute_axes_view_into(tensor, permutation, &mut output)?;
+    Ok(output)
+}
+
+/// Permute tensor axes from a tensor view into `output`.
+///
+/// # Errors
+/// Returns an error if the tensor is empty, has zero dimensions, permutation is invalid, or the
+/// output shape mismatches.
+pub fn permute_axes_view_into<T, S>(
+    tensor: &ArrayViewD<'_, T>,
+    permutation: &[usize],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty(&tensor_view)?;
+    if !validate_permutation(tensor_view.ndim(), permutation) {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let permuted = tensor_view.permuted_axes(permutation.to_vec());
+    if output.shape() != permuted.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    output.assign(&permuted);
+    Ok(())
 }
 
 /// Contract two tensors along explicit axis sets.
@@ -1159,18 +1298,23 @@ pub fn contract_axes_into<T: NabledReal + Default>(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
-pub fn contract_axes_view_into<T: NabledReal + Default>(
+pub fn contract_axes_view_into<T, S>(
     left: &ArrayViewD<'_, T>,
     right: &ArrayViewD<'_, T>,
     left_axes: &[usize],
     right_axes: &[usize],
-    output: &mut ArrayD<T>,
-) -> Result<(), TensorError> {
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal + Default,
+    S: DataMut<Elem = T>,
+{
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
     validate_tensor_nd_non_empty(&right_view)?;
-    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, output)
+    let mut output_view = output.view_mut();
+    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, &mut output_view)
 }
 
 /// Perform N-D batched matrix multiplication over the last two axes.
@@ -1244,16 +1388,21 @@ pub fn batched_matmul_last_two_into<T: NabledReal + Default>(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
-pub fn batched_matmul_last_two_view_into<T: NabledReal + Default>(
+pub fn batched_matmul_last_two_view_into<T, S>(
     left: &ArrayViewD<'_, T>,
     right: &ArrayViewD<'_, T>,
-    output: &mut ArrayD<T>,
-) -> Result<(), TensorError> {
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal + Default,
+    S: DataMut<Elem = T>,
+{
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty(&left_view)?;
     validate_tensor_nd_non_empty(&right_view)?;
-    batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
+    let mut output_view = output.view_mut();
+    batched_matmul_last_two_view_into_impl(&left_view, &right_view, &mut output_view)
 }
 
 /// Reduce a complex tensor along its last axis by summation.
@@ -1281,10 +1430,13 @@ pub fn sum_last_axis_complex_view(
 ///
 /// # Errors
 /// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
-pub fn sum_last_axis_complex_view_into(
+pub fn sum_last_axis_complex_view_into<S>(
     tensor: &ArrayViewD<'_, Complex64>,
-    output: &mut ArrayD<Complex64>,
-) -> Result<(), TensorError> {
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    S: DataMut<Elem = Complex64>,
+{
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
     let axis = Axis(tensor_view.ndim() - 1);
@@ -1314,15 +1466,38 @@ pub fn l2_norm_last_axis_complex_view(
     let tensor_view = tensor.view();
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
 
-    let axis = Axis(tensor_view.ndim() - 1);
     let mut output_shape = tensor_view.shape().to_vec();
     let _ = output_shape.pop();
     let mut output = ArrayD::<f64>::zeros(IxDyn(&output_shape));
+    l2_norm_last_axis_complex_view_into(tensor, &mut output)?;
+    Ok(output)
+}
+
+/// Compute L2 norm along the last axis of a complex tensor view into `output`.
+///
+/// # Errors
+/// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
+pub fn l2_norm_last_axis_complex_view_into<S>(
+    tensor: &ArrayViewD<'_, Complex64>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    S: DataMut<Elem = f64>,
+{
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty_complex(&tensor_view)?;
+
+    let axis = Axis(tensor_view.ndim() - 1);
+    let mut output_shape = tensor_view.shape().to_vec();
+    let _ = output_shape.pop();
+    if output.shape() != output_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
     for (out_value, lane) in output.iter_mut().zip(tensor_view.lanes(axis)) {
         let sum_sq = lane.iter().map(Complex64::norm_sqr).sum::<f64>();
         *out_value = sum_sq.sqrt();
     }
-    Ok(output)
+    Ok(())
 }
 
 /// Normalize complex tensor values along the last axis.
@@ -1346,6 +1521,28 @@ pub fn normalize_last_axis_complex_view(
     validate_tensor_nd_non_empty_complex(&tensor_view)?;
 
     let mut output = tensor_view.to_owned();
+    normalize_last_axis_complex_view_into(tensor, &mut output)?;
+    Ok(output)
+}
+
+/// Normalize complex tensor values along the last axis into `output`.
+///
+/// # Errors
+/// Returns an error if tensor is empty, has zero dimensions, or output shape mismatches.
+pub fn normalize_last_axis_complex_view_into<S>(
+    tensor: &ArrayViewD<'_, Complex64>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty_complex(&tensor_view)?;
+    if output.shape() != tensor_view.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    output.assign(&tensor_view);
     let axis = Axis(tensor_view.ndim() - 1);
     for mut lane in output.lanes_mut(axis) {
         let norm = lane.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
@@ -1354,7 +1551,7 @@ pub fn normalize_last_axis_complex_view(
             *value /= denominator;
         }
     }
-    Ok(output)
+    Ok(())
 }
 
 /// Compute batched complex dot products along the last axis of two tensors.
@@ -1390,10 +1587,39 @@ pub fn batched_dot_last_axis_complex_view(
         return Err(TensorError::DimensionMismatch);
     }
 
-    let axis = Axis(left_view.ndim() - 1);
     let mut output_shape = left_view.shape().to_vec();
     let _ = output_shape.pop();
     let mut output = ArrayD::<Complex64>::zeros(IxDyn(&output_shape));
+    batched_dot_last_axis_complex_view_into(left, right, &mut output)?;
+    Ok(output)
+}
+
+/// Compute batched complex dot products along the last axis of two tensor views into `output`.
+///
+/// # Errors
+/// Returns an error if inputs are empty, dimensions are incompatible, or output shape mismatches.
+pub fn batched_dot_last_axis_complex_view_into<S>(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+    if left_view.shape() != right_view.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let axis = Axis(left_view.ndim() - 1);
+    let mut output_shape = left_view.shape().to_vec();
+    let _ = output_shape.pop();
+    if output.shape() != output_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
     for ((out_value, left_lane), right_lane) in
         output.iter_mut().zip(left_view.lanes(axis)).zip(right_view.lanes(axis))
     {
@@ -1404,7 +1630,7 @@ pub fn batched_dot_last_axis_complex_view(
             .sum::<Complex64>();
         *out_value = dot;
     }
-    Ok(output)
+    Ok(())
 }
 
 /// Permute complex tensor axes using an explicit axis ordering.
@@ -1431,7 +1657,37 @@ pub fn permute_axes_complex_view(
     if !validate_permutation(tensor_view.ndim(), permutation) {
         return Err(TensorError::DimensionMismatch);
     }
-    Ok(tensor_view.permuted_axes(permutation.to_vec()).to_owned())
+    let mut output = ArrayD::<Complex64>::zeros(IxDyn(
+        &permutation.iter().map(|axis| tensor_view.shape()[*axis]).collect::<Vec<_>>(),
+    ));
+    permute_axes_complex_view_into(tensor, permutation, &mut output)?;
+    Ok(output)
+}
+
+/// Permute complex tensor axes from a tensor view into `output`.
+///
+/// # Errors
+/// Returns an error if the tensor is empty, has zero dimensions, permutation is invalid, or the
+/// output shape mismatches.
+pub fn permute_axes_complex_view_into<S>(
+    tensor: &ArrayViewD<'_, Complex64>,
+    permutation: &[usize],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let tensor_view = tensor.view();
+    validate_tensor_nd_non_empty_complex(&tensor_view)?;
+    if !validate_permutation(tensor_view.ndim(), permutation) {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let permuted = tensor_view.permuted_axes(permutation.to_vec());
+    if output.shape() != permuted.shape() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    output.assign(&permuted);
+    Ok(())
 }
 
 /// Contract two complex tensors along explicit axis sets.
@@ -1517,18 +1773,22 @@ pub fn contract_axes_complex_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, axes are invalid, or dimensions are incompatible.
-pub fn contract_axes_complex_view_into(
+pub fn contract_axes_complex_view_into<S>(
     left: &ArrayViewD<'_, Complex64>,
     right: &ArrayViewD<'_, Complex64>,
     left_axes: &[usize],
     right_axes: &[usize],
-    output: &mut ArrayD<Complex64>,
-) -> Result<(), TensorError> {
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    S: DataMut<Elem = Complex64>,
+{
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty_complex(&left_view)?;
     validate_tensor_nd_non_empty_complex(&right_view)?;
-    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, output)
+    let mut output_view = output.view_mut();
+    contract_view_into_impl(&left_view, &right_view, left_axes, right_axes, &mut output_view)
 }
 
 /// Perform N-D batched complex matrix multiplication over the last two axes.
@@ -1602,16 +1862,20 @@ pub fn batched_matmul_last_two_complex_into(
 ///
 /// # Errors
 /// Returns an error if inputs are empty, have rank < 2, or dimensions are incompatible.
-pub fn batched_matmul_last_two_complex_view_into(
+pub fn batched_matmul_last_two_complex_view_into<S>(
     left: &ArrayViewD<'_, Complex64>,
     right: &ArrayViewD<'_, Complex64>,
-    output: &mut ArrayD<Complex64>,
-) -> Result<(), TensorError> {
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    S: DataMut<Elem = Complex64>,
+{
     let left_view = left.view();
     let right_view = right.view();
     validate_tensor_nd_non_empty_complex(&left_view)?;
     validate_tensor_nd_non_empty_complex(&right_view)?;
-    batched_matmul_last_two_view_into_impl(&left_view, &right_view, output)
+    let mut output_view = output.view_mut();
+    batched_matmul_last_two_view_into_impl(&left_view, &right_view, &mut output_view)
 }
 
 fn parse_einsum_two_operands(expression: &str) -> Result<EinsumOperands, TensorError> {

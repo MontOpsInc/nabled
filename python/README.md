@@ -57,6 +57,11 @@ Callable-driven `jacobian` / `optimization` workflows preserve the caller's real
 and their `float32` defaults use `float32`-appropriate finite-difference / convergence settings
 instead of raw `float64` thresholds. Some higher-level wrappers still materialize owned arrays
 internally where the current Rust API shape requires it.
+The direct NumPy tensor primitive kernels now also accept `out=` so callers can reuse output
+buffers for cube kernels, last-axis reductions/normalization, permutation, contraction, and
+batched matmul. `out` must already have the expected dtype/rank/shape contract for the selected
+kernel, writable Fortran-order outputs are accepted, and aliasing an input as `out` fails
+explicitly instead of silently copying around the overlap.
 
 The iterative and callable-driven ML surface now uses typed config objects instead of exposing raw
 parameter shims as the production contract. `conjugate_gradient(...)` / `gmres(...)` accept

@@ -21,6 +21,12 @@ documentation/release polish, and PyPI supply-chain hardening. `N-PY-005` is now
 packaging metadata no longer advertises extras that cannot enable Cargo features, installed builds
 can report compiled features via `pynabled.build_features()`, and the Python package gate now
 smokes `accelerator-wgpu` alongside the existing default/provider/Arrow paths. The first
+`N-PY-007` performance pass is now also landed: direct NumPy tensor primitive kernels now accept
+caller-provided `out=` arrays for output reuse across cube kernels, last-axis reductions/
+normalization, permutation, contraction, and batched matmul, including Fortran-order output
+buffers, while aliasing/writeability conflicts now fail explicitly instead of being papered over
+with silent copies. Remaining `N-PY-007` work is now concentrated in the broader copy-elision and
+allocation-control gaps outside that direct tensor primitive slice. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across

@@ -1161,26 +1161,193 @@ def adam_complex(
     return _raw.adam_complex(initial, objective, gradient, **kwargs)
 
 
-tensor_batched_dot_last_axis = _raw.tensor_batched_dot_last_axis
-tensor_batched_dot_last_axis_complex = _raw.tensor_batched_dot_last_axis_complex
-tensor_batched_matmul_last_two = _raw.tensor_batched_matmul_last_two
-tensor_batched_matmul_last_two_complex = _raw.tensor_batched_matmul_last_two_complex
-tensor_contract_axes = _raw.tensor_contract_axes
-tensor_contract_axes_complex = _raw.tensor_contract_axes_complex
-tensor_cube_matmat = _raw.tensor_cube_matmat
-tensor_cube_matmat_complex = _raw.tensor_cube_matmat_complex
-tensor_cube_matvec = _raw.tensor_cube_matvec
-tensor_cube_matvec_complex = _raw.tensor_cube_matvec_complex
+def _tensor_unary_out(raw, raw_into, tensor, *, out=None):
+    if out is None:
+        return raw(tensor)
+    raw_into(tensor, out)
+    return out
+
+
+def _tensor_binary_out(raw, raw_into, left, right, *, out=None):
+    if out is None:
+        return raw(left, right)
+    raw_into(left, right, out)
+    return out
+
+
+def _tensor_permute_out(raw, raw_into, tensor, permutation, *, out=None):
+    if out is None:
+        return raw(tensor, permutation)
+    raw_into(tensor, permutation, out)
+    return out
+
+
+def _tensor_contract_out(raw, raw_into, left, right, left_axes, right_axes, *, out=None):
+    if out is None:
+        return raw(left, right, left_axes, right_axes)
+    raw_into(left, right, left_axes, right_axes, out)
+    return out
+
+
+def tensor_cube_matvec(cube, vectors, *, out=None):
+    return _tensor_binary_out(_raw.tensor_cube_matvec, _raw.tensor_cube_matvec_into, cube, vectors, out=out)
+
+
+def tensor_cube_matvec_complex(cube, vectors, *, out=None):
+    return _tensor_binary_out(
+        _raw.tensor_cube_matvec_complex,
+        _raw.tensor_cube_matvec_complex_into,
+        cube,
+        vectors,
+        out=out,
+    )
+
+
+def tensor_cube_matmat(left, right, *, out=None):
+    return _tensor_binary_out(_raw.tensor_cube_matmat, _raw.tensor_cube_matmat_into, left, right, out=out)
+
+
+def tensor_cube_matmat_complex(left, right, *, out=None):
+    return _tensor_binary_out(
+        _raw.tensor_cube_matmat_complex,
+        _raw.tensor_cube_matmat_complex_into,
+        left,
+        right,
+        out=out,
+    )
+
+
 tensor_einsum = _raw.tensor_einsum
 tensor_einsum_complex = _raw.tensor_einsum_complex
-tensor_l2_norm_last_axis = _raw.tensor_l2_norm_last_axis
-tensor_l2_norm_last_axis_complex = _raw.tensor_l2_norm_last_axis_complex
-tensor_normalize_last_axis = _raw.tensor_normalize_last_axis
-tensor_normalize_last_axis_complex = _raw.tensor_normalize_last_axis_complex
-tensor_permute_axes = _raw.tensor_permute_axes
-tensor_permute_axes_complex = _raw.tensor_permute_axes_complex
-tensor_sum_last_axis = _raw.tensor_sum_last_axis
-tensor_sum_last_axis_complex = _raw.tensor_sum_last_axis_complex
+
+
+def tensor_sum_last_axis(tensor, *, out=None):
+    return _tensor_unary_out(_raw.tensor_sum_last_axis, _raw.tensor_sum_last_axis_into, tensor, out=out)
+
+
+def tensor_sum_last_axis_complex(tensor, *, out=None):
+    return _tensor_unary_out(
+        _raw.tensor_sum_last_axis_complex,
+        _raw.tensor_sum_last_axis_complex_into,
+        tensor,
+        out=out,
+    )
+
+
+def tensor_l2_norm_last_axis(tensor, *, out=None):
+    return _tensor_unary_out(
+        _raw.tensor_l2_norm_last_axis,
+        _raw.tensor_l2_norm_last_axis_into,
+        tensor,
+        out=out,
+    )
+
+
+def tensor_l2_norm_last_axis_complex(tensor, *, out=None):
+    return _tensor_unary_out(
+        _raw.tensor_l2_norm_last_axis_complex,
+        _raw.tensor_l2_norm_last_axis_complex_into,
+        tensor,
+        out=out,
+    )
+
+
+def tensor_normalize_last_axis(tensor, *, out=None):
+    return _tensor_unary_out(
+        _raw.tensor_normalize_last_axis,
+        _raw.tensor_normalize_last_axis_into,
+        tensor,
+        out=out,
+    )
+
+
+def tensor_normalize_last_axis_complex(tensor, *, out=None):
+    return _tensor_unary_out(
+        _raw.tensor_normalize_last_axis_complex,
+        _raw.tensor_normalize_last_axis_complex_into,
+        tensor,
+        out=out,
+    )
+
+
+def tensor_batched_dot_last_axis(left, right, *, out=None):
+    return _tensor_binary_out(
+        _raw.tensor_batched_dot_last_axis,
+        _raw.tensor_batched_dot_last_axis_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def tensor_batched_dot_last_axis_complex(left, right, *, out=None):
+    return _tensor_binary_out(
+        _raw.tensor_batched_dot_last_axis_complex,
+        _raw.tensor_batched_dot_last_axis_complex_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def tensor_permute_axes(tensor, permutation, *, out=None):
+    return _tensor_permute_out(_raw.tensor_permute_axes, _raw.tensor_permute_axes_into, tensor, permutation, out=out)
+
+
+def tensor_permute_axes_complex(tensor, permutation, *, out=None):
+    return _tensor_permute_out(
+        _raw.tensor_permute_axes_complex,
+        _raw.tensor_permute_axes_complex_into,
+        tensor,
+        permutation,
+        out=out,
+    )
+
+
+def tensor_contract_axes(left, right, left_axes, right_axes, *, out=None):
+    return _tensor_contract_out(
+        _raw.tensor_contract_axes,
+        _raw.tensor_contract_axes_into,
+        left,
+        right,
+        left_axes,
+        right_axes,
+        out=out,
+    )
+
+
+def tensor_contract_axes_complex(left, right, left_axes, right_axes, *, out=None):
+    return _tensor_contract_out(
+        _raw.tensor_contract_axes_complex,
+        _raw.tensor_contract_axes_complex_into,
+        left,
+        right,
+        left_axes,
+        right_axes,
+        out=out,
+    )
+
+
+def tensor_batched_matmul_last_two(left, right, *, out=None):
+    return _tensor_binary_out(
+        _raw.tensor_batched_matmul_last_two,
+        _raw.tensor_batched_matmul_last_two_into,
+        left,
+        right,
+        out=out,
+    )
+
+
+def tensor_batched_matmul_last_two_complex(left, right, *, out=None):
+    return _tensor_binary_out(
+        _raw.tensor_batched_matmul_last_two_complex,
+        _raw.tensor_batched_matmul_last_two_complex_into,
+        left,
+        right,
+        out=out,
+    )
+
+
 triangular_solve_lower = _raw.triangular_solve_lower
 triangular_solve_lower_matrix = _raw.triangular_solve_lower_matrix
 triangular_solve_upper = _raw.triangular_solve_upper

@@ -4,8 +4,11 @@ use nabled_core::scalar::NabledReal;
 use ndarray::{Array1, Array2, Array3, ArrayD};
 use num_complex::Complex64;
 use num_traits::{FromPrimitive, ToPrimitive};
-use numpy::{Element, PyArray2, PyArray3, PyArrayDyn, PyArrayMethods};
-use pyo3::exceptions::{PyOverflowError, PyValueError};
+use numpy::{
+    Element, PyArray2, PyArray3, PyArrayDyn, PyArrayMethods, PyReadwriteArray2, PyReadwriteArray3,
+    PyReadwriteArrayDyn,
+};
+use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
@@ -20,6 +23,54 @@ pub(crate) type PyCpConvergence = (usize, bool, f64);
 pub(crate) type PyCpReport = (PyCpConvergence, PyCpMetrics);
 pub(crate) type PyHosvdNdResult = (Py<PyAny>, Vec<Py<PyAny>>);
 pub(crate) type PyTensorTrainResult = Vec<Py<PyAny>>;
+
+fn output_array2<'py, T: Element>(
+    array: &Bound<'py, PyAny>,
+    name: &str,
+    dtype_label: &str,
+) -> PyResult<PyReadwriteArray2<'py, T>> {
+    array
+        .cast::<PyArray2<T>>()
+        .map_err(|_| {
+            PyTypeError::new_err(format!(
+                "{name} must be a writable NumPy array with dtype {dtype_label} and rank 2",
+            ))
+        })?
+        .try_readwrite()
+        .map_err(Into::into)
+}
+
+fn output_array3<'py, T: Element>(
+    array: &Bound<'py, PyAny>,
+    name: &str,
+    dtype_label: &str,
+) -> PyResult<PyReadwriteArray3<'py, T>> {
+    array
+        .cast::<PyArray3<T>>()
+        .map_err(|_| {
+            PyTypeError::new_err(format!(
+                "{name} must be a writable NumPy array with dtype {dtype_label} and rank 3",
+            ))
+        })?
+        .try_readwrite()
+        .map_err(Into::into)
+}
+
+fn output_arrayd<'py, T: Element>(
+    array: &Bound<'py, PyAny>,
+    name: &str,
+    dtype_label: &str,
+) -> PyResult<PyReadwriteArrayDyn<'py, T>> {
+    array
+        .cast::<PyArrayDyn<T>>()
+        .map_err(|_| {
+            PyTypeError::new_err(format!(
+                "{name} must be a writable NumPy array with dtype {dtype_label}",
+            ))
+        })?
+        .try_readwrite()
+        .map_err(Into::into)
+}
 
 fn standard_array2<T: Clone>(array: Array2<T>) -> Array2<T> {
     array.as_standard_layout().to_owned()
@@ -329,6 +380,36 @@ pub fn cube_matvec<'py>(
     }
 }
 
+/// Batched matrix-vector product into a caller-provided output array.
+#[pyfunction(name = "tensor_cube_matvec_into")]
+pub fn cube_matvec_into(
+    cube: &Bound<'_, PyAny>,
+    vectors: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_array3(cube, "cube")?, utils::real_array2(vectors, "vectors")?) {
+        (utils::RealReadonlyArray3::F32(cube_arr), utils::RealReadonlyArray2::F32(vectors_arr)) => {
+            let mut output_arr = output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::tensor::cube_matvec_view_into(
+                &cube_arr.as_array(),
+                &vectors_arr.as_array(),
+                output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray3::F64(cube_arr), utils::RealReadonlyArray2::F64(vectors_arr)) => {
+            let mut output_arr = output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::tensor::cube_matvec_view_into(
+                &cube_arr.as_array(),
+                &vectors_arr.as_array(),
+                output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["cube", "vectors", "output"])),
+    }
+}
+
 /// Complex batched matrix-vector product.
 #[pyfunction(name = "tensor_cube_matvec_complex")]
 pub fn cube_matvec_complex<'py>(
@@ -344,6 +425,24 @@ pub fn cube_matvec_complex<'py>(
     )
     .map_err(to_py_err)?;
     Ok(PyArray2::from_owned_array(py, result).unbind())
+}
+
+/// Complex batched matrix-vector product into a caller-provided output array.
+#[pyfunction(name = "tensor_cube_matvec_complex_into")]
+pub fn cube_matvec_complex_into(
+    cube: &Bound<'_, PyArray3<Complex64>>,
+    vectors: &Bound<'_, PyArray2<Complex64>>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(cube)?;
+    utils::require_contiguous(vectors)?;
+    let mut output_arr = output_array2::<Complex64>(output, "output", "complex128")?;
+    nabled_linalg::tensor::cube_matvec_complex_view_into(
+        &cube.readonly().as_array(),
+        &vectors.readonly().as_array(),
+        output_arr.as_array_mut(),
+    )
+    .map_err(to_py_err)
 }
 
 /// Batched matrix-matrix product over the last two cube axes.
@@ -374,6 +473,36 @@ pub fn cube_matmat<'py>(
     }
 }
 
+/// Batched matrix-matrix product into a caller-provided output array.
+#[pyfunction(name = "tensor_cube_matmat_into")]
+pub fn cube_matmat_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_array3(left, "left")?, utils::real_array3(right, "right")?) {
+        (utils::RealReadonlyArray3::F32(left_arr), utils::RealReadonlyArray3::F32(right_arr)) => {
+            let mut output_arr = output_array3::<f32>(output, "output", "float32")?;
+            nabled_linalg::tensor::cube_matmat_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray3::F64(left_arr), utils::RealReadonlyArray3::F64(right_arr)) => {
+            let mut output_arr = output_array3::<f64>(output, "output", "float64")?;
+            nabled_linalg::tensor::cube_matmat_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Complex batched matrix-matrix product over the last two cube axes.
 #[pyfunction(name = "tensor_cube_matmat_complex")]
 pub fn cube_matmat_complex<'py>(
@@ -389,6 +518,24 @@ pub fn cube_matmat_complex<'py>(
     )
     .map_err(to_py_err)?;
     Ok(PyArray3::from_owned_array(py, result).unbind())
+}
+
+/// Complex batched matrix-matrix product into a caller-provided output array.
+#[pyfunction(name = "tensor_cube_matmat_complex_into")]
+pub fn cube_matmat_complex_into(
+    left: &Bound<'_, PyArray3<Complex64>>,
+    right: &Bound<'_, PyArray3<Complex64>>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
+    let mut output_arr = output_array3::<Complex64>(output, "output", "complex128")?;
+    nabled_linalg::tensor::cube_matmat_complex_view_into(
+        &left.readonly().as_array(),
+        &right.readonly().as_array(),
+        output_arr.as_array_mut(),
+    )
+    .map_err(to_py_err)
 }
 
 /// Sum over the last axis of a tensor.
@@ -408,6 +555,25 @@ pub fn sum_last_axis<'py>(py: Python<'py>, tensor: &Bound<'py, PyAny>) -> PyResu
     }
 }
 
+/// Sum over the last axis into a caller-provided output array.
+#[pyfunction(name = "tensor_sum_last_axis_into")]
+pub fn sum_last_axis_into(tensor: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> PyResult<()> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::sum_last_axis_view_into(&tensor_arr.as_array(), &mut output_view)
+                .map_err(to_py_err)
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::sum_last_axis_view_into(&tensor_arr.as_array(), &mut output_view)
+                .map_err(to_py_err)
+        }
+    }
+}
+
 /// Sum over the last axis of a complex tensor.
 #[pyfunction(name = "tensor_sum_last_axis_complex")]
 pub fn sum_last_axis_complex<'py>(
@@ -418,6 +584,22 @@ pub fn sum_last_axis_complex<'py>(
     let result = nabled_linalg::tensor::sum_last_axis_complex_view(&tensor.readonly().as_array())
         .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+}
+
+/// Sum over the last axis of a complex tensor into a caller-provided output array.
+#[pyfunction(name = "tensor_sum_last_axis_complex_into")]
+pub fn sum_last_axis_complex_into(
+    tensor: &Bound<'_, PyArrayDyn<Complex64>>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(tensor)?;
+    let mut output_arr = output_arrayd::<Complex64>(output, "output", "complex128")?;
+    let mut output_view = output_arr.as_array_mut();
+    nabled_linalg::tensor::sum_last_axis_complex_view_into(
+        &tensor.readonly().as_array(),
+        &mut output_view,
+    )
+    .map_err(to_py_err)
 }
 
 /// L2 norm over the last axis.
@@ -437,6 +619,34 @@ pub fn l2_norm_last_axis<'py>(py: Python<'py>, tensor: &Bound<'py, PyAny>) -> Py
     }
 }
 
+/// L2 norm over the last axis into a caller-provided output array.
+#[pyfunction(name = "tensor_l2_norm_last_axis_into")]
+pub fn l2_norm_last_axis_into(
+    tensor: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::l2_norm_last_axis_view_into(
+                &tensor_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::l2_norm_last_axis_view_into(
+                &tensor_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+    }
+}
+
 /// L2 norm over the last axis of a complex tensor.
 #[pyfunction(name = "tensor_l2_norm_last_axis_complex")]
 pub fn l2_norm_last_axis_complex<'py>(
@@ -448,6 +658,22 @@ pub fn l2_norm_last_axis_complex<'py>(
         nabled_linalg::tensor::l2_norm_last_axis_complex_view(&tensor.readonly().as_array())
             .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+}
+
+/// L2 norm over the last axis of a complex tensor into a caller-provided output array.
+#[pyfunction(name = "tensor_l2_norm_last_axis_complex_into")]
+pub fn l2_norm_last_axis_complex_into(
+    tensor: &Bound<'_, PyArrayDyn<Complex64>>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(tensor)?;
+    let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+    let mut output_view = output_arr.as_array_mut();
+    nabled_linalg::tensor::l2_norm_last_axis_complex_view_into(
+        &tensor.readonly().as_array(),
+        &mut output_view,
+    )
+    .map_err(to_py_err)
 }
 
 /// Normalize over the last axis.
@@ -470,6 +696,34 @@ pub fn normalize_last_axis<'py>(
     }
 }
 
+/// Normalize over the last axis into a caller-provided output array.
+#[pyfunction(name = "tensor_normalize_last_axis_into")]
+pub fn normalize_last_axis_into(
+    tensor: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::normalize_last_axis_view_into(
+                &tensor_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::normalize_last_axis_view_into(
+                &tensor_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+    }
+}
+
 /// Normalize a complex tensor over the last axis.
 #[pyfunction(name = "tensor_normalize_last_axis_complex")]
 pub fn normalize_last_axis_complex<'py>(
@@ -481,6 +735,22 @@ pub fn normalize_last_axis_complex<'py>(
         nabled_linalg::tensor::normalize_last_axis_complex_view(&tensor.readonly().as_array())
             .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+}
+
+/// Normalize a complex tensor over the last axis into a caller-provided output array.
+#[pyfunction(name = "tensor_normalize_last_axis_complex_into")]
+pub fn normalize_last_axis_complex_into(
+    tensor: &Bound<'_, PyArrayDyn<Complex64>>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(tensor)?;
+    let mut output_arr = output_arrayd::<Complex64>(output, "output", "complex128")?;
+    let mut output_view = output_arr.as_array_mut();
+    nabled_linalg::tensor::normalize_last_axis_complex_view_into(
+        &tensor.readonly().as_array(),
+        &mut output_view,
+    )
+    .map_err(to_py_err)
 }
 
 /// Batched dot product over the last axis.
@@ -517,6 +787,44 @@ pub fn batched_dot_last_axis<'py>(
     }
 }
 
+/// Batched dot product over the last axis into a caller-provided output array.
+#[pyfunction(name = "tensor_batched_dot_last_axis_into")]
+pub fn batched_dot_last_axis_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_arrayd(left, "left")?, utils::real_arrayd(right, "right")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(left_arr),
+            utils::RealReadonlyArrayDyn::F32(right_arr),
+        ) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::batched_dot_last_axis_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(left_arr),
+            utils::RealReadonlyArrayDyn::F64(right_arr),
+        ) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::batched_dot_last_axis_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Complex batched dot product over the last axis.
 #[pyfunction(name = "tensor_batched_dot_last_axis_complex")]
 pub fn batched_dot_last_axis_complex<'py>(
@@ -532,6 +840,25 @@ pub fn batched_dot_last_axis_complex<'py>(
     )
     .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+}
+
+/// Complex batched dot product over the last axis into a caller-provided output array.
+#[pyfunction(name = "tensor_batched_dot_last_axis_complex_into")]
+pub fn batched_dot_last_axis_complex_into(
+    left: &Bound<'_, PyArrayDyn<Complex64>>,
+    right: &Bound<'_, PyArrayDyn<Complex64>>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
+    let mut output_arr = output_arrayd::<Complex64>(output, "output", "complex128")?;
+    let mut output_view = output_arr.as_array_mut();
+    nabled_linalg::tensor::batched_dot_last_axis_complex_view_into(
+        &left.readonly().as_array(),
+        &right.readonly().as_array(),
+        &mut output_view,
+    )
+    .map_err(to_py_err)
 }
 
 /// Permute tensor axes.
@@ -557,6 +884,37 @@ pub fn permute_axes<'py>(
     }
 }
 
+/// Permute tensor axes into a caller-provided output array.
+#[pyfunction(name = "tensor_permute_axes_into")]
+pub fn permute_axes_into(
+    tensor: &Bound<'_, PyAny>,
+    permutation: Vec<usize>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::permute_axes_view_into(
+                &tensor_arr.as_array(),
+                &permutation,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::permute_axes_view_into(
+                &tensor_arr.as_array(),
+                &permutation,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+    }
+}
+
 /// Permute complex tensor axes.
 #[pyfunction(name = "tensor_permute_axes_complex")]
 pub fn permute_axes_complex<'py>(
@@ -571,6 +929,24 @@ pub fn permute_axes_complex<'py>(
     )
     .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+}
+
+/// Permute complex tensor axes into a caller-provided output array.
+#[pyfunction(name = "tensor_permute_axes_complex_into")]
+pub fn permute_axes_complex_into(
+    tensor: &Bound<'_, PyArrayDyn<Complex64>>,
+    permutation: Vec<usize>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(tensor)?;
+    let mut output_arr = output_arrayd::<Complex64>(output, "output", "complex128")?;
+    let mut output_view = output_arr.as_array_mut();
+    nabled_linalg::tensor::permute_axes_complex_view_into(
+        &tensor.readonly().as_array(),
+        &permutation,
+        &mut output_view,
+    )
+    .map_err(to_py_err)
 }
 
 /// Contract explicit axes between two tensors.
@@ -613,6 +989,50 @@ pub fn contract_axes<'py>(
     }
 }
 
+/// Contract explicit axes between two tensors into a caller-provided output array.
+#[pyfunction(name = "tensor_contract_axes_into")]
+pub fn contract_axes_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    left_axes: Vec<usize>,
+    right_axes: Vec<usize>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_arrayd(left, "left")?, utils::real_arrayd(right, "right")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(left_arr),
+            utils::RealReadonlyArrayDyn::F32(right_arr),
+        ) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::contract_axes_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &left_axes,
+                &right_axes,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(left_arr),
+            utils::RealReadonlyArrayDyn::F64(right_arr),
+        ) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::contract_axes_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &left_axes,
+                &right_axes,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Contract explicit axes between two complex tensors.
 #[pyfunction(name = "tensor_contract_axes_complex")]
 pub fn contract_axes_complex<'py>(
@@ -632,6 +1052,29 @@ pub fn contract_axes_complex<'py>(
     )
     .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+}
+
+/// Contract explicit axes between two complex tensors into a caller-provided output array.
+#[pyfunction(name = "tensor_contract_axes_complex_into")]
+pub fn contract_axes_complex_into(
+    left: &Bound<'_, PyArrayDyn<Complex64>>,
+    right: &Bound<'_, PyArrayDyn<Complex64>>,
+    left_axes: Vec<usize>,
+    right_axes: Vec<usize>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
+    let mut output_arr = output_arrayd::<Complex64>(output, "output", "complex128")?;
+    let mut output_view = output_arr.as_array_mut();
+    nabled_linalg::tensor::contract_axes_complex_view_into(
+        &left.readonly().as_array(),
+        &right.readonly().as_array(),
+        &left_axes,
+        &right_axes,
+        &mut output_view,
+    )
+    .map_err(to_py_err)
 }
 
 /// Batched matrix multiply over the last two axes.
@@ -668,6 +1111,44 @@ pub fn batched_matmul_last_two<'py>(
     }
 }
 
+/// Batched matrix multiply over the last two axes into a caller-provided output array.
+#[pyfunction(name = "tensor_batched_matmul_last_two_into")]
+pub fn batched_matmul_last_two_into(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_arrayd(left, "left")?, utils::real_arrayd(right, "right")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(left_arr),
+            utils::RealReadonlyArrayDyn::F32(right_arr),
+        ) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::batched_matmul_last_two_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(left_arr),
+            utils::RealReadonlyArrayDyn::F64(right_arr),
+        ) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::batched_matmul_last_two_view_into(
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Complex batched matrix multiply over the last two axes.
 #[pyfunction(name = "tensor_batched_matmul_last_two_complex")]
 pub fn batched_matmul_last_two_complex<'py>(
@@ -683,6 +1164,25 @@ pub fn batched_matmul_last_two_complex<'py>(
     )
     .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+}
+
+/// Complex batched matrix multiply over the last two axes into a caller-provided output array.
+#[pyfunction(name = "tensor_batched_matmul_last_two_complex_into")]
+pub fn batched_matmul_last_two_complex_into(
+    left: &Bound<'_, PyArrayDyn<Complex64>>,
+    right: &Bound<'_, PyArrayDyn<Complex64>>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
+    let mut output_arr = output_arrayd::<Complex64>(output, "output", "complex128")?;
+    let mut output_view = output_arr.as_array_mut();
+    nabled_linalg::tensor::batched_matmul_last_two_complex_view_into(
+        &left.readonly().as_array(),
+        &right.readonly().as_array(),
+        &mut output_view,
+    )
+    .map_err(to_py_err)
 }
 
 /// Binary Einstein summation over real tensors.
