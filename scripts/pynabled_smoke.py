@@ -12,7 +12,15 @@ import pynabled
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--require-arrow", action="store_true")
+    parser.add_argument("--require-feature", action="append", default=[])
     args = parser.parse_args()
+
+    compiled_features = set(pynabled.build_features())
+    missing_features = sorted(set(args.require_feature) - compiled_features)
+    assert not missing_features, (
+        f"missing compiled features {missing_features}; "
+        f"installed build exposes {sorted(compiled_features)}"
+    )
 
     left = np.array([1.0, 2.0, 3.0], dtype=np.float64)
     right = np.array([4.0, 5.0, 6.0], dtype=np.float64)

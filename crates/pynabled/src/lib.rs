@@ -20,10 +20,31 @@ mod arrow;
 
 use pyo3::prelude::*;
 
+#[pyfunction]
+fn build_features() -> Vec<String> {
+    let mut features: Vec<String> = [
+        ("accelerator-rayon", cfg!(feature = "accelerator-rayon")),
+        ("accelerator-wgpu", cfg!(feature = "accelerator-wgpu")),
+        ("arrow", cfg!(feature = "arrow")),
+        ("magma-system", cfg!(feature = "magma-system")),
+        ("netlib-static", cfg!(feature = "netlib-static")),
+        ("netlib-system", cfg!(feature = "netlib-system")),
+        ("openblas-static", cfg!(feature = "openblas-static")),
+        ("openblas-system", cfg!(feature = "openblas-system")),
+    ]
+    .into_iter()
+    .filter(|&(_, enabled)| enabled)
+    .map(|(name, _)| name.to_owned())
+    .collect();
+    features.sort_unstable();
+    features
+}
+
 #[pymodule]
 #[pyo3(name = "_pynabled")]
 #[expect(clippy::too_many_lines)]
 fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(pyo3::wrap_pyfunction!(build_features, m)?)?;
     m.add_class::<sparse::csr::PyJacobiPreconditioner>()?;
     m.add_class::<sparse::csr::PyIlu0Factorization>()?;
     m.add_class::<sparse::csr::PyIlutFactorization>()?;

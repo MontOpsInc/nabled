@@ -17,7 +17,11 @@ pip install maturin numpy
 maturin develop
 ```
 
-Optional Cargo features (OpenBLAS, `accelerator-rayon`, Arrow interop) require explicit build flags; see **[BUILD.md](../BUILD.md)** in the repository root.
+Optional provider/backend/Arrow support is a source-build workflow. `pynabled` now exposes the same
+Cargo feature names as the Rust facade (`openblas-system`, `openblas-static`, `netlib-system`,
+`netlib-static`, `magma-system`, `accelerator-rayon`, `accelerator-wgpu`, `arrow`); build them
+explicitly with maturin or `MATURIN_PEP517_ARGS`, then inspect the installed extension with
+`pynabled.build_features()`. See **[BUILD.md](../BUILD.md)** in the repository root.
 
 ## Quick example
 

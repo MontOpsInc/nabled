@@ -20,7 +20,12 @@ crate-type = ["cdylib"]
 [features]
 default = []
 openblas-system = ["nabled/openblas-system"]
-accelerator-rayon = ["nabled-linalg/accelerator-rayon"]
+openblas-static = ["nabled/openblas-static"]
+netlib-system = ["nabled/netlib-system"]
+netlib-static = ["nabled/netlib-static"]
+magma-system = ["nabled/magma-system"]
+accelerator-rayon = ["nabled/accelerator-rayon"]
+accelerator-wgpu = ["nabled/accelerator-wgpu"]
 arrow = [
     "nabled/arrow",
     "dep:arrow-pyarrow",

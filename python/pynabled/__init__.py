@@ -143,6 +143,11 @@ def _resolve_config(config, config_type, **kwargs):
     return {name: getattr(config, name) for name in kwargs}
 
 
+def build_features() -> tuple[str, ...]:
+    """Return the Cargo feature names compiled into the installed extension."""
+    return tuple(_raw.build_features())
+
+
 def svd_decompose(a) -> SvdResult:
     u, singular_values, vt = _raw.svd_decompose(a)
     return SvdResult(u=u, singular_values=singular_values, vt=vt)
@@ -1214,6 +1219,7 @@ __all__ = [
     "MomentumConfig",
     "ProjectedGradientConfig",
     "RMSPropConfig",
+    "build_features",
     "svd_decompose",
     "svd_decompose_truncated",
     "svd_pseudo_inverse",

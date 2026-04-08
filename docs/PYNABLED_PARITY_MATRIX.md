@@ -92,23 +92,23 @@ Use code, not memory:
 | Sparse data carriers | Rust uses typed sparse matrix structs and admitted Arrow sparse carriers | Python now has first-class `CsrMatrix`, `CscMatrix`, and `CooMatrix` carriers with preserved `int32` / `int64` indices, explicit normalization controls, SciPy-compatible ingress, and reusable sparse factorization/preconditioner objects round-tripping back through canonical carriers; factorization-backed kernels still normalize non-CSR carriers explicitly to CSR when Rust only admits CSR for that kernel | Partial | Keep the multi-carrier sparse contract stable and keep every non-CSR-to-CSR normalization point explicit in the public contract |
 | Arrow carriers | Rust uses canonical `ndarrow` carriers across admitted Arrow workflows | Python Arrow bridge now handles primitive arrays, fixed-size-list dense matrices, canonical `ndarrow.complex64` vector/matrix carriers, fixed-shape-tensor and variable-shape-tensor carriers, Arrow-native callback argument/result carriers for the landed iterative/Jacobian/optimization rows, and canonical `ndarrow.csr_matrix` / `ndarrow.csr_matrix_batch` sparse carriers with explicit field/storage normalization where PyArrow's default extension serialization does not match `ndarrow` | Full | Keep using the same canonical `ndarrow` carrier set and explicit ingress/egress contracts as Rust |
 | PyArrow egress | Rust Arrow facade can stay Arrow-native where natural | Python now keeps Arrow-native egress for the landed dense/vector/matrix/stats rows, fixed-shape/variable-shape tensor rows, LU/Cholesky/QR solve outputs, SVD pseudo-inverse/null-space, real matrix-function outputs, PCA transform/inverse-transform outputs, and Arrow-native callback-driven Jacobian/optimization outputs where the Rust Arrow facade already does so; decomposition/PCA/regression/tensor result wrappers still return typed ndarray-native objects where the Rust Arrow facade does the same | Full | Keep Arrow-native egress wherever the Rust facade already defines an Arrow-native contract, and preserve typed ndarray-native egress where Rust does the same |
-| Provider feature exposure | Rust facade admits `openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`, `magma-system` | Python exposes only `openblas-system` | Partial | Expose/document truthful source-build paths for admitted provider features |
-| Backend feature exposure | Rust facade admits `accelerator-rayon` and `accelerator-wgpu` | Python exposes only `accelerator-rayon` | Partial | Expose/document truthful backend build paths for admitted backends |
-| Feature UX truthfulness | Rust feature names and behavior are explicit | Python extras do not fully map to Cargo features today | Partial | Ensure Python install/build UX matches actual Cargo feature behavior |
+| Provider feature exposure | Rust facade admits `openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`, `magma-system` | `pynabled` now exposes the same provider feature names for source builds, docs call out host/toolchain requirements explicitly, and installed builds can report their compiled feature set via `pynabled.build_features()` | Full | Keep the Python source-build feature names aligned one-to-one with the Rust facade and preserve truthful host/toolchain docs |
+| Backend feature exposure | Rust facade admits `accelerator-rayon` and `accelerator-wgpu` | `pynabled` now exposes both backend feature names for source builds, package smoke validates the installed build actually reports the requested backend features, and docs classify them as compile-time feature paths rather than runtime toggles | Full | Keep backend feature names and installed-build reporting aligned with the Rust facade |
+| Feature UX truthfulness | Rust feature names and behavior are explicit | Python packaging no longer advertises extras that cannot enable Cargo features; source-build docs use explicit Cargo feature names, default PyPI wheels are documented as default-feature-only, and installed builds can report compiled features at runtime | Full | Keep packaging metadata/docs free of pseudo-extras and preserve explicit feature reporting on installed builds |
 
 ## Release-Blocking Gaps Locked By This Matrix
 
 These are the gaps that directly drive `N-PY-003..N-PY-008`:
 
-1. Remaining dense parity work is now narrower again: QR and Eigen configurable/result-bearing rows are landed, while the remaining provider-bound mixed LU/Sylvester/Lyapunov rows are explicitly coupled to later Python feature/build UX work.
+1. Remaining dense parity work is now narrowly concentrated in provider-bound mixed solve metadata and any follow-on result/allocation semantics that are still missing from the Python surface.
 2. Missing allocation-control semantics for hot Python workflows.
-3. Missing truthful provider/backend feature exposure.
+3. Performance/copy-contract hardening and PyPI release hardening remain open merge-gate work after the current parity/feature milestones.
+
 ## Implementation Order Derived From This Matrix
 
-1. `N-PY-003` is now complete for the current merge-gate scope; the remaining dense/provider-bound rows are explicitly coupled to later feature/build or allocation-control milestones.
-2. `N-PY-005`: make provider/backend exposure truthful and usable from Python source builds.
-3. `N-PY-007`: add allocation-control semantics and eliminate avoidable copy/layout regressions.
-4. `N-PY-006` and `N-PY-008`: lock the release with tests, coverage, docs, and supply-chain hardening.
+1. `N-PY-003`, `N-PY-004`, `N-PY-005`, and `N-PY-006` are complete for the current merge-gate scope.
+2. `N-PY-007`: add allocation-control semantics and eliminate avoidable copy/layout regressions.
+3. `N-PY-008`: lock the release with docs/release hardening and supply-chain controls.
 
 ## Definition Of Done For This Document
 

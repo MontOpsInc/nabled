@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-07
+Last updated: 2026-04-08
 
 ## Summary
 
@@ -15,9 +15,13 @@ Branch note:
 and parity-target definition `N-PY-002` are now complete: the branch is merged to current `main`,
 `pyproject.toml` version truth is aligned to `0.0.8`, tracked native `dSYM` artifacts were removed
 from the Python sdist path, and `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative
-release target. Remaining blocking work is truthful provider/backend feature exposure, Python
-performance/copy-contract hardening, documentation polish, and PyPI supply-chain hardening. The
-first `N-PY-003` implementation pass is also landed:
+release target. Remaining blocking work is Python performance/copy-contract hardening,
+documentation/release polish, and PyPI supply-chain hardening. `N-PY-005` is now also complete:
+`pynabled` exposes the same provider/backend feature names as the Rust facade for source builds,
+packaging metadata no longer advertises extras that cannot enable Cargo features, installed builds
+can report compiled features via `pynabled.build_features()`, and the Python package gate now
+smokes `accelerator-wgpu` alongside the existing default/provider/Arrow paths. The first
+`N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across
 iterative solves, PCA transform/inverse-transform, regression, and stats. A second `N-PY-003`

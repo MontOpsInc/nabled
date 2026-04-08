@@ -1,7 +1,6 @@
 """PyArrow bridge for nabled/ndarrow workflows.
 
-Requires pynabled built with the arrow feature: ``pip install pynabled[arrow]``
-and ``maturin develop --features arrow`` (or equivalent).
+Requires ``pyarrow`` plus a `pynabled` build compiled with the `arrow` feature.
 """
 
 from __future__ import annotations
@@ -63,14 +62,14 @@ try:
 except ImportError as e:
     raise ImportError(
         "pynabled arrow support not available. "
-        "Install with: pip install pynabled[arrow] and build with --features arrow"
+        "Install pyarrow and build pynabled with --features arrow"
     ) from e
 
 
 if not hasattr(_raw, "arrow_dot"):
     raise ImportError(
         "pynabled arrow support not available. "
-        "Install with: pip install pynabled[arrow] and build with --features arrow"
+        "Install pyarrow and build pynabled with --features arrow"
     )
 
 

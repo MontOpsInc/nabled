@@ -81,7 +81,11 @@ of treating raw tuning-parameter shims as the long-term contract. The callback-d
 optimizer helpers remain convenience APIs rather than no-compromise hot-path equivalents, because
 their objective/gradient evaluations still cross back into Python.
 
-For building with optional features (e.g. OpenBLAS, accelerator-rayon), see [BUILD.md](BUILD.md).
+Optional provider/backend/Arrow support on the Python side is a source-build workflow using the
+same Cargo feature names as the Rust facade (`openblas-system`, `openblas-static`,
+`netlib-system`, `netlib-static`, `magma-system`, `accelerator-rayon`, `accelerator-wgpu`,
+`arrow`). Inspect the installed Python extension with `pynabled.build_features()`. For build
+instructions and host/toolchain requirements, see [BUILD.md](BUILD.md).
 
 To publish **pynabled** wheels to PyPI (tags, CI, TestPyPI), see [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md).
 

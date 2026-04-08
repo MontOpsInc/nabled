@@ -56,7 +56,11 @@ build_and_smoke() {
     local features="${4:-}"
     local venv_dir="${VENV_ROOT}/${label}"
     local out_dir="${DIST_DIR}/${label}"
+    local compiled_features=()
     local feature_args=()
+    local smoke_args=()
+    local smoke_command=("${venv_dir}/bin/python" "${SMOKE_SCRIPT}")
+    local feature_name
 
     create_venv "${venv_dir}"
     install_packaging_tools "${venv_dir}" "${require_arrow}"
@@ -65,6 +69,10 @@ build_and_smoke() {
 
     if [[ -n "${features}" ]]; then
         feature_args=(--features "${features}")
+        read -r -a compiled_features <<< "${features}"
+        for feature_name in "${compiled_features[@]}"; do
+            smoke_args+=(--require-feature "${feature_name}")
+        done
     fi
 
     if [[ "${artifact_kind}" == "wheel" ]]; then
@@ -93,10 +101,12 @@ build_and_smoke() {
     fi
 
     if [[ "${require_arrow}" == "1" ]]; then
-        "${venv_dir}/bin/python" "${SMOKE_SCRIPT}" --require-arrow
-    else
-        "${venv_dir}/bin/python" "${SMOKE_SCRIPT}"
+        smoke_command+=(--require-arrow)
     fi
+    if [[ "${#smoke_args[@]}" -gt 0 ]]; then
+        smoke_command+=("${smoke_args[@]}")
+    fi
+    "${smoke_command[@]}"
 }
 
 main() {
@@ -149,9 +159,10 @@ main() {
 
     build_and_smoke "wheel-default" "wheel" "0"
     build_and_smoke "sdist-default" "sdist" "0"
-    build_and_smoke "wheel-provider" "wheel" "0" "openblas-system"
-    build_and_smoke "wheel-accelerator" "wheel" "0" "accelerator-rayon"
-    build_and_smoke "wheel-combined" "wheel" "1" "openblas-system accelerator-rayon arrow"
+    build_and_smoke "wheel-provider-openblas-system" "wheel" "0" "openblas-system"
+    build_and_smoke "wheel-backend-rayon" "wheel" "0" "accelerator-rayon"
+    build_and_smoke "wheel-backend-wgpu" "wheel" "0" "accelerator-wgpu"
+    build_and_smoke "wheel-combined" "wheel" "1" "openblas-system accelerator-rayon accelerator-wgpu arrow"
 }
 
 main "$@"
