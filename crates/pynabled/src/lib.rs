@@ -282,6 +282,73 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(pyo3::wrap_pyfunction!(arrow::batched_lu, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::batched_cholesky, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::batched_symmetric_eigen, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_sum_last_axis_fixed, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_sum_last_axis_variable, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_l2_norm_last_axis_fixed, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_l2_norm_last_axis_variable, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_normalize_last_axis_fixed, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_normalize_last_axis_variable, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_batched_dot_last_axis_fixed, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_batched_dot_last_axis_variable, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_sum_last_axis_fixed_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_sum_last_axis_variable_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_l2_norm_last_axis_fixed_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_l2_norm_last_axis_variable_complex,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_normalize_last_axis_fixed_complex,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_normalize_last_axis_variable_complex,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_batched_dot_last_axis_fixed_complex,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_batched_dot_last_axis_variable_complex,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_permute_axes, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_permute_axes_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_contract_axes, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_contract_axes_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_batched_matmul_last_two, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_batched_matmul_last_two_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cube_matvec, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cube_matvec_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cube_matmat, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cube_matmat_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_flatten_cubes, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_einsum, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_einsum_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cp_als3, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cp_als3_with_report, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cp_als3_diagnostics, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cp_als3_reconstruct, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cp_als_nd, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cp_als_nd_with_report, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cp_als_nd_diagnostics, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_cp_als_nd_reconstruct, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_hosvd_nd, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_hooi_nd, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_hosvd_nd_reconstruct, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tucker_project, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tucker_expand, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_svd, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_orthogonalize_left, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_orthogonalize_right, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_round, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_inner, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_norm, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_add, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_hadamard, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_hadamard_round, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_tt_svd_reconstruct, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::column_means, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::column_means_complex, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::center_columns, m)?)?;

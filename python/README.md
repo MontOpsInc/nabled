@@ -39,14 +39,16 @@ decomposition/matrix-function/PCA/regression rows plus canonical complex dense A
 across vector/matrix/statistics/orthogonalization/triangular/decomposition/matrix-function/PCA/
 regression workflows, callback-driven iterative/Jacobian/optimization rows over PyArrow carriers,
 canonical `ndarrow.csr_matrix` / `ndarrow.csr_matrix_batch` sparse carriers with direct sparse
-solve/product/reuse workflows, and fixed-shape-tensor batched QR/SVD/LU/Cholesky/symmetric-eigen
-result wrappers. Arrow-native outputs stay Arrow-native where the Rust Arrow facade already does
-so, while ndarray-native decomposition/PCA/regression rows reuse the same typed Python result
-objects as the NumPy-facing API. Mixed real dtypes are rejected explicitly instead of being
-silently cast, complex Arrow ingress follows canonical `ndarrow.complex64` storage/field
-contracts rather than silently materializing NumPy buffers, and sparse Arrow ingress now matches
-`ndarrow`'s sparse field/storage metadata contract explicitly instead of depending on default
-PyArrow extension-field serialization.
+solve/product/reuse workflows, fixed-shape-tensor batched QR/SVD/LU/Cholesky/symmetric-eigen
+result wrappers, and canonical fixed-shape / variable-shape tensor workflows across last-axis ops,
+permutation/contraction, batched matmul, cube kernels, einsum, CP-ALS, HOSVD/HOOI/Tucker, and TT
+helpers over PyArrow/`ndarrow`. Arrow-native outputs stay Arrow-native where the Rust Arrow facade
+already does so, while ndarray-native decomposition/PCA/regression/tensor rows reuse the same
+typed Python result objects as the NumPy-facing API. Mixed real dtypes are rejected explicitly
+instead of being silently cast, complex Arrow ingress follows canonical `ndarrow.complex64`
+storage/field contracts rather than silently materializing NumPy buffers, and sparse/tensor Arrow
+ingress now matches `ndarrow`'s field/storage metadata contract explicitly instead of depending on
+default PyArrow extension-field serialization.
 Callable-driven `jacobian` / `optimization` workflows preserve the caller's real dtype end-to-end,
 and their `float32` defaults use `float32`-appropriate finite-difference / convergence settings
 instead of raw `float64` thresholds. Some higher-level wrappers still materialize owned arrays

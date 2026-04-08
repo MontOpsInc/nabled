@@ -24,8 +24,14 @@ from .config import (
 )
 from .results import (
     CholeskyResult,
+    CpAls3Result,
+    CpAlsNdResult,
+    CpAlsReport,
+    CpConvergenceReport,
+    CpErrorMetrics,
     EigenResult,
     GeneralizedEigenResult,
+    HosvdNdResult,
     LogDetResult,
     LuResult,
     NonsymmetricBiEigenResult,
@@ -36,6 +42,7 @@ from .results import (
     RegressionResult,
     SchurResult,
     SvdResult,
+    TensorTrainResult,
 )
 from .sparse import (
     CscMatrix,
@@ -71,6 +78,7 @@ _COMPLEX_EXTENSION_NAMES = {"ndarrow.complex64"}
 _COMPLEX_STORAGE_TYPE = pa.list_(pa.field("item", pa.float64(), nullable=False), 2)
 _CSR_EXTENSION_NAME = "ndarrow.csr_matrix"
 _CSR_BATCH_EXTENSION_NAME = "ndarrow.csr_matrix_batch"
+_FIXED_SHAPE_TENSOR_EXTENSION_NAME = "arrow.fixed_shape_tensor"
 _VARIABLE_SHAPE_TENSOR_EXTENSION_NAME = "arrow.variable_shape_tensor"
 _UINT32_MAX = np.iinfo(np.uint32).max
 _INT32_MAX = np.iinfo(np.int32).max
@@ -78,6 +86,22 @@ _INT32_MAX = np.iinfo(np.int32).max
 
 def _list_value_type(type_):
     return type_.value_field.type if hasattr(type_, "value_field") else type_.value_type
+
+
+class NdarrowComplex64Type(pa.ExtensionType):
+    def __init__(self):
+        super().__init__(_COMPLEX_STORAGE_TYPE, "ndarrow.complex64")
+
+    def __arrow_ext_serialize__(self):
+        return b""
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        del storage_type, serialized
+        return cls()
+
+    def __reduce__(self):
+        return NdarrowComplex64Type, ()
 
 
 class NdarrowCsrMatrixType(pa.ExtensionType):
@@ -159,17 +183,60 @@ class NdarrowCsrMatrixBatchType(pa.ExtensionType):
         return NdarrowCsrMatrixBatchType, (self._value_type,)
 
 
+class ArrowFixedShapeTensorType(pa.ExtensionType):
+    def __init__(self, value_type, shape):
+        self._value_type = value_type
+        self._shape = tuple(int(dimension) for dimension in shape)
+        if not self._shape:
+            raise ValueError("fixed-shape tensor shape must be non-empty")
+        element_count = 1
+        for dimension in self._shape:
+            element_count *= dimension
+        value_field = (
+            _complex_vector_field("item")
+            if value_type == _COMPLEX_STORAGE_TYPE
+            else pa.field("item", value_type, nullable=False)
+        )
+        super().__init__(
+            pa.list_(value_field, element_count),
+            _FIXED_SHAPE_TENSOR_EXTENSION_NAME,
+        )
+
+    def __arrow_ext_serialize__(self):
+        return json.dumps(
+            {
+                "shape": list(self._shape),
+                "dim_names": None,
+                "permutations": None,
+            }
+        ).encode()
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        metadata = json.loads(serialized.decode()) if serialized else {}
+        value_type = storage_type.value_field.type if hasattr(storage_type, "value_field") else storage_type.value_type
+        return cls(value_type, metadata["shape"])
+
+    def __reduce__(self):
+        return ArrowFixedShapeTensorType, (self._value_type, self._shape)
+
+
 class ArrowVariableShapeTensorType(pa.ExtensionType):
     def __init__(self, value_type, dimensions: int, uniform_shape):
         self._value_type = value_type
         self._dimensions = int(dimensions)
         self._uniform_shape = None if uniform_shape is None else list(uniform_shape)
+        data_value_field = (
+            _complex_vector_field("item")
+            if value_type == _COMPLEX_STORAGE_TYPE
+            else pa.field("item", value_type, nullable=False)
+        )
         super().__init__(
             pa.struct(
                 [
                     pa.field(
                         "data",
-                        pa.list_(pa.field("item", value_type, nullable=False)),
+                        pa.list_(data_value_field),
                         nullable=False,
                     ),
                     pa.field(
@@ -219,6 +286,7 @@ def _try_register_extension(extension_type):
 
 _try_register_extension(NdarrowCsrMatrixType(pa.float64(), 0))
 _try_register_extension(NdarrowCsrMatrixBatchType(pa.float64()))
+_try_register_extension(NdarrowComplex64Type())
 _try_register_extension(ArrowVariableShapeTensorType(pa.float64(), 1, None))
 
 
@@ -251,6 +319,15 @@ def _csr_matrix_batch_field(name, storage_type):
     )
 
 
+def _fixed_shape_tensor_type_shape(type_) -> tuple[int, ...]:
+    if hasattr(type_, "shape"):
+        return tuple(int(dimension) for dimension in type_.shape)
+    if hasattr(type_, "_shape"):
+        return tuple(int(dimension) for dimension in type_._shape)
+    metadata = json.loads(type_.__arrow_ext_serialize__().decode())
+    return tuple(int(dimension) for dimension in metadata["shape"])
+
+
 def _arrow_field(array, name):
     if isinstance(array, pa.ExtensionArray) and _extension_name(array.type) in _COMPLEX_EXTENSION_NAMES:
         return _complex_vector_field(name)
@@ -260,6 +337,12 @@ def _arrow_field(array, name):
 
 
 def _extension_array(field, storage):
+    if _extension_name(field.type) == _FIXED_SHAPE_TENSOR_EXTENSION_NAME:
+        try:
+            return pa.ExtensionArray.from_storage(field.type, storage)
+        except TypeError:
+            tensor_type = ArrowFixedShapeTensorType(storage.type.value_field.type, _fixed_shape_tensor_type_shape(field.type))
+            return pa.ExtensionArray.from_storage(tensor_type, storage)
     return pa.ExtensionArray.from_storage(field.type, storage)
 
 
@@ -290,6 +373,23 @@ def _complex_vector_field(name):
         nullable=False,
         metadata={"ARROW:extension:name": "ndarrow.complex64"},
     )
+
+
+def _complex_vector_array(values):
+    np_values = np.asarray(values, dtype=np.complex128)
+    storage = pa.array(
+        [[float(value.real), float(value.imag)] for value in np_values],
+        type=_COMPLEX_STORAGE_TYPE,
+    )
+    return pa.ExtensionArray.from_storage(NdarrowComplex64Type(), storage)
+
+
+def _complex_vector_numpy(array):
+    storage = array.storage if isinstance(array, pa.ExtensionArray) else array
+    if isinstance(storage, pa.FixedSizeListArray) and storage.type.list_size == 2:
+        values = np.asarray(storage.values, dtype=np.float64).reshape(len(storage), 2)
+        return values[:, 0] + (1j * values[:, 1])
+    return np.array([complex(real, imag) for real, imag in storage.to_pylist()], dtype=np.complex128)
 
 
 def _complex_vector_storage(array):
@@ -372,6 +472,10 @@ def _require_variable_shape_tensor_array(name, value, label: str):
     _require_extension_array(name, value, _VARIABLE_SHAPE_TENSOR_EXTENSION_NAME, label)
 
 
+def _require_fixed_shape_tensor_array(name, value, label: str):
+    _require_extension_array(name, value, _FIXED_SHAPE_TENSOR_EXTENSION_NAME, label)
+
+
 def _arrow_real_type_for_dtype(dtype) -> pa.DataType:
     resolved = np.dtype(dtype)
     if resolved == np.dtype(np.float32):
@@ -381,12 +485,93 @@ def _arrow_real_type_for_dtype(dtype) -> pa.DataType:
     raise TypeError("dtype must be float32 or float64")
 
 
+def _arrow_complex_value_type_for_dtype(dtype) -> pa.DataType:
+    resolved = np.dtype(dtype)
+    if resolved not in (np.dtype(np.complex64), np.dtype(np.complex128)):
+        raise TypeError("dtype must be complex64 or complex128")
+    return _COMPLEX_STORAGE_TYPE
+
+
 def _numpy_real_dtype_for_arrow(type_) -> np.dtype[np.generic]:
     if pa.types.is_float32(type_):
         return np.dtype(np.float32)
     if pa.types.is_float64(type_):
         return np.dtype(np.float64)
     raise TypeError("expected float32 or float64 Arrow values")
+
+
+def _numpy_complex_dtype_for_arrow(type_) -> np.dtype[np.generic]:
+    if type_ != _COMPLEX_STORAGE_TYPE:
+        raise TypeError("expected ndarrow.complex64 Arrow values")
+    return np.dtype(np.complex128)
+
+
+def _is_fixed_shape_tensor_array(value):
+    return _is_extension_array_named(value, _FIXED_SHAPE_TENSOR_EXTENSION_NAME)
+
+
+def _fixed_shape_tensor_storage(value):
+    if not _is_fixed_shape_tensor_array(value):
+        return None
+    return value.storage
+
+
+def _fixed_shape_tensor_field(name, array):
+    _require_fixed_shape_tensor_array("_fixed_shape_tensor_field", array, "array")
+    return pa.field(name, array.type, nullable=False)
+
+
+def _variable_shape_value_type(array):
+    if not _is_extension_array_named(array, _VARIABLE_SHAPE_TENSOR_EXTENSION_NAME):
+        return None
+    return _list_value_type(array.storage.field("data").type)
+
+
+def _is_complex_fixed_shape_tensor(array):
+    storage = _fixed_shape_tensor_storage(array)
+    if storage is None:
+        return False
+    value_type = storage.type.value_field.type
+    return value_type == _COMPLEX_STORAGE_TYPE or (
+        _is_extension_type(value_type) and _extension_name(value_type) in _COMPLEX_EXTENSION_NAMES
+    )
+
+
+def _is_complex_variable_shape_tensor(array):
+    value_type = _variable_shape_value_type(array)
+    if value_type is None:
+        return False
+    return value_type == _COMPLEX_STORAGE_TYPE or (
+        _is_extension_type(value_type) and _extension_name(value_type) in _COMPLEX_EXTENSION_NAMES
+    )
+
+
+def _is_complex_tensor(array):
+    return _is_complex_fixed_shape_tensor(array) or _is_complex_variable_shape_tensor(array)
+
+
+def _tensor_mode(name, **arrays):
+    flags = {label: _is_complex_tensor(array) for label, array in arrays.items()}
+    if any(flags.values()) and not all(flags.values()):
+        joined = ", ".join(arrays)
+        raise TypeError(
+            f"{name} requires {joined} to all be real tensor carriers or all ndarrow.complex64 tensor carriers"
+        )
+    return any(flags.values())
+
+
+def _require_real_tensor(name, **arrays):
+    wrong = [label for label, array in arrays.items() if _is_complex_tensor(array)]
+    if wrong:
+        joined = ", ".join(wrong)
+        raise TypeError(f"{name} does not currently admit ndarrow.complex64 tensor carriers: {joined}")
+
+
+def _require_complex_tensor(name, **arrays):
+    wrong = [label for label, array in arrays.items() if not _is_complex_tensor(array)]
+    if wrong:
+        joined = ", ".join(wrong)
+        raise TypeError(f"{name} requires ndarrow.complex64 tensor carriers for: {joined}")
 
 
 def _flatten_csr_lists(csr: CsrMatrix):
@@ -548,6 +733,54 @@ def arrow_csr_matrix_batch_rows(matrices) -> list[CsrMatrix]:
     return rows
 
 
+def _fixed_shape_tensor_shape(value) -> tuple[int, ...]:
+    return _fixed_shape_tensor_type_shape(value.type)
+
+
+def arrow_fixed_shape_tensor_array(value, *, dtype=None):
+    tensor = np.asarray(value, dtype=dtype) if dtype is not None else np.asarray(value)
+    if tensor.ndim < 2:
+        raise ValueError("arrow_fixed_shape_tensor_array requires an ndarray with batch axis and tensor rank >= 1")
+    element_count = int(np.prod(tensor.shape[1:], dtype=np.int64))
+    if np.issubdtype(tensor.dtype, np.floating):
+        resolved_dtype = tensor.dtype
+        if resolved_dtype not in (np.dtype(np.float32), np.dtype(np.float64)):
+            raise TypeError("arrow_fixed_shape_tensor_array currently supports float32 or float64")
+        value_type = _arrow_real_type_for_dtype(resolved_dtype)
+        storage = pa.FixedSizeListArray.from_arrays(
+            pa.array(tensor.reshape(-1), type=value_type),
+            type=pa.list_(pa.field("item", value_type, nullable=False), element_count),
+        )
+        return pa.ExtensionArray.from_storage(
+            ArrowFixedShapeTensorType(value_type, tensor.shape[1:]),
+            storage,
+        )
+    if np.issubdtype(tensor.dtype, np.complexfloating):
+        tensor = np.asarray(tensor, dtype=np.complex128)
+        flat = tensor.reshape(-1)
+        storage = pa.FixedSizeListArray.from_arrays(
+            _complex_vector_array(flat).storage,
+            type=pa.list_(_complex_vector_field("item"), element_count),
+        )
+        return pa.ExtensionArray.from_storage(
+            ArrowFixedShapeTensorType(_COMPLEX_STORAGE_TYPE, tensor.shape[1:]),
+            storage,
+        )
+    raise TypeError(
+        "arrow_fixed_shape_tensor_array currently supports float32, float64, complex64, or complex128"
+    )
+
+
+def arrow_fixed_shape_tensor_numpy(value) -> np.ndarray:
+    _require_fixed_shape_tensor_array("arrow_fixed_shape_tensor_numpy", value, "value")
+    storage = value.storage
+    if _is_complex_fixed_shape_tensor(value):
+        flat = _complex_vector_numpy(storage.values)
+        return flat.reshape((len(storage), *_fixed_shape_tensor_shape(value)))
+    flat = np.asarray(storage.values)
+    return flat.reshape((len(storage), *_fixed_shape_tensor_shape(value)))
+
+
 def arrow_variable_shape_tensor_array(rows, *, uniform_shape=None, dtype=None):
     numpy_rows = [np.asarray(row, dtype=dtype) if dtype is not None else np.asarray(row) for row in rows]
     if not numpy_rows:
@@ -556,8 +789,15 @@ def arrow_variable_shape_tensor_array(rows, *, uniform_shape=None, dtype=None):
     if rank == 0:
         raise ValueError("arrow_variable_shape_tensor_array requires tensors with rank >= 1")
     resolved_dtype = numpy_rows[0].dtype
-    if resolved_dtype not in (np.dtype(np.float32), np.dtype(np.float64)):
-        raise TypeError("arrow_variable_shape_tensor_array currently supports float32 or float64")
+    if resolved_dtype not in (
+        np.dtype(np.float32),
+        np.dtype(np.float64),
+        np.dtype(np.complex64),
+        np.dtype(np.complex128),
+    ):
+        raise TypeError(
+            "arrow_variable_shape_tensor_array currently supports float32, float64, complex64, or complex128"
+        )
     if any(row.ndim != rank for row in numpy_rows[1:]):
         raise ValueError("all tensors in a variable_shape_tensor batch must share rank")
     if any(row.dtype != resolved_dtype for row in numpy_rows[1:]):
@@ -565,14 +805,23 @@ def arrow_variable_shape_tensor_array(rows, *, uniform_shape=None, dtype=None):
     normalized_uniform = None if uniform_shape is None else [None if item is None else int(item) for item in uniform_shape]
     if normalized_uniform is not None and len(normalized_uniform) != rank:
         raise ValueError("uniform_shape length must match tensor rank")
-    packed_data = [row.reshape(-1).tolist() for row in numpy_rows]
     packed_shapes = [list(map(int, row.shape)) for row in numpy_rows]
-    value_type = _arrow_real_type_for_dtype(resolved_dtype)
+    if np.issubdtype(resolved_dtype, np.floating):
+        packed_data = [row.reshape(-1).tolist() for row in numpy_rows]
+        value_type = _arrow_real_type_for_dtype(resolved_dtype)
+        data_type = pa.list_(pa.field("item", value_type, nullable=False))
+    else:
+        packed_data = [
+            [[float(value.real), float(value.imag)] for value in row.reshape(-1)]
+            for row in numpy_rows
+        ]
+        value_type = _arrow_complex_value_type_for_dtype(resolved_dtype)
+        data_type = pa.list_(_complex_vector_field("item"))
     storage = pa.StructArray.from_arrays(
         [
             pa.array(
                 packed_data,
-                type=pa.list_(pa.field("item", value_type, nullable=False)),
+                type=data_type,
             ),
             pa.array(
                 packed_shapes,
@@ -582,7 +831,7 @@ def arrow_variable_shape_tensor_array(rows, *, uniform_shape=None, dtype=None):
         fields=[
             pa.field(
                 "data",
-                pa.list_(pa.field("item", value_type, nullable=False)),
+                data_type,
                 nullable=False,
             ),
             pa.field(
@@ -601,10 +850,20 @@ def arrow_variable_shape_tensor_array(rows, *, uniform_shape=None, dtype=None):
 def arrow_variable_shape_tensor_rows(value) -> list[np.ndarray]:
     _require_variable_shape_tensor_array("arrow_variable_shape_tensor_rows", value, "value")
     storage = value.storage
-    dtype = _numpy_real_dtype_for_arrow(_list_value_type(storage.field("data").type))
+    value_type = _list_value_type(storage.field("data").type)
+    if value_type == _COMPLEX_STORAGE_TYPE or (
+        _is_extension_type(value_type) and _extension_name(value_type) in _COMPLEX_EXTENSION_NAMES
+    ):
+        dtype = np.dtype(np.complex128)
+    else:
+        dtype = _numpy_real_dtype_for_arrow(value_type)
     rows = []
     for packed, shape in zip(storage.field("data").to_pylist(), storage.field("shape").to_pylist(), strict=True):
-        rows.append(np.asarray(packed, dtype=dtype).reshape(tuple(int(dimension) for dimension in shape)))
+        if dtype == np.dtype(np.complex128):
+            flat = np.asarray([complex(real, imag) for real, imag in packed], dtype=dtype)
+        else:
+            flat = np.asarray(packed, dtype=dtype)
+        rows.append(flat.reshape(tuple(int(dimension) for dimension in shape)))
     return rows
 
 
@@ -710,6 +969,505 @@ def _regression_result(raw_result) -> RegressionResult:
         residuals=residuals,
         r_squared=r_squared,
     )
+
+
+def _cp_metrics(raw_metrics) -> CpErrorMetrics:
+    signal_norm, residual_norm, relative_error, fit = raw_metrics
+    return CpErrorMetrics(
+        signal_norm=float(signal_norm),
+        residual_norm=float(residual_norm),
+        relative_error=float(relative_error),
+        fit=float(fit),
+    )
+
+
+def _cp_report(raw_report) -> CpAlsReport:
+    (iterations_run, converged, final_max_factor_change), metrics = raw_report
+    return CpAlsReport(
+        convergence=CpConvergenceReport(
+            iterations_run=int(iterations_run),
+            converged=bool(converged),
+            final_max_factor_change=float(final_max_factor_change),
+        ),
+        metrics=_cp_metrics(metrics),
+    )
+
+
+def _cp_als_nd_result(weights, factors) -> CpAlsNdResult:
+    shape = tuple(int(factor.shape[0]) for factor in factors)
+    return CpAlsNdResult(
+        weights=weights,
+        factors=list(factors),
+        shape=shape,
+    )
+
+
+def _tt_result(cores) -> TensorTrainResult:
+    return TensorTrainResult(cores=list(cores))
+
+
+def arrow_tensor_sum_last_axis(tensor):
+    if _is_fixed_shape_tensor_array(tensor):
+        field = _fixed_shape_tensor_field("tensor", tensor)
+        if _is_complex_fixed_shape_tensor(tensor):
+            out_field, out_storage = _raw.arrow_tensor_sum_last_axis_fixed_complex(field, tensor.storage)
+        else:
+            out_field, out_storage = _raw.arrow_tensor_sum_last_axis_fixed(field, tensor.storage)
+        return _extension_array(out_field, out_storage)
+    _require_variable_shape_tensor_array("arrow_tensor_sum_last_axis", tensor, "tensor")
+    if _is_complex_variable_shape_tensor(tensor):
+        out_field, out_storage = _raw.arrow_tensor_sum_last_axis_variable_complex(
+            _arrow_field(tensor, "tensor"),
+            tensor.storage,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_sum_last_axis_variable(
+            _arrow_field(tensor, "tensor"),
+            tensor.storage,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_l2_norm_last_axis(tensor):
+    if _is_fixed_shape_tensor_array(tensor):
+        field = _fixed_shape_tensor_field("tensor", tensor)
+        if _is_complex_fixed_shape_tensor(tensor):
+            out_field, out_storage = _raw.arrow_tensor_l2_norm_last_axis_fixed_complex(
+                field,
+                tensor.storage,
+            )
+        else:
+            out_field, out_storage = _raw.arrow_tensor_l2_norm_last_axis_fixed(field, tensor.storage)
+        return _extension_array(out_field, out_storage)
+    _require_variable_shape_tensor_array("arrow_tensor_l2_norm_last_axis", tensor, "tensor")
+    if _is_complex_variable_shape_tensor(tensor):
+        out_field, out_storage = _raw.arrow_tensor_l2_norm_last_axis_variable_complex(
+            _arrow_field(tensor, "tensor"),
+            tensor.storage,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_l2_norm_last_axis_variable(
+            _arrow_field(tensor, "tensor"),
+            tensor.storage,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_normalize_last_axis(tensor):
+    if _is_fixed_shape_tensor_array(tensor):
+        field = _fixed_shape_tensor_field("tensor", tensor)
+        if _is_complex_fixed_shape_tensor(tensor):
+            out_field, out_storage = _raw.arrow_tensor_normalize_last_axis_fixed_complex(
+                field,
+                tensor.storage,
+            )
+        else:
+            out_field, out_storage = _raw.arrow_tensor_normalize_last_axis_fixed(field, tensor.storage)
+        return _extension_array(out_field, out_storage)
+    _require_variable_shape_tensor_array("arrow_tensor_normalize_last_axis", tensor, "tensor")
+    if _is_complex_variable_shape_tensor(tensor):
+        out_field, out_storage = _raw.arrow_tensor_normalize_last_axis_variable_complex(
+            _arrow_field(tensor, "tensor"),
+            tensor.storage,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_normalize_last_axis_variable(
+            _arrow_field(tensor, "tensor"),
+            tensor.storage,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_batched_dot_last_axis(left, right):
+    if _is_fixed_shape_tensor_array(left) and _is_fixed_shape_tensor_array(right):
+        if _tensor_mode("arrow_tensor_batched_dot_last_axis", left=left, right=right):
+            out_field, out_storage = _raw.arrow_tensor_batched_dot_last_axis_fixed_complex(
+                _fixed_shape_tensor_field("left", left),
+                left.storage,
+                _fixed_shape_tensor_field("right", right),
+                right.storage,
+            )
+        else:
+            out_field, out_storage = _raw.arrow_tensor_batched_dot_last_axis_fixed(
+                _fixed_shape_tensor_field("left", left),
+                left.storage,
+                _fixed_shape_tensor_field("right", right),
+                right.storage,
+            )
+        return _extension_array(out_field, out_storage)
+    _require_variable_shape_tensor_array("arrow_tensor_batched_dot_last_axis", left, "left")
+    _require_variable_shape_tensor_array("arrow_tensor_batched_dot_last_axis", right, "right")
+    if _tensor_mode("arrow_tensor_batched_dot_last_axis", left=left, right=right):
+        out_field, out_storage = _raw.arrow_tensor_batched_dot_last_axis_variable_complex(
+            _arrow_field(left, "left"),
+            left.storage,
+            _arrow_field(right, "right"),
+            right.storage,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_batched_dot_last_axis_variable(
+            _arrow_field(left, "left"),
+            left.storage,
+            _arrow_field(right, "right"),
+            right.storage,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_permute_axes(tensor, permutation):
+    _require_fixed_shape_tensor_array("arrow_tensor_permute_axes", tensor, "tensor")
+    if _is_complex_fixed_shape_tensor(tensor):
+        out_field, out_storage = _raw.arrow_tensor_permute_axes_complex(
+            _fixed_shape_tensor_field("tensor", tensor),
+            tensor.storage,
+            permutation,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_permute_axes(
+            _fixed_shape_tensor_field("tensor", tensor),
+            tensor.storage,
+            permutation,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_contract_axes(left, right, left_axes, right_axes):
+    _require_fixed_shape_tensor_array("arrow_tensor_contract_axes", left, "left")
+    _require_fixed_shape_tensor_array("arrow_tensor_contract_axes", right, "right")
+    if _tensor_mode("arrow_tensor_contract_axes", left=left, right=right):
+        out_field, out_storage = _raw.arrow_tensor_contract_axes_complex(
+            _fixed_shape_tensor_field("left", left),
+            left.storage,
+            _fixed_shape_tensor_field("right", right),
+            right.storage,
+            left_axes,
+            right_axes,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_contract_axes(
+            _fixed_shape_tensor_field("left", left),
+            left.storage,
+            _fixed_shape_tensor_field("right", right),
+            right.storage,
+            left_axes,
+            right_axes,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_batched_matmul_last_two(left, right):
+    _require_fixed_shape_tensor_array("arrow_tensor_batched_matmul_last_two", left, "left")
+    _require_fixed_shape_tensor_array("arrow_tensor_batched_matmul_last_two", right, "right")
+    if _tensor_mode("arrow_tensor_batched_matmul_last_two", left=left, right=right):
+        out_field, out_storage = _raw.arrow_tensor_batched_matmul_last_two_complex(
+            _fixed_shape_tensor_field("left", left),
+            left.storage,
+            _fixed_shape_tensor_field("right", right),
+            right.storage,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_batched_matmul_last_two(
+            _fixed_shape_tensor_field("left", left),
+            left.storage,
+            _fixed_shape_tensor_field("right", right),
+            right.storage,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_cube_matvec(cube, vectors):
+    _require_fixed_shape_tensor_array("arrow_tensor_cube_matvec", cube, "cube")
+    if _is_complex_fixed_shape_tensor(cube):
+        _require_complex("arrow_tensor_cube_matvec", vectors=vectors)
+        return _raw.arrow_tensor_cube_matvec_complex(
+            _fixed_shape_tensor_field("cube", cube),
+            cube.storage,
+            vectors,
+        )
+    _require_real_tensor("arrow_tensor_cube_matvec", cube=cube)
+    _require_real("arrow_tensor_cube_matvec", vectors=vectors)
+    return _raw.arrow_tensor_cube_matvec(
+        _fixed_shape_tensor_field("cube", cube),
+        cube.storage,
+        vectors,
+    )
+
+
+def arrow_tensor_cube_matmat(left, right):
+    _require_fixed_shape_tensor_array("arrow_tensor_cube_matmat", left, "left")
+    _require_fixed_shape_tensor_array("arrow_tensor_cube_matmat", right, "right")
+    if _tensor_mode("arrow_tensor_cube_matmat", left=left, right=right):
+        out_field, out_storage = _raw.arrow_tensor_cube_matmat_complex(
+            _fixed_shape_tensor_field("left", left),
+            left.storage,
+            _fixed_shape_tensor_field("right", right),
+            right.storage,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_cube_matmat(
+            _fixed_shape_tensor_field("left", left),
+            left.storage,
+            _fixed_shape_tensor_field("right", right),
+            right.storage,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_flatten_cubes(tensor):
+    _require_fixed_shape_tensor_array("arrow_tensor_flatten_cubes", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_flatten_cubes", tensor=tensor)
+    return _raw.arrow_tensor_flatten_cubes(_fixed_shape_tensor_field("tensor", tensor), tensor.storage)
+
+
+def arrow_tensor_einsum(expression, left, right):
+    _require_fixed_shape_tensor_array("arrow_tensor_einsum", left, "left")
+    _require_fixed_shape_tensor_array("arrow_tensor_einsum", right, "right")
+    if _tensor_mode("arrow_tensor_einsum", left=left, right=right):
+        out_field, out_storage = _raw.arrow_tensor_einsum_complex(
+            expression,
+            _fixed_shape_tensor_field("left", left),
+            left.storage,
+            _fixed_shape_tensor_field("right", right),
+            right.storage,
+        )
+    else:
+        out_field, out_storage = _raw.arrow_tensor_einsum(
+            expression,
+            _fixed_shape_tensor_field("left", left),
+            left.storage,
+            _fixed_shape_tensor_field("right", right),
+            right.storage,
+        )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_cp_als3(tensor, rank, max_iterations=None, tolerance=None) -> CpAls3Result:
+    _require_fixed_shape_tensor_array("arrow_tensor_cp_als3", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_cp_als3", tensor=tensor)
+    weights, factor_0, factor_1, factor_2 = _raw.arrow_tensor_cp_als3(
+        _fixed_shape_tensor_field("tensor", tensor),
+        tensor.storage,
+        rank,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return CpAls3Result(
+        weights=weights,
+        factor_0=factor_0,
+        factor_1=factor_1,
+        factor_2=factor_2,
+    )
+
+
+def arrow_tensor_cp_als3_with_report(tensor, rank, max_iterations=None, tolerance=None):
+    _require_fixed_shape_tensor_array("arrow_tensor_cp_als3_with_report", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_cp_als3_with_report", tensor=tensor)
+    raw_result, raw_report = _raw.arrow_tensor_cp_als3_with_report(
+        _fixed_shape_tensor_field("tensor", tensor),
+        tensor.storage,
+        rank,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    weights, factor_0, factor_1, factor_2 = raw_result
+    return (
+        CpAls3Result(
+            weights=weights,
+            factor_0=factor_0,
+            factor_1=factor_1,
+            factor_2=factor_2,
+        ),
+        _cp_report(raw_report),
+    )
+
+
+def arrow_tensor_cp_als3_diagnostics(tensor, result: CpAls3Result) -> CpErrorMetrics:
+    _require_fixed_shape_tensor_array("arrow_tensor_cp_als3_diagnostics", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_cp_als3_diagnostics", tensor=tensor)
+    return _cp_metrics(
+        _raw.arrow_tensor_cp_als3_diagnostics(
+            _fixed_shape_tensor_field("tensor", tensor),
+            tensor.storage,
+            result.weights,
+            [result.factor_0, result.factor_1, result.factor_2],
+        )
+    )
+
+
+def arrow_tensor_cp_als3_reconstruct(result: CpAls3Result, *, field_name: str = "tensor"):
+    out_field, out_storage = _raw.arrow_tensor_cp_als3_reconstruct(
+        field_name,
+        result.weights,
+        [result.factor_0, result.factor_1, result.factor_2],
+    )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_cp_als_nd(tensor, rank, max_iterations=None, tolerance=None) -> CpAlsNdResult:
+    _require_fixed_shape_tensor_array("arrow_tensor_cp_als_nd", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_cp_als_nd", tensor=tensor)
+    weights, factors = _raw.arrow_tensor_cp_als_nd(
+        _fixed_shape_tensor_field("tensor", tensor),
+        tensor.storage,
+        rank,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return _cp_als_nd_result(weights, factors)
+
+
+def arrow_tensor_cp_als_nd_with_report(tensor, rank, max_iterations=None, tolerance=None):
+    _require_fixed_shape_tensor_array("arrow_tensor_cp_als_nd_with_report", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_cp_als_nd_with_report", tensor=tensor)
+    raw_result, raw_report = _raw.arrow_tensor_cp_als_nd_with_report(
+        _fixed_shape_tensor_field("tensor", tensor),
+        tensor.storage,
+        rank,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    weights, factors = raw_result
+    return (_cp_als_nd_result(weights, factors), _cp_report(raw_report))
+
+
+def arrow_tensor_cp_als_nd_diagnostics(tensor, result: CpAlsNdResult) -> CpErrorMetrics:
+    _require_fixed_shape_tensor_array("arrow_tensor_cp_als_nd_diagnostics", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_cp_als_nd_diagnostics", tensor=tensor)
+    return _cp_metrics(
+        _raw.arrow_tensor_cp_als_nd_diagnostics(
+            _fixed_shape_tensor_field("tensor", tensor),
+            tensor.storage,
+            result.weights,
+            result.factors,
+        )
+    )
+
+
+def arrow_tensor_cp_als_nd_reconstruct(result: CpAlsNdResult, *, field_name: str = "tensor"):
+    out_field, out_storage = _raw.arrow_tensor_cp_als_nd_reconstruct(
+        field_name,
+        result.weights,
+        result.factors,
+    )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_hosvd_nd(tensor, ranks) -> HosvdNdResult:
+    _require_fixed_shape_tensor_array("arrow_tensor_hosvd_nd", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_hosvd_nd", tensor=tensor)
+    core, factors = _raw.arrow_tensor_hosvd_nd(
+        _fixed_shape_tensor_field("tensor", tensor),
+        tensor.storage,
+        ranks,
+    )
+    return HosvdNdResult(core=core, factors=list(factors))
+
+
+def arrow_tensor_hooi_nd(tensor, ranks, max_iterations=None, tolerance=None) -> HosvdNdResult:
+    _require_fixed_shape_tensor_array("arrow_tensor_hooi_nd", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_hooi_nd", tensor=tensor)
+    core, factors = _raw.arrow_tensor_hooi_nd(
+        _fixed_shape_tensor_field("tensor", tensor),
+        tensor.storage,
+        ranks,
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return HosvdNdResult(core=core, factors=list(factors))
+
+
+def arrow_tensor_hosvd_nd_reconstruct(result: HosvdNdResult, *, field_name: str = "tensor"):
+    out_field, out_storage = _raw.arrow_tensor_hosvd_nd_reconstruct(
+        field_name,
+        result.core,
+        result.factors,
+    )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_tucker_project(tensor, result: HosvdNdResult):
+    _require_fixed_shape_tensor_array("arrow_tensor_tucker_project", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_tucker_project", tensor=tensor)
+    out_field, out_storage = _raw.arrow_tensor_tucker_project(
+        _fixed_shape_tensor_field("tensor", tensor),
+        tensor.storage,
+        result.factors,
+    )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_tucker_expand(result: HosvdNdResult, *, field_name: str = "tensor"):
+    core = arrow_fixed_shape_tensor_array(np.asarray(result.core))
+    out_field, out_storage = _raw.arrow_tensor_tucker_expand(
+        _fixed_shape_tensor_field(field_name, core),
+        core.storage,
+        result.factors,
+    )
+    return _extension_array(out_field, out_storage)
+
+
+def arrow_tensor_tt_svd(tensor, max_rank=None, tolerance=None) -> TensorTrainResult:
+    _require_fixed_shape_tensor_array("arrow_tensor_tt_svd", tensor, "tensor")
+    _require_real_tensor("arrow_tensor_tt_svd", tensor=tensor)
+    return _tt_result(
+        _raw.arrow_tensor_tt_svd(
+            _fixed_shape_tensor_field("tensor", tensor),
+            tensor.storage,
+            max_rank=max_rank,
+            tolerance=tolerance,
+        )
+    )
+
+
+def arrow_tensor_tt_orthogonalize_left(result: TensorTrainResult) -> TensorTrainResult:
+    return _tt_result(_raw.arrow_tensor_tt_orthogonalize_left(result.cores))
+
+
+def arrow_tensor_tt_orthogonalize_right(result: TensorTrainResult) -> TensorTrainResult:
+    return _tt_result(_raw.arrow_tensor_tt_orthogonalize_right(result.cores))
+
+
+def arrow_tensor_tt_round(result: TensorTrainResult, max_rank=None, tolerance=None) -> TensorTrainResult:
+    return _tt_result(
+        _raw.arrow_tensor_tt_round(result.cores, max_rank=max_rank, tolerance=tolerance)
+    )
+
+
+def arrow_tensor_tt_inner(left: TensorTrainResult, right: TensorTrainResult):
+    return _raw.arrow_tensor_tt_inner(left.cores, right.cores)
+
+
+def arrow_tensor_tt_norm(result: TensorTrainResult):
+    return _raw.arrow_tensor_tt_norm(result.cores)
+
+
+def arrow_tensor_tt_add(left: TensorTrainResult, right: TensorTrainResult) -> TensorTrainResult:
+    return _tt_result(_raw.arrow_tensor_tt_add(left.cores, right.cores))
+
+
+def arrow_tensor_tt_hadamard(left: TensorTrainResult, right: TensorTrainResult) -> TensorTrainResult:
+    return _tt_result(_raw.arrow_tensor_tt_hadamard(left.cores, right.cores))
+
+
+def arrow_tensor_tt_hadamard_round(
+    left: TensorTrainResult,
+    right: TensorTrainResult,
+    max_rank=None,
+    tolerance=None,
+) -> TensorTrainResult:
+    return _tt_result(
+        _raw.arrow_tensor_tt_hadamard_round(
+            left.cores,
+            right.cores,
+            max_rank=max_rank,
+            tolerance=tolerance,
+        )
+    )
+
+
+def arrow_tensor_tt_svd_reconstruct(result: TensorTrainResult, *, field_name: str = "tensor"):
+    out_field, out_storage = _raw.arrow_tensor_tt_svd_reconstruct(field_name, result.cores)
+    return _extension_array(out_field, out_storage)
 
 
 def arrow_dot_hermitian(left, right):
@@ -2283,6 +3041,8 @@ __all__ = [
     "arrow_eigen_nonsymmetric_bi",
     "arrow_eigen_nonsymmetric_complex",
     "arrow_eigen_symmetric",
+    "arrow_fixed_shape_tensor_array",
+    "arrow_fixed_shape_tensor_numpy",
     "arrow_gram_schmidt",
     "arrow_gram_schmidt_classic",
     "arrow_gram_schmidt_complex",
@@ -2389,6 +3149,40 @@ __all__ = [
     "arrow_svd_pseudo_inverse",
     "arrow_stochastic_gradient_descent",
     "arrow_stochastic_gradient_descent_complex",
+    "arrow_tensor_batched_dot_last_axis",
+    "arrow_tensor_batched_matmul_last_two",
+    "arrow_tensor_contract_axes",
+    "arrow_tensor_cp_als3",
+    "arrow_tensor_cp_als3_diagnostics",
+    "arrow_tensor_cp_als3_reconstruct",
+    "arrow_tensor_cp_als3_with_report",
+    "arrow_tensor_cp_als_nd",
+    "arrow_tensor_cp_als_nd_diagnostics",
+    "arrow_tensor_cp_als_nd_reconstruct",
+    "arrow_tensor_cp_als_nd_with_report",
+    "arrow_tensor_cube_matmat",
+    "arrow_tensor_cube_matvec",
+    "arrow_tensor_einsum",
+    "arrow_tensor_flatten_cubes",
+    "arrow_tensor_hooi_nd",
+    "arrow_tensor_hosvd_nd",
+    "arrow_tensor_hosvd_nd_reconstruct",
+    "arrow_tensor_l2_norm_last_axis",
+    "arrow_tensor_normalize_last_axis",
+    "arrow_tensor_permute_axes",
+    "arrow_tensor_sum_last_axis",
+    "arrow_tensor_tt_add",
+    "arrow_tensor_tt_hadamard",
+    "arrow_tensor_tt_hadamard_round",
+    "arrow_tensor_tt_inner",
+    "arrow_tensor_tt_norm",
+    "arrow_tensor_tt_orthogonalize_left",
+    "arrow_tensor_tt_orthogonalize_right",
+    "arrow_tensor_tt_round",
+    "arrow_tensor_tt_svd",
+    "arrow_tensor_tt_svd_reconstruct",
+    "arrow_tensor_tucker_expand",
+    "arrow_tensor_tucker_project",
     "arrow_variable_shape_tensor_array",
     "arrow_variable_shape_tensor_rows",
 ]

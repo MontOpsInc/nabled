@@ -12,14 +12,14 @@ use pyo3::types::PyAny;
 use crate::error::to_py_err;
 use crate::utils;
 
-type PyHosvd3Result = (Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>);
-type PyCpAls3Result = (Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>);
-type PyCpAlsNdResult = (Py<PyAny>, Vec<Py<PyAny>>);
-type PyCpMetrics = (f64, f64, f64, f64);
-type PyCpConvergence = (usize, bool, f64);
-type PyCpReport = (PyCpConvergence, PyCpMetrics);
-type PyHosvdNdResult = (Py<PyAny>, Vec<Py<PyAny>>);
-type PyTensorTrainResult = Vec<Py<PyAny>>;
+pub(crate) type PyHosvd3Result = (Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>);
+pub(crate) type PyCpAls3Result = (Py<PyAny>, Py<PyAny>, Py<PyAny>, Py<PyAny>);
+pub(crate) type PyCpAlsNdResult = (Py<PyAny>, Vec<Py<PyAny>>);
+pub(crate) type PyCpMetrics = (f64, f64, f64, f64);
+pub(crate) type PyCpConvergence = (usize, bool, f64);
+pub(crate) type PyCpReport = (PyCpConvergence, PyCpMetrics);
+pub(crate) type PyHosvdNdResult = (Py<PyAny>, Vec<Py<PyAny>>);
+pub(crate) type PyTensorTrainResult = Vec<Py<PyAny>>;
 
 fn standard_array2<T: Clone>(array: Array2<T>) -> Array2<T> {
     array.as_standard_layout().to_owned()
@@ -33,13 +33,13 @@ fn standard_arrayd<T: Clone>(array: ArrayD<T>) -> ArrayD<T> {
     array.as_standard_layout().to_owned()
 }
 
-fn real_scalar_to_f64<T: ToPrimitive>(value: T, name: &str) -> PyResult<f64> {
+pub(crate) fn real_scalar_to_f64<T: ToPrimitive>(value: T, name: &str) -> PyResult<f64> {
     value
         .to_f64()
         .ok_or_else(|| PyOverflowError::new_err(format!("{name} could not be represented as f64")))
 }
 
-fn cp_als_config<T>(
+pub(crate) fn cp_als_config<T>(
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<nabled_linalg::tensor::CpAlsConfig<T>>
@@ -57,7 +57,7 @@ where
     Ok(config)
 }
 
-fn hooi_config<T>(
+pub(crate) fn hooi_config<T>(
     max_iterations: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<nabled_linalg::tensor::HooiConfig<T>>
@@ -75,7 +75,7 @@ where
     Ok(config)
 }
 
-fn tt_svd_config<T>(
+pub(crate) fn tt_svd_config<T>(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<nabled_linalg::tensor::TtSvdConfig<T>>
@@ -90,7 +90,7 @@ where
     Ok(config)
 }
 
-fn tt_round_config<T>(
+pub(crate) fn tt_round_config<T>(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<nabled_linalg::tensor::TtRoundConfig<T>>
@@ -105,7 +105,7 @@ where
     Ok(config)
 }
 
-fn py_cp_metrics<T: NabledReal + ToPrimitive>(
+pub(crate) fn py_cp_metrics<T: NabledReal + ToPrimitive>(
     metrics: nabled_linalg::tensor::CpErrorMetrics<T>,
 ) -> PyResult<PyCpMetrics> {
     Ok((
@@ -116,7 +116,7 @@ fn py_cp_metrics<T: NabledReal + ToPrimitive>(
     ))
 }
 
-fn py_cp_report<T: NabledReal + ToPrimitive>(
+pub(crate) fn py_cp_report<T: NabledReal + ToPrimitive>(
     report: nabled_linalg::tensor::CpAlsReport<T>,
 ) -> PyResult<PyCpReport> {
     Ok((
@@ -132,7 +132,7 @@ fn py_cp_report<T: NabledReal + ToPrimitive>(
     ))
 }
 
-fn py_hosvd3_result<T: Element + Clone + NabledReal>(
+pub(crate) fn py_hosvd3_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
     result: nabled_linalg::tensor::Hosvd3Result<T>,
 ) -> PyHosvd3Result {
@@ -144,7 +144,7 @@ fn py_hosvd3_result<T: Element + Clone + NabledReal>(
     )
 }
 
-fn py_cp_als3_result<T: Element + Clone + NabledReal>(
+pub(crate) fn py_cp_als3_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
     result: nabled_linalg::tensor::CpAls3Result<T>,
 ) -> PyCpAls3Result {
@@ -156,7 +156,7 @@ fn py_cp_als3_result<T: Element + Clone + NabledReal>(
     )
 }
 
-fn py_cp_als_nd_result<T: Element + Clone + NabledReal>(
+pub(crate) fn py_cp_als_nd_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
     result: nabled_linalg::tensor::CpAlsNdResult<T>,
 ) -> PyCpAlsNdResult {
@@ -170,7 +170,7 @@ fn py_cp_als_nd_result<T: Element + Clone + NabledReal>(
     )
 }
 
-fn py_hosvd_nd_result<T: Element + Clone + NabledReal>(
+pub(crate) fn py_hosvd_nd_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
     result: nabled_linalg::tensor::HosvdNdResult<T>,
 ) -> PyHosvdNdResult {
@@ -184,7 +184,7 @@ fn py_hosvd_nd_result<T: Element + Clone + NabledReal>(
     )
 }
 
-fn py_tt_result<T: Element + Clone + NabledReal>(
+pub(crate) fn py_tt_result<T: Element + Clone + NabledReal>(
     py: Python<'_>,
     result: nabled_linalg::tensor::TensorTrainResult<T>,
 ) -> PyTensorTrainResult {
@@ -195,7 +195,7 @@ fn py_tt_result<T: Element + Clone + NabledReal>(
         .collect()
 }
 
-fn extract_array2_sequence<T: Element + Clone>(
+pub(crate) fn extract_array2_sequence<T: Element + Clone>(
     arrays: &Bound<'_, PyAny>,
 ) -> PyResult<Vec<Array2<T>>> {
     let mut out = Vec::new();
@@ -218,7 +218,7 @@ fn extract_array2_sequence<T: Element + Clone>(
     Ok(out)
 }
 
-enum RealTensorTrainResult {
+pub(crate) enum RealTensorTrainResult {
     F32(nabled_linalg::tensor::TensorTrainResult<f32>),
     F64(nabled_linalg::tensor::TensorTrainResult<f64>),
 }
@@ -230,7 +230,9 @@ fn tensor_train_result_from_cores<T: NabledReal>(
     nabled_linalg::tensor::TensorTrainResult { cores, shape }
 }
 
-fn real_tt_result_from_cores(cores: &Bound<'_, PyAny>) -> PyResult<RealTensorTrainResult> {
+pub(crate) fn real_tt_result_from_cores(
+    cores: &Bound<'_, PyAny>,
+) -> PyResult<RealTensorTrainResult> {
     let mut iter = cores.try_iter()?;
     let Some(first) = iter.next() else {
         return Err(PyValueError::new_err(

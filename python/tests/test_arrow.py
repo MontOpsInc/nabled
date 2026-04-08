@@ -61,6 +61,8 @@ try:
         arrow_eigen_nonsymmetric,
         arrow_eigen_nonsymmetric_bi,
         arrow_eigen_symmetric,
+        arrow_fixed_shape_tensor_array,
+        arrow_fixed_shape_tensor_numpy,
         arrow_gram_schmidt,
         arrow_gmres,
         arrow_gradient_descent,
@@ -136,6 +138,40 @@ try:
         arrow_svd_decompose_with_tolerance,
         arrow_svd_null_space,
         arrow_svd_pseudo_inverse,
+        arrow_tensor_batched_dot_last_axis,
+        arrow_tensor_batched_matmul_last_two,
+        arrow_tensor_contract_axes,
+        arrow_tensor_cp_als3,
+        arrow_tensor_cp_als3_diagnostics,
+        arrow_tensor_cp_als3_reconstruct,
+        arrow_tensor_cp_als3_with_report,
+        arrow_tensor_cp_als_nd,
+        arrow_tensor_cp_als_nd_diagnostics,
+        arrow_tensor_cp_als_nd_reconstruct,
+        arrow_tensor_cp_als_nd_with_report,
+        arrow_tensor_cube_matmat,
+        arrow_tensor_cube_matvec,
+        arrow_tensor_einsum,
+        arrow_tensor_flatten_cubes,
+        arrow_tensor_hooi_nd,
+        arrow_tensor_hosvd_nd,
+        arrow_tensor_hosvd_nd_reconstruct,
+        arrow_tensor_l2_norm_last_axis,
+        arrow_tensor_normalize_last_axis,
+        arrow_tensor_permute_axes,
+        arrow_tensor_sum_last_axis,
+        arrow_tensor_tt_add,
+        arrow_tensor_tt_hadamard,
+        arrow_tensor_tt_hadamard_round,
+        arrow_tensor_tt_inner,
+        arrow_tensor_tt_norm,
+        arrow_tensor_tt_orthogonalize_left,
+        arrow_tensor_tt_orthogonalize_right,
+        arrow_tensor_tt_round,
+        arrow_tensor_tt_svd,
+        arrow_tensor_tt_svd_reconstruct,
+        arrow_tensor_tucker_expand,
+        arrow_tensor_tucker_project,
         arrow_variable_shape_tensor_array,
         arrow_variable_shape_tensor_rows,
     )
@@ -1314,3 +1350,367 @@ def test_arrow_sparse_batch_wrappers():
         first_product_dense,
         np.array([[4.0, 0.0], [0.0, 9.0]], dtype=np.float64),
     )
+
+
+def test_arrow_tensor_fixed_shape_real_surface():
+    tensor = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[3.0, 4.0], [0.0, 5.0]],
+                [[8.0, 15.0], [7.0, 24.0]],
+            ],
+            dtype=np.float64,
+        )
+    )
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(tensor),
+        np.array(
+            [
+                [[3.0, 4.0], [0.0, 5.0]],
+                [[8.0, 15.0], [7.0, 24.0]],
+            ],
+            dtype=np.float64,
+        ),
+    )
+
+    summed = arrow_tensor_sum_last_axis(tensor)
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(summed),
+        np.array([[7.0, 5.0], [23.0, 31.0]], dtype=np.float64),
+    )
+
+    norms = arrow_tensor_l2_norm_last_axis(tensor)
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(norms),
+        np.array([[5.0, 5.0], [17.0, 25.0]], dtype=np.float64),
+    )
+
+    normalized = arrow_tensor_normalize_last_axis(tensor)
+    np.testing.assert_allclose(
+        np.linalg.norm(arrow_fixed_shape_tensor_numpy(normalized), axis=-1),
+        np.ones((2, 2), dtype=np.float64),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+    other = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[1.0, 1.0], [2.0, 0.0]],
+                [[1.0, 0.0], [0.0, 1.0]],
+            ],
+            dtype=np.float64,
+        )
+    )
+    dot = arrow_tensor_batched_dot_last_axis(tensor, other)
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(dot),
+        np.array([[7.0, 0.0], [8.0, 24.0]], dtype=np.float64),
+    )
+
+    permuted = arrow_tensor_permute_axes(tensor, [1, 0, 2])
+    assert arrow_fixed_shape_tensor_numpy(permuted).shape == (2, 2, 2)
+
+    contract_left = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                [[2.0, 1.0], [0.0, 1.0], [1.0, 0.0]],
+            ],
+            dtype=np.float64,
+        )
+    )
+    contract_right = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[1.0, 0.0], [0.0, 1.0]],
+                [[2.0, 1.0], [1.0, 2.0]],
+            ],
+            dtype=np.float64,
+        )
+    )
+    contracted = arrow_tensor_contract_axes(contract_left, contract_right, [2], [1])
+    assert arrow_fixed_shape_tensor_numpy(contracted).shape == (2, 3, 2, 2)
+
+    left_batch = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[1.0, 2.0], [3.0, 4.0]],
+                [[2.0, 0.0], [1.0, 2.0]],
+            ],
+            dtype=np.float64,
+        )
+    )
+    right_batch = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[5.0, 6.0], [7.0, 8.0]],
+                [[1.0, 0.0], [0.0, 1.0]],
+            ],
+            dtype=np.float64,
+        )
+    )
+    batched_mm = arrow_tensor_batched_matmul_last_two(left_batch, right_batch)
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(batched_mm),
+        np.array(
+            [
+                [[19.0, 22.0], [43.0, 50.0]],
+                [[2.0, 0.0], [1.0, 2.0]],
+            ],
+            dtype=np.float64,
+        ),
+    )
+
+    cube_matvec = arrow_tensor_cube_matvec(
+        left_batch,
+        _matrix_array([[1.0, 0.0], [1.0, 1.0]], np.float64),
+    )
+    np.testing.assert_allclose(
+        _matrix_numpy(cube_matvec, np.float64),
+        np.array([[1.0, 3.0], [2.0, 3.0]], dtype=np.float64),
+    )
+
+    cube_matmat = arrow_tensor_cube_matmat(left_batch, right_batch)
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(cube_matmat),
+        arrow_fixed_shape_tensor_numpy(batched_mm),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+    flat = arrow_tensor_flatten_cubes(left_batch)
+    np.testing.assert_allclose(
+        _matrix_numpy(flat, np.float64),
+        np.array([[1.0, 2.0, 3.0, 4.0], [2.0, 0.0, 1.0, 2.0]], dtype=np.float64),
+    )
+
+    einsum = arrow_tensor_einsum("bij,bjk->bik", left_batch, right_batch)
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(einsum),
+        arrow_fixed_shape_tensor_numpy(batched_mm),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+
+def test_arrow_tensor_advanced_real_result_families():
+    tensor = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[1.0, 3.0], [2.0, 6.0]],
+                [[2.0, 6.0], [4.0, 12.0]],
+            ],
+            dtype=np.float64,
+        )
+    )
+
+    cp3 = arrow_tensor_cp_als3(tensor, 1, max_iterations=100, tolerance=1e-8)
+    cp3_metrics = arrow_tensor_cp_als3_diagnostics(tensor, cp3)
+    assert cp3_metrics.fit > 0.99
+    cp3_recon = arrow_tensor_cp_als3_reconstruct(cp3, field_name="cp3")
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(cp3_recon),
+        arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+
+    cp3_with_report, cp3_report = arrow_tensor_cp_als3_with_report(
+        tensor,
+        1,
+        max_iterations=100,
+        tolerance=1e-8,
+    )
+    assert isinstance(cp3_with_report, type(cp3))
+    assert cp3_report.convergence.iterations_run > 0
+
+    cp_nd = arrow_tensor_cp_als_nd(tensor, 1, max_iterations=100, tolerance=1e-8)
+    cp_nd_metrics = arrow_tensor_cp_als_nd_diagnostics(tensor, cp_nd)
+    assert cp_nd_metrics.fit > 0.99
+    cp_nd_recon = arrow_tensor_cp_als_nd_reconstruct(cp_nd, field_name="cp_nd")
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(cp_nd_recon),
+        arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    cp_nd_with_report, cp_nd_report = arrow_tensor_cp_als_nd_with_report(
+        tensor,
+        1,
+        max_iterations=100,
+        tolerance=1e-8,
+    )
+    assert cp_nd_report.convergence.iterations_run > 0
+
+    hosvd = arrow_tensor_hosvd_nd(tensor, [1, 1, 1])
+    hosvd_recon = arrow_tensor_hosvd_nd_reconstruct(hosvd, field_name="hosvd")
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(hosvd_recon),
+        arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+
+    hooi = arrow_tensor_hooi_nd(tensor, [1, 1, 1], max_iterations=10, tolerance=1e-8)
+    assert hooi.core.ndim == 3
+
+    tucker_core = arrow_tensor_tucker_project(tensor, hosvd)
+    tucker_reexpanded = arrow_tensor_tucker_expand(hosvd, field_name="tucker")
+    assert arrow_fixed_shape_tensor_numpy(tucker_core).ndim == 3
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(tucker_reexpanded),
+        arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+
+    tt = arrow_tensor_tt_svd(tensor)
+    tt_left = arrow_tensor_tt_orthogonalize_left(tt)
+    tt_right = arrow_tensor_tt_orthogonalize_right(tt)
+    tt_norm = arrow_tensor_tt_norm(tt)
+    tt_inner = arrow_tensor_tt_inner(tt, tt)
+    assert np.isfinite(tt_norm)
+    assert abs(np.sqrt(tt_inner) - tt_norm) < 1e-5
+    assert len(tt_left.cores) == len(tt.cores)
+    assert len(tt_right.cores) == len(tt.cores)
+
+    tt_rounded = arrow_tensor_tt_round(tt)
+    tt_added = arrow_tensor_tt_add(tt, tt)
+    tt_hadamard = arrow_tensor_tt_hadamard(tt, tt)
+    tt_hadamard_rounded = arrow_tensor_tt_hadamard_round(tt, tt)
+    assert len(tt_added.cores) == len(tt.cores)
+    assert len(tt_hadamard.cores) == len(tt.cores)
+    assert len(tt_hadamard_rounded.cores) == len(tt.cores)
+
+    tt_recon = arrow_tensor_tt_svd_reconstruct(tt_rounded, field_name="tt")
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(tt_recon),
+        arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+
+
+def test_arrow_tensor_complex_and_variable_shape_carriers():
+    complex_fixed = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[1.0 + 1.0j, 0.0 + 2.0j], [2.0 + 0.0j, 0.0 + 1.0j]],
+                [[3.0 + 4.0j, 0.0 + 1.0j], [1.0 + 0.0j, 1.0 + 0.0j]],
+            ],
+            dtype=np.complex128,
+        )
+    )
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(complex_fixed),
+        np.array(
+            [
+                [[1.0 + 1.0j, 0.0 + 2.0j], [2.0 + 0.0j, 0.0 + 1.0j]],
+                [[3.0 + 4.0j, 0.0 + 1.0j], [1.0 + 0.0j, 1.0 + 0.0j]],
+            ],
+            dtype=np.complex128,
+        ),
+    )
+
+    complex_sum = arrow_tensor_sum_last_axis(complex_fixed)
+    assert arrow_fixed_shape_tensor_numpy(complex_sum).shape == (2, 2)
+
+    complex_norm = arrow_tensor_l2_norm_last_axis(complex_fixed)
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(complex_norm),
+        np.linalg.norm(arrow_fixed_shape_tensor_numpy(complex_fixed), axis=-1),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+    complex_normalized = arrow_tensor_normalize_last_axis(complex_fixed)
+    np.testing.assert_allclose(
+        np.linalg.norm(arrow_fixed_shape_tensor_numpy(complex_normalized), axis=-1),
+        np.ones((2, 2), dtype=np.float64),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+    complex_rhs = arrow_fixed_shape_tensor_array(
+        np.array(
+            [
+                [[1.0 - 1.0j, 2.0 + 0.0j], [0.0 + 1.0j, 1.0 + 0.0j]],
+                [[1.0 + 0.0j, 1.0 + 0.0j], [1.0 + 0.0j, 0.0 + 1.0j]],
+            ],
+            dtype=np.complex128,
+        )
+    )
+    complex_dot = arrow_tensor_batched_dot_last_axis(complex_fixed, complex_rhs)
+    assert arrow_fixed_shape_tensor_numpy(complex_dot).shape == (2, 2)
+
+    complex_mm = arrow_tensor_batched_matmul_last_two(complex_fixed, complex_rhs)
+    assert arrow_fixed_shape_tensor_numpy(complex_mm).shape == (2, 2, 2)
+
+    complex_cube_vec = arrow_tensor_cube_matvec(
+        complex_fixed,
+        _complex_matrix_array([[1.0 + 0.0j, 0.0 + 0.0j], [1.0 + 0.0j, 1.0 + 0.0j]]),
+    )
+    assert _complex_matrix_numpy(complex_cube_vec).shape == (2, 2)
+
+    complex_einsum = arrow_tensor_einsum("bij,bjk->bik", complex_fixed, complex_rhs)
+    assert arrow_fixed_shape_tensor_numpy(complex_einsum).shape == (2, 2, 2)
+
+    ragged = arrow_variable_shape_tensor_array(
+        [
+            np.array([[3.0, 4.0], [0.0, 5.0]], dtype=np.float64),
+            np.array([[8.0, 15.0, 17.0]], dtype=np.float64),
+        ]
+    )
+    ragged_rows = arrow_variable_shape_tensor_rows(ragged)
+    assert ragged_rows[0].shape == (2, 2)
+    ragged_sum = arrow_tensor_sum_last_axis(ragged)
+    ragged_norm = arrow_tensor_l2_norm_last_axis(ragged)
+    ragged_normalized = arrow_tensor_normalize_last_axis(ragged)
+    np.testing.assert_allclose(
+        arrow_variable_shape_tensor_rows(ragged_sum)[0],
+        np.array([7.0, 5.0], dtype=np.float64),
+    )
+    np.testing.assert_allclose(
+        arrow_variable_shape_tensor_rows(ragged_norm)[0],
+        np.array([5.0, 5.0], dtype=np.float64),
+    )
+    np.testing.assert_allclose(
+        np.linalg.norm(arrow_variable_shape_tensor_rows(ragged_normalized)[0], axis=-1),
+        np.ones(2, dtype=np.float64),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+    complex_ragged = arrow_variable_shape_tensor_array(
+        [
+            np.array([[1.0 + 1.0j, 0.0 + 2.0j], [2.0 + 0.0j, 0.0 + 1.0j]], dtype=np.complex128),
+            np.array([[3.0 + 4.0j, 0.0 + 1.0j]], dtype=np.complex128),
+        ]
+    )
+    complex_ragged_rhs = arrow_variable_shape_tensor_array(
+        [
+            np.array([[1.0 - 1.0j, 2.0 + 0.0j], [0.0 + 1.0j, 1.0 + 0.0j]], dtype=np.complex128),
+            np.array([[1.0 + 0.0j, 1.0 + 0.0j]], dtype=np.complex128),
+        ]
+    )
+    complex_ragged_rows = arrow_variable_shape_tensor_rows(complex_ragged)
+    assert np.iscomplexobj(complex_ragged_rows[0])
+    complex_ragged_sum = arrow_tensor_sum_last_axis(complex_ragged)
+    complex_ragged_norm = arrow_tensor_l2_norm_last_axis(complex_ragged)
+    complex_ragged_normalized = arrow_tensor_normalize_last_axis(complex_ragged)
+    complex_ragged_dot = arrow_tensor_batched_dot_last_axis(complex_ragged, complex_ragged_rhs)
+    assert np.iscomplexobj(arrow_variable_shape_tensor_rows(complex_ragged_sum)[0])
+    np.testing.assert_allclose(
+        arrow_variable_shape_tensor_rows(complex_ragged_norm)[0],
+        np.linalg.norm(complex_ragged_rows[0], axis=-1),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        np.linalg.norm(arrow_variable_shape_tensor_rows(complex_ragged_normalized)[0], axis=-1),
+        np.ones(2, dtype=np.float64),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+    assert np.iscomplexobj(arrow_variable_shape_tensor_rows(complex_ragged_dot)[0])

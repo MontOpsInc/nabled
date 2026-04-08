@@ -15,9 +15,9 @@ Branch note:
 and parity-target definition `N-PY-002` are now complete: the branch is merged to current `main`,
 `pyproject.toml` version truth is aligned to `0.0.8`, tracked native `dSYM` artifacts were removed
 from the Python sdist path, and `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative
-release target. Remaining blocking work is the final Arrow tensor carrier slice, truthful
-provider/backend feature exposure, Python performance/copy-contract hardening, documentation
-polish, and PyPI supply-chain hardening. The first `N-PY-003` implementation pass is also landed:
+release target. Remaining blocking work is truthful provider/backend feature exposure, Python
+performance/copy-contract hardening, documentation polish, and PyPI supply-chain hardening. The
+first `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across
 iterative solves, PCA transform/inverse-transform, regression, and stats. A second `N-PY-003`
@@ -135,8 +135,8 @@ An eighteenth `N-PY-003` callback/config contract pass is now also landed: itera
 and optimization entrypoints expose typed Python config objects instead of raw Rust aliases as the
 production-facing contract, conflicting `config=` plus explicit tuning kwargs now fail fast, and
 callback-driven Jacobian/optimization helpers are explicitly documented as convenience APIs rather
-than no-compromise hot-path equivalents. This closes the current `N-PY-003` scope; the next
-remaining `pynabled` merge-gate item is `N-PY-004` for Arrow/PyArrow parity. A first `N-PY-004`
+than no-compromise hot-path equivalents. This closes the current `N-PY-003` scope; `N-PY-004`
+then tracked Arrow/PyArrow parity. A first `N-PY-004`
 slice is now also landed: `pynabled.arrow` exposes real PyArrow vector, matrix, batched matrix,
 and statistics workflows beyond the earlier three-function baseline, keeps Arrow-native egress
 where those Rust Arrow rows are Arrow-native, and now validates fixed-shape-tensor batched matrix
@@ -176,8 +176,20 @@ Python Arrow bridge now matches `ndarrow`'s sparse storage/metadata contract exp
 depending on default PyArrow extension-field serialization, and validation is green on the
 Arrow-focused and repo/package gates (`19 passed` targeted Arrow pytest, `python-quality`
 `181 passed, 19 skipped`, `92%` Python coverage, Rust Arrow integration tests `17 passed` in both
-`arrow` and `openblas-system + arrow` modes, and full `just checks`). The remaining `N-PY-004`
-scope is now concentrated in the tensor-side Arrow carrier families.
+`arrow` and `openblas-system + arrow` modes, and full `just checks`). A sixth `N-PY-004` slice is
+now also landed: `pynabled.arrow` now exposes canonical fixed-shape and variable-shape tensor
+helpers plus the admitted real/complex tensor last-axis, permutation/contraction, batched-matmul,
+cube-kernel, einsum, CP-ALS, HOSVD/HOOI/Tucker, and TT workflows over canonical PyArrow/`ndarrow`
+carriers. The Python bridge now preserves canonical `ndarrow.complex64` metadata across the tensor
+carrier families instead of depending on default PyArrow extension serialization, keeps Arrow-
+native tensor outputs Arrow-native where the Rust Arrow facade already does so, and reuses the
+existing typed Python tensor result objects where the Rust Arrow facade remains ndarray-native.
+Validation is green on the Arrow-focused and repo/package gates (`22 passed` targeted Arrow pytest
+after editable Arrow rebuild, Arrow integration tests `17 passed` in both `arrow` and
+`openblas-system + arrow` modes, `python-quality` `181 passed, 22 skipped` at `91%` coverage, and
+full `just checks`). `N-PY-004` is now complete; the remaining merge-gate blockers are `N-PY-005`
+(truthful provider/backend feature exposure), `N-PY-007` (performance/copy-contract hardening),
+and `N-PY-008` (PyPI/supply-chain hardening).
 Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for that branch.
 5. Facade crate `nabled` now re-exports `ndarrow` behind feature `arrow`, and real variable-shape tensor / CSR batch adapters now consume the canonical `ndarrow` batch-view APIs instead of paired row iterators.
 6. Backend/feature model now uses `blas` + provider features (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`).

@@ -15,13 +15,16 @@ use arrow_array::{Array, FixedSizeListArray, ListArray, PrimitiveArray, StructAr
 use arrow_data::ArrayData;
 use arrow_pyarrow::PyArrowType;
 use arrow_schema::{DataType, Field};
-use ndarray::{Array1, Array2};
+use nabled_core::scalar::NabledReal;
+use ndarray::{Array1, Array2, ArrayD};
 use num_complex::Complex64;
+use numpy::{PyArray1, PyArrayDyn, PyArrayMethods};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
 use crate::error::to_py_err;
+use crate::linalg::tensor as py_tensor;
 use crate::ml::callbacks::{
     call_scalar_function_arrow_complex, call_scalar_function_arrow_f32,
     call_scalar_function_arrow_f64, call_vector_function_arrow_complex,
@@ -764,6 +767,91 @@ fn map_callback_error<T, E: std::fmt::Display>(
         return Err(err);
     }
     result.map_err(to_py_err)
+}
+
+fn extract_array1<T>(array: &Bound<'_, PyAny>, label: &str) -> PyResult<Array1<T>>
+where
+    T: numpy::Element + Copy,
+{
+    let array = array.cast::<PyArray1<T>>().map_err(|_| {
+        pyo3::exceptions::PyTypeError::new_err(format!(
+            "{label} must be a contiguous 1D NumPy array with the matching dtype",
+        ))
+    })?;
+    utils::require_contiguous(array)?;
+    Ok(array.readonly().as_array().to_owned())
+}
+
+fn extract_arrayd<T>(array: &Bound<'_, PyAny>, label: &str) -> PyResult<ArrayD<T>>
+where
+    T: numpy::Element + Clone,
+{
+    let array = array.cast::<PyArrayDyn<T>>().map_err(|_| {
+        pyo3::exceptions::PyTypeError::new_err(format!(
+            "{label} must be a contiguous NumPy array with the matching dtype",
+        ))
+    })?;
+    utils::require_contiguous(array)?;
+    Ok(array.readonly().as_array().to_owned())
+}
+
+fn cp_als3_result_from_parts<T>(
+    weights: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<nabled_linalg::tensor::CpAls3Result<T>>
+where
+    T: NabledReal + numpy::Element + Clone + Copy,
+{
+    let weights = extract_array1::<T>(weights, "weights")?;
+    let factors = py_tensor::extract_array2_sequence::<T>(factors)?;
+    let [factor_0, factor_1, factor_2] =
+        factors.try_into().map_err(|factors: Vec<Array2<T>>| {
+            pyo3::exceptions::PyTypeError::new_err(format!(
+                "factors must contain exactly 3 contiguous 2D NumPy arrays, got {}",
+                factors.len()
+            ))
+        })?;
+    Ok(nabled_linalg::tensor::CpAls3Result { weights, factor_0, factor_1, factor_2 })
+}
+
+fn cp_als_nd_result_from_parts<T>(
+    weights: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<nabled_linalg::tensor::CpAlsNdResult<T>>
+where
+    T: NabledReal + numpy::Element + Clone + Copy,
+{
+    let weights = extract_array1::<T>(weights, "weights")?;
+    let factors = py_tensor::extract_array2_sequence::<T>(factors)?;
+    let shape = factors.iter().map(ndarray::ArrayBase::nrows).collect();
+    Ok(nabled_linalg::tensor::CpAlsNdResult { weights, factors, shape })
+}
+
+fn hosvd_nd_result_from_parts<T>(
+    core: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<nabled_linalg::tensor::HosvdNdResult<T>>
+where
+    T: NabledReal + numpy::Element + Clone,
+{
+    let core = extract_arrayd::<T>(core, "core")?;
+    let factors = py_tensor::extract_array2_sequence::<T>(factors)?;
+    Ok(nabled_linalg::tensor::HosvdNdResult { core, factors })
+}
+
+fn variable_shape_real_dtype(field: &Field) -> Option<&'static str> {
+    let DataType::Struct(fields) = field.data_type() else {
+        return None;
+    };
+    let (_, data_field) = fields.find("data")?;
+    let DataType::List(item) = data_field.data_type() else {
+        return None;
+    };
+    match item.data_type() {
+        DataType::Float32 => Some("f32"),
+        DataType::Float64 => Some("f64"),
+        _ => None,
+    }
 }
 
 /// Compute dot product of two real PyArrow arrays.
@@ -5177,4 +5265,1296 @@ pub fn bfgs_complex_arrow(
             &config,
         ),
     )?))
+}
+
+/// Reduce the last axis of a real fixed-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_sum_last_axis_fixed")]
+pub fn tensor_sum_last_axis_fixed(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::sum_last_axis::<Float32Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::sum_last_axis::<Float64Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Reduce the last axis of a real variable-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_sum_last_axis_variable")]
+pub fn tensor_sum_last_axis_variable(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let array = array_data_to_struct(array.0)?;
+    match variable_shape_real_dtype(&field.0) {
+        Some("f32") => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::tensor::sum_last_axis_variable::<Float32Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        Some("f64") => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::tensor::sum_last_axis_variable::<Float64Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        _ => Err(PyTypeError::new_err(
+            "expected arrow.variable_shape_tensor with float32 or float64 values",
+        )),
+    }
+}
+
+/// Compute last-axis norms for a real fixed-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_l2_norm_last_axis_fixed")]
+pub fn tensor_l2_norm_last_axis_fixed(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::l2_norm_last_axis::<Float32Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::l2_norm_last_axis::<Float64Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute last-axis norms for a real variable-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_l2_norm_last_axis_variable")]
+pub fn tensor_l2_norm_last_axis_variable(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let array = array_data_to_struct(array.0)?;
+    match variable_shape_real_dtype(&field.0) {
+        Some("f32") => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::tensor::l2_norm_last_axis_variable::<Float32Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        Some("f64") => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::tensor::l2_norm_last_axis_variable::<Float64Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        _ => Err(PyTypeError::new_err(
+            "expected arrow.variable_shape_tensor with float32 or float64 values",
+        )),
+    }
+}
+
+/// Normalize a real fixed-shape Arrow tensor batch over its last axis.
+#[pyfunction(name = "arrow_tensor_normalize_last_axis_fixed")]
+pub fn tensor_normalize_last_axis_fixed(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::normalize_last_axis::<Float32Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::normalize_last_axis::<Float64Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Normalize a real variable-shape Arrow tensor batch over its last axis.
+#[pyfunction(name = "arrow_tensor_normalize_last_axis_variable")]
+pub fn tensor_normalize_last_axis_variable(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let array = array_data_to_struct(array.0)?;
+    match variable_shape_real_dtype(&field.0) {
+        Some("f32") => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::tensor::normalize_last_axis_variable::<Float32Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        Some("f64") => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::tensor::normalize_last_axis_variable::<Float64Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        _ => Err(PyTypeError::new_err(
+            "expected arrow.variable_shape_tensor with float32 or float64 values",
+        )),
+    }
+}
+
+/// Compute last-axis batched dot products for real fixed-shape Arrow tensor batches.
+#[pyfunction(name = "arrow_tensor_batched_dot_last_axis_fixed")]
+pub fn tensor_batched_dot_last_axis_fixed(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match (
+        array_data_to_real_fixed_size_list(left.0)?,
+        array_data_to_real_fixed_size_list(right.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(left), RealFixedSizeListArray::F32(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::batched_dot_last_axis::<Float32Type>(
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(left), RealFixedSizeListArray::F64(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::batched_dot_last_axis::<Float64Type>(
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Compute last-axis batched dot products for real variable-shape Arrow tensor batches.
+#[pyfunction(name = "arrow_tensor_batched_dot_last_axis_variable")]
+pub fn tensor_batched_dot_last_axis_variable(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    let left = array_data_to_struct(left.0)?;
+    let right = array_data_to_struct(right.0)?;
+    match (variable_shape_real_dtype(&left_field.0), variable_shape_real_dtype(&right_field.0)) {
+        (Some("f32"), Some("f32")) => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::tensor::batched_dot_last_axis_variable::<Float32Type>(
+                &left_field.0,
+                &left,
+                &right_field.0,
+                &right,
+            )
+            .map_err(to_py_err)?,
+        )),
+        (Some("f64"), Some("f64")) => Ok(struct_extension_result_into_pyarrow(
+            nabled::arrow::tensor::batched_dot_last_axis_variable::<Float64Type>(
+                &left_field.0,
+                &left,
+                &right_field.0,
+                &right,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Reduce the last axis of a complex fixed-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_sum_last_axis_fixed_complex")]
+pub fn tensor_sum_last_axis_fixed_complex(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::sum_last_axis_complex(
+            &field.0,
+            &array_data_to_fixed_size_list(array.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Reduce the last axis of a complex variable-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_sum_last_axis_variable_complex")]
+pub fn tensor_sum_last_axis_variable_complex(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(struct_extension_result_into_pyarrow(
+        nabled::arrow::tensor::sum_last_axis_variable_complex(
+            &field.0,
+            &array_data_to_struct(array.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute last-axis norms for a complex fixed-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_l2_norm_last_axis_fixed_complex")]
+pub fn tensor_l2_norm_last_axis_fixed_complex(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::l2_norm_last_axis_complex(
+            &field.0,
+            &array_data_to_fixed_size_list(array.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute last-axis norms for a complex variable-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_l2_norm_last_axis_variable_complex")]
+pub fn tensor_l2_norm_last_axis_variable_complex(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(struct_extension_result_into_pyarrow(
+        nabled::arrow::tensor::l2_norm_last_axis_variable_complex(
+            &field.0,
+            &array_data_to_struct(array.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Normalize a complex fixed-shape Arrow tensor batch over its last axis.
+#[pyfunction(name = "arrow_tensor_normalize_last_axis_fixed_complex")]
+pub fn tensor_normalize_last_axis_fixed_complex(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::normalize_last_axis_complex(
+            &field.0,
+            &array_data_to_fixed_size_list(array.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Normalize a complex variable-shape Arrow tensor batch over its last axis.
+#[pyfunction(name = "arrow_tensor_normalize_last_axis_variable_complex")]
+pub fn tensor_normalize_last_axis_variable_complex(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(struct_extension_result_into_pyarrow(
+        nabled::arrow::tensor::normalize_last_axis_variable_complex(
+            &field.0,
+            &array_data_to_struct(array.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute last-axis batched dot products for complex fixed-shape Arrow tensor batches.
+#[pyfunction(name = "arrow_tensor_batched_dot_last_axis_fixed_complex")]
+pub fn tensor_batched_dot_last_axis_fixed_complex(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::batched_dot_last_axis_complex(
+            &left_field.0,
+            &array_data_to_fixed_size_list(left.0)?,
+            &right_field.0,
+            &array_data_to_fixed_size_list(right.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute last-axis batched dot products for complex variable-shape Arrow tensor batches.
+#[pyfunction(name = "arrow_tensor_batched_dot_last_axis_variable_complex")]
+pub fn tensor_batched_dot_last_axis_variable_complex(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(struct_extension_result_into_pyarrow(
+        nabled::arrow::tensor::batched_dot_last_axis_variable_complex(
+            &left_field.0,
+            &array_data_to_struct(left.0)?,
+            &right_field.0,
+            &array_data_to_struct(right.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Permute a real fixed-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_permute_axes")]
+pub fn tensor_permute_axes(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    permutation: Vec<usize>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::permute_axes::<Float32Type>(&field.0, &array, &permutation)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::permute_axes::<Float64Type>(&field.0, &array, &permutation)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Permute a complex fixed-shape Arrow tensor batch.
+#[pyfunction(name = "arrow_tensor_permute_axes_complex")]
+pub fn tensor_permute_axes_complex(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    permutation: Vec<usize>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::permute_axes_complex(
+            &field.0,
+            &array_data_to_fixed_size_list(array.0)?,
+            &permutation,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Contract two real fixed-shape Arrow tensor batches.
+#[pyfunction(name = "arrow_tensor_contract_axes")]
+pub fn tensor_contract_axes(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+    left_axes: Vec<usize>,
+    right_axes: Vec<usize>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match (
+        array_data_to_real_fixed_size_list(left.0)?,
+        array_data_to_real_fixed_size_list(right.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(left), RealFixedSizeListArray::F32(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::contract_axes::<Float32Type>(
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                    &left_axes,
+                    &right_axes,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(left), RealFixedSizeListArray::F64(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::contract_axes::<Float64Type>(
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                    &left_axes,
+                    &right_axes,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Contract two complex fixed-shape Arrow tensor batches.
+#[pyfunction(name = "arrow_tensor_contract_axes_complex")]
+pub fn tensor_contract_axes_complex(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+    left_axes: Vec<usize>,
+    right_axes: Vec<usize>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::contract_axes_complex(
+            &left_field.0,
+            &array_data_to_fixed_size_list(left.0)?,
+            &right_field.0,
+            &array_data_to_fixed_size_list(right.0)?,
+            &left_axes,
+            &right_axes,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute batched matrix multiplication across the last two axes of real fixed-shape tensors.
+#[pyfunction(name = "arrow_tensor_batched_matmul_last_two")]
+pub fn tensor_batched_matmul_last_two(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match (
+        array_data_to_real_fixed_size_list(left.0)?,
+        array_data_to_real_fixed_size_list(right.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(left), RealFixedSizeListArray::F32(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::batched_matmul_last_two::<Float32Type>(
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(left), RealFixedSizeListArray::F64(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::batched_matmul_last_two::<Float64Type>(
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Compute batched matrix multiplication across the last two axes of complex fixed-shape tensors.
+#[pyfunction(name = "arrow_tensor_batched_matmul_last_two_complex")]
+pub fn tensor_batched_matmul_last_two_complex(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::batched_matmul_last_two_complex(
+            &left_field.0,
+            &array_data_to_fixed_size_list(left.0)?,
+            &right_field.0,
+            &array_data_to_fixed_size_list(right.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute cube matvec over real fixed-shape tensors.
+#[pyfunction(name = "arrow_tensor_cube_matvec")]
+pub fn tensor_cube_matvec(
+    cube_field: PyArrowType<Field>,
+    cube: PyArrowType<ArrayData>,
+    vectors: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match (
+        array_data_to_real_fixed_size_list(cube.0)?,
+        array_data_to_real_fixed_size_list(vectors.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(cube), RealFixedSizeListArray::F32(vectors)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::tensor::cube_matvec::<Float32Type>(&cube_field.0, &cube, &vectors)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(cube), RealFixedSizeListArray::F64(vectors)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::tensor::cube_matvec::<Float64Type>(&cube_field.0, &cube, &vectors)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["cube", "vectors"])),
+    }
+}
+
+/// Compute cube matvec over complex fixed-shape tensors.
+#[pyfunction(name = "arrow_tensor_cube_matvec_complex")]
+pub fn tensor_cube_matvec_complex(
+    cube_field: PyArrowType<Field>,
+    cube: PyArrowType<ArrayData>,
+    vectors: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    Ok(fixed_size_list_into_pyarrow(
+        nabled::arrow::tensor::cube_matvec_complex(
+            &cube_field.0,
+            &array_data_to_fixed_size_list(cube.0)?,
+            &array_data_to_fixed_size_list(vectors.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute cube matmat over real fixed-shape tensors.
+#[pyfunction(name = "arrow_tensor_cube_matmat")]
+pub fn tensor_cube_matmat(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match (
+        array_data_to_real_fixed_size_list(left.0)?,
+        array_data_to_real_fixed_size_list(right.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(left), RealFixedSizeListArray::F32(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::cube_matmat::<Float32Type>(
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(left), RealFixedSizeListArray::F64(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::cube_matmat::<Float64Type>(
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Compute cube matmat over complex fixed-shape tensors.
+#[pyfunction(name = "arrow_tensor_cube_matmat_complex")]
+pub fn tensor_cube_matmat_complex(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::cube_matmat_complex(
+            &left_field.0,
+            &array_data_to_fixed_size_list(left.0)?,
+            &right_field.0,
+            &array_data_to_fixed_size_list(right.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Flatten a real fixed-shape rank-3 Arrow tensor batch into a dense matrix.
+#[pyfunction(name = "arrow_tensor_flatten_cubes")]
+pub fn tensor_flatten_cubes(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::tensor::flatten_cubes::<Float32Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::tensor::flatten_cubes::<Float64Type>(&field.0, &array)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Evaluate two-operand Einstein summation over real fixed-shape Arrow tensors.
+#[pyfunction(name = "arrow_tensor_einsum")]
+pub fn tensor_einsum(
+    expression: &str,
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match (
+        array_data_to_real_fixed_size_list(left.0)?,
+        array_data_to_real_fixed_size_list(right.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(left), RealFixedSizeListArray::F32(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::einsum::<Float32Type>(
+                    expression,
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(left), RealFixedSizeListArray::F64(right)) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::einsum::<Float64Type>(
+                    expression,
+                    &left_field.0,
+                    &left,
+                    &right_field.0,
+                    &right,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Evaluate two-operand Einstein summation over complex fixed-shape Arrow tensors.
+#[pyfunction(name = "arrow_tensor_einsum_complex")]
+pub fn tensor_einsum_complex(
+    expression: &str,
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    Ok(extension_result_into_pyarrow(
+        nabled::arrow::tensor::einsum_complex(
+            expression,
+            &left_field.0,
+            &array_data_to_fixed_size_list(left.0)?,
+            &right_field.0,
+            &array_data_to_fixed_size_list(right.0)?,
+        )
+        .map_err(to_py_err)?,
+    ))
+}
+
+/// Compute CP-ALS for a rank-3 real Arrow tensor.
+#[pyfunction(name = "arrow_tensor_cp_als3", signature = (field, array, rank, max_iterations=None, tolerance=None))]
+pub fn tensor_cp_als3(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    rank: usize,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<py_tensor::PyCpAls3Result> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(py_tensor::py_cp_als3_result(
+            py,
+            nabled::arrow::tensor::cp_als3::<Float32Type>(
+                &field.0,
+                &array,
+                rank,
+                &py_tensor::cp_als_config::<f32>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(py_tensor::py_cp_als3_result(
+            py,
+            nabled::arrow::tensor::cp_als3::<Float64Type>(
+                &field.0,
+                &array,
+                rank,
+                &py_tensor::cp_als_config::<f64>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute CP-ALS with diagnostics for a rank-3 real Arrow tensor.
+#[pyfunction(name = "arrow_tensor_cp_als3_with_report", signature = (field, array, rank, max_iterations=None, tolerance=None))]
+pub fn tensor_cp_als3_with_report(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    rank: usize,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<(py_tensor::PyCpAls3Result, py_tensor::PyCpReport)> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => {
+            let (result, report) = nabled::arrow::tensor::cp_als3_with_report::<Float32Type>(
+                &field.0,
+                &array,
+                rank,
+                &py_tensor::cp_als_config::<f32>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?;
+            Ok((py_tensor::py_cp_als3_result(py, result), py_tensor::py_cp_report(report)?))
+        }
+        RealFixedSizeListArray::F64(array) => {
+            let (result, report) = nabled::arrow::tensor::cp_als3_with_report::<Float64Type>(
+                &field.0,
+                &array,
+                rank,
+                &py_tensor::cp_als_config::<f64>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?;
+            Ok((py_tensor::py_cp_als3_result(py, result), py_tensor::py_cp_report(report)?))
+        }
+    }
+}
+
+/// Compute reconstruction diagnostics for a rank-3 real Arrow CP result.
+#[pyfunction(name = "arrow_tensor_cp_als3_diagnostics")]
+pub fn tensor_cp_als3_diagnostics(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    weights: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<py_tensor::PyCpMetrics> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => py_tensor::py_cp_metrics(
+            nabled::arrow::tensor::cp_als3_diagnostics::<Float32Type>(
+                &field.0,
+                &array,
+                &cp_als3_result_from_parts::<f32>(weights, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ),
+        RealFixedSizeListArray::F64(array) => py_tensor::py_cp_metrics(
+            nabled::arrow::tensor::cp_als3_diagnostics::<Float64Type>(
+                &field.0,
+                &array,
+                &cp_als3_result_from_parts::<f64>(weights, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ),
+    }
+}
+
+/// Reconstruct a rank-3 real Arrow CP result into an Arrow tensor.
+#[pyfunction(name = "arrow_tensor_cp_als3_reconstruct")]
+pub fn tensor_cp_als3_reconstruct(
+    field_name: &str,
+    weights: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    if weights.cast::<PyArray1<f32>>().is_ok() {
+        Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::cp_als3_reconstruct::<Float32Type>(
+                field_name,
+                &cp_als3_result_from_parts::<f32>(weights, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ))
+    } else {
+        Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::cp_als3_reconstruct::<Float64Type>(
+                field_name,
+                &cp_als3_result_from_parts::<f64>(weights, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ))
+    }
+}
+
+/// Compute CP-ALS for an N-D real Arrow tensor.
+#[pyfunction(name = "arrow_tensor_cp_als_nd", signature = (field, array, rank, max_iterations=None, tolerance=None))]
+pub fn tensor_cp_als_nd(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    rank: usize,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<py_tensor::PyCpAlsNdResult> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(py_tensor::py_cp_als_nd_result(
+            py,
+            nabled::arrow::tensor::cp_als_nd::<Float32Type>(
+                &field.0,
+                &array,
+                rank,
+                &py_tensor::cp_als_config::<f32>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(py_tensor::py_cp_als_nd_result(
+            py,
+            nabled::arrow::tensor::cp_als_nd::<Float64Type>(
+                &field.0,
+                &array,
+                rank,
+                &py_tensor::cp_als_config::<f64>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute CP-ALS with diagnostics for an N-D real Arrow tensor.
+#[pyfunction(name = "arrow_tensor_cp_als_nd_with_report", signature = (field, array, rank, max_iterations=None, tolerance=None))]
+pub fn tensor_cp_als_nd_with_report(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    rank: usize,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<(py_tensor::PyCpAlsNdResult, py_tensor::PyCpReport)> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => {
+            let (result, report) = nabled::arrow::tensor::cp_als_nd_with_report::<Float32Type>(
+                &field.0,
+                &array,
+                rank,
+                &py_tensor::cp_als_config::<f32>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?;
+            Ok((py_tensor::py_cp_als_nd_result(py, result), py_tensor::py_cp_report(report)?))
+        }
+        RealFixedSizeListArray::F64(array) => {
+            let (result, report) = nabled::arrow::tensor::cp_als_nd_with_report::<Float64Type>(
+                &field.0,
+                &array,
+                rank,
+                &py_tensor::cp_als_config::<f64>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?;
+            Ok((py_tensor::py_cp_als_nd_result(py, result), py_tensor::py_cp_report(report)?))
+        }
+    }
+}
+
+/// Compute reconstruction diagnostics for an N-D real Arrow CP result.
+#[pyfunction(name = "arrow_tensor_cp_als_nd_diagnostics")]
+pub fn tensor_cp_als_nd_diagnostics(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    weights: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<py_tensor::PyCpMetrics> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => py_tensor::py_cp_metrics(
+            nabled::arrow::tensor::cp_als_nd_diagnostics::<Float32Type>(
+                &field.0,
+                &array,
+                &cp_als_nd_result_from_parts::<f32>(weights, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ),
+        RealFixedSizeListArray::F64(array) => py_tensor::py_cp_metrics(
+            nabled::arrow::tensor::cp_als_nd_diagnostics::<Float64Type>(
+                &field.0,
+                &array,
+                &cp_als_nd_result_from_parts::<f64>(weights, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ),
+    }
+}
+
+/// Reconstruct an N-D real Arrow CP result into an Arrow tensor.
+#[pyfunction(name = "arrow_tensor_cp_als_nd_reconstruct")]
+pub fn tensor_cp_als_nd_reconstruct(
+    field_name: &str,
+    weights: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    if weights.cast::<PyArray1<f32>>().is_ok() {
+        Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::cp_als_nd_reconstruct::<Float32Type>(
+                field_name,
+                &cp_als_nd_result_from_parts::<f32>(weights, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ))
+    } else {
+        Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::cp_als_nd_reconstruct::<Float64Type>(
+                field_name,
+                &cp_als_nd_result_from_parts::<f64>(weights, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ))
+    }
+}
+
+/// Compute HOSVD for an N-D real Arrow tensor.
+#[pyfunction(name = "arrow_tensor_hosvd_nd")]
+pub fn tensor_hosvd_nd(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    ranks: Vec<usize>,
+) -> PyResult<py_tensor::PyHosvdNdResult> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(py_tensor::py_hosvd_nd_result(
+            py,
+            nabled::arrow::tensor::hosvd_nd::<Float32Type>(&field.0, &array, &ranks)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(py_tensor::py_hosvd_nd_result(
+            py,
+            nabled::arrow::tensor::hosvd_nd::<Float64Type>(&field.0, &array, &ranks)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute HOOI/Tucker refinement for an N-D real Arrow tensor.
+#[pyfunction(name = "arrow_tensor_hooi_nd", signature = (field, array, ranks, max_iterations=None, tolerance=None))]
+pub fn tensor_hooi_nd(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    ranks: Vec<usize>,
+    max_iterations: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<py_tensor::PyHosvdNdResult> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(py_tensor::py_hosvd_nd_result(
+            py,
+            nabled::arrow::tensor::hooi_nd::<Float32Type>(
+                &field.0,
+                &array,
+                &ranks,
+                &py_tensor::hooi_config::<f32>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(py_tensor::py_hosvd_nd_result(
+            py,
+            nabled::arrow::tensor::hooi_nd::<Float64Type>(
+                &field.0,
+                &array,
+                &ranks,
+                &py_tensor::hooi_config::<f64>(max_iterations, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Reconstruct an N-D real Arrow HOSVD/Tucker result.
+#[pyfunction(name = "arrow_tensor_hosvd_nd_reconstruct")]
+pub fn tensor_hosvd_nd_reconstruct(
+    field_name: &str,
+    core: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    if core.cast::<PyArrayDyn<f32>>().is_ok() {
+        Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::hosvd_nd_reconstruct::<Float32Type>(
+                field_name,
+                &hosvd_nd_result_from_parts::<f32>(core, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ))
+    } else {
+        Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::hosvd_nd_reconstruct::<Float64Type>(
+                field_name,
+                &hosvd_nd_result_from_parts::<f64>(core, factors)?,
+            )
+            .map_err(to_py_err)?,
+        ))
+    }
+}
+
+/// Project a real Arrow tensor into Tucker core coordinates.
+#[pyfunction(name = "arrow_tensor_tucker_project")]
+pub fn tensor_tucker_project(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::tucker_project::<Float32Type>(
+                &field.0,
+                &array,
+                &py_tensor::extract_array2_sequence::<f32>(factors)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::tucker_project::<Float64Type>(
+                &field.0,
+                &array,
+                &py_tensor::extract_array2_sequence::<f64>(factors)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Expand a real Arrow Tucker core into the original tensor space.
+#[pyfunction(name = "arrow_tensor_tucker_expand")]
+pub fn tensor_tucker_expand(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    factors: &Bound<'_, PyAny>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::tucker_expand::<Float32Type>(
+                &field.0,
+                &array,
+                &py_tensor::extract_array2_sequence::<f32>(factors)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::tucker_expand::<Float64Type>(
+                &field.0,
+                &array,
+                &py_tensor::extract_array2_sequence::<f64>(factors)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute Tensor-Train decomposition for a real Arrow tensor.
+#[pyfunction(name = "arrow_tensor_tt_svd", signature = (field, array, max_rank=None, tolerance=None))]
+pub fn tensor_tt_svd(
+    py: Python<'_>,
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+    max_rank: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<py_tensor::PyTensorTrainResult> {
+    match array_data_to_real_fixed_size_list(array.0)? {
+        RealFixedSizeListArray::F32(array) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_svd::<Float32Type>(
+                &field.0,
+                &array,
+                &py_tensor::tt_svd_config::<f32>(max_rank, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(array) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_svd::<Float64Type>(
+                &field.0,
+                &array,
+                &py_tensor::tt_svd_config::<f64>(max_rank, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Left-orthogonalize a real Tensor-Train result.
+#[pyfunction(name = "arrow_tensor_tt_orthogonalize_left")]
+pub fn tensor_tt_orthogonalize_left(
+    py: Python<'_>,
+    cores: &Bound<'_, PyAny>,
+) -> PyResult<py_tensor::PyTensorTrainResult> {
+    match py_tensor::real_tt_result_from_cores(cores)? {
+        py_tensor::RealTensorTrainResult::F32(result) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_orthogonalize_left(&result).map_err(to_py_err)?,
+        )),
+        py_tensor::RealTensorTrainResult::F64(result) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_orthogonalize_left(&result).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Right-orthogonalize a real Tensor-Train result.
+#[pyfunction(name = "arrow_tensor_tt_orthogonalize_right")]
+pub fn tensor_tt_orthogonalize_right(
+    py: Python<'_>,
+    cores: &Bound<'_, PyAny>,
+) -> PyResult<py_tensor::PyTensorTrainResult> {
+    match py_tensor::real_tt_result_from_cores(cores)? {
+        py_tensor::RealTensorTrainResult::F32(result) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_orthogonalize_right(&result).map_err(to_py_err)?,
+        )),
+        py_tensor::RealTensorTrainResult::F64(result) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_orthogonalize_right(&result).map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Round/compress a real Tensor-Train result.
+#[pyfunction(name = "arrow_tensor_tt_round", signature = (cores, max_rank=None, tolerance=None))]
+pub fn tensor_tt_round(
+    py: Python<'_>,
+    cores: &Bound<'_, PyAny>,
+    max_rank: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<py_tensor::PyTensorTrainResult> {
+    match py_tensor::real_tt_result_from_cores(cores)? {
+        py_tensor::RealTensorTrainResult::F32(result) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_round(
+                &result,
+                &py_tensor::tt_round_config::<f32>(max_rank, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        py_tensor::RealTensorTrainResult::F64(result) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_round(
+                &result,
+                &py_tensor::tt_round_config::<f64>(max_rank, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute the inner product of two real Tensor-Train results.
+#[pyfunction(name = "arrow_tensor_tt_inner")]
+pub fn tensor_tt_inner(left: &Bound<'_, PyAny>, right: &Bound<'_, PyAny>) -> PyResult<f64> {
+    match (
+        py_tensor::real_tt_result_from_cores(left)?,
+        py_tensor::real_tt_result_from_cores(right)?,
+    ) {
+        (
+            py_tensor::RealTensorTrainResult::F32(left),
+            py_tensor::RealTensorTrainResult::F32(right),
+        ) => py_tensor::real_scalar_to_f64(
+            nabled::arrow::tensor::tt_inner(&left, &right).map_err(to_py_err)?,
+            "tt_inner",
+        ),
+        (
+            py_tensor::RealTensorTrainResult::F64(left),
+            py_tensor::RealTensorTrainResult::F64(right),
+        ) => py_tensor::real_scalar_to_f64(
+            nabled::arrow::tensor::tt_inner(&left, &right).map_err(to_py_err)?,
+            "tt_inner",
+        ),
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Compute the Frobenius norm of a real Tensor-Train result.
+#[pyfunction(name = "arrow_tensor_tt_norm")]
+pub fn tensor_tt_norm(cores: &Bound<'_, PyAny>) -> PyResult<f64> {
+    match py_tensor::real_tt_result_from_cores(cores)? {
+        py_tensor::RealTensorTrainResult::F32(result) => py_tensor::real_scalar_to_f64(
+            nabled::arrow::tensor::tt_norm(&result).map_err(to_py_err)?,
+            "tt_norm",
+        ),
+        py_tensor::RealTensorTrainResult::F64(result) => py_tensor::real_scalar_to_f64(
+            nabled::arrow::tensor::tt_norm(&result).map_err(to_py_err)?,
+            "tt_norm",
+        ),
+    }
+}
+
+/// Add two real Tensor-Train results.
+#[pyfunction(name = "arrow_tensor_tt_add")]
+pub fn tensor_tt_add(
+    py: Python<'_>,
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+) -> PyResult<py_tensor::PyTensorTrainResult> {
+    match (
+        py_tensor::real_tt_result_from_cores(left)?,
+        py_tensor::real_tt_result_from_cores(right)?,
+    ) {
+        (
+            py_tensor::RealTensorTrainResult::F32(left),
+            py_tensor::RealTensorTrainResult::F32(right),
+        ) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_add(&left, &right).map_err(to_py_err)?,
+        )),
+        (
+            py_tensor::RealTensorTrainResult::F64(left),
+            py_tensor::RealTensorTrainResult::F64(right),
+        ) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_add(&left, &right).map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Compute the Hadamard product of two real Tensor-Train results.
+#[pyfunction(name = "arrow_tensor_tt_hadamard")]
+pub fn tensor_tt_hadamard(
+    py: Python<'_>,
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+) -> PyResult<py_tensor::PyTensorTrainResult> {
+    match (
+        py_tensor::real_tt_result_from_cores(left)?,
+        py_tensor::real_tt_result_from_cores(right)?,
+    ) {
+        (
+            py_tensor::RealTensorTrainResult::F32(left),
+            py_tensor::RealTensorTrainResult::F32(right),
+        ) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_hadamard(&left, &right).map_err(to_py_err)?,
+        )),
+        (
+            py_tensor::RealTensorTrainResult::F64(left),
+            py_tensor::RealTensorTrainResult::F64(right),
+        ) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_hadamard(&left, &right).map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Compute the Hadamard product of two real Tensor-Train results and round it.
+#[pyfunction(name = "arrow_tensor_tt_hadamard_round", signature = (left, right, max_rank=None, tolerance=None))]
+pub fn tensor_tt_hadamard_round(
+    py: Python<'_>,
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    max_rank: Option<usize>,
+    tolerance: Option<f64>,
+) -> PyResult<py_tensor::PyTensorTrainResult> {
+    match (
+        py_tensor::real_tt_result_from_cores(left)?,
+        py_tensor::real_tt_result_from_cores(right)?,
+    ) {
+        (
+            py_tensor::RealTensorTrainResult::F32(left),
+            py_tensor::RealTensorTrainResult::F32(right),
+        ) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_hadamard_round(
+                &left,
+                &right,
+                &py_tensor::tt_round_config::<f32>(max_rank, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        (
+            py_tensor::RealTensorTrainResult::F64(left),
+            py_tensor::RealTensorTrainResult::F64(right),
+        ) => Ok(py_tensor::py_tt_result(
+            py,
+            nabled::arrow::tensor::tt_hadamard_round(
+                &left,
+                &right,
+                &py_tensor::tt_round_config::<f64>(max_rank, tolerance)?,
+            )
+            .map_err(to_py_err)?,
+        )),
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+/// Reconstruct a real Tensor-Train result into an Arrow tensor.
+#[pyfunction(name = "arrow_tensor_tt_svd_reconstruct")]
+pub fn tensor_tt_svd_reconstruct(
+    field_name: &str,
+    cores: &Bound<'_, PyAny>,
+) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
+    match py_tensor::real_tt_result_from_cores(cores)? {
+        py_tensor::RealTensorTrainResult::F32(result) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::tt_svd_reconstruct::<Float32Type>(field_name, &result)
+                .map_err(to_py_err)?,
+        )),
+        py_tensor::RealTensorTrainResult::F64(result) => Ok(extension_result_into_pyarrow(
+            nabled::arrow::tensor::tt_svd_reconstruct::<Float64Type>(field_name, &result)
+                .map_err(to_py_err)?,
+        )),
+    }
 }
