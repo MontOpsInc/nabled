@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-08
+Last updated: 2026-04-09
 
 ## Summary
 
@@ -46,11 +46,18 @@ the no-hidden-copy hot-path contract. Validation remains green end-to-end: targe
 Sylvester coverage passed (`12 passed`), targeted Python coverage across the touched
 vector/matrix-function/Sylvester/workspace slices passed (`31 passed`), the Python package gate is
 green at `199 passed, 22 skipped` with `91%` Python coverage, and full `just checks` is green with
-the Rust coverage gate at `90.68%` line coverage. Remaining `N-PY-007` work is now concentrated in
-the smaller set of reusable-workspace / reusable-result families that still do not have
-Python-visible equivalents plus the remaining allocation-only rows such as `matrix_exp_eigen` and
-any residual higher-level materialization points that still need to be made explicit or
-eliminated. The first
+the Rust coverage gate at `90.68%` line coverage. A fifth `N-PY-007` reusable-result /
+remaining allocation-control pass is now also
+landed: `matrix_exp_eigen` now accepts both `out=` and `workspace=MatrixFunctionWorkspace(...)`
+under the existing public Python name, `schur_compute(...)` now accepts `out=SchurResult(...)`
+for caller-provided result buffers plus `workspace=SchurWorkspace(...)` for repeated workloads,
+and the Rust core now provides the matching view-first Schur and `matrix_exp_eigen` reuse helpers
+so those paths stay aligned with the repository's no-hidden-copy hot-path contract. The Python
+package gate is green again (`202 passed, 22 skipped`, `90%` Python coverage), full `just checks`
+is green, and the Rust coverage gate remains above threshold at `90.60%` line coverage. Remaining
+`N-PY-007` work is now concentrated in the smaller set of reusable-workspace / reusable-result
+families that still do not have Python-visible equivalents plus any residual higher-level
+materialization points that still need to be made explicit or eliminated. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across

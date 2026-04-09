@@ -96,6 +96,7 @@ from .sparse import (
 from .workspaces import (
     MatrixFunctionWorkspace,
     PairwiseCosineWorkspace,
+    SchurWorkspace,
     SylvesterWorkspace,
 )
 
@@ -152,6 +153,12 @@ def _require_workspace(workspace, workspace_type):
     if not isinstance(workspace, workspace_type):
         raise TypeError(f"workspace must be {workspace_type.__name__} or None")
     return workspace
+
+
+def _require_result_out(out, result_type):
+    if not isinstance(out, result_type):
+        raise TypeError(f"out must be {result_type.__name__} or None")
+    return out
 
 
 def _array_unary_out(raw, raw_into, array, *, out=None):
@@ -375,9 +382,15 @@ def eigen_nonsymmetric_bi(
     )
 
 
-def schur_compute(a) -> SchurResult:
-    t, q = _raw.schur_compute(a)
-    return SchurResult(q=q, t=t)
+def schur_compute(a, *, out: SchurResult | None = None, workspace: SchurWorkspace | None = None) -> SchurResult:
+    if workspace is not None:
+        return _require_workspace(workspace, SchurWorkspace).compute(a, out=out)
+    if out is None:
+        t, q = _raw.schur_compute(a)
+        return SchurResult(q=q, t=t)
+    schur_out = _require_result_out(out, SchurResult)
+    _raw.schur_compute_into(a, schur_out.q, schur_out.t)
+    return schur_out
 
 
 def polar_compute(a) -> PolarResult:
@@ -975,7 +988,10 @@ def matrix_exp(
     )
 
 
-matrix_exp_eigen = _raw.matrix_exp_eigen
+def matrix_exp_eigen(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
+    if workspace is None:
+        return _array_unary_out(_raw.matrix_exp_eigen, _raw.matrix_exp_eigen_into, matrix, out=out)
+    return _require_workspace(workspace, MatrixFunctionWorkspace).exp_eigen(matrix, out=out)
 
 
 def matrix_log_eigen(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
@@ -1632,6 +1648,7 @@ __all__ = [
     "RMSPropConfig",
     "MatrixFunctionWorkspace",
     "PairwiseCosineWorkspace",
+    "SchurWorkspace",
     "SylvesterWorkspace",
     "build_features",
     "svd_decompose",

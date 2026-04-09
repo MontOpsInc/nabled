@@ -13,8 +13,13 @@ from pynabled._pynabled import (
     _PairwiseCosineWorkspace as _RawPairwiseCosineWorkspace,
 )
 from pynabled._pynabled import (
+    _SchurWorkspace as _RawSchurWorkspace,
+)
+from pynabled._pynabled import (
     _SylvesterWorkspace as _RawSylvesterWorkspace,
 )
+
+from .results import SchurResult
 
 _REAL_WORKSPACE_DTYPES = (np.dtype(np.float32), np.dtype(np.float64))
 _NUMERIC_WORKSPACE_DTYPES = (*_REAL_WORKSPACE_DTYPES, np.dtype(np.complex128))
@@ -78,6 +83,12 @@ class MatrixFunctionWorkspace:
         if out is None:
             return self._raw.exp(matrix, max_terms=max_terms, tolerance=tolerance)
         self._raw.exp_into(matrix, out, max_terms=max_terms, tolerance=tolerance)
+        return out
+
+    def exp_eigen(self, matrix, *, out=None):
+        if out is None:
+            return self._raw.exp_eigen(matrix)
+        self._raw.exp_eigen_into(matrix, out)
         return out
 
     def log_taylor(self, matrix, max_terms=None, tolerance=None, *, out=None):
@@ -145,8 +156,33 @@ class SylvesterWorkspace:
         return f"SylvesterWorkspace(dtype={self._dtype.name!r})"
 
 
+class SchurWorkspace:
+    """Reusable workspace for Schur decomposition."""
+
+    __slots__ = ("_dtype", "_raw")
+
+    def __init__(self, dtype: Any = np.float64):
+        self._dtype = _normalize_workspace_dtype("dtype", dtype, _NUMERIC_WORKSPACE_DTYPES)
+        self._raw = _RawSchurWorkspace(self._dtype.name)
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self._dtype
+
+    def compute(self, matrix, *, out: SchurResult | None = None):
+        if out is None:
+            t, q = self._raw.compute(matrix)
+            return SchurResult(q=q, t=t)
+        self._raw.compute_into(matrix, out.q, out.t)
+        return out
+
+    def __repr__(self) -> str:  # pragma: no cover - trivial repr
+        return f"SchurWorkspace(dtype={self._dtype.name!r})"
+
+
 __all__ = [
     "MatrixFunctionWorkspace",
     "PairwiseCosineWorkspace",
+    "SchurWorkspace",
     "SylvesterWorkspace",
 ]

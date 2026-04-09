@@ -68,17 +68,18 @@ same public names. Writable Fortran-order 2D/3D outputs are accepted where rank 
 aliasing an input as `out` fails explicitly instead of silently materializing around the overlap.
 The currently admitted higher-level dense helpers now follow the same explicit reuse contract where
 the Rust core already exposes `*_into`: `svd_pseudo_inverse`, `svd_reconstruct_matrix`,
-`matrix_exp`, `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`,
-`matrix_sign`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` with the same
-writeability/shape/dtype requirements. `svd_condition_number(...)` and `svd_rank(...)` now read
-singular values directly instead of rebuilding owned intermediary SVD objects, while
-`matrix_exp_eigen(...)` remains allocating-only because the Rust core does not yet expose an
-equivalent `into` path.
+`matrix_exp`, `matrix_exp_eigen`, `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`,
+`matrix_power`, `matrix_sign`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` with the
+same writeability/shape/dtype requirements. `svd_condition_number(...)` and `svd_rank(...)` now
+read singular values directly instead of rebuilding owned intermediary SVD objects.
 
 Where the Rust core already exposes reusable scratch/workspace objects, the Python API now keeps
 that contract visible too. `PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`, and
 `SylvesterWorkspace` can be passed back into the existing public functions through `workspace=`
-for repeated workloads that would otherwise keep reallocating scratch buffers:
+for repeated workloads that would otherwise keep reallocating scratch buffers. `matrix_exp_eigen`
+now follows that same matrix-function workspace contract, and Schur decomposition exposes
+`SchurWorkspace` plus reusable `SchurResult` buffers through
+`schur_compute(..., out=..., workspace=...)`:
 
 ```python
 import numpy as np

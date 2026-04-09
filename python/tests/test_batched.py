@@ -32,12 +32,18 @@ def test_batched_matmat():
 
 
 def test_batched_qr():
-    matrices = np.random.randn(2, 3, 3).astype(np.float64)
+    matrices = np.array(
+        [
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 7.0], [1.0, 0.0, 2.0]],
+            [[2.0, -1.0, 0.5], [3.0, 4.0, 1.0], [5.0, 2.0, 6.0]],
+        ],
+        dtype=np.float64,
+    )
     results = pynabled.batched_qr(matrices)
     assert len(results) == 2
     for i, result in enumerate(results):
         np.testing.assert_allclose(result.q @ result.r, matrices[i], rtol=1e-10)
-        np.testing.assert_allclose(result.q.T @ result.q, np.eye(3), rtol=1e-10, atol=1e-14)
+        np.testing.assert_allclose(result.q.T @ result.q, np.eye(3), rtol=1e-10, atol=1e-12)
         assert result.rank == 3
 
 

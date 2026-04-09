@@ -84,13 +84,14 @@ their objective/gradient evaluations still cross back into Python.
 The Python NumPy-facing API now also exposes explicit output-buffer reuse beyond the primitive
 vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `matrix_exp`,
 `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`, `matrix_sign`,
-`sylvester_solve`, and `lyapunov_solve` all accept `out=` wherever the Rust core already has
-`*_into` coverage. `matrix_exp_eigen` remains allocating-only because the Rust core does not yet
-expose an equivalent `into` path.
+`matrix_exp_eigen`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` wherever the Rust
+core already has `*_into` coverage.
 
 Repeated pairwise cosine, matrix-function, and Sylvester/Lyapunov workloads now also expose
 reusable Python workspace objects (`PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`,
-`SylvesterWorkspace`) through the existing public APIs via `workspace=`.
+`SylvesterWorkspace`) through the existing public APIs via `workspace=`. Schur decomposition now
+follows the same explicit reuse contract: `schur_compute(...)` accepts `out=SchurResult(...)` for
+caller-provided result buffers and `workspace=SchurWorkspace(...)` for repeated workloads.
 
 Optional provider/backend/Arrow support on the Python side is a source-build workflow using the
 same Cargo feature names as the Rust facade (`openblas-system`, `openblas-static`,

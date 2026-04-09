@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayBase, ArrayView2, DataMut, Ix2};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView2, Data, DataMut, Ix2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, identity, is_symmetric};
@@ -233,9 +233,9 @@ fn taylor_matrix_exp_complex(
     Ok(result)
 }
 
-fn validate_output_shape<T: NabledReal>(
-    matrix: &Array2<T>,
-    output: &Array2<T>,
+fn validate_output_shape<T: NabledReal, S1: Data<Elem = T>, S2: Data<Elem = T>>(
+    matrix: &ArrayBase<S1, Ix2>,
+    output: &ArrayBase<S2, Ix2>,
 ) -> Result<(), MatrixFunctionError> {
     if output.dim() != matrix.dim() {
         return Err(MatrixFunctionError::InvalidInput(
@@ -245,9 +245,9 @@ fn validate_output_shape<T: NabledReal>(
     Ok(())
 }
 
-fn validate_output_shape_complex(
-    matrix: &Array2<Complex64>,
-    output: &Array2<Complex64>,
+fn validate_output_shape_complex<S1: Data<Elem = Complex64>, S2: Data<Elem = Complex64>>(
+    matrix: &ArrayBase<S1, Ix2>,
+    output: &ArrayBase<S2, Ix2>,
 ) -> Result<(), MatrixFunctionError> {
     if output.dim() != matrix.dim() {
         return Err(MatrixFunctionError::InvalidInput(
@@ -596,6 +596,82 @@ where
     matrix_exp_eigen_impl(matrix)
 }
 
+/// Compute matrix exponential via eigendecomposition into `output`.
+///
+/// Falls back to Taylor series for non-symmetric matrices.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_eigen_into<T>(
+    matrix: &Array2<T>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
+    matrix_exp_eigen_with_workspace_into(matrix, output, &mut workspace)
+}
+
+/// Compute matrix exponential via eigendecomposition from a view into `output`.
+///
+/// Falls back to Taylor series for non-symmetric matrices.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_eigen_view_into<T, S>(
+    matrix: &ArrayBase<S, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: Data<Elem = T>,
+{
+    let mut workspace = MatrixFunctionWorkspace::<T>::default();
+    matrix_exp_eigen_view_with_workspace_into(&matrix.view(), output, &mut workspace)
+}
+
+/// Compute matrix exponential via eigendecomposition into `output` using reusable `workspace`.
+///
+/// Falls back to Taylor series for non-symmetric matrices.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_eigen_with_workspace_into<T>(
+    matrix: &Array2<T>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    matrix_exp_eigen_view_with_workspace_into(&matrix.view(), output, workspace)
+}
+
+/// Compute matrix exponential via eigendecomposition from a view into `output` using reusable
+/// `workspace`.
+///
+/// Falls back to Taylor series for non-symmetric matrices.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_eigen_view_with_workspace_into<T, S>(
+    matrix: &ArrayBase<S, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    workspace: &mut MatrixFunctionWorkspace<T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: Data<Elem = T>,
+{
+    validate_output_shape(&matrix.view(), output)?;
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_exp_eigen_impl(&matrix.view())?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
+}
+
 /// Compute complex matrix exponential via Hermitian eigen decomposition.
 ///
 /// Falls back to Taylor series for non-Hermitian matrices.
@@ -637,6 +713,75 @@ pub fn matrix_exp_eigen_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, MatrixFunctionError> {
     matrix_exp_eigen_complex_impl(matrix)
+}
+
+/// Compute complex matrix exponential via Hermitian eigendecomposition into `output`.
+///
+/// Falls back to Taylor series for non-Hermitian matrices.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_eigen_complex_into(
+    matrix: &Array2<Complex64>,
+    output: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+) -> Result<(), MatrixFunctionError> {
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_exp_eigen_complex_with_workspace_into(matrix, output, &mut workspace)
+}
+
+/// Compute complex matrix exponential via Hermitian eigendecomposition from a view into `output`.
+///
+/// Falls back to Taylor series for non-Hermitian matrices.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_eigen_complex_view_into<S>(
+    matrix: &ArrayBase<S, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    S: Data<Elem = Complex64>,
+{
+    let mut workspace = MatrixFunctionComplexWorkspace::default();
+    matrix_exp_eigen_complex_view_with_workspace_into(&matrix.view(), output, &mut workspace)
+}
+
+/// Compute complex matrix exponential via Hermitian eigendecomposition into `output` using
+/// reusable `workspace`.
+///
+/// Falls back to Taylor series for non-Hermitian matrices.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_eigen_complex_with_workspace_into(
+    matrix: &Array2<Complex64>,
+    output: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError> {
+    matrix_exp_eigen_complex_view_with_workspace_into(&matrix.view(), output, workspace)
+}
+
+/// Compute complex matrix exponential via Hermitian eigendecomposition from a view into `output`
+/// using reusable `workspace`.
+///
+/// Falls back to Taylor series for non-Hermitian matrices.
+///
+/// # Errors
+/// Returns an error for invalid inputs or output shape mismatch.
+pub fn matrix_exp_eigen_complex_view_with_workspace_into<S>(
+    matrix: &ArrayBase<S, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+    workspace: &mut MatrixFunctionComplexWorkspace,
+) -> Result<(), MatrixFunctionError>
+where
+    S: Data<Elem = Complex64>,
+{
+    validate_output_shape_complex(&matrix.view(), output)?;
+    workspace.ensure_square(matrix.nrows());
+    let result = matrix_exp_eigen_complex_impl(&matrix.view())?;
+    workspace.scratch.assign(&result);
+    output.assign(&workspace.scratch);
+    Ok(())
 }
 
 /// Compute matrix logarithm via Taylor expansion around identity.
@@ -2211,6 +2356,24 @@ mod tests {
             .unwrap();
         }
 
+        let exp_eigen_expected = matrix_exp_eigen(&matrix).unwrap();
+        let mut exp_eigen_into = Array2::<f64>::zeros((2, 2));
+        {
+            let mut out = exp_eigen_into.view_mut();
+            matrix_exp_eigen_view_into(&matrix.view(), &mut out).unwrap();
+        }
+        let mut exp_eigen_ws = Array2::<f64>::zeros((2, 2));
+        let mut exp_eigen_workspace = MatrixFunctionWorkspace::default();
+        {
+            let mut out = exp_eigen_ws.view_mut();
+            matrix_exp_eigen_view_with_workspace_into(
+                &matrix.view(),
+                &mut out,
+                &mut exp_eigen_workspace,
+            )
+            .unwrap();
+        }
+
         let log_taylor_expected = matrix_log_taylor(&matrix, 64, 1e-12_f64).unwrap();
         let mut log_taylor_into = Array2::<f64>::zeros((2, 2));
         {
@@ -2304,6 +2467,8 @@ mod tests {
             for j in 0..2 {
                 assert!((exp_expected[[i, j]] - exp_into[[i, j]]).abs() < 1e-12_f64);
                 assert!((exp_expected[[i, j]] - exp_ws[[i, j]]).abs() < 1e-12_f64);
+                assert!((exp_eigen_expected[[i, j]] - exp_eigen_into[[i, j]]).abs() < 1e-12_f64);
+                assert!((exp_eigen_expected[[i, j]] - exp_eigen_ws[[i, j]]).abs() < 1e-12_f64);
                 assert!((log_taylor_expected[[i, j]] - log_taylor_into[[i, j]]).abs() < 1e-12_f64);
                 assert!((log_taylor_expected[[i, j]] - log_taylor_ws[[i, j]]).abs() < 1e-12_f64);
                 assert!((log_eigen_expected[[i, j]] - log_eigen_into[[i, j]]).abs() < 1e-12_f64);
@@ -2350,6 +2515,23 @@ mod tests {
                 &matrix.view(),
                 32,
                 1e-12_f64,
+                &mut out,
+                &mut complex_workspace,
+            )
+            .unwrap();
+        }
+
+        let exp_eigen_expected = matrix_exp_eigen_complex(&matrix).unwrap();
+        let mut exp_eigen_into = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = exp_eigen_into.view_mut();
+            matrix_exp_eigen_complex_view_into(&matrix.view(), &mut out).unwrap();
+        }
+        let mut exp_eigen_ws = Array2::<Complex64>::zeros((2, 2));
+        {
+            let mut out = exp_eigen_ws.view_mut();
+            matrix_exp_eigen_complex_view_with_workspace_into(
+                &matrix.view(),
                 &mut out,
                 &mut complex_workspace,
             )
@@ -2429,6 +2611,8 @@ mod tests {
             for j in 0..2 {
                 assert!((exp_expected[[i, j]] - exp_into[[i, j]]).norm() < 1e-12_f64);
                 assert!((exp_expected[[i, j]] - exp_ws[[i, j]]).norm() < 1e-12_f64);
+                assert!((exp_eigen_expected[[i, j]] - exp_eigen_into[[i, j]]).norm() < 1e-12_f64);
+                assert!((exp_eigen_expected[[i, j]] - exp_eigen_ws[[i, j]]).norm() < 1e-12_f64);
                 assert!((log_eigen_expected[[i, j]] - log_eigen_into[[i, j]]).norm() < 1e-12_f64);
                 assert!((log_eigen_expected[[i, j]] - log_eigen_ws[[i, j]]).norm() < 1e-12_f64);
                 assert!((log_svd_expected[[i, j]] - log_svd_into[[i, j]]).norm() < 1e-12_f64);
@@ -2449,6 +2633,10 @@ mod tests {
         let mut bad_view = bad.view_mut();
         assert!(matches!(
             matrix_exp_view_into(&matrix.view(), 32, 1e-8_f64, &mut bad_view),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_exp_eigen_view_into(&matrix.view(), &mut bad_view),
             Err(MatrixFunctionError::InvalidInput(_))
         ));
         assert!(matches!(
@@ -2488,6 +2676,10 @@ mod tests {
                 1e-8_f64,
                 &mut complex_bad_view
             ),
+            Err(MatrixFunctionError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            matrix_exp_eigen_complex_view_into(&complex_matrix.view(), &mut complex_bad_view),
             Err(MatrixFunctionError::InvalidInput(_))
         ));
         assert!(matches!(

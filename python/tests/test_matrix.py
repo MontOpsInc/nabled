@@ -187,6 +187,19 @@ def test_schur_accepts_complex128():
     )
 
 
+def test_schur_reuses_result_buffers():
+    matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+    out = pynabled.SchurResult(
+        q=np.empty((2, 2), dtype=np.float64, order="F"),
+        t=np.empty((2, 2), dtype=np.float64, order="F"),
+    )
+
+    returned = pynabled.schur_compute(matrix, out=out)
+
+    assert returned is out
+    np.testing.assert_allclose(out.q @ out.t @ out.q.T, matrix, rtol=1e-10, atol=1e-12)
+
+
 def test_gram_schmidt_accepts_float32_and_complex128():
     real = np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
     complex_matrix = np.array(

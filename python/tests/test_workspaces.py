@@ -138,9 +138,46 @@ def test_sylvester_workspace_reuses_real_and_complex_paths():
     )
 
 
+def test_schur_workspace_reuses_real_and_complex_paths():
+    real_workspace = pynabled.SchurWorkspace(np.float32)
+    real_matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+    real_out = pynabled.SchurResult(
+        q=np.empty((2, 2), dtype=np.float32, order="F"),
+        t=np.empty((2, 2), dtype=np.float32, order="F"),
+    )
+
+    returned_real = pynabled.schur_compute(real_matrix, out=real_out, workspace=real_workspace)
+
+    assert returned_real is real_out
+    np.testing.assert_allclose(real_out.q @ real_out.t @ real_out.q.T, real_matrix, rtol=1e-4, atol=1e-5)
+
+    complex_workspace = pynabled.SchurWorkspace(np.complex128)
+    complex_matrix = np.array(
+        [[3.0 + 1.0j, 1.0 - 0.5j], [0.0 + 1.0j, 2.0 - 0.25j]],
+        dtype=np.complex128,
+    )
+    complex_out = pynabled.SchurResult(
+        q=np.empty((2, 2), dtype=np.complex128),
+        t=np.empty((2, 2), dtype=np.complex128),
+    )
+
+    returned_complex = complex_workspace.compute(complex_matrix, out=complex_out)
+
+    assert returned_complex is complex_out
+    np.testing.assert_allclose(
+        complex_out.q @ complex_out.t @ complex_out.q.conj().T,
+        complex_matrix,
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+
 def test_workspace_kwargs_validate_expected_types():
     wrong_workspace = pynabled.SylvesterWorkspace(np.float64)
     matrix = np.eye(2, dtype=np.float64)
 
     with pytest.raises(TypeError, match="workspace must be MatrixFunctionWorkspace or None"):
         pynabled.matrix_sign(matrix, workspace=wrong_workspace)
+
+    with pytest.raises(TypeError, match="workspace must be SchurWorkspace or None"):
+        pynabled.schur_compute(matrix, workspace=wrong_workspace)

@@ -144,6 +144,7 @@ def test_matrix_functions_accept_complex128_where_admitted():
 
 def test_matrix_functions_reuse_output_buffers_and_reject_aliasing():
     rotation = np.array([[0.0, 1.0], [-1.0, 0.0]], dtype=np.float64)
+    diagonal = np.array([[1.0, 0.0], [0.0, 2.0]], dtype=np.float64)
     identity_like = np.eye(2, dtype=np.float64) + 0.1 * np.ones((2, 2), dtype=np.float64)
     spd = _make_spd(2, dtype=np.float64)
     symmetric = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
@@ -153,6 +154,16 @@ def test_matrix_functions_reuse_output_buffers_and_reject_aliasing():
     returned_exp = pynabled.matrix_exp(rotation, None, None, out=exp_out)
     assert returned_exp is exp_out
     np.testing.assert_allclose(exp_out.T @ exp_out, np.eye(2), rtol=1e-10, atol=1e-14)
+
+    exp_eigen_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_exp_eigen = pynabled.matrix_exp_eigen(diagonal, out=exp_eigen_out)
+    assert returned_exp_eigen is exp_eigen_out
+    np.testing.assert_allclose(
+        exp_eigen_out,
+        np.array([[np.e, 0.0], [0.0, np.e**2]], dtype=np.float64),
+        rtol=1e-10,
+        atol=1e-12,
+    )
 
     log_taylor_out = np.empty((2, 2), dtype=np.float64, order="F")
     returned_log_taylor = pynabled.matrix_log_taylor(identity_like, None, None, out=log_taylor_out)
@@ -198,6 +209,39 @@ def test_matrix_sign_reuses_complex_output_buffers():
     np.testing.assert_allclose(
         sign_out,
         np.array([[1.0 + 0.0j, 0.0], [0.0, -1.0 + 0.0j]], dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+
+def test_matrix_exp_eigen_supports_workspace_reuse():
+    real_workspace = pynabled.MatrixFunctionWorkspace(np.float64)
+    diagonal = np.array([[1.0, 0.0], [0.0, 2.0]], dtype=np.float64)
+    real_out = np.empty((2, 2), dtype=np.float64, order="F")
+
+    returned_real = pynabled.matrix_exp_eigen(diagonal, out=real_out, workspace=real_workspace)
+
+    assert returned_real is real_out
+    np.testing.assert_allclose(
+        real_out,
+        np.array([[np.e, 0.0], [0.0, np.e**2]], dtype=np.float64),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+    complex_workspace = pynabled.MatrixFunctionWorkspace(np.complex128)
+    hermitian_pd = np.array(
+        [[3.0 + 0.0j, 1.0 - 0.5j], [1.0 + 0.5j, 2.5 + 0.0j]],
+        dtype=np.complex128,
+    )
+    complex_out = np.empty((2, 2), dtype=np.complex128)
+
+    returned_complex = complex_workspace.exp_eigen(hermitian_pd, out=complex_out)
+
+    assert returned_complex is complex_out
+    np.testing.assert_allclose(
+        complex_out,
+        pynabled.matrix_exp_eigen(hermitian_pd),
         rtol=1e-10,
         atol=1e-12,
     )
