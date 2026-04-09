@@ -93,6 +93,11 @@ from .sparse import (
     sparse_pcg_solve,
     sparse_transpose,
 )
+from .workspaces import (
+    MatrixFunctionWorkspace,
+    PairwiseCosineWorkspace,
+    SylvesterWorkspace,
+)
 
 
 def _cp_metrics(raw_metrics) -> CpErrorMetrics:
@@ -141,6 +146,12 @@ def _resolve_config(config, config_type, **kwargs):
             f"pass either {config_type.__name__} via config= or explicit keyword arguments, not both: {joined}"
         )
     return {name: getattr(config, name) for name in kwargs}
+
+
+def _require_workspace(workspace, workspace_type):
+    if not isinstance(workspace, workspace_type):
+        raise TypeError(f"workspace must be {workspace_type.__name__} or None")
+    return workspace
 
 
 def _array_unary_out(raw, raw_into, array, *, out=None):
@@ -374,12 +385,23 @@ def polar_compute(a) -> PolarResult:
     return PolarResult(u=u, p=p)
 
 
-def sylvester_solve(a, b, c, *, out=None):
-    return _array_ternary_out(_raw.sylvester_solve, _raw.sylvester_solve_into, a, b, c, out=out)
+def sylvester_solve(a, b, c, *, out=None, workspace: SylvesterWorkspace | None = None):
+    if workspace is None:
+        return _array_ternary_out(
+            _raw.sylvester_solve,
+            _raw.sylvester_solve_into,
+            a,
+            b,
+            c,
+            out=out,
+        )
+    return _require_workspace(workspace, SylvesterWorkspace).solve(a, b, c, out=out)
 
 
-def lyapunov_solve(a, q, *, out=None):
-    return _array_binary_out(_raw.lyapunov_solve, _raw.lyapunov_solve_into, a, q, out=out)
+def lyapunov_solve(a, q, *, out=None, workspace: SylvesterWorkspace | None = None):
+    if workspace is None:
+        return _array_binary_out(_raw.lyapunov_solve, _raw.lyapunov_solve_into, a, q, out=out)
+    return _require_workspace(workspace, SylvesterWorkspace).lyapunov(a, q, out=out)
 
 
 def batched_qr(matrices) -> list[QrResult]:
@@ -922,49 +944,101 @@ def gradient_descent_complex(
 gram_schmidt = _raw.gram_schmidt
 gram_schmidt_classic = _raw.gram_schmidt_classic
 l2_norm = _raw.l2_norm
+
+
 def matmat(left, right, *, out=None):
     return _array_binary_out(_raw.matmat, _raw.matmat_into, left, right, out=out)
 
 
-def matrix_exp(matrix, max_terms=None, tolerance=None, *, out=None):
-    return _array_unary_out_kwargs(
-        _raw.matrix_exp,
-        _raw.matrix_exp_into,
+def matrix_exp(
+    matrix,
+    max_terms=None,
+    tolerance=None,
+    *,
+    out=None,
+    workspace: MatrixFunctionWorkspace | None = None,
+):
+    if workspace is None:
+        return _array_unary_out_kwargs(
+            _raw.matrix_exp,
+            _raw.matrix_exp_into,
+            matrix,
+            out=out,
+            max_terms=max_terms,
+            tolerance=tolerance,
+        )
+    return _require_workspace(workspace, MatrixFunctionWorkspace).exp(
         matrix,
-        out=out,
         max_terms=max_terms,
         tolerance=tolerance,
+        out=out,
     )
 
 
 matrix_exp_eigen = _raw.matrix_exp_eigen
 
 
-def matrix_log_eigen(matrix, *, out=None):
-    return _array_unary_out(_raw.matrix_log_eigen, _raw.matrix_log_eigen_into, matrix, out=out)
+def matrix_log_eigen(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
+    if workspace is None:
+        return _array_unary_out(_raw.matrix_log_eigen, _raw.matrix_log_eigen_into, matrix, out=out)
+    return _require_workspace(workspace, MatrixFunctionWorkspace).log_eigen(matrix, out=out)
 
 
-def matrix_log_svd(matrix, *, out=None):
-    return _array_unary_out(_raw.matrix_log_svd, _raw.matrix_log_svd_into, matrix, out=out)
+def matrix_log_svd(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
+    if workspace is None:
+        return _array_unary_out(_raw.matrix_log_svd, _raw.matrix_log_svd_into, matrix, out=out)
+    return _require_workspace(workspace, MatrixFunctionWorkspace).log_svd(matrix, out=out)
 
 
-def matrix_log_taylor(matrix, max_terms=None, tolerance=None, *, out=None):
-    return _array_unary_out_kwargs(
-        _raw.matrix_log_taylor,
-        _raw.matrix_log_taylor_into,
+def matrix_log_taylor(
+    matrix,
+    max_terms=None,
+    tolerance=None,
+    *,
+    out=None,
+    workspace: MatrixFunctionWorkspace | None = None,
+):
+    if workspace is None:
+        return _array_unary_out_kwargs(
+            _raw.matrix_log_taylor,
+            _raw.matrix_log_taylor_into,
+            matrix,
+            out=out,
+            max_terms=max_terms,
+            tolerance=tolerance,
+        )
+    return _require_workspace(workspace, MatrixFunctionWorkspace).log_taylor(
         matrix,
-        out=out,
         max_terms=max_terms,
         tolerance=tolerance,
+        out=out,
     )
 
 
-def matrix_power(matrix, power, *, out=None):
-    return _array_binary_scalar_out(_raw.matrix_power, _raw.matrix_power_into, matrix, power, out=out)
+def matrix_power(
+    matrix,
+    power,
+    *,
+    out=None,
+    workspace: MatrixFunctionWorkspace | None = None,
+):
+    if workspace is None:
+        return _array_binary_scalar_out(
+            _raw.matrix_power,
+            _raw.matrix_power_into,
+            matrix,
+            power,
+            out=out,
+        )
+    return _require_workspace(workspace, MatrixFunctionWorkspace).power(matrix, power, out=out)
 
 
-def matrix_sign(matrix, *, out=None):
-    return _array_unary_out(_raw.matrix_sign, _raw.matrix_sign_into, matrix, out=out)
+def matrix_sign(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
+    if workspace is None:
+        return _array_unary_out(_raw.matrix_sign, _raw.matrix_sign_into, matrix, out=out)
+    return _require_workspace(workspace, MatrixFunctionWorkspace).sign(matrix, out=out)
+
+
 def matvec(matrix, vector, *, out=None):
     return _array_binary_out(_raw.matvec, _raw.matvec_into, matrix, vector, out=out)
 
@@ -1089,24 +1163,40 @@ def numerical_jacobian_central(
     return _raw.numerical_jacobian_central(function, x, **kwargs)
 
 
-def pairwise_cosine_similarity(left, right, *, out=None):
-    return _array_binary_out(
-        _raw.pairwise_cosine_similarity,
-        _raw.pairwise_cosine_similarity_into,
-        left,
-        right,
-        out=out,
-    )
+def pairwise_cosine_similarity(
+    left,
+    right,
+    *,
+    out=None,
+    workspace: PairwiseCosineWorkspace | None = None,
+):
+    if workspace is None:
+        return _array_binary_out(
+            _raw.pairwise_cosine_similarity,
+            _raw.pairwise_cosine_similarity_into,
+            left,
+            right,
+            out=out,
+        )
+    return _require_workspace(workspace, PairwiseCosineWorkspace).similarity(left, right, out=out)
 
 
-def pairwise_cosine_distance(left, right, *, out=None):
-    return _array_binary_out(
-        _raw.pairwise_cosine_distance,
-        _raw.pairwise_cosine_distance_into,
-        left,
-        right,
-        out=out,
-    )
+def pairwise_cosine_distance(
+    left,
+    right,
+    *,
+    out=None,
+    workspace: PairwiseCosineWorkspace | None = None,
+):
+    if workspace is None:
+        return _array_binary_out(
+            _raw.pairwise_cosine_distance,
+            _raw.pairwise_cosine_distance_into,
+            left,
+            right,
+            out=out,
+        )
+    return _require_workspace(workspace, PairwiseCosineWorkspace).distance(left, right, out=out)
 
 
 def pairwise_l2_distance(left, right, *, out=None):
@@ -1540,6 +1630,9 @@ __all__ = [
     "MomentumConfig",
     "ProjectedGradientConfig",
     "RMSPropConfig",
+    "MatrixFunctionWorkspace",
+    "PairwiseCosineWorkspace",
+    "SylvesterWorkspace",
     "build_features",
     "svd_decompose",
     "svd_decompose_truncated",

@@ -1,10 +1,325 @@
 //! Vector primitives bindings for Python.
 
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
 use crate::error::to_py_err;
 use crate::utils;
+
+pub(crate) enum PyPairwiseCosineWorkspaceInner {
+    F32(nabled_linalg::vector::PairwiseCosineWorkspace<f32>),
+    F64(nabled_linalg::vector::PairwiseCosineWorkspace<f64>),
+}
+
+#[pyclass(module = "pynabled._pynabled", name = "_PairwiseCosineWorkspace")]
+pub(crate) struct PyPairwiseCosineWorkspace {
+    pub(crate) inner: PyPairwiseCosineWorkspaceInner,
+}
+
+fn matching_pairwise_workspace_dtype_error() -> PyErr {
+    PyTypeError::new_err(
+        "left, right, and workspace must all have matching dtype (all float32 or all float64)",
+    )
+}
+
+fn pairwise_cosine_similarity_impl<'py>(
+    py: Python<'py>,
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
+    workspace: Option<&mut PyPairwiseCosineWorkspaceInner>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let result = match workspace {
+                Some(PyPairwiseCosineWorkspaceInner::F32(workspace)) => {
+                    let shape = (left_arr.as_array().nrows(), right_arr.as_array().nrows());
+                    let mut output = ndarray::Array2::<f32>::zeros(shape);
+                    nabled_linalg::vector::pairwise_cosine_similarity_with_workspace_into(
+                        &left_arr.as_array(),
+                        &right_arr.as_array(),
+                        &mut output,
+                        workspace,
+                    )
+                    .map_err(to_py_err)?;
+                    output
+                }
+                Some(PyPairwiseCosineWorkspaceInner::F64(_)) => {
+                    return Err(matching_pairwise_workspace_dtype_error());
+                }
+                None => nabled_linalg::vector::pairwise_cosine_similarity_view(
+                    &left_arr.as_array(),
+                    &right_arr.as_array(),
+                )
+                .map_err(to_py_err)?,
+            };
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let result = match workspace {
+                Some(PyPairwiseCosineWorkspaceInner::F64(workspace)) => {
+                    let shape = (left_arr.as_array().nrows(), right_arr.as_array().nrows());
+                    let mut output = ndarray::Array2::<f64>::zeros(shape);
+                    nabled_linalg::vector::pairwise_cosine_similarity_with_workspace_into(
+                        &left_arr.as_array(),
+                        &right_arr.as_array(),
+                        &mut output,
+                        workspace,
+                    )
+                    .map_err(to_py_err)?;
+                    output
+                }
+                Some(PyPairwiseCosineWorkspaceInner::F32(_)) => {
+                    return Err(matching_pairwise_workspace_dtype_error());
+                }
+                None => nabled_linalg::vector::pairwise_cosine_similarity_view(
+                    &left_arr.as_array(),
+                    &right_arr.as_array(),
+                )
+                .map_err(to_py_err)?,
+            };
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+fn pairwise_cosine_similarity_into_impl(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+    workspace: Option<&mut PyPairwiseCosineWorkspaceInner>,
+) -> PyResult<()> {
+    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            match workspace {
+                Some(PyPairwiseCosineWorkspaceInner::F32(workspace)) => {
+                    nabled_linalg::vector::pairwise_cosine_similarity_with_workspace_into(
+                        &left_arr.as_array(),
+                        &right_arr.as_array(),
+                        &mut output_arr.as_array_mut(),
+                        workspace,
+                    )
+                    .map_err(to_py_err)
+                }
+                Some(PyPairwiseCosineWorkspaceInner::F64(_)) => {
+                    Err(matching_pairwise_workspace_dtype_error())
+                }
+                None => nabled_linalg::vector::pairwise_cosine_similarity_into(
+                    &left_arr.as_array(),
+                    &right_arr.as_array(),
+                    &mut output_arr.as_array_mut(),
+                )
+                .map_err(to_py_err),
+            }
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            match workspace {
+                Some(PyPairwiseCosineWorkspaceInner::F64(workspace)) => {
+                    nabled_linalg::vector::pairwise_cosine_similarity_with_workspace_into(
+                        &left_arr.as_array(),
+                        &right_arr.as_array(),
+                        &mut output_arr.as_array_mut(),
+                        workspace,
+                    )
+                    .map_err(to_py_err)
+                }
+                Some(PyPairwiseCosineWorkspaceInner::F32(_)) => {
+                    Err(matching_pairwise_workspace_dtype_error())
+                }
+                None => nabled_linalg::vector::pairwise_cosine_similarity_into(
+                    &left_arr.as_array(),
+                    &right_arr.as_array(),
+                    &mut output_arr.as_array_mut(),
+                )
+                .map_err(to_py_err),
+            }
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
+fn pairwise_cosine_distance_impl<'py>(
+    py: Python<'py>,
+    left: &Bound<'py, PyAny>,
+    right: &Bound<'py, PyAny>,
+    workspace: Option<&mut PyPairwiseCosineWorkspaceInner>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let result = match workspace {
+                Some(PyPairwiseCosineWorkspaceInner::F32(workspace)) => {
+                    let shape = (left_arr.as_array().nrows(), right_arr.as_array().nrows());
+                    let mut output = ndarray::Array2::<f32>::zeros(shape);
+                    nabled_linalg::vector::pairwise_cosine_similarity_with_workspace_into(
+                        &left_arr.as_array(),
+                        &right_arr.as_array(),
+                        &mut output,
+                        workspace,
+                    )
+                    .map_err(to_py_err)?;
+                    output.mapv_inplace(|value| 1.0_f32 - value);
+                    output
+                }
+                Some(PyPairwiseCosineWorkspaceInner::F64(_)) => {
+                    return Err(matching_pairwise_workspace_dtype_error());
+                }
+                None => nabled_linalg::vector::pairwise_cosine_distance_view(
+                    &left_arr.as_array(),
+                    &right_arr.as_array(),
+                )
+                .map_err(to_py_err)?,
+            };
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let result = match workspace {
+                Some(PyPairwiseCosineWorkspaceInner::F64(workspace)) => {
+                    let shape = (left_arr.as_array().nrows(), right_arr.as_array().nrows());
+                    let mut output = ndarray::Array2::<f64>::zeros(shape);
+                    nabled_linalg::vector::pairwise_cosine_similarity_with_workspace_into(
+                        &left_arr.as_array(),
+                        &right_arr.as_array(),
+                        &mut output,
+                        workspace,
+                    )
+                    .map_err(to_py_err)?;
+                    output.mapv_inplace(|value| 1.0_f64 - value);
+                    output
+                }
+                Some(PyPairwiseCosineWorkspaceInner::F32(_)) => {
+                    return Err(matching_pairwise_workspace_dtype_error());
+                }
+                None => nabled_linalg::vector::pairwise_cosine_distance_view(
+                    &left_arr.as_array(),
+                    &right_arr.as_array(),
+                )
+                .map_err(to_py_err)?,
+            };
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
+    }
+}
+
+fn pairwise_cosine_distance_into_impl(
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+    workspace: Option<&mut PyPairwiseCosineWorkspaceInner>,
+) -> PyResult<()> {
+    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
+        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            match workspace {
+                Some(PyPairwiseCosineWorkspaceInner::F32(workspace)) => {
+                    nabled_linalg::vector::pairwise_cosine_similarity_with_workspace_into(
+                        &left_arr.as_array(),
+                        &right_arr.as_array(),
+                        &mut output_arr.as_array_mut(),
+                        workspace,
+                    )
+                    .map_err(to_py_err)?;
+                    output_arr.as_array_mut().mapv_inplace(|value| 1.0_f32 - value);
+                    Ok(())
+                }
+                Some(PyPairwiseCosineWorkspaceInner::F64(_)) => {
+                    Err(matching_pairwise_workspace_dtype_error())
+                }
+                None => nabled_linalg::vector::pairwise_cosine_distance_into(
+                    &left_arr.as_array(),
+                    &right_arr.as_array(),
+                    &mut output_arr.as_array_mut(),
+                )
+                .map_err(to_py_err),
+            }
+        }
+        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            match workspace {
+                Some(PyPairwiseCosineWorkspaceInner::F64(workspace)) => {
+                    nabled_linalg::vector::pairwise_cosine_similarity_with_workspace_into(
+                        &left_arr.as_array(),
+                        &right_arr.as_array(),
+                        &mut output_arr.as_array_mut(),
+                        workspace,
+                    )
+                    .map_err(to_py_err)?;
+                    output_arr.as_array_mut().mapv_inplace(|value| 1.0_f64 - value);
+                    Ok(())
+                }
+                Some(PyPairwiseCosineWorkspaceInner::F32(_)) => {
+                    Err(matching_pairwise_workspace_dtype_error())
+                }
+                None => nabled_linalg::vector::pairwise_cosine_distance_into(
+                    &left_arr.as_array(),
+                    &right_arr.as_array(),
+                    &mut output_arr.as_array_mut(),
+                )
+                .map_err(to_py_err),
+            }
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
+#[pymethods]
+impl PyPairwiseCosineWorkspace {
+    #[new]
+    fn new(dtype: &str) -> PyResult<Self> {
+        match dtype {
+            "float32" => Ok(Self {
+                inner: PyPairwiseCosineWorkspaceInner::F32(
+                    nabled_linalg::vector::PairwiseCosineWorkspace::default(),
+                ),
+            }),
+            "float64" => Ok(Self {
+                inner: PyPairwiseCosineWorkspaceInner::F64(
+                    nabled_linalg::vector::PairwiseCosineWorkspace::default(),
+                ),
+            }),
+            _ => Err(PyTypeError::new_err("dtype must be float32 or float64")),
+        }
+    }
+
+    fn similarity<'py>(
+        &mut self,
+        py: Python<'py>,
+        left: &Bound<'py, PyAny>,
+        right: &Bound<'py, PyAny>,
+    ) -> PyResult<Py<PyAny>> {
+        pairwise_cosine_similarity_impl(py, left, right, Some(&mut self.inner))
+    }
+
+    fn similarity_into(
+        &mut self,
+        left: &Bound<'_, PyAny>,
+        right: &Bound<'_, PyAny>,
+        output: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        pairwise_cosine_similarity_into_impl(left, right, output, Some(&mut self.inner))
+    }
+
+    fn distance<'py>(
+        &mut self,
+        py: Python<'py>,
+        left: &Bound<'py, PyAny>,
+        right: &Bound<'py, PyAny>,
+    ) -> PyResult<Py<PyAny>> {
+        pairwise_cosine_distance_impl(py, left, right, Some(&mut self.inner))
+    }
+
+    fn distance_into(
+        &mut self,
+        left: &Bound<'_, PyAny>,
+        right: &Bound<'_, PyAny>,
+        output: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        pairwise_cosine_distance_into_impl(left, right, output, Some(&mut self.inner))
+    }
+}
 
 /// Compute dot product of two vectors.
 #[pyfunction]
@@ -171,25 +486,7 @@ pub fn pairwise_cosine_distance<'py>(
     left: &Bound<'py, PyAny>,
     right: &Bound<'py, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
-        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
-            let result = nabled_linalg::vector::pairwise_cosine_distance_view(
-                &left_arr.as_array(),
-                &right_arr.as_array(),
-            )
-            .map_err(to_py_err)?;
-            Ok(utils::pyarray2_from_owned(py, result))
-        }
-        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
-            let result = nabled_linalg::vector::pairwise_cosine_distance_view(
-                &left_arr.as_array(),
-                &right_arr.as_array(),
-            )
-            .map_err(to_py_err)?;
-            Ok(utils::pyarray2_from_owned(py, result))
-        }
-        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
-    }
+    pairwise_cosine_distance_impl(py, left, right, None)
 }
 
 /// Compute pairwise cosine distances into a caller-provided output array.
@@ -199,27 +496,7 @@ pub fn pairwise_cosine_distance_into(
     right: &Bound<'_, PyAny>,
     output: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
-    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
-        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
-            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
-            nabled_linalg::vector::pairwise_cosine_distance_into(
-                &left_arr.as_array(),
-                &right_arr.as_array(),
-                &mut output_arr.as_array_mut(),
-            )
-            .map_err(to_py_err)
-        }
-        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
-            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
-            nabled_linalg::vector::pairwise_cosine_distance_into(
-                &left_arr.as_array(),
-                &right_arr.as_array(),
-                &mut output_arr.as_array_mut(),
-            )
-            .map_err(to_py_err)
-        }
-        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
-    }
+    pairwise_cosine_distance_into_impl(left, right, output, None)
 }
 
 /// Compute pairwise cosine similarity between rows of two matrices.
@@ -229,25 +506,7 @@ pub fn pairwise_cosine_similarity<'py>(
     left: &Bound<'py, PyAny>,
     right: &Bound<'py, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
-        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
-            let result = nabled_linalg::vector::pairwise_cosine_similarity_view(
-                &left_arr.as_array(),
-                &right_arr.as_array(),
-            )
-            .map_err(to_py_err)?;
-            Ok(utils::pyarray2_from_owned(py, result))
-        }
-        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
-            let result = nabled_linalg::vector::pairwise_cosine_similarity_view(
-                &left_arr.as_array(),
-                &right_arr.as_array(),
-            )
-            .map_err(to_py_err)?;
-            Ok(utils::pyarray2_from_owned(py, result))
-        }
-        _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
-    }
+    pairwise_cosine_similarity_impl(py, left, right, None)
 }
 
 /// Compute pairwise cosine similarities into a caller-provided output array.
@@ -257,27 +516,7 @@ pub fn pairwise_cosine_similarity_into(
     right: &Bound<'_, PyAny>,
     output: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
-    match (utils::real_array2(left, "left")?, utils::real_array2(right, "right")?) {
-        (utils::RealReadonlyArray2::F32(left_arr), utils::RealReadonlyArray2::F32(right_arr)) => {
-            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
-            nabled_linalg::vector::pairwise_cosine_similarity_into(
-                &left_arr.as_array(),
-                &right_arr.as_array(),
-                &mut output_arr.as_array_mut(),
-            )
-            .map_err(to_py_err)
-        }
-        (utils::RealReadonlyArray2::F64(left_arr), utils::RealReadonlyArray2::F64(right_arr)) => {
-            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
-            nabled_linalg::vector::pairwise_cosine_similarity_into(
-                &left_arr.as_array(),
-                &right_arr.as_array(),
-                &mut output_arr.as_array_mut(),
-            )
-            .map_err(to_py_err)
-        }
-        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
-    }
+    pairwise_cosine_similarity_into_impl(left, right, output, None)
 }
 
 /// Compute row-wise dot products for paired batches of vectors.

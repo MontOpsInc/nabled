@@ -36,10 +36,21 @@ accept caller-provided `out=` arrays where the Rust core already exposes `*_into
 the SVD helper rank/condition paths now operate directly on singular values instead of rebuilding
 owned intermediary decomposition structs. The repo gate is green again (`just checks`), the Rust
 coverage gate is back above threshold (`90.71%` line coverage), and the Python package gate
-remains green (`194 passed, 22 skipped`, `92%` Python coverage). Remaining `N-PY-007` work is now
-concentrated in reusable-workspace/reuse-object exposure and the smaller set of allocation-control
-holes that still do not have Python-visible equivalents; `matrix_exp_eigen` remains
-allocation-only because the Rust core does not yet expose an `into` path for that row. The first
+remains green (`194 passed, 22 skipped`, `92%` Python coverage). A fourth
+`N-PY-007` reusable-workspace pass is now also landed: repeated pairwise cosine, matrix-function,
+and Sylvester/Lyapunov workloads now expose first-class `PairwiseCosineWorkspace`,
+`MatrixFunctionWorkspace`, and `SylvesterWorkspace` objects, and the existing public Python APIs
+accept `workspace=` instead of forcing callers into a parallel namespace. The Rust core now also
+provides view-first Sylvester/Lyapunov workspace helpers so those reuse paths stay aligned with
+the no-hidden-copy hot-path contract. Validation remains green end-to-end: targeted Rust
+Sylvester coverage passed (`12 passed`), targeted Python coverage across the touched
+vector/matrix-function/Sylvester/workspace slices passed (`31 passed`), the Python package gate is
+green at `199 passed, 22 skipped` with `91%` Python coverage, and full `just checks` is green with
+the Rust coverage gate at `90.68%` line coverage. Remaining `N-PY-007` work is now concentrated in
+the smaller set of reusable-workspace / reusable-result families that still do not have
+Python-visible equivalents plus the remaining allocation-only rows such as `matrix_exp_eigen` and
+any residual higher-level materialization points that still need to be made explicit or
+eliminated. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across

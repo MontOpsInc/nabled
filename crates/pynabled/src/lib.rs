@@ -45,6 +45,9 @@ fn build_features() -> Vec<String> {
 #[expect(clippy::too_many_lines)]
 fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(build_features, m)?)?;
+    m.add_class::<linalg::vector::PyPairwiseCosineWorkspace>()?;
+    m.add_class::<linalg::matrix_functions::PyMatrixFunctionWorkspace>()?;
+    m.add_class::<linalg::sylvester::PySylvesterWorkspace>()?;
     m.add_class::<sparse::csr::PyJacobiPreconditioner>()?;
     m.add_class::<sparse::csr::PyIlu0Factorization>()?;
     m.add_class::<sparse::csr::PyIlutFactorization>()?;

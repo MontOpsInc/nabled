@@ -75,6 +75,21 @@ singular values directly instead of rebuilding owned intermediary SVD objects, w
 `matrix_exp_eigen(...)` remains allocating-only because the Rust core does not yet expose an
 equivalent `into` path.
 
+Where the Rust core already exposes reusable scratch/workspace objects, the Python API now keeps
+that contract visible too. `PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`, and
+`SylvesterWorkspace` can be passed back into the existing public functions through `workspace=`
+for repeated workloads that would otherwise keep reallocating scratch buffers:
+
+```python
+import numpy as np
+import pynabled
+
+workspace = pynabled.MatrixFunctionWorkspace(np.float64)
+out = np.empty_like(a)
+
+pynabled.matrix_exp(a, out=out, workspace=workspace)
+```
+
 The iterative and callable-driven ML surface now uses typed config objects instead of exposing raw
 parameter shims as the production contract. `conjugate_gradient(...)` / `gmres(...)` accept
 `IterativeConfig`, Jacobian helpers accept `JacobianConfig`, and optimizer/line-search helpers use

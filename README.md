@@ -88,6 +88,10 @@ vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `m
 `*_into` coverage. `matrix_exp_eigen` remains allocating-only because the Rust core does not yet
 expose an equivalent `into` path.
 
+Repeated pairwise cosine, matrix-function, and Sylvester/Lyapunov workloads now also expose
+reusable Python workspace objects (`PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`,
+`SylvesterWorkspace`) through the existing public APIs via `workspace=`.
+
 Optional provider/backend/Arrow support on the Python side is a source-build workflow using the
 same Cargo feature names as the Rust facade (`openblas-system`, `openblas-static`,
 `netlib-system`, `netlib-static`, `magma-system`, `accelerator-rayon`, `accelerator-wgpu`,
