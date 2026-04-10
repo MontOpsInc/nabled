@@ -72,6 +72,11 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::decompose, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::decompose_reduced, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::decompose_pivoted, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::reconstruct_matrix, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::reconstruct_matrix_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::reconstruct_matrix_pivoted, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::reconstruct_matrix_pivoted_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::condition_number, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::solve_least_squares, m)?)?;
 
     // LU
@@ -84,7 +89,13 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Cholesky
     m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::decompose, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::solve, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::solve_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::solve_from_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::solve_from_factor_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::inverse, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::inverse_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::inverse_from_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::inverse_from_factor_into, m)?)?;
 
     // Eigen
     m.add_function(pyo3::wrap_pyfunction!(linalg::eigen::symmetric, m)?)?;

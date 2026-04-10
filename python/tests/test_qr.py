@@ -79,6 +79,17 @@ def test_qr_decompose_reduced_and_condition_number():
     assert np.isclose(condition, expected)
 
 
+def test_qr_reconstruct_matrix_supports_out():
+    a = np.array([[1.0, 2.0], [3.0, 5.0], [7.0, 11.0]], dtype=np.float32)
+    result = pynabled.qr_decompose_reduced(a)
+    out = np.empty_like(a, order="F")
+
+    returned = pynabled.qr_reconstruct_matrix(result, out=out)
+
+    assert returned is out
+    np.testing.assert_allclose(out, a, rtol=1e-4, atol=1e-5)
+
+
 def test_qr_decompose_pivoted_reconstructs_original_matrix():
     a = np.array(
         [[1.0, 100.0, 2.0], [0.0, 1.0, 4.0], [0.0, 0.0, 1.0]],
@@ -103,3 +114,18 @@ def test_qr_decompose_pivoted_accepts_complex128():
     assert result.p is not None
     assert result.p.dtype == np.complex128
     np.testing.assert_allclose(pynabled.qr_reconstruct_matrix(result), a, rtol=1e-10, atol=1e-12)
+
+
+def test_qr_reconstruct_matrix_pivoted_supports_out():
+    a = np.array(
+        [[1.0 + 1.0j, 0.0, 2.0 - 1.0j], [0.0, 3.0 - 0.5j, 4.0], [5.0, 0.0, 6.0 + 0.25j]],
+        dtype=np.complex128,
+    )
+
+    result = pynabled.qr_decompose_pivoted(a)
+    out = np.empty_like(a, order="F")
+
+    returned = pynabled.qr_reconstruct_matrix(result, out=out)
+
+    assert returned is out
+    np.testing.assert_allclose(out, a, rtol=1e-10, atol=1e-12)

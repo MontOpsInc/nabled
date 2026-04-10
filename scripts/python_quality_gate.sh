@@ -109,6 +109,47 @@ build_and_smoke() {
     "${smoke_command[@]}"
 }
 
+source_build_and_smoke() {
+    local label="$1"
+    local require_arrow="$2"
+    local features="${3:-}"
+    local venv_dir="${VENV_ROOT}/${label}"
+    local feature_args=()
+    local smoke_args=()
+    local smoke_command=("${venv_dir}/bin/python" "${SMOKE_SCRIPT}")
+    local compiled_features=()
+    local feature_name
+
+    create_venv "${venv_dir}"
+    install_packaging_tools "${venv_dir}" "${require_arrow}"
+
+    if [[ -n "${features}" ]]; then
+        feature_args=(--features "${features}")
+        read -r -a compiled_features <<< "${features}"
+        for feature_name in "${compiled_features[@]}"; do
+            smoke_args+=(--require-feature "${feature_name}")
+        done
+    fi
+
+    if [[ "${#feature_args[@]}" -gt 0 ]]; then
+        run_in_repo \
+            env VIRTUAL_ENV="${venv_dir}" PATH="${venv_dir}/bin:${PATH}" \
+            "${venv_dir}/bin/maturin" develop --release "${feature_args[@]}"
+    else
+        run_in_repo \
+            env VIRTUAL_ENV="${venv_dir}" PATH="${venv_dir}/bin:${PATH}" \
+            "${venv_dir}/bin/maturin" develop --release
+    fi
+
+    if [[ "${require_arrow}" == "1" ]]; then
+        smoke_command+=(--require-arrow)
+    fi
+    if [[ "${#smoke_args[@]}" -gt 0 ]]; then
+        smoke_command+=("${smoke_args[@]}")
+    fi
+    "${smoke_command[@]}"
+}
+
 main() {
     local dev_venv="${VENV_ROOT}/dev"
     local python_version
@@ -159,10 +200,10 @@ main() {
 
     build_and_smoke "wheel-default" "wheel" "0"
     build_and_smoke "sdist-default" "sdist" "0"
-    build_and_smoke "wheel-provider-openblas-system" "wheel" "0" "openblas-system"
-    build_and_smoke "wheel-backend-rayon" "wheel" "0" "accelerator-rayon"
-    build_and_smoke "wheel-backend-wgpu" "wheel" "0" "accelerator-wgpu"
-    build_and_smoke "wheel-combined" "wheel" "1" "openblas-system accelerator-rayon accelerator-wgpu arrow"
+    source_build_and_smoke "source-provider-openblas-system" "0" "openblas-system"
+    source_build_and_smoke "source-backend-rayon" "0" "accelerator-rayon"
+    source_build_and_smoke "source-backend-wgpu" "0" "accelerator-wgpu"
+    source_build_and_smoke "source-combined" "1" "openblas-system accelerator-rayon accelerator-wgpu arrow"
 }
 
 main "$@"

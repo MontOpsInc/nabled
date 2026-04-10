@@ -20,7 +20,9 @@ documentation/release polish, and PyPI supply-chain hardening. `N-PY-005` is now
 `pynabled` exposes the same provider/backend feature names as the Rust facade for source builds,
 packaging metadata no longer advertises extras that cannot enable Cargo features, installed builds
 can report compiled features via `pynabled.build_features()`, and the Python package gate now
-smokes `accelerator-wgpu` alongside the existing default/provider/Arrow paths. The first
+keeps publish-artifact smoke on the default wheel/sdist while validating optional
+provider/backend/Arrow permutations as isolated source-build installs, including
+`openblas-system`, `accelerator-rayon`, `accelerator-wgpu`, and combined feature builds. The first
 `N-PY-007` performance pass is now also landed: direct NumPy tensor primitive kernels now accept
 caller-provided `out=` arrays for output reuse across cube kernels, last-axis reductions/
 normalization, permutation, contraction, and batched matmul, including Fortran-order output
@@ -58,6 +60,17 @@ is green, and the Rust coverage gate remains above threshold at `90.60%` line co
 `N-PY-007` work is now concentrated in the smaller set of reusable-workspace / reusable-result
 families that still do not have Python-visible equivalents plus any residual higher-level
 materialization points that still need to be made explicit or eliminated. The first
+`N-PY-007` decomposition-reuse pass is now also landed: `qr_reconstruct_matrix(...)` and
+`qr_condition_number(...)` no longer fall back to Python-side NumPy helper math, direct and
+pivoted QR reconstruction now support Rust-backed `out=` reuse under the existing public Python
+name, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
+`cholesky_inverse(...)` for repeated factor reuse while the matrix-input forms also expose `out=`.
+The Python package gate contract was corrected in the same pass so default publish-artifact smoke
+remains `wheel` + `sdist` while optional provider/backend/Arrow permutations now run as isolated
+source-build smoke instead of non-portable system-provider wheel repair attempts. Validation is
+green end-to-end: `cargo check -p pynabled`, targeted Rust factor/reconstruct coverage (`4
+passed`), `python-quality` (`206 passed, 22 skipped`, `91%` Python coverage), and full
+`just checks` with the Rust coverage gate at `90.05%` line coverage. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across
@@ -92,8 +105,9 @@ carrier, non-contiguous CSR buffers now fail at carrier construction unless `cop
 full Python suite is green on the editable Python 3.12 build (`113 passed, 3 skipped`). `N-PY-006`
 is now also complete: Rust `llvm-cov` excludes `pynabled`, Python package coverage is enforced at
 `>= 90%` via `pytest-cov` (`127 passed, 3 skipped`, `99.65%`), `just checks` now runs the
-`python-quality` gate, CI enforces full pytest plus wheel/sdist/feature smoke, and the full repo
-gate is green again. A seventh `N-PY-003` result-fidelity pass is now also landed: decomposition,
+`python-quality` gate, CI enforces full pytest plus default wheel/sdist smoke plus isolated
+source-build feature smoke, and the full repo gate is green again. A seventh `N-PY-003`
+result-fidelity pass is now also landed: decomposition,
 batched, PCA/regression, tensor, and Arrow SVD workflows now return typed Python result objects
 with named fields, reconstruct/transform helpers operate on those result objects directly, raw
 binding fidelity was improved for non-symmetric eigen (complex arrays instead of split real/imag)

@@ -1125,6 +1125,51 @@ pub fn reconstruct_matrix<T: NabledReal>(qr: &QRResult<T>) -> Array2<T> { qr.q.d
 #[must_use]
 pub fn reconstruct_matrix_complex(qr: &QRResult<Complex64>) -> Array2<Complex64> { qr.q.dot(&qr.r) }
 
+fn permutation_order<T: NabledReal>(permutation: &Array2<T>) -> Result<Vec<usize>, QRError> {
+    if permutation.nrows() != permutation.ncols() {
+        return Err(QRError::InvalidDimensions("permutation matrix must be square".to_string()));
+    }
+
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    let mut order = vec![usize::MAX; permutation.ncols()];
+    for col in 0..permutation.ncols() {
+        for row in 0..permutation.nrows() {
+            if permutation[[row, col]].abs() > tolerance {
+                order[col] = row;
+                break;
+            }
+        }
+        if order[col] == usize::MAX {
+            return Err(QRError::InvalidInput(
+                "permutation matrix must contain one non-zero entry per column".to_string(),
+            ));
+        }
+    }
+    Ok(order)
+}
+
+fn complex_permutation_order(permutation: &Array2<Complex64>) -> Result<Vec<usize>, QRError> {
+    if permutation.nrows() != permutation.ncols() {
+        return Err(QRError::InvalidDimensions("permutation matrix must be square".to_string()));
+    }
+
+    let mut order = vec![usize::MAX; permutation.ncols()];
+    for col in 0..permutation.ncols() {
+        for row in 0..permutation.nrows() {
+            if permutation[[row, col]].norm() > DenseKernelPolicy::BASE_TOLERANCE {
+                order[col] = row;
+                break;
+            }
+        }
+        if order[col] == usize::MAX {
+            return Err(QRError::InvalidInput(
+                "permutation matrix must contain one non-zero entry per column".to_string(),
+            ));
+        }
+    }
+    Ok(order)
+}
+
 /// Reconstruct matrix `Q * R` into `output`.
 ///
 /// # Errors
@@ -1153,6 +1198,115 @@ pub fn reconstruct_matrix_into<T: NabledReal>(
         }
     }
 
+    Ok(())
+}
+
+/// Reconstruct complex matrix `Q * R` into `output`.
+///
+/// # Errors
+/// Returns an error if output dimensions do not match `Q * R`.
+pub fn reconstruct_matrix_complex_into(
+    qr: &QRResult<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), QRError> {
+    if qr.q.ncols() != qr.r.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
+        return Err(QRError::InvalidDimensions(
+            "output shape must match q.rows x r.cols".to_string(),
+        ));
+    }
+
+    output.fill(Complex64::new(0.0, 0.0));
+    for i in 0..qr.q.nrows() {
+        for j in 0..qr.r.ncols() {
+            let mut sum = Complex64::new(0.0, 0.0);
+            for p in 0..qr.q.ncols() {
+                sum += qr.q[[i, p]] * qr.r[[p, j]];
+            }
+            output[[i, j]] = sum;
+        }
+    }
+
+    Ok(())
+}
+
+/// Reconstruct the original matrix from a pivoted QR result into `output`.
+///
+/// # Errors
+/// Returns an error if the QR result is missing a permutation or dimensions are incompatible.
+pub fn reconstruct_original_matrix_into<T: NabledReal>(
+    qr: &QRResult<T>,
+    output: &mut Array2<T>,
+) -> Result<(), QRError> {
+    let permutation = qr.p.as_ref().ok_or_else(|| {
+        QRError::InvalidInput("pivoted QR result missing permutation".to_string())
+    })?;
+    if qr.q.ncols() != qr.r.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if permutation.nrows() != qr.r.ncols() || permutation.ncols() != qr.r.ncols() {
+        return Err(QRError::InvalidDimensions(
+            "permutation shape must match r column dimensions".to_string(),
+        ));
+    }
+    if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
+        return Err(QRError::InvalidDimensions(
+            "output shape must match q.rows x r.cols".to_string(),
+        ));
+    }
+
+    let order = permutation_order(permutation)?;
+    output.fill(T::zero());
+    for (pivoted_col, &output_col) in order.iter().enumerate().take(qr.r.ncols()) {
+        for row in 0..qr.q.nrows() {
+            let mut sum = T::zero();
+            for inner in 0..qr.q.ncols() {
+                sum += qr.q[[row, inner]] * qr.r[[inner, pivoted_col]];
+            }
+            output[[row, output_col]] = sum;
+        }
+    }
+    Ok(())
+}
+
+/// Reconstruct the original matrix from a complex pivoted QR result into `output`.
+///
+/// # Errors
+/// Returns an error if the QR result is missing a permutation or dimensions are incompatible.
+pub fn reconstruct_original_matrix_complex_into(
+    qr: &QRResult<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), QRError> {
+    let permutation = qr.p.as_ref().ok_or_else(|| {
+        QRError::InvalidInput("pivoted QR result missing permutation".to_string())
+    })?;
+    if qr.q.ncols() != qr.r.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if permutation.nrows() != qr.r.ncols() || permutation.ncols() != qr.r.ncols() {
+        return Err(QRError::InvalidDimensions(
+            "permutation shape must match r column dimensions".to_string(),
+        ));
+    }
+    if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
+        return Err(QRError::InvalidDimensions(
+            "output shape must match q.rows x r.cols".to_string(),
+        ));
+    }
+
+    let order = complex_permutation_order(permutation)?;
+    output.fill(Complex64::new(0.0, 0.0));
+    for (pivoted_col, &output_col) in order.iter().enumerate().take(qr.r.ncols()) {
+        for row in 0..qr.q.nrows() {
+            let mut sum = Complex64::new(0.0, 0.0);
+            for inner in 0..qr.q.ncols() {
+                sum += qr.q[[row, inner]] * qr.r[[inner, pivoted_col]];
+            }
+            output[[row, output_col]] = sum;
+        }
+    }
     Ok(())
 }
 
@@ -1322,6 +1476,49 @@ mod tests {
             }
         }
         assert!(condition_number(&qr).is_finite());
+    }
+
+    #[test]
+    fn pivoted_reconstruct_original_into_restores_input() {
+        let matrix = Array2::from_shape_vec((3, 3), vec![
+            1.0_f64, 10.0_f64, 0.0_f64, //
+            0.0_f64, 11.0_f64, 1.0_f64, //
+            0.0_f64, 12.0_f64, 0.0_f64, //
+        ])
+        .unwrap();
+        let qr = decompose_with_pivoting(&matrix, &QRConfig::default()).unwrap();
+        let mut out = Array2::<f64>::zeros(matrix.dim());
+
+        reconstruct_original_matrix_into(&qr, &mut out).unwrap();
+
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((out[[i, j]] - matrix[[i, j]]).abs() < 1e-8_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn complex_reconstruct_into_variants_work() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(3.0, 0.5),
+            Complex64::new(4.0, 0.25),
+            Complex64::new(5.0, -0.5),
+            Complex64::new(6.0, 1.0),
+        ])
+        .unwrap();
+        let qr = decompose_complex_view(&matrix.view(), &QRConfig::default()).unwrap();
+        let mut out = Array2::<Complex64>::zeros(matrix.dim());
+
+        reconstruct_matrix_complex_into(&qr, &mut out).unwrap();
+
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((out[[i, j]] - matrix[[i, j]]).norm() < 1e-8_f64);
+            }
+        }
     }
 
     #[test]

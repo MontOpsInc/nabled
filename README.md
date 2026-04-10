@@ -86,6 +86,9 @@ vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `m
 `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`, `matrix_sign`,
 `matrix_exp_eigen`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` wherever the Rust
 core already has `*_into` coverage.
+`qr_reconstruct_matrix(...)` now follows the same Rust-backed `out=` contract for both direct and
+pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
+`cholesky_inverse(...)` for repeated factor reuse instead of re-factorizing the original matrix.
 
 Repeated pairwise cosine, matrix-function, and Sylvester/Lyapunov workloads now also expose
 reusable Python workspace objects (`PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`,

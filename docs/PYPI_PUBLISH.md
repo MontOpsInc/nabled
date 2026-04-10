@@ -123,8 +123,10 @@ Wheels on PyPI use **default** Cargo features for `pynabled` unless you change t
 workflow. That means no optional provider/backend/Arrow features are compiled into the published
 wheel by default (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`,
 `magma-system`, `accelerator-rayon`, `accelerator-wgpu`, and `arrow` are all source-build
-workflows). There are no Python extras that enable these Rust features; use the explicit Cargo
-feature names described in [BUILD.md](../BUILD.md).
+workflows). Local/CI package gates therefore smoke publish-style `wheel` / `sdist` artifacts only
+for the default feature set, while optional provider/backend/Arrow permutations are validated as
+isolated source-build installs. There are no Python extras that enable these Rust features; use
+the explicit Cargo feature names described in [BUILD.md](../BUILD.md).
 
 ## Troubleshooting
 

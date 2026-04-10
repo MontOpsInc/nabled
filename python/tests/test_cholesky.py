@@ -34,11 +34,48 @@ def test_cholesky_solve():
     np.testing.assert_allclose(a @ x, b, rtol=1e-10)
 
 
+def test_cholesky_solve_supports_out_and_factor_reuse():
+    a = _make_spd(3, dtype=np.float32)
+    b = np.array([1.0, -2.0, 3.0], dtype=np.float32)
+    factor = pynabled.cholesky_decompose(a)
+    direct_out = np.empty(3, dtype=np.float32)
+    out = np.empty(3, dtype=np.float32)
+
+    returned_direct = pynabled.cholesky_solve(a, b, out=direct_out)
+    returned = pynabled.cholesky_solve(factor, b, out=out)
+
+    assert returned_direct is direct_out
+    assert returned is out
+    np.testing.assert_allclose(a @ direct_out, b, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(a @ out, b, rtol=1e-4, atol=1e-5)
+
+
 def test_cholesky_inverse():
     a = _make_spd(3)
     inv_a = pynabled.cholesky_inverse(a)
     np.testing.assert_allclose(a @ inv_a, np.eye(3), rtol=1e-10, atol=1e-14)
     np.testing.assert_allclose(inv_a @ a, np.eye(3), rtol=1e-10, atol=1e-14)
+
+
+def test_cholesky_inverse_supports_out_and_factor_reuse():
+    a = _make_hpd(3)
+    factor = pynabled.cholesky_decompose(a)
+    direct_out = np.empty((3, 3), dtype=np.complex128, order="F")
+    out = np.empty((3, 3), dtype=np.complex128, order="F")
+
+    returned_direct = pynabled.cholesky_inverse(a, out=direct_out)
+    returned = pynabled.cholesky_inverse(factor, out=out)
+
+    assert returned_direct is direct_out
+    assert returned is out
+    np.testing.assert_allclose(
+        a @ direct_out,
+        np.eye(3, dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(a @ out, np.eye(3, dtype=np.complex128), rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(out @ a, np.eye(3, dtype=np.complex128), rtol=1e-10, atol=1e-12)
 
 
 def test_cholesky_accepts_float32():

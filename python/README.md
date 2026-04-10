@@ -72,6 +72,9 @@ the Rust core already exposes `*_into`: `svd_pseudo_inverse`, `svd_reconstruct_m
 `matrix_power`, `matrix_sign`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` with the
 same writeability/shape/dtype requirements. `svd_condition_number(...)` and `svd_rank(...)` now
 read singular values directly instead of rebuilding owned intermediary SVD objects.
+`qr_reconstruct_matrix(...)` now follows the same Rust-backed `out=` contract for both direct and
+pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
+`cholesky_inverse(...)` for repeated factor reuse instead of re-factorizing the original matrix.
 
 Where the Rust core already exposes reusable scratch/workspace objects, the Python API now keeps
 that contract visible too. `PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`, and

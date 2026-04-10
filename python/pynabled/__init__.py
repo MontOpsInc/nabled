@@ -261,22 +261,17 @@ def qr_decompose_pivoted(a, rank_tolerance=None, max_iterations=None) -> QrResul
     return QrResult(q=q, r=r, rank=rank, p=p)
 
 
-def qr_reconstruct_matrix(result: QrResult):
-    reconstructed = result.q @ result.r
-    if result.p is not None:
-        return reconstructed @ result.p.T.conj()
-    return reconstructed
+def qr_reconstruct_matrix(result: QrResult, *, out=None):
+    if result.p is None:
+        return _array_binary_out(_raw.qr_reconstruct_matrix, _raw.qr_reconstruct_matrix_into, result.q, result.r, out=out)
+    if out is None:
+        return _raw.qr_reconstruct_matrix_pivoted(result.q, result.r, result.p)
+    _raw.qr_reconstruct_matrix_pivoted_into(result.q, result.r, result.p, out)
+    return out
 
 
 def qr_condition_number(result: QrResult):
-    diagonal = np.abs(np.diag(result.r))
-    if diagonal.size == 0:
-        return 0.0
-    tolerance = max(1.0e-12, float(np.finfo(diagonal.dtype).eps))
-    finite = diagonal[diagonal > tolerance]
-    if finite.size == 0:
-        return float(np.inf)
-    return float(diagonal.max() / finite.min())
+    return _raw.qr_condition_number(result.r)
 
 
 def qr_solve_least_squares(a, b, rank_tolerance=None, max_iterations=None):
@@ -314,12 +309,19 @@ def cholesky_decompose(a) -> CholeskyResult:
     return CholeskyResult(l=_raw.cholesky_decompose(a))
 
 
-def cholesky_solve(a, b):
-    return _raw.cholesky_solve(a, b)
+def cholesky_solve(a, b, *, out=None):
+    if isinstance(a, CholeskyResult):
+        if out is None:
+            return _raw.cholesky_solve_from_factor(a.l, b)
+        _raw.cholesky_solve_from_factor_into(a.l, b, out)
+        return out
+    return _array_binary_out(_raw.cholesky_solve, _raw.cholesky_solve_into, a, b, out=out)
 
 
-def cholesky_inverse(a):
-    return _raw.cholesky_inverse(a)
+def cholesky_inverse(a, *, out=None):
+    if isinstance(a, CholeskyResult):
+        return _array_unary_out(_raw.cholesky_inverse_from_factor, _raw.cholesky_inverse_from_factor_into, a.l, out=out)
+    return _array_unary_out(_raw.cholesky_inverse, _raw.cholesky_inverse_into, a, out=out)
 
 
 def eigen_symmetric(a) -> EigenResult:
