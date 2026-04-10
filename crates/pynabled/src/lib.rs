@@ -267,13 +267,21 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // ML
     m.add_function(pyo3::wrap_pyfunction!(ml::regression::linear_regression, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::regression::linear_regression_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::regression::linear_regression_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::regression::linear_regression_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::compute_pca, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::compute_pca_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::compute_pca_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::compute_pca_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_transform, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_transform_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_transform_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_transform_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_inverse_transform, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_inverse_transform_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_inverse_transform_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_inverse_transform_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::column_means, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::center_columns, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::covariance_matrix, m)?)?;
@@ -285,9 +293,13 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Iterative (dense CG, GMRES)
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::gmres, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::iterative::gmres_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::gmres_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::iterative::gmres_complex_into, m)?)?;
 
     // Jacobian / derivatives
     m.add_function(pyo3::wrap_pyfunction!(ml::jacobian::numerical_jacobian, m)?)?;

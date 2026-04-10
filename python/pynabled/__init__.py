@@ -468,67 +468,139 @@ def batched_symmetric_eigen(matrices) -> list[EigenResult]:
     ]
 
 
-def compute_pca(x, n_components=None) -> PcaResult:
-    components, explained_variance, explained_variance_ratio, mean, scores = _raw.compute_pca(
+def compute_pca(x, n_components=None, *, out: PcaResult | None = None) -> PcaResult:
+    if out is None:
+        components, explained_variance, explained_variance_ratio, mean, scores = _raw.compute_pca(
+            x,
+            n_components=n_components,
+        )
+        return PcaResult(
+            components=components,
+            explained_variance=explained_variance,
+            explained_variance_ratio=explained_variance_ratio,
+            mean=mean,
+            scores=scores,
+        )
+    out = _require_result_out(out, PcaResult)
+    _raw.compute_pca_into(
         x,
         n_components=n_components,
+        components=out.components,
+        explained_variance=out.explained_variance,
+        explained_variance_ratio=out.explained_variance_ratio,
+        mean=out.mean,
+        scores=out.scores,
     )
-    return PcaResult(
-        components=components,
-        explained_variance=explained_variance,
-        explained_variance_ratio=explained_variance_ratio,
-        mean=mean,
-        scores=scores,
+    return out
+
+
+def compute_pca_complex(x, n_components=None, *, out: PcaResult | None = None) -> PcaResult:
+    if out is None:
+        components, explained_variance, explained_variance_ratio, mean, scores = (
+            _raw.compute_pca_complex(x, n_components=n_components)
+        )
+        return PcaResult(
+            components=components,
+            explained_variance=explained_variance,
+            explained_variance_ratio=explained_variance_ratio,
+            mean=mean,
+            scores=scores,
+        )
+    out = _require_result_out(out, PcaResult)
+    _raw.compute_pca_complex_into(
+        x,
+        n_components=n_components,
+        components=out.components,
+        explained_variance=out.explained_variance,
+        explained_variance_ratio=out.explained_variance_ratio,
+        mean=out.mean,
+        scores=out.scores,
     )
+    return out
 
 
-def compute_pca_complex(x, n_components=None) -> PcaResult:
-    components, explained_variance, explained_variance_ratio, mean, scores = (
-        _raw.compute_pca_complex(x, n_components=n_components)
-    )
-    return PcaResult(
-        components=components,
-        explained_variance=explained_variance,
-        explained_variance_ratio=explained_variance_ratio,
-        mean=mean,
-        scores=scores,
-    )
-
-
-def pca_transform(x, result: PcaResult):
-    return _raw.pca_transform(x, result.components, result.mean)
-
-
-def pca_transform_complex(x, result: PcaResult):
-    return _raw.pca_transform_complex(x, result.components, result.mean)
-
-
-def pca_inverse_transform(scores, result: PcaResult):
-    return _raw.pca_inverse_transform(scores, result.components, result.mean)
-
-
-def pca_inverse_transform_complex(scores, result: PcaResult):
-    return _raw.pca_inverse_transform_complex(scores, result.components, result.mean)
-
-
-def linear_regression(x, y) -> RegressionResult:
-    coefficients, fitted_values, residuals, r_squared = _raw.linear_regression(x, y)
-    return RegressionResult(
-        coefficients=coefficients,
-        fitted_values=fitted_values,
-        residuals=residuals,
-        r_squared=r_squared,
+def pca_transform(x, result: PcaResult, *, out=None):
+    return _array_ternary_out(
+        _raw.pca_transform,
+        _raw.pca_transform_into,
+        x,
+        result.components,
+        result.mean,
+        out=out,
     )
 
 
-def linear_regression_complex(x, y) -> RegressionResult:
-    coefficients, fitted_values, residuals, r_squared = _raw.linear_regression_complex(x, y)
-    return RegressionResult(
-        coefficients=coefficients,
-        fitted_values=fitted_values,
-        residuals=residuals,
-        r_squared=r_squared,
+def pca_transform_complex(x, result: PcaResult, *, out=None):
+    return _array_ternary_out(
+        _raw.pca_transform_complex,
+        _raw.pca_transform_complex_into,
+        x,
+        result.components,
+        result.mean,
+        out=out,
     )
+
+
+def pca_inverse_transform(scores, result: PcaResult, *, out=None):
+    return _array_ternary_out(
+        _raw.pca_inverse_transform,
+        _raw.pca_inverse_transform_into,
+        scores,
+        result.components,
+        result.mean,
+        out=out,
+    )
+
+
+def pca_inverse_transform_complex(scores, result: PcaResult, *, out=None):
+    return _array_ternary_out(
+        _raw.pca_inverse_transform_complex,
+        _raw.pca_inverse_transform_complex_into,
+        scores,
+        result.components,
+        result.mean,
+        out=out,
+    )
+
+
+def linear_regression(x, y, *, out: RegressionResult | None = None) -> RegressionResult:
+    if out is None:
+        coefficients, fitted_values, residuals, r_squared = _raw.linear_regression(x, y)
+        return RegressionResult(
+            coefficients=coefficients,
+            fitted_values=fitted_values,
+            residuals=residuals,
+            r_squared=r_squared,
+        )
+    out = _require_result_out(out, RegressionResult)
+    out.r_squared = _raw.linear_regression_into(
+        x,
+        y,
+        coefficients=out.coefficients,
+        fitted_values=out.fitted_values,
+        residuals=out.residuals,
+    )
+    return out
+
+
+def linear_regression_complex(x, y, *, out: RegressionResult | None = None) -> RegressionResult:
+    if out is None:
+        coefficients, fitted_values, residuals, r_squared = _raw.linear_regression_complex(x, y)
+        return RegressionResult(
+            coefficients=coefficients,
+            fitted_values=fitted_values,
+            residuals=residuals,
+            r_squared=r_squared,
+        )
+    out = _require_result_out(out, RegressionResult)
+    out.r_squared = _raw.linear_regression_complex_into(
+        x,
+        y,
+        coefficients=out.coefficients,
+        fitted_values=out.fitted_values,
+        residuals=out.residuals,
+    )
+    return out
 
 
 def tensor_hosvd3(cube, r0, r1, r2) -> Hosvd3Result:
@@ -893,6 +965,7 @@ def conjugate_gradient(
     max_iterations=None,
     *,
     config: IterativeConfig | None = None,
+    out=None,
 ):
     kwargs = _resolve_config(
         config,
@@ -900,7 +973,10 @@ def conjugate_gradient(
         tolerance=tolerance,
         max_iterations=max_iterations,
     )
-    return _raw.conjugate_gradient(matrix_a, matrix_b, **kwargs)
+    if out is None:
+        return _raw.conjugate_gradient(matrix_a, matrix_b, **kwargs)
+    _raw.conjugate_gradient_into(matrix_a, matrix_b, out, **kwargs)
+    return out
 
 
 def conjugate_gradient_complex(
@@ -910,6 +986,7 @@ def conjugate_gradient_complex(
     max_iterations=None,
     *,
     config: IterativeConfig | None = None,
+    out=None,
 ):
     kwargs = _resolve_config(
         config,
@@ -917,7 +994,10 @@ def conjugate_gradient_complex(
         tolerance=tolerance,
         max_iterations=max_iterations,
     )
-    return _raw.conjugate_gradient_complex(matrix_a, matrix_b, **kwargs)
+    if out is None:
+        return _raw.conjugate_gradient_complex(matrix_a, matrix_b, **kwargs)
+    _raw.conjugate_gradient_complex_into(matrix_a, matrix_b, out, **kwargs)
+    return out
 
 
 correlation_matrix = _raw.correlation_matrix
@@ -936,6 +1016,7 @@ def gmres(
     max_iterations=None,
     *,
     config: IterativeConfig | None = None,
+    out=None,
 ):
     kwargs = _resolve_config(
         config,
@@ -943,7 +1024,10 @@ def gmres(
         tolerance=tolerance,
         max_iterations=max_iterations,
     )
-    return _raw.gmres(matrix_a, matrix_b, **kwargs)
+    if out is None:
+        return _raw.gmres(matrix_a, matrix_b, **kwargs)
+    _raw.gmres_into(matrix_a, matrix_b, out, **kwargs)
+    return out
 
 
 def gmres_complex(
@@ -953,6 +1037,7 @@ def gmres_complex(
     max_iterations=None,
     *,
     config: IterativeConfig | None = None,
+    out=None,
 ):
     kwargs = _resolve_config(
         config,
@@ -960,7 +1045,10 @@ def gmres_complex(
         tolerance=tolerance,
         max_iterations=max_iterations,
     )
-    return _raw.gmres_complex(matrix_a, matrix_b, **kwargs)
+    if out is None:
+        return _raw.gmres_complex(matrix_a, matrix_b, **kwargs)
+    _raw.gmres_complex_into(matrix_a, matrix_b, out, **kwargs)
+    return out
 
 
 def gradient_descent(

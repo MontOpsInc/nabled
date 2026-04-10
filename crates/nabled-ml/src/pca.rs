@@ -4,7 +4,7 @@ use std::fmt;
 
 use nabled_core::scalar::NabledReal;
 use nabled_linalg::svd;
-use ndarray::{Array1, Array2, ArrayView2, Axis, s};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, ArrayViewMut1, ArrayViewMut2, Axis, s};
 use num_complex::Complex64;
 
 /// PCA result for ndarray matrices.
@@ -65,6 +65,19 @@ fn usize_to_real<T: NabledReal>(value: usize) -> T {
     T::from_usize(value).unwrap_or(fallback)
 }
 
+fn resolve_component_count(
+    nrows: usize,
+    ncols: usize,
+    n_components: Option<usize>,
+) -> Result<usize, PCAError> {
+    let max_components = nrows.min(ncols);
+    let keep = n_components.unwrap_or(max_components).min(max_components);
+    if keep == 0 {
+        return Err(PCAError::InvalidInput("n_components must be greater than 0".to_string()));
+    }
+    Ok(keep)
+}
+
 fn center_columns<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<(Array2<T>, Array1<T>), PCAError> {
@@ -83,30 +96,55 @@ fn center_columns<T: NabledReal>(
     Ok((centered, mean))
 }
 
-fn transform_impl<T: NabledReal>(
+fn validate_transform_shapes<T>(
     matrix: &ArrayView2<'_, T>,
-    pca: &NdarrayPCAResult<T>,
-) -> Array2<T> {
-    let mut centered = Array2::<T>::zeros((matrix.nrows(), matrix.ncols()));
-    for row in 0..matrix.nrows() {
-        for col in 0..matrix.ncols() {
-            centered[[row, col]] = matrix[[row, col]] - pca.mean[col];
-        }
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+    output: &ArrayViewMut2<'_, T>,
+) -> Result<(), PCAError> {
+    if components.ncols() != matrix.ncols() {
+        return Err(PCAError::InvalidInput(
+            "components columns must match input features".to_string(),
+        ));
     }
-    centered.dot(&pca.components.t())
+    if mean.len() != matrix.ncols() {
+        return Err(PCAError::InvalidInput("mean length must match input features".to_string()));
+    }
+    if output.dim() != (matrix.nrows(), components.nrows()) {
+        return Err(PCAError::InvalidInput(
+            "output shape must match input rows x component rows".to_string(),
+        ));
+    }
+    Ok(())
 }
 
-fn inverse_transform_impl<T: NabledReal>(
-    scores: &ArrayView2<'_, T>,
-    pca: &NdarrayPCAResult<T>,
-) -> Array2<T> {
-    let mut reconstructed = scores.dot(&pca.components);
-    for row in 0..reconstructed.nrows() {
-        for col in 0..reconstructed.ncols() {
-            reconstructed[[row, col]] += pca.mean[col];
+fn transform_from_parts_into_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+    mut output: ArrayViewMut2<'_, T>,
+) -> Result<(), PCAError> {
+    validate_transform_shapes(matrix, components, mean, &output)?;
+    for row in 0..matrix.nrows() {
+        for component in 0..components.nrows() {
+            let mut acc = T::zero();
+            for col in 0..matrix.ncols() {
+                acc += (matrix[[row, col]] - mean[col]) * components[[component, col]];
+            }
+            output[[row, component]] = acc;
         }
     }
-    reconstructed
+    Ok(())
+}
+
+fn transform_from_parts_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+) -> Result<Array2<T>, PCAError> {
+    let mut output = Array2::<T>::zeros((matrix.nrows(), components.nrows()));
+    transform_from_parts_into_impl(matrix, components, mean, output.view_mut())?;
+    Ok(output)
 }
 
 fn center_columns_complex(
@@ -133,32 +171,143 @@ fn center_columns_complex(
     Ok((centered, mean))
 }
 
+fn validate_inverse_transform_shapes<T>(
+    scores: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+    output: &ArrayViewMut2<'_, T>,
+) -> Result<(), PCAError> {
+    if scores.ncols() != components.nrows() {
+        return Err(PCAError::InvalidInput("scores columns must match component rows".to_string()));
+    }
+    if mean.len() != components.ncols() {
+        return Err(PCAError::InvalidInput("mean length must match component columns".to_string()));
+    }
+    if output.dim() != (scores.nrows(), components.ncols()) {
+        return Err(PCAError::InvalidInput(
+            "output shape must match score rows x component columns".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn inverse_transform_from_parts_into_impl<T: NabledReal>(
+    scores: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+    mut output: ArrayViewMut2<'_, T>,
+) -> Result<(), PCAError> {
+    validate_inverse_transform_shapes(scores, components, mean, &output)?;
+    for row in 0..scores.nrows() {
+        for col in 0..components.ncols() {
+            let mut acc = mean[col];
+            for component in 0..scores.ncols() {
+                acc += scores[[row, component]] * components[[component, col]];
+            }
+            output[[row, col]] = acc;
+        }
+    }
+    Ok(())
+}
+
+fn inverse_transform_from_parts_impl<T: NabledReal>(
+    scores: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+) -> Result<Array2<T>, PCAError> {
+    let mut output = Array2::<T>::zeros((scores.nrows(), components.ncols()));
+    inverse_transform_from_parts_into_impl(scores, components, mean, output.view_mut())?;
+    Ok(output)
+}
+
+fn transform_impl<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    pca: &NdarrayPCAResult<T>,
+) -> Array2<T> {
+    transform_from_parts_impl(matrix, &pca.components.view(), &pca.mean.view())
+        .expect("validated PCA result must match transform input shape")
+}
+
+fn inverse_transform_impl<T: NabledReal>(
+    scores: &ArrayView2<'_, T>,
+    pca: &NdarrayPCAResult<T>,
+) -> Array2<T> {
+    inverse_transform_from_parts_impl(scores, &pca.components.view(), &pca.mean.view())
+        .expect("validated PCA result must match inverse-transform input shape")
+}
+
+fn transform_complex_from_parts_into_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+    mut output: ArrayViewMut2<'_, Complex64>,
+) -> Result<(), PCAError> {
+    validate_transform_shapes(matrix, components, mean, &output)?;
+    for row in 0..matrix.nrows() {
+        for component in 0..components.nrows() {
+            let mut acc = Complex64::new(0.0, 0.0);
+            for col in 0..matrix.ncols() {
+                acc += (matrix[[row, col]] - mean[col]) * components[[component, col]].conj();
+            }
+            output[[row, component]] = acc;
+        }
+    }
+    Ok(())
+}
+
+fn transform_complex_from_parts_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+) -> Result<Array2<Complex64>, PCAError> {
+    let mut output = Array2::<Complex64>::zeros((matrix.nrows(), components.nrows()));
+    transform_complex_from_parts_into_impl(matrix, components, mean, output.view_mut())?;
+    Ok(output)
+}
+
+fn inverse_transform_complex_from_parts_into_impl(
+    scores: &ArrayView2<'_, Complex64>,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+    mut output: ArrayViewMut2<'_, Complex64>,
+) -> Result<(), PCAError> {
+    validate_inverse_transform_shapes(scores, components, mean, &output)?;
+    for row in 0..scores.nrows() {
+        for col in 0..components.ncols() {
+            let mut acc = mean[col];
+            for component in 0..scores.ncols() {
+                acc += scores[[row, component]] * components[[component, col]];
+            }
+            output[[row, col]] = acc;
+        }
+    }
+    Ok(())
+}
+
+fn inverse_transform_complex_from_parts_impl(
+    scores: &ArrayView2<'_, Complex64>,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+) -> Result<Array2<Complex64>, PCAError> {
+    let mut output = Array2::<Complex64>::zeros((scores.nrows(), components.ncols()));
+    inverse_transform_complex_from_parts_into_impl(scores, components, mean, output.view_mut())?;
+    Ok(output)
+}
+
 fn transform_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
     pca: &NdarrayComplexPCAResult,
 ) -> Array2<Complex64> {
-    let mut centered = Array2::<Complex64>::zeros((matrix.nrows(), matrix.ncols()));
-    for row in 0..matrix.nrows() {
-        for col in 0..matrix.ncols() {
-            centered[[row, col]] = matrix[[row, col]] - pca.mean[col];
-        }
-    }
-
-    let projection = pca.components.t().mapv(|value| value.conj());
-    centered.dot(&projection)
+    transform_complex_from_parts_impl(matrix, &pca.components.view(), &pca.mean.view())
+        .expect("validated PCA result must match complex transform input shape")
 }
 
 fn inverse_transform_complex_impl(
     scores: &ArrayView2<'_, Complex64>,
     pca: &NdarrayComplexPCAResult,
 ) -> Array2<Complex64> {
-    let mut reconstructed = scores.dot(&pca.components);
-    for row in 0..reconstructed.nrows() {
-        for col in 0..reconstructed.ncols() {
-            reconstructed[[row, col]] += pca.mean[col];
-        }
-    }
-    reconstructed
+    inverse_transform_complex_from_parts_impl(scores, &pca.components.view(), &pca.mean.view())
+        .expect("validated PCA result must match complex inverse-transform input shape")
 }
 
 /// Compute principal component analysis.
@@ -199,11 +348,7 @@ where
     let (centered, mean) = center_columns(matrix)?;
     let svd = svd::decompose(&centered).map_err(|_| PCAError::DecompositionFailed)?;
 
-    let max_components = centered.nrows().min(centered.ncols());
-    let keep = n_components.unwrap_or(max_components).min(max_components);
-    if keep == 0 {
-        return Err(PCAError::InvalidInput("n_components must be greater than 0".to_string()));
-    }
+    let keep = resolve_component_count(centered.nrows(), centered.ncols(), n_components)?;
 
     let components = svd.vt.slice(s![..keep, ..]).to_owned();
     let scores = centered.dot(&components.t());
@@ -233,11 +378,7 @@ fn compute_pca_impl<T: svd::SvdInternalScalar>(
     let (centered, mean) = center_columns(matrix)?;
     let svd = svd::decompose(&centered).map_err(|_| PCAError::DecompositionFailed)?;
 
-    let max_components = centered.nrows().min(centered.ncols());
-    let keep = n_components.unwrap_or(max_components).min(max_components);
-    if keep == 0 {
-        return Err(PCAError::InvalidInput("n_components must be greater than 0".to_string()));
-    }
+    let keep = resolve_component_count(centered.nrows(), centered.ncols(), n_components)?;
 
     let components = svd.vt.slice(s![..keep, ..]).to_owned();
     let scores = centered.dot(&components.t());
@@ -286,6 +427,97 @@ pub fn compute_pca_view<T: svd::SvdInternalScalar>(
     compute_pca_impl(matrix, n_components)
 }
 
+/// Compute principal component analysis into caller-provided output buffers.
+///
+/// # Errors
+/// Returns an error for invalid input, decomposition failure, or output-shape mismatch.
+#[cfg(feature = "lapack-provider")]
+pub fn compute_pca_view_into<T>(
+    matrix: &ArrayView2<'_, T>,
+    n_components: Option<usize>,
+    mut components: ArrayViewMut2<'_, T>,
+    mut explained_variance: ArrayViewMut1<'_, T>,
+    mut explained_variance_ratio: ArrayViewMut1<'_, T>,
+    mut mean: ArrayViewMut1<'_, T>,
+    mut scores: ArrayViewMut2<'_, T>,
+) -> Result<(), PCAError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T>,
+{
+    let keep = resolve_component_count(matrix.nrows(), matrix.ncols(), n_components)?;
+    if components.dim() != (keep, matrix.ncols()) {
+        return Err(PCAError::InvalidInput(
+            "components output shape must match retained components x input features".to_string(),
+        ));
+    }
+    if explained_variance.len() != keep || explained_variance_ratio.len() != keep {
+        return Err(PCAError::InvalidInput(
+            "explained-variance outputs must match retained component count".to_string(),
+        ));
+    }
+    if mean.len() != matrix.ncols() {
+        return Err(PCAError::InvalidInput(
+            "mean output length must match input features".to_string(),
+        ));
+    }
+    if scores.dim() != (matrix.nrows(), keep) {
+        return Err(PCAError::InvalidInput(
+            "scores output shape must match input rows x retained component count".to_string(),
+        ));
+    }
+    let result = compute_pca_impl(matrix, n_components)?;
+    components.assign(&result.components);
+    explained_variance.assign(&result.explained_variance);
+    explained_variance_ratio.assign(&result.explained_variance_ratio);
+    mean.assign(&result.mean);
+    scores.assign(&result.scores);
+    Ok(())
+}
+
+/// Compute principal component analysis into caller-provided output buffers.
+///
+/// # Errors
+/// Returns an error for invalid input, decomposition failure, or output-shape mismatch.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn compute_pca_view_into<T: svd::SvdInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+    n_components: Option<usize>,
+    mut components: ArrayViewMut2<'_, T>,
+    mut explained_variance: ArrayViewMut1<'_, T>,
+    mut explained_variance_ratio: ArrayViewMut1<'_, T>,
+    mut mean: ArrayViewMut1<'_, T>,
+    mut scores: ArrayViewMut2<'_, T>,
+) -> Result<(), PCAError> {
+    let keep = resolve_component_count(matrix.nrows(), matrix.ncols(), n_components)?;
+    if components.dim() != (keep, matrix.ncols()) {
+        return Err(PCAError::InvalidInput(
+            "components output shape must match retained components x input features".to_string(),
+        ));
+    }
+    if explained_variance.len() != keep || explained_variance_ratio.len() != keep {
+        return Err(PCAError::InvalidInput(
+            "explained-variance outputs must match retained component count".to_string(),
+        ));
+    }
+    if mean.len() != matrix.ncols() {
+        return Err(PCAError::InvalidInput(
+            "mean output length must match input features".to_string(),
+        ));
+    }
+    if scores.dim() != (matrix.nrows(), keep) {
+        return Err(PCAError::InvalidInput(
+            "scores output shape must match input rows x retained component count".to_string(),
+        ));
+    }
+    let result = compute_pca_impl(matrix, n_components)?;
+    components.assign(&result.components);
+    explained_variance.assign(&result.explained_variance);
+    explained_variance_ratio.assign(&result.explained_variance_ratio);
+    mean.assign(&result.mean);
+    scores.assign(&result.scores);
+    Ok(())
+}
+
 /// Compute principal component analysis for complex matrices.
 ///
 /// # Errors
@@ -304,11 +536,7 @@ fn compute_pca_complex_impl(
     let (centered, mean) = center_columns_complex(matrix)?;
     let svd = svd::decompose_complex(&centered).map_err(|_| PCAError::DecompositionFailed)?;
 
-    let max_components = centered.nrows().min(centered.ncols());
-    let keep = n_components.unwrap_or(max_components).min(max_components);
-    if keep == 0 {
-        return Err(PCAError::InvalidInput("n_components must be greater than 0".to_string()));
-    }
+    let keep = resolve_component_count(centered.nrows(), centered.ncols(), n_components)?;
 
     let components = svd.vt.slice(s![..keep, ..]).to_owned();
     let projection = components.t().mapv(|value| value.conj());
@@ -343,6 +571,49 @@ pub fn compute_pca_complex_view(
     compute_pca_complex_impl(matrix, n_components)
 }
 
+/// Compute principal component analysis for complex matrices into caller-provided output buffers.
+///
+/// # Errors
+/// Returns an error for invalid input, decomposition failure, or output-shape mismatch.
+pub fn compute_pca_complex_view_into(
+    matrix: &ArrayView2<'_, Complex64>,
+    n_components: Option<usize>,
+    mut components: ArrayViewMut2<'_, Complex64>,
+    mut explained_variance: ArrayViewMut1<'_, f64>,
+    mut explained_variance_ratio: ArrayViewMut1<'_, f64>,
+    mut mean: ArrayViewMut1<'_, Complex64>,
+    mut scores: ArrayViewMut2<'_, Complex64>,
+) -> Result<(), PCAError> {
+    let keep = resolve_component_count(matrix.nrows(), matrix.ncols(), n_components)?;
+    if components.dim() != (keep, matrix.ncols()) {
+        return Err(PCAError::InvalidInput(
+            "components output shape must match retained components x input features".to_string(),
+        ));
+    }
+    if explained_variance.len() != keep || explained_variance_ratio.len() != keep {
+        return Err(PCAError::InvalidInput(
+            "explained-variance outputs must match retained component count".to_string(),
+        ));
+    }
+    if mean.len() != matrix.ncols() {
+        return Err(PCAError::InvalidInput(
+            "mean output length must match input features".to_string(),
+        ));
+    }
+    if scores.dim() != (matrix.nrows(), keep) {
+        return Err(PCAError::InvalidInput(
+            "scores output shape must match input rows x retained component count".to_string(),
+        ));
+    }
+    let result = compute_pca_complex_impl(matrix, n_components)?;
+    components.assign(&result.components);
+    explained_variance.assign(&result.explained_variance);
+    explained_variance_ratio.assign(&result.explained_variance_ratio);
+    mean.assign(&result.mean);
+    scores.assign(&result.scores);
+    Ok(())
+}
+
 /// Project data to PCA score space.
 #[must_use]
 pub fn transform<T: NabledReal>(matrix: &Array2<T>, pca: &NdarrayPCAResult<T>) -> Array2<T> {
@@ -356,6 +627,31 @@ pub fn transform_view<T: NabledReal>(
     pca: &NdarrayPCAResult<T>,
 ) -> Array2<T> {
     transform_impl(matrix, pca)
+}
+
+/// Project data to PCA score space from matrix/component/mean views.
+///
+/// # Errors
+/// Returns an error for shape mismatches between the matrix, components, and mean.
+pub fn transform_from_components_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+) -> Result<Array2<T>, PCAError> {
+    transform_from_parts_impl(matrix, components, mean)
+}
+
+/// Project data to PCA score space into a caller-provided output buffer.
+///
+/// # Errors
+/// Returns an error for shape mismatches between the matrix, components, mean, and output.
+pub fn transform_from_components_view_into<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+    output: ArrayViewMut2<'_, T>,
+) -> Result<(), PCAError> {
+    transform_from_parts_into_impl(matrix, components, mean, output)
 }
 
 /// Reconstruct from PCA scores.
@@ -376,6 +672,31 @@ pub fn inverse_transform_view<T: NabledReal>(
     inverse_transform_impl(scores, pca)
 }
 
+/// Reconstruct inputs from PCA scores using component and mean views.
+///
+/// # Errors
+/// Returns an error for shape mismatches between the scores, components, and mean.
+pub fn inverse_transform_from_components_view<T: NabledReal>(
+    scores: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+) -> Result<Array2<T>, PCAError> {
+    inverse_transform_from_parts_impl(scores, components, mean)
+}
+
+/// Reconstruct inputs from PCA scores into a caller-provided output buffer.
+///
+/// # Errors
+/// Returns an error for shape mismatches between the scores, components, mean, and output.
+pub fn inverse_transform_from_components_view_into<T: NabledReal>(
+    scores: &ArrayView2<'_, T>,
+    components: &ArrayView2<'_, T>,
+    mean: &ArrayView1<'_, T>,
+    output: ArrayViewMut2<'_, T>,
+) -> Result<(), PCAError> {
+    inverse_transform_from_parts_into_impl(scores, components, mean, output)
+}
+
 /// Project complex data to PCA score space.
 #[must_use]
 pub fn transform_complex(
@@ -394,6 +715,31 @@ pub fn transform_complex_view(
     transform_complex_impl(matrix, pca)
 }
 
+/// Project complex data to PCA score space from matrix/component/mean views.
+///
+/// # Errors
+/// Returns an error for shape mismatches between the matrix, components, and mean.
+pub fn transform_complex_from_components_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+) -> Result<Array2<Complex64>, PCAError> {
+    transform_complex_from_parts_impl(matrix, components, mean)
+}
+
+/// Project complex data to PCA score space into a caller-provided output buffer.
+///
+/// # Errors
+/// Returns an error for shape mismatches between the matrix, components, mean, and output.
+pub fn transform_complex_from_components_view_into(
+    matrix: &ArrayView2<'_, Complex64>,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+    output: ArrayViewMut2<'_, Complex64>,
+) -> Result<(), PCAError> {
+    transform_complex_from_parts_into_impl(matrix, components, mean, output)
+}
+
 /// Reconstruct complex inputs from PCA scores.
 #[must_use]
 pub fn inverse_transform_complex(
@@ -410,6 +756,31 @@ pub fn inverse_transform_complex_view(
     pca: &NdarrayComplexPCAResult,
 ) -> Array2<Complex64> {
     inverse_transform_complex_impl(scores, pca)
+}
+
+/// Reconstruct complex inputs from PCA scores using component and mean views.
+///
+/// # Errors
+/// Returns an error for shape mismatches between the scores, components, and mean.
+pub fn inverse_transform_complex_from_components_view(
+    scores: &ArrayView2<'_, Complex64>,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+) -> Result<Array2<Complex64>, PCAError> {
+    inverse_transform_complex_from_parts_impl(scores, components, mean)
+}
+
+/// Reconstruct complex inputs from PCA scores into a caller-provided output buffer.
+///
+/// # Errors
+/// Returns an error for shape mismatches between the scores, components, mean, and output.
+pub fn inverse_transform_complex_from_components_view_into(
+    scores: &ArrayView2<'_, Complex64>,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+    output: ArrayViewMut2<'_, Complex64>,
+) -> Result<(), PCAError> {
+    inverse_transform_complex_from_parts_into_impl(scores, components, mean, output)
 }
 
 #[cfg(test)]
@@ -558,5 +929,300 @@ mod tests {
                 assert!((reconstructed_owned[[i, j]] - reconstructed_view[[i, j]]).norm() < 1e-12);
             }
         }
+    }
+
+    #[test]
+    fn pca_transform_from_components_into_reuses_output_buffer() {
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
+        .unwrap();
+        let pca = compute_pca(&matrix, Some(2)).unwrap();
+        let expected = transform_from_components_view(
+            &matrix.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+        )
+        .unwrap();
+
+        let mut output = Array2::<f64>::zeros((matrix.nrows(), pca.components.nrows()));
+        transform_from_components_view_into(
+            &matrix.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+            output.view_mut(),
+        )
+        .unwrap();
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn pca_inverse_transform_from_components_into_reuses_output_buffer() {
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
+        .unwrap();
+        let pca = compute_pca(&matrix, Some(2)).unwrap();
+        let expected = inverse_transform_from_components_view(
+            &pca.scores.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+        )
+        .unwrap();
+
+        let mut output = Array2::<f64>::zeros((pca.scores.nrows(), pca.components.ncols()));
+        inverse_transform_from_components_view_into(
+            &pca.scores.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+            output.view_mut(),
+        )
+        .unwrap();
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn pca_transform_from_components_into_rejects_shape_mismatch() {
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
+        .unwrap();
+        let pca = compute_pca(&matrix, Some(2)).unwrap();
+        let mut output = Array2::<f64>::zeros((matrix.nrows(), pca.components.nrows() + 1));
+        let err = transform_from_components_view_into(
+            &matrix.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+            output.view_mut(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, PCAError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn pca_transform_from_components_rejects_component_width_mismatch() {
+        let matrix = Array2::<f64>::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let components =
+            Array2::<f64>::from_shape_vec((2, 3), vec![1.0, 0.0, 2.0, 0.0, 1.0, 3.0]).unwrap();
+        let mean = Array1::<f64>::zeros(2);
+        let err = transform_from_components_view(&matrix.view(), &components.view(), &mean.view())
+            .unwrap_err();
+        assert!(matches!(err, PCAError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn pca_transform_from_components_rejects_mean_length_mismatch() {
+        let matrix = Array2::<f64>::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let components = Array2::<f64>::eye(2);
+        let mean = Array1::<f64>::zeros(3);
+        let err = transform_from_components_view(&matrix.view(), &components.view(), &mean.view())
+            .unwrap_err();
+        assert!(matches!(err, PCAError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn pca_inverse_transform_from_components_rejects_score_width_mismatch() {
+        let scores =
+            Array2::<f64>::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let components = Array2::<f64>::eye(2);
+        let mean = Array1::<f64>::zeros(2);
+        let err = inverse_transform_from_components_view(
+            &scores.view(),
+            &components.view(),
+            &mean.view(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, PCAError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn pca_inverse_transform_from_components_rejects_mean_length_mismatch() {
+        let scores = Array2::<f64>::eye(2);
+        let components = Array2::<f64>::eye(2);
+        let mean = Array1::<f64>::zeros(3);
+        let err = inverse_transform_from_components_view(
+            &scores.view(),
+            &components.view(),
+            &mean.view(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, PCAError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn complex_pca_transform_from_components_into_reuses_output_buffer() {
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(1.0, 0.2),
+            Complex64::new(3.0, 1.1),
+            Complex64::new(4.0, -0.3),
+            Complex64::new(4.0, 0.9),
+            Complex64::new(3.0, 0.4),
+        ])
+        .unwrap();
+        let pca = compute_pca_complex(&matrix, Some(2)).unwrap();
+        let expected = transform_complex_from_components_view(
+            &matrix.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+        )
+        .unwrap();
+
+        let mut output = Array2::<Complex64>::zeros((matrix.nrows(), pca.components.nrows()));
+        transform_complex_from_components_view_into(
+            &matrix.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+            output.view_mut(),
+        )
+        .unwrap();
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn complex_pca_inverse_transform_from_components_into_reuses_output_buffer() {
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(1.0, 0.2),
+            Complex64::new(3.0, 1.1),
+            Complex64::new(4.0, -0.3),
+            Complex64::new(4.0, 0.9),
+            Complex64::new(3.0, 0.4),
+        ])
+        .unwrap();
+        let pca = compute_pca_complex(&matrix, Some(2)).unwrap();
+        let expected = inverse_transform_complex_from_components_view(
+            &pca.scores.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+        )
+        .unwrap();
+
+        let mut output = Array2::<Complex64>::zeros((pca.scores.nrows(), pca.components.ncols()));
+        inverse_transform_complex_from_components_view_into(
+            &pca.scores.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+            output.view_mut(),
+        )
+        .unwrap();
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn complex_pca_transform_from_components_into_rejects_shape_mismatch() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(3.0, -1.0),
+            Complex64::new(4.0, 0.2),
+        ])
+        .unwrap();
+        let pca = compute_pca_complex(&matrix, Some(2)).unwrap();
+        let mut output = Array2::<Complex64>::zeros((matrix.nrows(), pca.components.nrows() + 1));
+        let err = transform_complex_from_components_view_into(
+            &matrix.view(),
+            &pca.components.view(),
+            &pca.mean.view(),
+            output.view_mut(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, PCAError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn compute_pca_view_into_reuses_outputs() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0_f64, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0])
+                .unwrap();
+        let mut components = Array2::<f64>::zeros((2, 2));
+        let mut explained_variance = Array1::<f64>::zeros(2);
+        let mut explained_variance_ratio = Array1::<f64>::zeros(2);
+        let mut mean = Array1::<f64>::zeros(2);
+        let mut scores = Array2::<f64>::zeros((4, 2));
+
+        compute_pca_view_into(
+            &matrix.view(),
+            Some(2),
+            components.view_mut(),
+            explained_variance.view_mut(),
+            explained_variance_ratio.view_mut(),
+            mean.view_mut(),
+            scores.view_mut(),
+        )
+        .unwrap();
+
+        let expected = compute_pca(&matrix, Some(2)).unwrap();
+        assert_eq!(components, expected.components);
+        assert_eq!(explained_variance, expected.explained_variance);
+        assert_eq!(explained_variance_ratio, expected.explained_variance_ratio);
+        assert_eq!(mean, expected.mean);
+        assert_eq!(scores, expected.scores);
+    }
+
+    #[test]
+    fn compute_pca_view_into_rejects_wrong_shapes() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0_f64, 2.0, 2.0, 1.0, 3.0, 4.0, 4.0, 3.0])
+                .unwrap();
+        let mut components = Array2::<f64>::zeros((1, 2));
+        let mut explained_variance = Array1::<f64>::zeros(2);
+        let mut explained_variance_ratio = Array1::<f64>::zeros(2);
+        let mut mean = Array1::<f64>::zeros(2);
+        let mut scores = Array2::<f64>::zeros((4, 2));
+
+        let err = compute_pca_view_into(
+            &matrix.view(),
+            Some(2),
+            components.view_mut(),
+            explained_variance.view_mut(),
+            explained_variance_ratio.view_mut(),
+            mean.view_mut(),
+            scores.view_mut(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, PCAError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn compute_pca_complex_view_into_reuses_outputs() {
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(1.0, 2.0),
+            Complex64::new(3.0, -1.0),
+            Complex64::new(4.0, 1.0),
+            Complex64::new(4.0, 2.0),
+            Complex64::new(3.0, -2.0),
+        ])
+        .unwrap();
+        let mut components = Array2::<Complex64>::zeros((2, 2));
+        let mut explained_variance = Array1::<f64>::zeros(2);
+        let mut explained_variance_ratio = Array1::<f64>::zeros(2);
+        let mut mean = Array1::<Complex64>::zeros(2);
+        let mut scores = Array2::<Complex64>::zeros((4, 2));
+
+        compute_pca_complex_view_into(
+            &matrix.view(),
+            Some(2),
+            components.view_mut(),
+            explained_variance.view_mut(),
+            explained_variance_ratio.view_mut(),
+            mean.view_mut(),
+            scores.view_mut(),
+        )
+        .unwrap();
+
+        let expected = compute_pca_complex(&matrix, Some(2)).unwrap();
+        assert_eq!(components, expected.components);
+        assert_eq!(explained_variance, expected.explained_variance);
+        assert_eq!(explained_variance_ratio, expected.explained_variance_ratio);
+        assert_eq!(mean, expected.mean);
+        assert_eq!(scores, expected.scores);
     }
 }

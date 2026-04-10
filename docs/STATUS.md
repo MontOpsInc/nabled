@@ -93,7 +93,39 @@ for now because the Rust core still lacks a corresponding `into` row. Validation
 targeted gates: `cargo check -p pynabled` and `python-quality` (`212 passed, 22 skipped`,
 `91%` Python coverage). Remaining `N-PY-007` work is now narrowed again to the smaller iterative
 complex/layout copy-contract gap plus any still-missing reusable result/workspace families and
-residual higher-level copy traps. The first
+residual higher-level copy traps. A ninth `N-PY-007` iterative allocation-control and
+complex-layout pass is now also landed: dense iterative `conjugate_gradient` / `gmres` now expose
+Rust-backed `out=` reuse under the existing public Python names for both real and complex rows,
+and the complex iterative bindings now borrow NumPy inputs through the same helper-based
+view-first boundary as the real rows instead of a special-case typed path. Complex Fortran-order /
+strided NumPy inputs are now explicitly covered in Python tests, and wrong-dtype output buffers
+fail explicitly instead of forcing hidden cast/copy behavior. Validation remains green on the
+targeted and repo/package gates: `cargo test -p nabled-ml --lib iterative` (`13 passed`),
+targeted Python iterative pytest (`9 passed`), `python-quality`, and full `just checks`.
+Remaining `N-PY-007` work is now narrowed again to the still-missing reusable result/workspace
+families plus any residual higher-level copy traps outside the already-landed dense/helper
+surfaces. A tenth `N-PY-007` PCA allocation-control and ML complex-layout pass is now also
+landed: `pca_transform(...)`, `pca_inverse_transform(...)`, `pca_transform_complex(...)`, and
+`pca_inverse_transform_complex(...)` now expose Rust-backed `out=` reuse under the existing
+public Python names, and `nabled-ml::pca` no longer requires rebuilding owned temporary PCA
+result state just to project or reconstruct from `components` and `mean`. Complex PCA,
+regression, and stats rows are also now explicitly covered on Fortran-order / strided NumPy
+inputs instead of relying on implied helper behavior. Validation is green on the targeted gates:
+`cargo check -p pynabled`, targeted Rust PCA tests (`10 passed`), and targeted Python ML pytest
+(`14 passed`). Remaining `N-PY-007` work is now narrowed again to the still-missing reusable
+result/workspace families plus any residual higher-level copy traps outside the already-landed
+dense/helper/PCA surfaces. An eleventh `N-PY-007` ML result-buffer reuse and residual
+ingress-hardening pass is now also landed: `compute_pca(...)`, `compute_pca_complex(...)`,
+`linear_regression(...)`, and `linear_regression_complex(...)` now accept typed `out=` result
+buffers (`PcaResult` / `RegressionResult`) under the existing public Python names, the Rust core
+now exposes the matching view-first `*_into` helpers for PCA compute and regression, and the
+remaining complex regression/statistics bridge rows now borrow through the same shared
+numeric-array helper path as the rest of the view-first boundary instead of bespoke typed-array
+bindings. Validation is green on the targeted gates: `cargo check -p pynabled`, targeted Rust
+regression tests (`12 passed`), targeted Rust PCA tests (`20 passed`), and targeted Python ML
+pytest (`15 passed`). Remaining `N-PY-007` work is now narrowed again to the still-missing
+reusable result/workspace families plus any residual higher-level copy traps outside the
+already-landed dense/helper/PCA/regression surfaces. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across

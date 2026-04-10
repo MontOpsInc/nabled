@@ -69,9 +69,14 @@ aliasing an input as `out` fails explicitly instead of silently materializing ar
 The currently admitted higher-level dense helpers now follow the same explicit reuse contract where
 the Rust core already exposes `*_into`: `svd_pseudo_inverse`, `svd_reconstruct_matrix`,
 `matrix_exp`, `matrix_exp_eigen`, `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`,
-`matrix_power`, `matrix_sign`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` with the
-same writeability/shape/dtype requirements. `svd_condition_number(...)` and `svd_rank(...)` now
-read singular values directly instead of rebuilding owned intermediary SVD objects.
+`matrix_power`, `matrix_sign`, `sylvester_solve`, `lyapunov_solve`, `pca_transform`, and
+`pca_inverse_transform` all accept `out=` with the same writeability/shape/dtype requirements.
+`compute_pca(...)`, `compute_pca_complex(...)`, `linear_regression(...)`, and
+`linear_regression_complex(...)` now also accept typed `out=` result buffers
+(`PcaResult` / `RegressionResult`) under the existing public names so repeated ML workflows can
+reuse result storage instead of forcing fresh Python allocations on every call.
+`svd_condition_number(...)` and `svd_rank(...)` now read singular values directly instead of
+rebuilding owned intermediary SVD objects.
 Tensor reconstruction/expansion helpers now also reuse caller-provided outputs where the Rust core
 already has reconstruction `*_into` coverage: `tensor_hosvd_nd_reconstruct`,
 `tensor_tucker_expand`, `tensor_cp_als3_reconstruct`, `tensor_cp_als_nd_reconstruct`, and
@@ -106,6 +111,13 @@ parameter shims as the production contract. `conjugate_gradient(...)` / `gmres(.
 `LineSearchConfig`, `GradientDescentConfig`, `AdamConfig`, `MomentumConfig`, `RMSPropConfig`,
 `ProjectedGradientConfig`, and `BFGSConfig`. Passing both `config=` and explicit tuning kwargs is
 rejected instead of silently picking one side.
+The dense iterative solve rows now also expose Rust-backed `out=` reuse under the existing public
+names for both real and complex workflows, and the complex iterative bindings now follow the same
+view-first NumPy ingress contract as the real rows, including Fortran-order / strided inputs.
+Complex PCA/regression/stats rows now have that same strided-input proof and now all borrow
+through the shared helper-based view-first boundary instead of bespoke typed-array paths. PCA
+transform/inverse no longer rebuild owned temporary component / mean state just to project or
+reconstruct.
 
 Callback-driven Jacobian and optimizer helpers remain convenience-oriented APIs. They are
 production-supported, but each objective/gradient evaluation crosses back into Python, so they are

@@ -4,7 +4,7 @@ use std::fmt;
 
 use nabled_core::scalar::NabledReal;
 use nabled_linalg::lu;
-use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, ArrayViewMut1, Data, Ix1};
 use num_complex::Complex64;
 
 const DEFAULT_TOLERANCE: f64 = 1.0e-12;
@@ -135,7 +135,9 @@ pub fn conjugate_gradient<T>(
 where
     T: NabledReal,
 {
-    conjugate_gradient_view(&matrix_a.view(), &matrix_b.view(), config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    conjugate_gradient_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())?;
+    Ok(output)
 }
 
 /// Conjugate Gradient for SPD systems `Ax=b` from matrix/vector views.
@@ -150,22 +152,60 @@ pub fn conjugate_gradient_view<T>(
 where
     T: NabledReal,
 {
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    conjugate_gradient_view_into(matrix_a, matrix_b, config, output.view_mut())?;
+    Ok(output)
+}
+
+/// Conjugate Gradient for SPD systems `Ax=b` into a caller-provided output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn conjugate_gradient_into<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+    output: &mut Array1<T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal,
+{
+    conjugate_gradient_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())
+}
+
+/// Conjugate Gradient for SPD systems `Ax=b` from matrix/vector views into a caller-provided
+/// output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn conjugate_gradient_view_into<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+    mut output: ArrayViewMut1<'_, T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal,
+{
     if matrix_a.is_empty() || matrix_b.is_empty() {
         return Err(IterativeError::EmptyMatrix);
     }
     if matrix_a.nrows() != matrix_a.ncols() || matrix_a.nrows() != matrix_b.len() {
         return Err(IterativeError::DimensionMismatch);
     }
+    if output.len() != matrix_b.len() {
+        return Err(IterativeError::DimensionMismatch);
+    }
 
     let n = matrix_b.len();
-    let mut x = Array1::<T>::zeros(n);
+    output.fill(T::zero());
     let mut r = matrix_b.to_owned();
     let mut p = r.clone();
     let mut rs_old = r.dot(&r);
 
     let tolerance = config.tolerance.max(default_tolerance::<T>());
     if rs_old.sqrt() <= tolerance {
-        return Ok(x);
+        return Ok(());
     }
 
     for _ in 0..config.max_iterations {
@@ -176,16 +216,20 @@ where
         }
 
         let alpha = rs_old / curvature;
-        x = &x + &p.mapv(|value| alpha * value);
-        r = &r - &ap.mapv(|value| alpha * value);
+        for idx in 0..n {
+            output[idx] += alpha * p[idx];
+            r[idx] -= alpha * ap[idx];
+        }
 
         let rs_new = r.dot(&r);
         if rs_new.sqrt() <= tolerance {
-            return Ok(x);
+            return Ok(());
         }
 
         let beta = rs_new / rs_old;
-        p = &r + &p.mapv(|value| beta * value);
+        for idx in 0..n {
+            p[idx] = r[idx] + beta * p[idx];
+        }
         rs_old = rs_new;
     }
 
@@ -201,7 +245,14 @@ pub fn conjugate_gradient_complex(
     matrix_b: &Array1<Complex64>,
     config: &IterativeConfig<f64>,
 ) -> Result<Array1<Complex64>, IterativeError> {
-    conjugate_gradient_complex_view(&matrix_a.view(), &matrix_b.view(), config)
+    let mut output = Array1::<Complex64>::zeros(matrix_b.len());
+    conjugate_gradient_complex_view_into(
+        &matrix_a.view(),
+        &matrix_b.view(),
+        config,
+        output.view_mut(),
+    )?;
+    Ok(output)
 }
 
 /// Conjugate Gradient for Hermitian positive-definite systems `Ax=b` from views.
@@ -213,22 +264,60 @@ pub fn conjugate_gradient_complex_view(
     matrix_b: &ArrayView1<'_, Complex64>,
     config: &IterativeConfig<f64>,
 ) -> Result<Array1<Complex64>, IterativeError> {
+    let mut output = Array1::<Complex64>::zeros(matrix_b.len());
+    conjugate_gradient_complex_view_into(matrix_a, matrix_b, config, output.view_mut())?;
+    Ok(output)
+}
+
+/// Conjugate Gradient for Hermitian positive-definite systems `Ax=b` into a caller-provided
+/// output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn conjugate_gradient_complex_into(
+    matrix_a: &Array2<Complex64>,
+    matrix_b: &Array1<Complex64>,
+    config: &IterativeConfig<f64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), IterativeError> {
+    conjugate_gradient_complex_view_into(
+        &matrix_a.view(),
+        &matrix_b.view(),
+        config,
+        output.view_mut(),
+    )
+}
+
+/// Conjugate Gradient for Hermitian positive-definite systems `Ax=b` from views into a
+/// caller-provided output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn conjugate_gradient_complex_view_into(
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView1<'_, Complex64>,
+    config: &IterativeConfig<f64>,
+    mut output: ArrayViewMut1<'_, Complex64>,
+) -> Result<(), IterativeError> {
     if matrix_a.is_empty() || matrix_b.is_empty() {
         return Err(IterativeError::EmptyMatrix);
     }
     if matrix_a.nrows() != matrix_a.ncols() || matrix_a.nrows() != matrix_b.len() {
         return Err(IterativeError::DimensionMismatch);
     }
+    if output.len() != matrix_b.len() {
+        return Err(IterativeError::DimensionMismatch);
+    }
 
     let n = matrix_b.len();
-    let mut x = Array1::<Complex64>::zeros(n);
+    output.fill(Complex64::default());
     let mut r = matrix_b.to_owned();
     let mut p = r.clone();
     let mut rs_old = r.iter().zip(r.iter()).map(|(lhs, rhs)| lhs.conj() * rhs).sum::<Complex64>();
     let tolerance = config.tolerance.max(DEFAULT_TOLERANCE);
 
     if rs_old.re.max(0.0).sqrt() <= tolerance {
-        return Ok(x);
+        return Ok(());
     }
 
     for _ in 0..config.max_iterations {
@@ -240,19 +329,23 @@ pub fn conjugate_gradient_complex_view(
         }
 
         let alpha = rs_old / curvature;
-        x = &x + &(alpha * &p);
-        r = &r - &(alpha * &ap);
+        for idx in 0..n {
+            output[idx] += alpha * p[idx];
+            r[idx] -= alpha * ap[idx];
+        }
 
         let rs_new = r.iter().zip(r.iter()).map(|(lhs, rhs)| lhs.conj() * rhs).sum::<Complex64>();
         if rs_new.re.max(0.0).sqrt() <= tolerance {
-            return Ok(x);
+            return Ok(());
         }
 
         if rs_old.norm() <= tolerance {
             return Err(IterativeError::Breakdown);
         }
         let beta = rs_new / rs_old;
-        p = &r + &(beta * &p);
+        for idx in 0..n {
+            p[idx] = r[idx] + beta * p[idx];
+        }
         rs_old = rs_new;
     }
 
@@ -273,7 +366,6 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[expect(clippy::many_single_char_names)]
 #[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
@@ -283,7 +375,9 @@ pub fn gmres<T>(
 where
     T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar,
 {
-    gmres_view(&matrix_a.view(), &matrix_b.view(), config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    gmres_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())?;
+    Ok(output)
 }
 
 /// GMRES for general systems `Ax=b`.
@@ -299,14 +393,15 @@ pub fn gmres<T>(
 where
     T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack,
 {
-    gmres_view(&matrix_a.view(), &matrix_b.view(), config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    gmres_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())?;
+    Ok(output)
 }
 
 /// GMRES for general systems `Ax=b`.
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[expect(clippy::many_single_char_names)]
 #[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
 pub fn gmres<T>(
     matrix_a: &Array2<T>,
@@ -316,7 +411,9 @@ pub fn gmres<T>(
 where
     T: NabledReal + std::ops::SubAssign + lu::LuProviderScalar,
 {
-    gmres_view(&matrix_a.view(), &matrix_b.view(), config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    gmres_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())?;
+    Ok(output)
 }
 
 /// GMRES for general systems `Ax=b`.
@@ -332,15 +429,17 @@ pub fn gmres<T>(
 where
     T: NabledReal + std::ops::SubAssign,
 {
-    gmres_view(&matrix_a.view(), &matrix_b.view(), config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    gmres_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())?;
+    Ok(output)
 }
 
-#[expect(clippy::many_single_char_names)]
 fn gmres_impl<T>(
     matrix_a: &ArrayView2<'_, T>,
     matrix_b: &ArrayView1<'_, T>,
     config: &IterativeConfig<T>,
-) -> Result<Array1<T>, IterativeError>
+    mut output: ArrayViewMut1<'_, T>,
+) -> Result<(), IterativeError>
 where
     T: IterativeLinearScalar,
 {
@@ -348,6 +447,9 @@ where
         return Err(IterativeError::EmptyMatrix);
     }
     if matrix_a.nrows() != matrix_a.ncols() || matrix_a.nrows() != matrix_b.len() {
+        return Err(IterativeError::DimensionMismatch);
+    }
+    if output.len() != matrix_b.len() {
         return Err(IterativeError::DimensionMismatch);
     }
 
@@ -359,7 +461,8 @@ where
     let beta = vector_norm(matrix_b);
     let tolerance = config.tolerance.max(default_tolerance::<T>());
     if beta <= tolerance {
-        return Ok(Array1::<T>::zeros(n));
+        output.fill(T::zero());
+        return Ok(());
     }
 
     for row in 0..n {
@@ -399,11 +502,17 @@ where
     let normal_rhs = ht.dot(&rhs_ls);
 
     let y = solve_linear(&normal_matrix.view(), &normal_rhs.view())?;
-    let x = basis.slice(ndarray::s![.., ..effective_m]).dot(&y);
+    output.fill(T::zero());
+    for column in 0..effective_m {
+        let coefficient = y[column];
+        for row in 0..n {
+            output[row] += basis[[row, column]] * coefficient;
+        }
+    }
 
-    let residual = matrix_b - &matrix_a.dot(&x);
+    let residual = matrix_b - &matrix_a.dot(&output.view());
     if vector_norm(&residual) <= tolerance {
-        Ok(x)
+        Ok(())
     } else {
         Err(IterativeError::MaxIterationsExceeded)
     }
@@ -413,7 +522,6 @@ where
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[expect(clippy::many_single_char_names)]
 #[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
 pub fn gmres_view<T>(
     matrix_a: &ArrayView2<'_, T>,
@@ -423,7 +531,9 @@ pub fn gmres_view<T>(
 where
     T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar,
 {
-    gmres_impl(matrix_a, matrix_b, config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    gmres_impl(matrix_a, matrix_b, config, output.view_mut())?;
+    Ok(output)
 }
 
 /// GMRES for general systems `Ax=b` from matrix/vector views.
@@ -439,14 +549,15 @@ pub fn gmres_view<T>(
 where
     T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack,
 {
-    gmres_impl(matrix_a, matrix_b, config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    gmres_impl(matrix_a, matrix_b, config, output.view_mut())?;
+    Ok(output)
 }
 
 /// GMRES for general systems `Ax=b` from matrix/vector views.
 ///
 /// # Errors
 /// Returns an error when inputs are invalid or convergence fails.
-#[expect(clippy::many_single_char_names)]
 #[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
 pub fn gmres_view<T>(
     matrix_a: &ArrayView2<'_, T>,
@@ -456,7 +567,9 @@ pub fn gmres_view<T>(
 where
     T: NabledReal + std::ops::SubAssign + lu::LuProviderScalar,
 {
-    gmres_impl(matrix_a, matrix_b, config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    gmres_impl(matrix_a, matrix_b, config, output.view_mut())?;
+    Ok(output)
 }
 
 /// GMRES for general systems `Ax=b` from matrix/vector views.
@@ -472,7 +585,149 @@ pub fn gmres_view<T>(
 where
     T: NabledReal + std::ops::SubAssign,
 {
-    gmres_impl(matrix_a, matrix_b, config)
+    let mut output = Array1::<T>::zeros(matrix_b.len());
+    gmres_impl(matrix_a, matrix_b, config, output.view_mut())?;
+    Ok(output)
+}
+
+/// GMRES for general systems `Ax=b` from matrix/vector views into a caller-provided output
+/// vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+pub fn gmres_view_into<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+    output: ArrayViewMut1<'_, T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar,
+{
+    gmres_impl(matrix_a, matrix_b, config, output)
+}
+
+/// GMRES for general systems `Ax=b` from matrix/vector views into a caller-provided output
+/// vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+pub fn gmres_view_into<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+    output: ArrayViewMut1<'_, T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack,
+{
+    gmres_impl(matrix_a, matrix_b, config, output)
+}
+
+/// GMRES for general systems `Ax=b` from matrix/vector views into a caller-provided output
+/// vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+pub fn gmres_view_into<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+    output: ArrayViewMut1<'_, T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + lu::LuProviderScalar,
+{
+    gmres_impl(matrix_a, matrix_b, config, output)
+}
+
+/// GMRES for general systems `Ax=b` from matrix/vector views into a caller-provided output
+/// vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+pub fn gmres_view_into<T>(
+    matrix_a: &ArrayView2<'_, T>,
+    matrix_b: &ArrayView1<'_, T>,
+    config: &IterativeConfig<T>,
+    output: ArrayViewMut1<'_, T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign,
+{
+    gmres_impl(matrix_a, matrix_b, config, output)
+}
+
+/// GMRES for general systems `Ax=b` into a caller-provided output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+pub fn gmres_into<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+    output: &mut Array1<T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack + lu::LuProviderScalar,
+{
+    gmres_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())
+}
+
+/// GMRES for general systems `Ax=b` into a caller-provided output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+pub fn gmres_into<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+    output: &mut Array1<T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + ndarray_linalg::Lapack,
+{
+    gmres_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())
+}
+
+/// GMRES for general systems `Ax=b` into a caller-provided output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[cfg(all(not(feature = "lapack-provider"), feature = "magma-system"))]
+pub fn gmres_into<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+    output: &mut Array1<T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign + lu::LuProviderScalar,
+{
+    gmres_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())
+}
+
+/// GMRES for general systems `Ax=b` into a caller-provided output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+pub fn gmres_into<T>(
+    matrix_a: &Array2<T>,
+    matrix_b: &Array1<T>,
+    config: &IterativeConfig<T>,
+    output: &mut Array1<T>,
+) -> Result<(), IterativeError>
+where
+    T: NabledReal + std::ops::SubAssign,
+{
+    gmres_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())
 }
 
 /// GMRES for complex general systems `Ax=b`.
@@ -484,7 +739,9 @@ pub fn gmres_complex(
     matrix_b: &Array1<Complex64>,
     config: &IterativeConfig<f64>,
 ) -> Result<Array1<Complex64>, IterativeError> {
-    gmres_complex_view(&matrix_a.view(), &matrix_b.view(), config)
+    let mut output = Array1::<Complex64>::zeros(matrix_b.len());
+    gmres_complex_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())?;
+    Ok(output)
 }
 
 /// GMRES for general complex systems `Ax=b` from views.
@@ -496,10 +753,41 @@ pub fn gmres_complex_view(
     matrix_b: &ArrayView1<'_, Complex64>,
     config: &IterativeConfig<f64>,
 ) -> Result<Array1<Complex64>, IterativeError> {
+    let mut output = Array1::<Complex64>::zeros(matrix_b.len());
+    gmres_complex_view_into(matrix_a, matrix_b, config, output.view_mut())?;
+    Ok(output)
+}
+
+/// GMRES for general complex systems `Ax=b` into a caller-provided output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn gmres_complex_into(
+    matrix_a: &Array2<Complex64>,
+    matrix_b: &Array1<Complex64>,
+    config: &IterativeConfig<f64>,
+    output: &mut Array1<Complex64>,
+) -> Result<(), IterativeError> {
+    gmres_complex_view_into(&matrix_a.view(), &matrix_b.view(), config, output.view_mut())
+}
+
+/// GMRES for general complex systems `Ax=b` from views into a caller-provided output vector.
+///
+/// # Errors
+/// Returns an error when inputs are invalid or convergence fails.
+pub fn gmres_complex_view_into(
+    matrix_a: &ArrayView2<'_, Complex64>,
+    matrix_b: &ArrayView1<'_, Complex64>,
+    config: &IterativeConfig<f64>,
+    mut output: ArrayViewMut1<'_, Complex64>,
+) -> Result<(), IterativeError> {
     if matrix_a.is_empty() || matrix_b.is_empty() {
         return Err(IterativeError::EmptyMatrix);
     }
     if matrix_a.nrows() != matrix_a.ncols() || matrix_a.nrows() != matrix_b.len() {
+        return Err(IterativeError::DimensionMismatch);
+    }
+    if output.len() != matrix_b.len() {
         return Err(IterativeError::DimensionMismatch);
     }
 
@@ -511,7 +799,8 @@ pub fn gmres_complex_view(
 
     let beta = vector_norm_complex(matrix_b);
     if beta <= tolerance {
-        return Ok(Array1::<Complex64>::zeros(dimension));
+        output.fill(Complex64::default());
+        return Ok(());
     }
 
     for row in 0..dimension {
@@ -557,12 +846,17 @@ pub fn gmres_complex_view(
 
     let least_squares_solution =
         lu::solve_complex(&normal_matrix, &normal_rhs).map_err(|_| IterativeError::Breakdown)?;
-    let solution =
-        basis.slice(ndarray::s![.., ..effective_krylov_dim]).dot(&least_squares_solution);
+    output.fill(Complex64::default());
+    for column in 0..effective_krylov_dim {
+        let coefficient = least_squares_solution[column];
+        for row in 0..dimension {
+            output[row] += basis[[row, column]] * coefficient;
+        }
+    }
 
-    let residual = matrix_b - &matrix_a.dot(&solution);
+    let residual = matrix_b - &matrix_a.dot(&output.view());
     if vector_norm_complex(&residual) <= tolerance {
-        Ok(solution)
+        Ok(())
     } else {
         Err(IterativeError::MaxIterationsExceeded)
     }
@@ -614,11 +908,49 @@ mod tests {
     }
 
     #[test]
+    fn iterative_into_variants_reuse_output_buffers() {
+        let spd = Array2::from_shape_vec((2, 2), vec![4.0_f64, 1.0, 1.0, 3.0]).unwrap();
+        let rhs_spd = Array1::from_vec(vec![1.0_f64, 2.0]);
+        let general = Array2::from_shape_vec((2, 2), vec![3.0_f64, 1.0, 1.0, 2.0]).unwrap();
+        let rhs_general = Array1::from_vec(vec![9.0_f64, 8.0]);
+        let config = IterativeConfig::<f64>::default();
+
+        let mut cg_out = Array1::from_vec(vec![99.0_f64, 99.0]);
+        let mut gmres_out = Array1::from_vec(vec![99.0_f64, 99.0]);
+
+        conjugate_gradient_into(&spd, &rhs_spd, &config, &mut cg_out).unwrap();
+        gmres_into(&general, &rhs_general, &config, &mut gmres_out).unwrap();
+
+        let cg_reconstructed = spd.dot(&cg_out);
+        let gmres_reconstructed = general.dot(&gmres_out);
+        for i in 0..rhs_spd.len() {
+            assert!((cg_reconstructed[i] - rhs_spd[i]).abs() < 1e-8);
+        }
+        for i in 0..rhs_general.len() {
+            assert!((gmres_reconstructed[i] - rhs_general[i]).abs() < 1e-8);
+        }
+    }
+
+    #[test]
     fn cg_rejects_dimension_mismatch() {
         let matrix = Array2::<f64>::eye(2);
         let rhs = Array1::from_vec(vec![1.0_f64, 2.0, 3.0]);
         let result = conjugate_gradient(&matrix, &rhs, &IterativeConfig::<f64>::default());
         assert!(matches!(result, Err(IterativeError::DimensionMismatch)));
+    }
+
+    #[test]
+    fn iterative_into_rejects_bad_output_length() {
+        let matrix = Array2::<f64>::eye(2);
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0]);
+        let config = IterativeConfig::<f64>::default();
+        let mut bad_output = Array1::<f64>::zeros(3);
+
+        let cg = conjugate_gradient_into(&matrix, &rhs, &config, &mut bad_output);
+        let gmres_result = gmres_into(&matrix, &rhs, &config, &mut bad_output);
+
+        assert!(matches!(cg, Err(IterativeError::DimensionMismatch)));
+        assert!(matches!(gmres_result, Err(IterativeError::DimensionMismatch)));
     }
 
     #[test]
@@ -670,6 +1002,41 @@ mod tests {
         let reconstructed = matrix.dot(&solution);
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).norm() < 1e-7);
+        }
+    }
+
+    #[test]
+    fn complex_iterative_into_variants_reuse_output_buffers() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(4.0, 0.0),
+            Complex64::new(1.0, 1.0),
+            Complex64::new(1.0, -1.0),
+            Complex64::new(3.0, 0.0),
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.5), Complex64::new(2.0, -1.0)]);
+        let general = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(3.0, 1.0),
+            Complex64::new(1.0, -0.5),
+            Complex64::new(0.5, 1.0),
+            Complex64::new(2.0, -1.0),
+        ])
+        .unwrap();
+        let general_rhs =
+            Array1::from_vec(vec![Complex64::new(1.0, 2.0), Complex64::new(3.0, -1.0)]);
+        let config = IterativeConfig::default();
+
+        let mut cg_out = Array1::from_vec(vec![Complex64::new(99.0, 0.0); 2]);
+        let mut gmres_out = Array1::from_vec(vec![Complex64::new(99.0, 0.0); 2]);
+
+        conjugate_gradient_complex_into(&matrix, &rhs, &config, &mut cg_out).unwrap();
+        gmres_complex_into(&general, &general_rhs, &config, &mut gmres_out).unwrap();
+
+        let cg_reconstructed = matrix.dot(&cg_out);
+        let gmres_reconstructed = general.dot(&gmres_out);
+        for i in 0..rhs.len() {
+            assert!((cg_reconstructed[i] - rhs[i]).norm() < 1e-7);
+            assert!((gmres_reconstructed[i] - general_rhs[i]).norm() < 1e-7);
         }
     }
 

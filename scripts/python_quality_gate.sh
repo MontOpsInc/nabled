@@ -114,6 +114,7 @@ source_build_and_smoke() {
     local require_arrow="$2"
     local features="${3:-}"
     local venv_dir="${VENV_ROOT}/${label}"
+    local out_dir="${DIST_DIR}/${label}"
     local feature_args=()
     local smoke_args=()
     local smoke_command=("${venv_dir}/bin/python" "${SMOKE_SCRIPT}")
@@ -122,6 +123,8 @@ source_build_and_smoke() {
 
     create_venv "${venv_dir}"
     install_packaging_tools "${venv_dir}" "${require_arrow}"
+    rm -rf "${out_dir}"
+    mkdir -p "${out_dir}"
 
     if [[ -n "${features}" ]]; then
         feature_args=(--features "${features}")
@@ -131,15 +134,27 @@ source_build_and_smoke() {
         done
     fi
 
+    # Source-build feature permutations are intentionally installed from a
+    # throwaway wheel built from the local checkout. Editable installs can
+    # import whatever extension artifact is already sitting in python/pynabled/,
+    # which blurs feature-truth for the smoke check.
     if [[ "${#feature_args[@]}" -gt 0 ]]; then
         run_in_repo \
-            env VIRTUAL_ENV="${venv_dir}" PATH="${venv_dir}/bin:${PATH}" \
-            "${venv_dir}/bin/maturin" develop --release "${feature_args[@]}"
+            "${venv_dir}/bin/maturin" build \
+            --release \
+            --auditwheel skip \
+            --interpreter "${venv_dir}/bin/python" \
+            --out "${out_dir}" \
+            "${feature_args[@]}"
     else
         run_in_repo \
-            env VIRTUAL_ENV="${venv_dir}" PATH="${venv_dir}/bin:${PATH}" \
-            "${venv_dir}/bin/maturin" develop --release
+            "${venv_dir}/bin/maturin" build \
+            --release \
+            --auditwheel skip \
+            --interpreter "${venv_dir}/bin/python" \
+            --out "${out_dir}"
     fi
+    "${venv_dir}/bin/pip" install "${out_dir}"/pynabled-*.whl >/dev/null
 
     if [[ "${require_arrow}" == "1" ]]; then
         smoke_command+=(--require-arrow)
@@ -193,10 +208,8 @@ main() {
         -q
     run_in_repo \
         "${dev_venv}/bin/python" -m coverage xml -o "${COVERAGE_DIR}/python-coverage.xml"
-    run_in_repo \
-        "${dev_venv}/bin/python" -m coverage report \
-        --show-missing \
-        --fail-under="${COVERAGE_THRESHOLD}"
+    run_in_repo "${dev_venv}/bin/python" -m coverage report \
+        --show-missing --fail-under="${COVERAGE_THRESHOLD}"
 
     build_and_smoke "wheel-default" "wheel" "0"
     build_and_smoke "sdist-default" "sdist" "0"

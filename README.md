@@ -84,14 +84,25 @@ their objective/gradient evaluations still cross back into Python.
 The Python NumPy-facing API now also exposes explicit output-buffer reuse beyond the primitive
 vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `matrix_exp`,
 `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`, `matrix_sign`,
-`matrix_exp_eigen`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` wherever the Rust
-core already has `*_into` coverage.
+`matrix_exp_eigen`, `sylvester_solve`, `lyapunov_solve`, `pca_transform`, and
+`pca_inverse_transform` all accept `out=` wherever the Rust core already has `*_into` coverage.
+`compute_pca(...)`, `compute_pca_complex(...)`, `linear_regression(...)`, and
+`linear_regression_complex(...)` now also accept typed `out=` result buffers
+(`PcaResult` / `RegressionResult`) under the existing public names, so repeated ML workflows do
+not have to allocate fresh Python result arrays on every call.
 Tensor reconstruction/expansion helpers now follow that same contract where the Rust core already
 has reconstruction `*_into` support: `tensor_hosvd_nd_reconstruct`, `tensor_tucker_expand`,
 `tensor_cp_als3_reconstruct`, `tensor_cp_als_nd_reconstruct`, and `tensor_tt_svd_reconstruct`
 accept caller-provided `out=` arrays instead of forcing fresh tensor materialization on every
 call. `tensor_hosvd3_reconstruct(...)` remains allocation-only for now because the Rust core does
 not yet expose an `into` path for that row.
+Dense iterative solves now follow the same pattern: `conjugate_gradient(...)`, `gmres(...)`,
+`conjugate_gradient_complex(...)`, and `gmres_complex(...)` all accept `out=` under the existing
+public names, and the complex iterative bindings now use the same view-first NumPy ingress
+contract as the real rows instead of a separate special-case path.
+Complex PCA/regression/stats rows are now also explicitly covered on Fortran-order / strided
+NumPy inputs, and the remaining complex regression/statistics raw bindings now follow the same
+shared helper-based view-first boundary instead of bespoke typed-array paths.
 `qr_reconstruct_matrix(...)` now follows the same Rust-backed `out=` contract for both direct and
 pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
 `cholesky_inverse(...)` for repeated factor reuse instead of re-factorizing the original matrix.
