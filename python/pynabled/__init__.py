@@ -31,6 +31,8 @@ from .results import (
     HosvdNdResult,
     LogDetResult,
     LuResult,
+    MixedSolveResult,
+    MixedSylvesterResult,
     NonsymmetricBiEigenResult,
     NonsymmetricEigenResult,
     PcaResult,
@@ -292,6 +294,14 @@ def lu_solve(a, b):
     return _raw.lu_solve(a, b)
 
 
+def lu_solve_mixed(a, b) -> MixedSolveResult:
+    solution, refinement_iterations = _raw.lu_solve_mixed(a, b)
+    return MixedSolveResult(
+        solution=solution,
+        refinement_iterations=refinement_iterations,
+    )
+
+
 def lu_inverse(a):
     return _raw.lu_inverse(a)
 
@@ -413,10 +423,26 @@ def sylvester_solve(a, b, c, *, out=None, workspace: SylvesterWorkspace | None =
     return _require_workspace(workspace, SylvesterWorkspace).solve(a, b, c, out=out)
 
 
+def sylvester_solve_mixed(a, b, c) -> MixedSylvesterResult:
+    solution, refinement_iterations = _raw.sylvester_solve_mixed(a, b, c)
+    return MixedSylvesterResult(
+        solution=solution,
+        refinement_iterations=refinement_iterations,
+    )
+
+
 def lyapunov_solve(a, q, *, out=None, workspace: SylvesterWorkspace | None = None):
     if workspace is None:
         return _array_binary_out(_raw.lyapunov_solve, _raw.lyapunov_solve_into, a, q, out=out)
     return _require_workspace(workspace, SylvesterWorkspace).lyapunov(a, q, out=out)
+
+
+def lyapunov_solve_mixed(a, q) -> MixedSylvesterResult:
+    solution, refinement_iterations = _raw.lyapunov_solve_mixed(a, q)
+    return MixedSylvesterResult(
+        solution=solution,
+        refinement_iterations=refinement_iterations,
+    )
 
 
 def batched_qr(matrices) -> list[QrResult]:
@@ -529,16 +555,22 @@ def tensor_hooi_nd(tensor, ranks, max_iterations=None, tolerance=None) -> HosvdN
     return HosvdNdResult(core=core, factors=list(factors))
 
 
-def tensor_hosvd_nd_reconstruct(result: HosvdNdResult):
-    return _raw.tensor_hosvd_nd_reconstruct(result.core, result.factors)
+def tensor_hosvd_nd_reconstruct(result: HosvdNdResult, *, out=None):
+    if out is None:
+        return _raw.tensor_hosvd_nd_reconstruct(result.core, result.factors)
+    _raw.tensor_hosvd_nd_reconstruct_into(result.core, result.factors, out)
+    return out
 
 
 def tensor_tucker_project(tensor, result: HosvdNdResult):
     return _raw.tensor_tucker_project(tensor, result.factors)
 
 
-def tensor_tucker_expand(result: HosvdNdResult):
-    return _raw.tensor_tucker_expand(result.core, result.factors)
+def tensor_tucker_expand(result: HosvdNdResult, *, out=None):
+    if out is None:
+        return _raw.tensor_tucker_expand(result.core, result.factors)
+    _raw.tensor_tucker_expand_into(result.core, result.factors, out)
+    return out
 
 
 def tensor_cp_als3(cube, rank, max_iterations=None, tolerance=None) -> CpAls3Result:
@@ -587,13 +619,22 @@ def tensor_cp_als3_diagnostics(cube, result: CpAls3Result) -> CpErrorMetrics:
     )
 
 
-def tensor_cp_als3_reconstruct(result: CpAls3Result):
-    return _raw.tensor_cp_als3_reconstruct(
+def tensor_cp_als3_reconstruct(result: CpAls3Result, *, out=None):
+    if out is None:
+        return _raw.tensor_cp_als3_reconstruct(
+            result.weights,
+            result.factor_0,
+            result.factor_1,
+            result.factor_2,
+        )
+    _raw.tensor_cp_als3_reconstruct_into(
         result.weights,
         result.factor_0,
         result.factor_1,
         result.factor_2,
+        out,
     )
+    return out
 
 
 def tensor_cp_als_nd(tensor, rank, max_iterations=None, tolerance=None) -> CpAlsNdResult:
@@ -621,8 +662,11 @@ def tensor_cp_als_nd_diagnostics(tensor, result: CpAlsNdResult) -> CpErrorMetric
     return _cp_metrics(_raw.tensor_cp_als_nd_diagnostics(tensor, result.weights, result.factors))
 
 
-def tensor_cp_als_nd_reconstruct(result: CpAlsNdResult):
-    return _raw.tensor_cp_als_nd_reconstruct(result.weights, result.factors)
+def tensor_cp_als_nd_reconstruct(result: CpAlsNdResult, *, out=None):
+    if out is None:
+        return _raw.tensor_cp_als_nd_reconstruct(result.weights, result.factors)
+    _raw.tensor_cp_als_nd_reconstruct_into(result.weights, result.factors, out)
+    return out
 
 
 def tensor_tt_svd(tensor, max_rank=None, tolerance=None) -> TensorTrainResult:
@@ -673,8 +717,11 @@ def tensor_tt_hadamard_round(
     )
 
 
-def tensor_tt_svd_reconstruct(result: TensorTrainResult):
-    return _raw.tensor_tt_svd_reconstruct(result.cores)
+def tensor_tt_svd_reconstruct(result: TensorTrainResult, *, out=None):
+    if out is None:
+        return _raw.tensor_tt_svd_reconstruct(result.cores)
+    _raw.tensor_tt_svd_reconstruct_into(result.cores, out)
+    return out
 
 
 def backtracking_line_search(
@@ -1638,6 +1685,8 @@ __all__ = [
     "CpErrorMetrics",
     "CpConvergenceReport",
     "CpAlsReport",
+    "MixedSolveResult",
+    "MixedSylvesterResult",
     "TensorTrainResult",
     "AdamConfig",
     "BFGSConfig",
@@ -1668,6 +1717,7 @@ __all__ = [
     "qr_solve_least_squares",
     "lu_decompose",
     "lu_solve",
+    "lu_solve_mixed",
     "lu_inverse",
     "lu_determinant",
     "lu_log_determinant",
@@ -1682,7 +1732,9 @@ __all__ = [
     "schur_compute",
     "polar_compute",
     "sylvester_solve",
+    "sylvester_solve_mixed",
     "lyapunov_solve",
+    "lyapunov_solve_mixed",
     "triangular_solve_lower",
     "triangular_solve_upper",
     "triangular_solve_lower_matrix",

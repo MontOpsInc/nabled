@@ -49,6 +49,30 @@ pub fn solve<'py>(
     }
 }
 
+/// Solve `Ax = b` using MAGMA mixed-precision iterative refinement.
+#[pyfunction(name = "lu_solve_mixed")]
+pub fn solve_mixed<'py>(
+    py: Python<'py>,
+    a: &Bound<'py, PyAny>,
+    b: &Bound<'py, PyAny>,
+) -> PyResult<(Py<PyAny>, usize)> {
+    match (utils::numeric_array2(a, "a")?, utils::numeric_array1(b, "b")?) {
+        (utils::NumericReadonlyArray2::F64(a_arr), utils::NumericReadonlyArray1::F64(b_arr)) => {
+            let result =
+                nabled_linalg::lu::solve_mixed_f64_view(&a_arr.as_array(), &b_arr.as_array())
+                    .map_err(to_py_err)?;
+            Ok((utils::pyarray1_from_owned(py, result.solution), result.refinement_iterations))
+        }
+        (utils::NumericReadonlyArray2::C64(a_arr), utils::NumericReadonlyArray1::C64(b_arr)) => {
+            let result =
+                nabled_linalg::lu::solve_mixed_complex_view(&a_arr.as_array(), &b_arr.as_array())
+                    .map_err(to_py_err)?;
+            Ok((utils::pyarray1_from_owned(py, result.solution), result.refinement_iterations))
+        }
+        _ => Err(utils::matching_mixed_provider_dtype_error(&["a", "b"])),
+    }
+}
+
 /// Compute matrix inverse using LU.
 #[pyfunction(name = "lu_inverse")]
 pub fn inverse<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {

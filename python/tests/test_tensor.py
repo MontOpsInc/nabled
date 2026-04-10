@@ -214,6 +214,72 @@ def _tt_reference():
     ]
 
 
+def test_tensor_reconstruction_helpers_reuse_output_buffers():
+    cube = np.arange(60, dtype=np.float64).reshape(3, 4, 5)
+    hosvd_nd = pynabled.tensor_hosvd_nd(cube, [3, 4, 5])
+
+    hosvd_nd_out = np.empty(cube.shape, dtype=np.float64, order="F")
+    returned_hosvd_nd = pynabled.tensor_hosvd_nd_reconstruct(hosvd_nd, out=hosvd_nd_out)
+    assert returned_hosvd_nd is hosvd_nd_out
+    np.testing.assert_allclose(hosvd_nd_out, cube, rtol=1e-10, atol=1e-10)
+
+    tucker_out = np.empty(cube.shape, dtype=np.float64, order="F")
+    returned_tucker = pynabled.tensor_tucker_expand(hosvd_nd, out=tucker_out)
+    assert returned_tucker is tucker_out
+    np.testing.assert_allclose(tucker_out, cube, rtol=1e-10, atol=1e-10)
+
+    cp3_weights, cp3_factor_0, cp3_factor_1, cp3_factor_2 = _cp_als3_reference()
+    cp3 = pynabled.CpAls3Result(
+        weights=cp3_weights,
+        factor_0=cp3_factor_0,
+        factor_1=cp3_factor_1,
+        factor_2=cp3_factor_2,
+    )
+    expected_cp3 = pynabled.tensor_cp_als3_reconstruct(cp3)
+    cp3_out = np.empty(expected_cp3.shape, dtype=np.float64, order="F")
+    returned_cp3 = pynabled.tensor_cp_als3_reconstruct(cp3, out=cp3_out)
+    assert returned_cp3 is cp3_out
+    np.testing.assert_allclose(cp3_out, expected_cp3, rtol=1e-10, atol=1e-10)
+
+    cp_nd_weights, cp_nd_factors = _cp_als_nd_reference()
+    cp_nd = pynabled.CpAlsNdResult(
+        weights=cp_nd_weights,
+        factors=cp_nd_factors,
+        shape=tuple(factor.shape[0] for factor in cp_nd_factors),
+    )
+    expected_cp_nd = pynabled.tensor_cp_als_nd_reconstruct(cp_nd)
+    cp_nd_out = np.empty(expected_cp_nd.shape, dtype=np.float64, order="F")
+    returned_cp_nd = pynabled.tensor_cp_als_nd_reconstruct(cp_nd, out=cp_nd_out)
+    assert returned_cp_nd is cp_nd_out
+    np.testing.assert_allclose(cp_nd_out, expected_cp_nd, rtol=1e-10, atol=1e-10)
+
+    tt = pynabled.TensorTrainResult(cores=_tt_reference())
+    expected_tt = pynabled.tensor_tt_svd_reconstruct(tt)
+    tt_out = np.empty(expected_tt.shape, dtype=np.float64, order="F")
+    returned_tt = pynabled.tensor_tt_svd_reconstruct(tt, out=tt_out)
+    assert returned_tt is tt_out
+    np.testing.assert_allclose(tt_out, expected_tt, rtol=1e-10, atol=1e-10)
+
+
+def test_tensor_reconstruction_helpers_reject_wrong_output_dtype():
+    cube = np.arange(60, dtype=np.float64).reshape(3, 4, 5)
+    hosvd_nd = pynabled.tensor_hosvd_nd(cube, [3, 4, 5])
+    bad_hosvd_out = np.empty(cube.shape, dtype=np.float32)
+    with pytest.raises(TypeError, match="output must be a writable NumPy array with dtype float64"):
+        pynabled.tensor_hosvd_nd_reconstruct(hosvd_nd, out=bad_hosvd_out)
+
+    cp3_weights, cp3_factor_0, cp3_factor_1, cp3_factor_2 = _cp_als3_reference()
+    cp3 = pynabled.CpAls3Result(
+        weights=cp3_weights,
+        factor_0=cp3_factor_0,
+        factor_1=cp3_factor_1,
+        factor_2=cp3_factor_2,
+    )
+    bad_cp3_out = np.empty((4, 3, 2), dtype=np.float32)
+    with pytest.raises(TypeError, match="output must be a writable NumPy array with dtype float64 and rank 3"):
+        pynabled.tensor_cp_als3_reconstruct(cp3, out=bad_cp3_out)
+
+
 def test_tensor_complex_kernels_and_einsum():
     cube = (np.random.randn(2, 3, 4) + 1j * np.random.randn(2, 3, 4)).astype(np.complex128)
     vectors = (np.random.randn(2, 4) + 1j * np.random.randn(2, 4)).astype(np.complex128)

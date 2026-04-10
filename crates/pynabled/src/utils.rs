@@ -89,6 +89,13 @@ pub fn matching_numeric_dtype_error(names: &[&str]) -> PyErr {
     ))
 }
 
+pub fn matching_mixed_provider_dtype_error(names: &[&str]) -> PyErr {
+    PyTypeError::new_err(format!(
+        "{} must all have matching dtype (all float64 or all complex128)",
+        names.join(", ")
+    ))
+}
+
 pub fn matching_index_dtype_error(names: &[&str]) -> PyErr {
     PyTypeError::new_err(format!(
         "{} must all have matching dtype (all int32 or all int64)",

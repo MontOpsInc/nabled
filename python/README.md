@@ -72,6 +72,12 @@ the Rust core already exposes `*_into`: `svd_pseudo_inverse`, `svd_reconstruct_m
 `matrix_power`, `matrix_sign`, `sylvester_solve`, and `lyapunov_solve` all accept `out=` with the
 same writeability/shape/dtype requirements. `svd_condition_number(...)` and `svd_rank(...)` now
 read singular values directly instead of rebuilding owned intermediary SVD objects.
+Tensor reconstruction/expansion helpers now also reuse caller-provided outputs where the Rust core
+already has reconstruction `*_into` coverage: `tensor_hosvd_nd_reconstruct`,
+`tensor_tucker_expand`, `tensor_cp_als3_reconstruct`, `tensor_cp_als_nd_reconstruct`, and
+`tensor_tt_svd_reconstruct` all accept `out=` under the same dtype/rank/shape contract instead of
+always materializing fresh tensors. `tensor_hosvd3_reconstruct(...)` remains allocation-only for
+now because the current Rust tensor API still lacks a matching `into` path.
 `qr_reconstruct_matrix(...)` now follows the same Rust-backed `out=` contract for both direct and
 pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
 `cholesky_inverse(...)` for repeated factor reuse instead of re-factorizing the original matrix.
@@ -114,6 +120,11 @@ The dense result-bearing surface is also less tuple-oriented now: QR exposes red
 decomposition plus typed reconstruction/condition helpers, LU exposes signed log-determinant for
 real matrices, and non-symmetric eigen exposes explicit balancing plus matched left/right
 bi-eigen result objects.
+Provider-bound mixed-precision refinement helpers are now visible too: `lu_solve_mixed(...)`,
+`sylvester_solve_mixed(...)`, and `lyapunov_solve_mixed(...)` return typed result objects with
+`solution` plus `refinement_iterations`. Those rows require a source build with `magma-system`
+and intentionally admit only the truthful mixed-provider dtypes (`float64` / `complex128`)
+instead of silently downcasting `float32`.
 
 Where the admitted Rust surface already has direct complex kernels, the current Python dense API
 now also accepts `complex128` across the main vector/matrix/decomposition/function families

@@ -29,6 +29,12 @@ class LuResult:
 
 
 @dataclass(slots=True)
+class MixedSolveResult:
+    solution: np.ndarray
+    refinement_iterations: int
+
+
+@dataclass(slots=True)
 class LogDetResult:
     sign: int
     ln_abs_det: float
@@ -102,6 +108,12 @@ class RegressionResult:
 
 
 @dataclass(slots=True)
+class MixedSylvesterResult:
+    solution: np.ndarray
+    refinement_iterations: int
+
+
+@dataclass(slots=True)
 class Hosvd3Result:
     core: np.ndarray
     u0: np.ndarray
@@ -170,6 +182,8 @@ __all__ = [
     "HosvdNdResult",
     "LogDetResult",
     "LuResult",
+    "MixedSolveResult",
+    "MixedSylvesterResult",
     "NonsymmetricBiEigenResult",
     "NonsymmetricEigenResult",
     "PcaResult",

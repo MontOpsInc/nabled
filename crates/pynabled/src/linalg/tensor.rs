@@ -1396,6 +1396,37 @@ pub fn hosvd_nd_reconstruct<'py>(
     }
 }
 
+/// Reconstruct an N-D tensor from Tucker/HOSVD factors into a caller-provided output array.
+#[pyfunction(name = "tensor_hosvd_nd_reconstruct_into")]
+pub fn hosvd_nd_reconstruct_into(
+    core: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_arrayd(core, "core")? {
+        utils::RealReadonlyArrayDyn::F32(core_arr) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            let result = hosvd_nd_result_from_arrays(
+                core_arr.as_array().to_owned(),
+                extract_array2_sequence::<f32>(factors)?,
+            );
+            nabled_linalg::tensor::hosvd_nd_reconstruct_into(&result, &mut output_view)
+                .map_err(to_py_err)
+        }
+        utils::RealReadonlyArrayDyn::F64(core_arr) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            let result = hosvd_nd_result_from_arrays(
+                core_arr.as_array().to_owned(),
+                extract_array2_sequence::<f64>(factors)?,
+            );
+            nabled_linalg::tensor::hosvd_nd_reconstruct_into(&result, &mut output_view)
+                .map_err(to_py_err)
+        }
+    }
+}
+
 /// Project a tensor into a Tucker core using per-mode factors.
 #[pyfunction(name = "tensor_tucker_project")]
 pub fn tucker_project<'py>(
@@ -1440,6 +1471,39 @@ pub fn tucker_expand<'py>(
             let result = nabled_linalg::tensor::tucker_expand_view(&core_arr.as_array(), &factors)
                 .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
+}
+
+/// Expand a Tucker core using per-mode factors into a caller-provided output array.
+#[pyfunction(name = "tensor_tucker_expand_into")]
+pub fn tucker_expand_into(
+    core: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_arrayd(core, "core")? {
+        utils::RealReadonlyArrayDyn::F32(core_arr) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            let factors = extract_array2_sequence::<f32>(factors)?;
+            nabled_linalg::tensor::tucker_expand_into(
+                &core_arr.as_array().to_owned(),
+                &factors,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArrayDyn::F64(core_arr) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            let factors = extract_array2_sequence::<f64>(factors)?;
+            nabled_linalg::tensor::tucker_expand_into(
+                &core_arr.as_array().to_owned(),
+                &factors,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
         }
     }
 }
@@ -1612,6 +1676,61 @@ pub fn cp_als3_reconstruct<'py>(
     }
 }
 
+/// Reconstruct a rank-3 tensor from CP-ALS factors into a caller-provided output array.
+#[pyfunction(name = "tensor_cp_als3_reconstruct_into")]
+pub fn cp_als3_reconstruct_into(
+    weights: &Bound<'_, PyAny>,
+    factor_0: &Bound<'_, PyAny>,
+    factor_1: &Bound<'_, PyAny>,
+    factor_2: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::real_array1(weights, "weights")?,
+        utils::real_array2(factor_0, "factor_0")?,
+        utils::real_array2(factor_1, "factor_1")?,
+        utils::real_array2(factor_2, "factor_2")?,
+    ) {
+        (
+            utils::RealReadonlyArray1::F32(weights_arr),
+            utils::RealReadonlyArray2::F32(factor_0_arr),
+            utils::RealReadonlyArray2::F32(factor_1_arr),
+            utils::RealReadonlyArray2::F32(factor_2_arr),
+        ) => {
+            let mut output_arr = output_array3::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            let result = cp_als3_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                factor_0_arr.as_array().to_owned(),
+                factor_1_arr.as_array().to_owned(),
+                factor_2_arr.as_array().to_owned(),
+            );
+            nabled_linalg::tensor::cp_als3_reconstruct_into(&result, &mut output_view)
+                .map_err(to_py_err)
+        }
+        (
+            utils::RealReadonlyArray1::F64(weights_arr),
+            utils::RealReadonlyArray2::F64(factor_0_arr),
+            utils::RealReadonlyArray2::F64(factor_1_arr),
+            utils::RealReadonlyArray2::F64(factor_2_arr),
+        ) => {
+            let mut output_arr = output_array3::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            let result = cp_als3_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                factor_0_arr.as_array().to_owned(),
+                factor_1_arr.as_array().to_owned(),
+                factor_2_arr.as_array().to_owned(),
+            );
+            nabled_linalg::tensor::cp_als3_reconstruct_into(&result, &mut output_view)
+                .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&[
+            "weights", "factor_0", "factor_1", "factor_2", "output",
+        ])),
+    }
+}
+
 /// Rank-`R` CP-ALS decomposition over N-D tensors. Returns `(weights, factors)`.
 #[pyfunction(name = "tensor_cp_als_nd")]
 pub fn cp_als_nd<'py>(
@@ -1735,6 +1854,37 @@ pub fn cp_als_nd_reconstruct<'py>(
                 ))
                 .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
+}
+
+/// Reconstruct an N-D tensor from CP-ALS factors into a caller-provided output array.
+#[pyfunction(name = "tensor_cp_als_nd_reconstruct_into")]
+pub fn cp_als_nd_reconstruct_into(
+    weights: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_array1(weights, "weights")? {
+        utils::RealReadonlyArray1::F32(weights_arr) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            let result = cp_als_nd_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                extract_array2_sequence::<f32>(factors)?,
+            );
+            nabled_linalg::tensor::cp_als_nd_reconstruct_into(&result, &mut output_view)
+                .map_err(to_py_err)
+        }
+        utils::RealReadonlyArray1::F64(weights_arr) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            let result = cp_als_nd_result_from_arrays(
+                weights_arr.as_array().to_owned(),
+                extract_array2_sequence::<f64>(factors)?,
+            );
+            nabled_linalg::tensor::cp_als_nd_reconstruct_into(&result, &mut output_view)
+                .map_err(to_py_err)
         }
     }
 }
@@ -1929,6 +2079,28 @@ pub fn tt_svd_reconstruct<'py>(py: Python<'py>, cores: &Bound<'py, PyAny>) -> Py
         RealTensorTrainResult::F64(result) => {
             let result = nabled_linalg::tensor::tt_svd_reconstruct(&result).map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
+}
+
+/// Reconstruct a dense tensor from Tensor-Train cores into a caller-provided output array.
+#[pyfunction(name = "tensor_tt_svd_reconstruct_into")]
+pub fn tt_svd_reconstruct_into(
+    cores: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match real_tt_result_from_cores(cores)? {
+        RealTensorTrainResult::F32(result) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::tt_svd_reconstruct_into(&result, &mut output_view)
+                .map_err(to_py_err)
+        }
+        RealTensorTrainResult::F64(result) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::tt_svd_reconstruct_into(&result, &mut output_view)
+                .map_err(to_py_err)
         }
     }
 }

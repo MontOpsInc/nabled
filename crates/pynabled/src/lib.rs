@@ -82,6 +82,7 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // LU
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::decompose, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::solve, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::solve_mixed, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::inverse, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::determinant, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::log_determinant, m)?)?;
@@ -113,8 +114,10 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Sylvester
     m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_sylvester, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_sylvester_mixed, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_sylvester_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_lyapunov, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_lyapunov_mixed, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_lyapunov_into, m)?)?;
 
     // Triangular
@@ -190,16 +193,20 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd_nd, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hooi_nd, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd_nd_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd_nd_reconstruct_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_project, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_expand, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_expand_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3_with_report, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3_diagnostics, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3_reconstruct_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd_with_report, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd_diagnostics, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als_nd_reconstruct_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_svd, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_orthogonalize_left, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_orthogonalize_right, m)?)?;
@@ -210,6 +217,7 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_hadamard, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_hadamard_round, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_svd_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tt_svd_reconstruct_into, m)?)?;
 
     // Batched
     m.add_function(pyo3::wrap_pyfunction!(linalg::batched::qr, m)?)?;

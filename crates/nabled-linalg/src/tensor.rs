@@ -2932,9 +2932,9 @@ pub fn cp_als3_reconstruct<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if factor dimensions are incompatible.
-pub fn cp_als3_reconstruct_into<T: NabledReal>(
+pub fn cp_als3_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     result: &CpAls3Result<T>,
-    output: &mut Array3<T>,
+    output: &mut ArrayBase<S, ndarray::Ix3>,
 ) -> Result<(), TensorError> {
     let rank = result.weights.len();
     if rank == 0
@@ -3157,9 +3157,9 @@ pub fn cp_als_nd_reconstruct<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if factor dimensions are incompatible.
-pub fn cp_als_nd_reconstruct_into<T: NabledReal>(
+pub fn cp_als_nd_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     result: &CpAlsNdResult<T>,
-    output: &mut ArrayD<T>,
+    output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
     validate_cp_als_nd_result(result)?;
     if output.shape() != result.shape.as_slice() {
@@ -3635,10 +3635,10 @@ pub fn tucker_expand_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if core/factor dimensions or output shape are incompatible.
-pub fn tucker_expand_into<T: NabledReal>(
+pub fn tucker_expand_into<T: NabledReal, S: DataMut<Elem = T>>(
     core: &ArrayD<T>,
     factors: &[Array2<T>],
-    output: &mut ArrayD<T>,
+    output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
     tucker_expand_view_into(&core.view(), factors, output)
 }
@@ -3647,10 +3647,10 @@ pub fn tucker_expand_into<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if core/factor dimensions or output shape are incompatible.
-pub fn tucker_expand_view_into<T: NabledReal>(
+pub fn tucker_expand_view_into<T: NabledReal, S: DataMut<Elem = T>>(
     core: &ArrayViewD<'_, T>,
     factors: &[Array2<T>],
-    output: &mut ArrayD<T>,
+    output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
     validate_tucker_factors_for_core(core, factors)?;
     let expected_shape = factors.iter().map(Array2::nrows).collect::<Vec<_>>();
@@ -3684,9 +3684,9 @@ pub fn hosvd_nd_reconstruct<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if factor dimensions are incompatible.
-pub fn hosvd_nd_reconstruct_into<T: NabledReal>(
+pub fn hosvd_nd_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     result: &HosvdNdResult<T>,
-    output: &mut ArrayD<T>,
+    output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
     validate_hosvd_nd_result(result)?;
     let expected_shape = result.factors.iter().map(Array2::nrows).collect::<Vec<_>>();
@@ -4296,9 +4296,9 @@ pub fn tt_svd_reconstruct<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if TT core dimensions are incompatible or output shape mismatches.
-pub fn tt_svd_reconstruct_into<T: NabledReal>(
+pub fn tt_svd_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     result: &TensorTrainResult<T>,
-    output: &mut ArrayD<T>,
+    output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
     validate_tt_result(result)?;
     if output.shape() != result.shape.as_slice() {

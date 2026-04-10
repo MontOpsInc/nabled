@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-09
+Last updated: 2026-04-10
 
 ## Summary
 
@@ -70,7 +70,30 @@ remains `wheel` + `sdist` while optional provider/backend/Arrow permutations now
 source-build smoke instead of non-portable system-provider wheel repair attempts. Validation is
 green end-to-end: `cargo check -p pynabled`, targeted Rust factor/reconstruct coverage (`4
 passed`), `python-quality` (`206 passed, 22 skipped`, `91%` Python coverage), and full
-`just checks` with the Rust coverage gate at `90.05%` line coverage. The first
+`just checks` with the Rust coverage gate at `90.05%` line coverage. A seventh `N-PY-007`
+provider-bound result-fidelity pass is now also landed: Python now exposes
+`lu_solve_mixed(...)`, `sylvester_solve_mixed(...)`, and `lyapunov_solve_mixed(...)` as typed
+`MixedSolveResult` / `MixedSylvesterResult` objects carrying both the solved array and
+`refinement_iterations`, instead of leaving that MAGMA mixed-precision metadata inaccessible from
+the Python surface. Those rows now admit only the truthful mixed-provider dtype contract
+(`float64` / `complex128`) and continue to surface the explicit runtime `magma-system` error on
+non-MAGMA builds instead of silently downshifting to a different solve path. Validation remains
+green end-to-end: `cargo check -p pynabled`, `python-quality` (`210 passed, 22 skipped`,
+`90%` Python coverage), and full `just checks` with the Rust coverage gate still at `90.05%`
+line coverage. An eighth `N-PY-007` tensor reconstruction reuse pass is now also landed: the
+NumPy-facing tensor reconstruction/expansion helpers that already had Rust-core `*_into` coverage
+now expose the same `out=` contract from Python. `tensor_hosvd_nd_reconstruct(...)`,
+`tensor_tucker_expand(...)`, `tensor_cp_als3_reconstruct(...)`,
+`tensor_cp_als_nd_reconstruct(...)`, and `tensor_tt_svd_reconstruct(...)` now reuse
+caller-provided output buffers, and the Rust tensor core was widened in the same pass so those
+reconstruction `*_into` rows accept generic mutable ndarray outputs instead of forcing owned-array
+outputs at the boundary. This closes another real higher-level materialization pocket without
+introducing a Python-side copy fallback. `tensor_hosvd3_reconstruct(...)` remains allocation-only
+for now because the Rust core still lacks a corresponding `into` row. Validation is green on the
+targeted gates: `cargo check -p pynabled` and `python-quality` (`212 passed, 22 skipped`,
+`91%` Python coverage). Remaining `N-PY-007` work is now narrowed again to the smaller iterative
+complex/layout copy-contract gap plus any still-missing reusable result/workspace families and
+residual higher-level copy traps. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across
