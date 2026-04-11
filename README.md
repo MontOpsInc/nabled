@@ -90,12 +90,12 @@ vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `m
 `linear_regression_complex(...)` now also accept typed `out=` result buffers
 (`PcaResult` / `RegressionResult`) under the existing public names, so repeated ML workflows do
 not have to allocate fresh Python result arrays on every call.
-Tensor reconstruction/expansion helpers now follow that same contract where the Rust core already
-has reconstruction `*_into` support: `tensor_hosvd_nd_reconstruct`, `tensor_tucker_expand`,
-`tensor_cp_als3_reconstruct`, `tensor_cp_als_nd_reconstruct`, and `tensor_tt_svd_reconstruct`
-accept caller-provided `out=` arrays instead of forcing fresh tensor materialization on every
-call. `tensor_hosvd3_reconstruct(...)` remains allocation-only for now because the Rust core does
-not yet expose an `into` path for that row.
+Tensor reconstruction/projection/contraction helpers now follow that same contract where the Rust
+core already exposes a truthful `*_into` path: `tensor_hosvd_nd_reconstruct`,
+`tensor_hosvd3_reconstruct`, `tensor_tucker_project`, `tensor_tucker_expand`, `tensor_einsum`,
+`tensor_einsum_complex`, `tensor_cp_als3_reconstruct`, `tensor_cp_als_nd_reconstruct`, and
+`tensor_tt_svd_reconstruct` all accept caller-provided `out=` arrays instead of forcing fresh
+tensor materialization on every call.
 Dense iterative solves now follow the same pattern: `conjugate_gradient(...)`, `gmres(...)`,
 `conjugate_gradient_complex(...)`, and `gmres_complex(...)` all accept `out=` under the existing
 public names, and the complex iterative bindings now use the same view-first NumPy ingress
@@ -106,6 +106,10 @@ shared helper-based view-first boundary instead of bespoke typed-array paths.
 `qr_reconstruct_matrix(...)` now follows the same Rust-backed `out=` contract for both direct and
 pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
 `cholesky_inverse(...)` for repeated factor reuse instead of re-factorizing the original matrix.
+`LuResult` now follows that same pattern for real LU workflows: `lu_solve(...)`,
+`lu_inverse(...)`, `lu_determinant(...)`, and `lu_log_determinant(...)` all accept the typed
+factor result directly, and the solve/inverse rows now also accept `out=` under the existing
+public names.
 Provider-bound mixed-precision refinement helpers are now surfaced explicitly too:
 `lu_solve_mixed(...)`, `sylvester_solve_mixed(...)`, and `lyapunov_solve_mixed(...)` return typed
 Python result objects carrying both the solved array and `refinement_iterations`. Those rows

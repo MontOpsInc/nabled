@@ -1222,6 +1222,47 @@ pub fn einsum<'py>(
     }
 }
 
+/// Binary Einstein summation over real tensors into a caller-provided output array.
+#[pyfunction(name = "tensor_einsum_into")]
+pub fn einsum_into(
+    equation: String,
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (utils::real_arrayd(left, "left")?, utils::real_arrayd(right, "right")?) {
+        (
+            utils::RealReadonlyArrayDyn::F32(left_arr),
+            utils::RealReadonlyArrayDyn::F32(right_arr),
+        ) => {
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::einsum_view_into(
+                &equation,
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::RealReadonlyArrayDyn::F64(left_arr),
+            utils::RealReadonlyArrayDyn::F64(right_arr),
+        ) => {
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::einsum_view_into(
+                &equation,
+                &left_arr.as_array(),
+                &right_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["left", "right", "output"])),
+    }
+}
+
 /// Binary Einstein summation over complex tensors.
 #[pyfunction(name = "tensor_einsum_complex")]
 pub fn einsum_complex<'py>(
@@ -1239,6 +1280,27 @@ pub fn einsum_complex<'py>(
     )
     .map_err(to_py_err)?;
     Ok(PyArrayDyn::from_owned_array(py, standard_arrayd(result)).unbind())
+}
+
+/// Binary Einstein summation over complex tensors into a caller-provided output array.
+#[pyfunction(name = "tensor_einsum_complex_into")]
+pub fn einsum_complex_into(
+    equation: String,
+    left: &Bound<'_, PyArrayDyn<Complex64>>,
+    right: &Bound<'_, PyArrayDyn<Complex64>>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    utils::require_contiguous(left)?;
+    utils::require_contiguous(right)?;
+    let mut output_arr = output_arrayd::<Complex64>(output, "output", "complex128")?;
+    let mut output_view = output_arr.as_array_mut();
+    nabled_linalg::tensor::einsum_complex_view_into(
+        &equation,
+        &left.readonly().as_array(),
+        &right.readonly().as_array(),
+        &mut output_view,
+    )
+    .map_err(to_py_err)
 }
 
 /// HOSVD3 decomposition. Returns `(core, u0, u1, u2)`.
@@ -1318,6 +1380,63 @@ pub fn hosvd3_reconstruct<'py>(
             Ok(utils::pyarray3_from_owned(py, result))
         }
         _ => Err(utils::matching_real_dtype_error(&["core", "u0", "u1", "u2"])),
+    }
+}
+
+/// Reconstruct a cube from an HOSVD3 decomposition into a caller-provided output array.
+#[pyfunction(name = "tensor_hosvd3_reconstruct_into")]
+pub fn hosvd3_reconstruct_into(
+    core: &Bound<'_, PyAny>,
+    u0: &Bound<'_, PyAny>,
+    u1: &Bound<'_, PyAny>,
+    u2: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::real_array3(core, "core")?,
+        utils::real_array2(u0, "u0")?,
+        utils::real_array2(u1, "u1")?,
+        utils::real_array2(u2, "u2")?,
+    ) {
+        (
+            utils::RealReadonlyArray3::F32(core_arr),
+            utils::RealReadonlyArray2::F32(u0_arr),
+            utils::RealReadonlyArray2::F32(u1_arr),
+            utils::RealReadonlyArray2::F32(u2_arr),
+        ) => {
+            let mut output_arr = output_array3::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::hosvd3_reconstruct_into(
+                &nabled_linalg::tensor::Hosvd3Result {
+                    core: core_arr.as_array().to_owned(),
+                    u0:   u0_arr.as_array().to_owned(),
+                    u1:   u1_arr.as_array().to_owned(),
+                    u2:   u2_arr.as_array().to_owned(),
+                },
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::RealReadonlyArray3::F64(core_arr),
+            utils::RealReadonlyArray2::F64(u0_arr),
+            utils::RealReadonlyArray2::F64(u1_arr),
+            utils::RealReadonlyArray2::F64(u2_arr),
+        ) => {
+            let mut output_arr = output_array3::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::hosvd3_reconstruct_into(
+                &nabled_linalg::tensor::Hosvd3Result {
+                    core: core_arr.as_array().to_owned(),
+                    u0:   u0_arr.as_array().to_owned(),
+                    u1:   u1_arr.as_array().to_owned(),
+                    u2:   u2_arr.as_array().to_owned(),
+                },
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["core", "u0", "u1", "u2", "output"])),
     }
 }
 
@@ -1448,6 +1567,39 @@ pub fn tucker_project<'py>(
                 nabled_linalg::tensor::tucker_project_view(&tensor_arr.as_array(), &factors)
                     .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+    }
+}
+
+/// Project a tensor into a Tucker core using per-mode factors into a caller-provided output array.
+#[pyfunction(name = "tensor_tucker_project_into")]
+pub fn tucker_project_into(
+    tensor: &Bound<'_, PyAny>,
+    factors: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_arrayd(tensor, "tensor")? {
+        utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
+            let factors = extract_array2_sequence::<f32>(factors)?;
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::tucker_project_view_into(
+                &tensor_arr.as_array(),
+                &factors,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
+            let factors = extract_array2_sequence::<f64>(factors)?;
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::tucker_project_view_into(
+                &tensor_arr.as_array(),
+                &factors,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
         }
     }
 }

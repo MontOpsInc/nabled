@@ -88,10 +88,9 @@ now expose the same `out=` contract from Python. `tensor_hosvd_nd_reconstruct(..
 caller-provided output buffers, and the Rust tensor core was widened in the same pass so those
 reconstruction `*_into` rows accept generic mutable ndarray outputs instead of forcing owned-array
 outputs at the boundary. This closes another real higher-level materialization pocket without
-introducing a Python-side copy fallback. `tensor_hosvd3_reconstruct(...)` remains allocation-only
-for now because the Rust core still lacks a corresponding `into` row. Validation is green on the
-targeted gates: `cargo check -p pynabled` and `python-quality` (`212 passed, 22 skipped`,
-`91%` Python coverage). Remaining `N-PY-007` work is now narrowed again to the smaller iterative
+introducing a Python-side copy fallback. Validation is green on the targeted gates:
+`cargo check -p pynabled` and `python-quality` (`212 passed, 22 skipped`, `91%` Python
+coverage). Remaining `N-PY-007` work is now narrowed again to the smaller iterative
 complex/layout copy-contract gap plus any still-missing reusable result/workspace families and
 residual higher-level copy traps. A ninth `N-PY-007` iterative allocation-control and
 complex-layout pass is now also landed: dense iterative `conjugate_gradient` / `gmres` now expose
@@ -125,7 +124,35 @@ bindings. Validation is green on the targeted gates: `cargo check -p pynabled`, 
 regression tests (`12 passed`), targeted Rust PCA tests (`20 passed`), and targeted Python ML
 pytest (`15 passed`). Remaining `N-PY-007` work is now narrowed again to the still-missing
 reusable result/workspace families plus any residual higher-level copy traps outside the
-already-landed dense/helper/PCA/regression surfaces. The first
+already-landed dense/helper/PCA/regression surfaces. A twelfth `N-PY-007` tensor-helper
+allocation-control pass is now also landed: `tensor_hosvd3_reconstruct(...)`,
+`tensor_tucker_project(...)`, `tensor_einsum(...)`, and `tensor_einsum_complex(...)` now expose
+caller-provided `out=` buffers under the existing public Python names, and the Rust tensor core
+now exposes the matching real/complex `einsum` `*_into` / view-into rows plus
+`hosvd3_reconstruct_into(...)`. This closes the last obvious tensor-helper “always allocate a new
+output” pocket in the public Python surface without introducing a Python-side fallback path,
+although `tensor_tucker_project(..., out=...)` still flows through the current owned
+core-projection path internally because the Rust tensor core does not yet expose a fully
+workspace-backed Tucker projection variant. Validation is green end-to-end: `cargo check -p
+pynabled`, targeted Rust tensor coverage (`58 passed`), targeted Python tensor pytest (`28
+passed`), `python-quality` (`220 passed, 22 skipped`, `91%` Python coverage), and full
+`just checks` (Rust coverage gate `90.83%`). Remaining `N-PY-007` work is now narrowed again to
+the smaller still-missing reusable result/workspace families plus any residual higher-level
+materialization points outside the already-landed dense/helper/PCA/regression/tensor-helper
+surfaces. A thirteenth `N-PY-007` LU factor-reuse pass is now also landed: `LuResult` now carries
+the pivot metadata needed for repeated LU workflows (`pivots` plus `permutation_sign`),
+`lu_solve(...)` / `lu_inverse(...)` now accept both direct matrix inputs and `LuResult` factor
+inputs with `out=` reuse under the existing public Python names, and `lu_determinant(...)` /
+`lu_log_determinant(...)` now also accept `LuResult` so repeated determinant-style queries no
+longer need to refactor the original matrix. The Rust core now exposes factor-based solve /
+inverse / determinant / log-determinant helpers over LU factors plus pivot views, and the PyO3
+bridge wires those through without Python-side helper math. Validation is green end-to-end:
+`cargo check -p pynabled`, targeted Rust LU coverage (`64 passed`), targeted Python LU pytest
+(`12 passed`), `python-quality` (`223 passed, 22 skipped`, `91%` Python coverage), and full
+`just checks` (Rust coverage gate `90.87%`). Remaining `N-PY-007` work is now narrowed again to
+the smaller still-missing reusable result/workspace families plus any residual higher-level
+materialization points outside the already-landed dense/helper/PCA/regression/tensor-helper/LU
+surfaces. The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across

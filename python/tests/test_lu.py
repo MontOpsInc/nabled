@@ -11,6 +11,8 @@ def test_lu_decompose():
     result = pynabled.lu_decompose(a)
     assert result.l.shape == (2, 2)
     assert result.u.shape == (2, 2)
+    assert result.pivots.dtype == np.int64
+    assert result.permutation_sign in (-1, 1)
     # LU with pivoting: P @ L @ U = A. lu_solve uses factors internally.
 
 
@@ -21,11 +23,64 @@ def test_lu_solve():
     np.testing.assert_allclose(a @ x, b, rtol=1e-10)
 
 
+def test_lu_solve_and_inverse_reuse_output_buffers():
+    a = np.array([[4.0, 1.0], [2.0, 3.0]], dtype=np.float64)
+    b = np.array([1.0, 2.0], dtype=np.float64)
+    solve_out = np.empty_like(b)
+    inverse_out = np.empty_like(a)
+
+    solved = pynabled.lu_solve(a, b, out=solve_out)
+    inverse = pynabled.lu_inverse(a, out=inverse_out)
+
+    assert solved is solve_out
+    assert inverse is inverse_out
+    np.testing.assert_allclose(a @ solve_out, b, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(a @ inverse_out, np.eye(2), rtol=1e-10, atol=1e-12)
+
+
 def test_lu_inverse():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
     inv_a = pynabled.lu_inverse(a)
     np.testing.assert_allclose(a @ inv_a, np.eye(2), rtol=1e-10, atol=1e-14)
     np.testing.assert_allclose(inv_a @ a, np.eye(2), rtol=1e-10, atol=1e-14)
+
+
+def test_lu_result_reuse_for_solve_inverse_and_determinants():
+    a = np.array([[4.0, 1.0], [2.0, 3.0]], dtype=np.float64)
+    b = np.array([1.0, 2.0], dtype=np.float64)
+    factor = pynabled.lu_decompose(a)
+
+    solve_out = np.empty_like(b)
+    inv_out = np.empty_like(a)
+
+    solved = pynabled.lu_solve(factor, b, out=solve_out)
+    inverse = pynabled.lu_inverse(factor, out=inv_out)
+    det = pynabled.lu_determinant(factor)
+    log_det = pynabled.lu_log_determinant(factor)
+
+    assert solved is solve_out
+    assert inverse is inv_out
+    np.testing.assert_allclose(a @ solve_out, b, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(a @ inv_out, np.eye(2), rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(det, np.linalg.det(a), rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(log_det.ln_abs_det, np.linalg.slogdet(a)[1], rtol=1e-10, atol=1e-12)
+
+
+def test_lu_result_reuse_accepts_float32_and_preserves_dtype():
+    a = np.array([[4.0, 1.0], [2.0, 3.0]], dtype=np.float32)
+    b = np.array([1.0, 2.0], dtype=np.float32)
+    factor = pynabled.lu_decompose(a)
+
+    out = np.empty_like(b)
+    inverse_out = np.empty_like(a)
+
+    solved = pynabled.lu_solve(factor, b, out=out)
+    inverse = pynabled.lu_inverse(factor, out=inverse_out)
+
+    assert solved.dtype == np.float32
+    assert inverse.dtype == np.float32
+    np.testing.assert_allclose(a @ solved, b, rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(a @ inverse, np.eye(2, dtype=np.float32), rtol=1e-4, atol=1e-5)
 
 
 def test_lu_determinant():

@@ -77,15 +77,19 @@ the Rust core already exposes `*_into`: `svd_pseudo_inverse`, `svd_reconstruct_m
 reuse result storage instead of forcing fresh Python allocations on every call.
 `svd_condition_number(...)` and `svd_rank(...)` now read singular values directly instead of
 rebuilding owned intermediary SVD objects.
-Tensor reconstruction/expansion helpers now also reuse caller-provided outputs where the Rust core
-already has reconstruction `*_into` coverage: `tensor_hosvd_nd_reconstruct`,
-`tensor_tucker_expand`, `tensor_cp_als3_reconstruct`, `tensor_cp_als_nd_reconstruct`, and
-`tensor_tt_svd_reconstruct` all accept `out=` under the same dtype/rank/shape contract instead of
-always materializing fresh tensors. `tensor_hosvd3_reconstruct(...)` remains allocation-only for
-now because the current Rust tensor API still lacks a matching `into` path.
+Tensor reconstruction/projection/contraction helpers now also reuse caller-provided outputs where
+the Rust core already has truthful `*_into` coverage: `tensor_hosvd_nd_reconstruct`,
+`tensor_hosvd3_reconstruct`, `tensor_tucker_project`, `tensor_tucker_expand`,
+`tensor_einsum`, `tensor_einsum_complex`, `tensor_cp_als3_reconstruct`,
+`tensor_cp_als_nd_reconstruct`, and `tensor_tt_svd_reconstruct` all accept `out=` under the same
+dtype/rank/shape contract instead of always materializing fresh tensors.
 `qr_reconstruct_matrix(...)` now follows the same Rust-backed `out=` contract for both direct and
 pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
 `cholesky_inverse(...)` for repeated factor reuse instead of re-factorizing the original matrix.
+`LuResult` now follows that same typed factor-reuse contract for real LU workflows:
+`lu_solve(...)`, `lu_inverse(...)`, `lu_determinant(...)`, and `lu_log_determinant(...)` all
+accept the factor result directly, and the solve/inverse rows also accept `out=` under the
+existing public names.
 
 Where the Rust core already exposes reusable scratch/workspace objects, the Python API now keeps
 that contract visible too. `PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`, and

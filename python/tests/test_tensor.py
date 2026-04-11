@@ -216,12 +216,23 @@ def _tt_reference():
 
 def test_tensor_reconstruction_helpers_reuse_output_buffers():
     cube = np.arange(60, dtype=np.float64).reshape(3, 4, 5)
+    hosvd3 = pynabled.tensor_hosvd3(cube, 3, 4, 5)
     hosvd_nd = pynabled.tensor_hosvd_nd(cube, [3, 4, 5])
+
+    hosvd3_out = np.empty(cube.shape, dtype=np.float64, order="F")
+    returned_hosvd3 = pynabled.tensor_hosvd3_reconstruct(hosvd3, out=hosvd3_out)
+    assert returned_hosvd3 is hosvd3_out
+    np.testing.assert_allclose(hosvd3_out, cube, rtol=1e-10, atol=1e-10)
 
     hosvd_nd_out = np.empty(cube.shape, dtype=np.float64, order="F")
     returned_hosvd_nd = pynabled.tensor_hosvd_nd_reconstruct(hosvd_nd, out=hosvd_nd_out)
     assert returned_hosvd_nd is hosvd_nd_out
     np.testing.assert_allclose(hosvd_nd_out, cube, rtol=1e-10, atol=1e-10)
+
+    projected_out = np.empty(hosvd_nd.core.shape, dtype=np.float64, order="F")
+    returned_projected = pynabled.tensor_tucker_project(cube, hosvd_nd, out=projected_out)
+    assert returned_projected is projected_out
+    np.testing.assert_allclose(projected_out, hosvd_nd.core, rtol=1e-10, atol=1e-10)
 
     tucker_out = np.empty(cube.shape, dtype=np.float64, order="F")
     returned_tucker = pynabled.tensor_tucker_expand(hosvd_nd, out=tucker_out)
@@ -263,10 +274,19 @@ def test_tensor_reconstruction_helpers_reuse_output_buffers():
 
 def test_tensor_reconstruction_helpers_reject_wrong_output_dtype():
     cube = np.arange(60, dtype=np.float64).reshape(3, 4, 5)
+    hosvd3 = pynabled.tensor_hosvd3(cube, 3, 4, 5)
     hosvd_nd = pynabled.tensor_hosvd_nd(cube, [3, 4, 5])
+    bad_hosvd3_out = np.empty(cube.shape, dtype=np.float32)
+    with pytest.raises(TypeError, match="output must be a writable NumPy array with dtype float64 and rank 3"):
+        pynabled.tensor_hosvd3_reconstruct(hosvd3, out=bad_hosvd3_out)
+
     bad_hosvd_out = np.empty(cube.shape, dtype=np.float32)
     with pytest.raises(TypeError, match="output must be a writable NumPy array with dtype float64"):
         pynabled.tensor_hosvd_nd_reconstruct(hosvd_nd, out=bad_hosvd_out)
+
+    bad_projected_out = np.empty(hosvd_nd.core.shape, dtype=np.float32)
+    with pytest.raises(TypeError, match="output must be a writable NumPy array with dtype float64"):
+        pynabled.tensor_tucker_project(cube, hosvd_nd, out=bad_projected_out)
 
     cp3_weights, cp3_factor_0, cp3_factor_1, cp3_factor_2 = _cp_als3_reference()
     cp3 = pynabled.CpAls3Result(
@@ -363,6 +383,45 @@ def test_tensor_complex_kernels_and_einsum():
         rtol=1e-10,
         atol=1e-10,
     )
+
+
+def test_tensor_einsum_reuses_output_buffers():
+    left = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+    right = np.arange(40, dtype=np.float64).reshape(2, 4, 5)
+    expected = np.einsum("bij,bjk->bik", left, right)
+
+    out = np.empty(expected.shape, dtype=np.float64, order="F")
+    returned = pynabled.tensor_einsum("bij,bjk->bik", left, right, out=out)
+    assert returned is out
+    np.testing.assert_allclose(out, expected, rtol=1e-10, atol=1e-10)
+
+    left_complex = (left + 1j * (left + 1)).astype(np.complex128)
+    right_complex = (right - 1j * (right + 2)).astype(np.complex128)
+    expected_complex = np.einsum("bij,bjk->bik", left_complex, right_complex)
+
+    out_complex = np.empty(expected_complex.shape, dtype=np.complex128, order="F")
+    returned_complex = pynabled.tensor_einsum_complex(
+        "bij,bjk->bik",
+        left_complex,
+        right_complex,
+        out=out_complex,
+    )
+    assert returned_complex is out_complex
+    np.testing.assert_allclose(out_complex, expected_complex, rtol=1e-10, atol=1e-10)
+
+
+def test_tensor_einsum_rejects_wrong_output_dtype():
+    left = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+    right = np.arange(40, dtype=np.float64).reshape(2, 4, 5)
+    bad_out = np.empty((2, 3, 5), dtype=np.float32)
+    with pytest.raises(TypeError, match="output must be a writable NumPy array with dtype float64"):
+        pynabled.tensor_einsum("bij,bjk->bik", left, right, out=bad_out)
+
+    left_complex = (left + 1j * left).astype(np.complex128)
+    right_complex = (right - 1j * right).astype(np.complex128)
+    bad_complex_out = np.empty((2, 3, 5), dtype=np.float64)
+    with pytest.raises(TypeError, match="output must be a writable NumPy array with dtype complex128"):
+        pynabled.tensor_einsum_complex("bij,bjk->bik", left_complex, right_complex, out=bad_complex_out)
 
 
 def test_tensor_decompositions_accept_fortran_order_inputs():

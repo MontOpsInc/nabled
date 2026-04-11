@@ -6,7 +6,7 @@ use std::ops::{AddAssign, Mul};
 use nabled_core::scalar::NabledReal;
 use ndarray::{
     Array1, Array2, Array3, ArrayBase, ArrayD, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2,
-    ArrayViewMut3, Axis, DataMut, IxDyn, s,
+    ArrayViewMut3, Axis, DataMut, Ix3, IxDyn, s,
 };
 use num_complex::Complex64;
 
@@ -2073,6 +2073,91 @@ fn einsum_binary_impl<T: NabledReal>(
     Ok(output)
 }
 
+fn einsum_binary_into_impl<T, S>(
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
+    left_labels: &[char],
+    right_labels: &[char],
+    output_labels: &[char],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    if left_labels.len() != left.ndim() || right_labels.len() != right.ndim() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if !validate_einsum_label_set(left_labels)
+        || !validate_einsum_label_set(right_labels)
+        || !validate_einsum_label_set(output_labels)
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let dims = build_einsum_dimensions(left, right, left_labels, right_labels)?;
+    for label in output_labels {
+        if !dims.contains_key(label) {
+            return Err(TensorError::DimensionMismatch);
+        }
+    }
+
+    let union = union_labels(left_labels, right_labels);
+    let sum_labels =
+        union.iter().copied().filter(|label| !output_labels.contains(label)).collect::<Vec<_>>();
+    let output_shape = output_labels
+        .iter()
+        .map(|label| dims.get(label).copied().unwrap_or(0))
+        .collect::<Vec<_>>();
+    let sum_shape =
+        sum_labels.iter().map(|label| dims.get(label).copied().unwrap_or(0)).collect::<Vec<_>>();
+    if output.shape() != output_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let output_size = shape_product(&output_shape);
+    let sum_size = shape_product(&sum_shape);
+    let mut output_coords = vec![0_usize; output_shape.len()];
+    let mut sum_coords = vec![0_usize; sum_shape.len()];
+    let label_to_slot = label_index_map(&union);
+    let mut label_values = vec![0_usize; union.len()];
+    let left_label_pos = label_index_map(left_labels);
+    let right_label_pos = label_index_map(right_labels);
+
+    for output_flat in 0..output_size {
+        decode_flat_index(output_flat, &output_shape, &mut output_coords);
+        for (&label, &coord) in output_labels.iter().zip(output_coords.iter()) {
+            let slot = label_to_slot[&label];
+            label_values[slot] = coord;
+        }
+
+        let mut sum = T::zero();
+        for sum_flat in 0..sum_size {
+            decode_flat_index(sum_flat, &sum_shape, &mut sum_coords);
+            for (&label, &coord) in sum_labels.iter().zip(sum_coords.iter()) {
+                let slot = label_to_slot[&label];
+                label_values[slot] = coord;
+            }
+
+            let mut left_index = vec![0_usize; left_labels.len()];
+            for (&label, &position) in &left_label_pos {
+                let slot = label_to_slot[&label];
+                left_index[position] = label_values[slot];
+            }
+            let mut right_index = vec![0_usize; right_labels.len()];
+            for (&label, &position) in &right_label_pos {
+                let slot = label_to_slot[&label];
+                right_index[position] = label_values[slot];
+            }
+            sum += left[IxDyn(&left_index)] * right[IxDyn(&right_index)];
+        }
+
+        output[IxDyn(&output_coords)] = sum;
+    }
+
+    Ok(())
+}
+
 fn einsum_binary_impl_complex(
     left: &ArrayViewD<'_, Complex64>,
     right: &ArrayViewD<'_, Complex64>,
@@ -2151,6 +2236,90 @@ fn einsum_binary_impl_complex(
     Ok(output)
 }
 
+fn einsum_binary_into_impl_complex<S>(
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
+    left_labels: &[char],
+    right_labels: &[char],
+    output_labels: &[char],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    if left_labels.len() != left.ndim() || right_labels.len() != right.ndim() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if !validate_einsum_label_set(left_labels)
+        || !validate_einsum_label_set(right_labels)
+        || !validate_einsum_label_set(output_labels)
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let dims = build_einsum_dimensions_complex(left, right, left_labels, right_labels)?;
+    for label in output_labels {
+        if !dims.contains_key(label) {
+            return Err(TensorError::DimensionMismatch);
+        }
+    }
+
+    let union = union_labels(left_labels, right_labels);
+    let sum_labels =
+        union.iter().copied().filter(|label| !output_labels.contains(label)).collect::<Vec<_>>();
+    let output_shape = output_labels
+        .iter()
+        .map(|label| dims.get(label).copied().unwrap_or(0))
+        .collect::<Vec<_>>();
+    let sum_shape =
+        sum_labels.iter().map(|label| dims.get(label).copied().unwrap_or(0)).collect::<Vec<_>>();
+    if output.shape() != output_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let output_size = shape_product(&output_shape);
+    let sum_size = shape_product(&sum_shape);
+    let mut output_coords = vec![0_usize; output_shape.len()];
+    let mut sum_coords = vec![0_usize; sum_shape.len()];
+    let label_to_slot = label_index_map(&union);
+    let mut label_values = vec![0_usize; union.len()];
+    let left_label_pos = label_index_map(left_labels);
+    let right_label_pos = label_index_map(right_labels);
+
+    for output_flat in 0..output_size {
+        decode_flat_index(output_flat, &output_shape, &mut output_coords);
+        for (&label, &coord) in output_labels.iter().zip(output_coords.iter()) {
+            let slot = label_to_slot[&label];
+            label_values[slot] = coord;
+        }
+
+        let mut sum = Complex64::new(0.0, 0.0);
+        for sum_flat in 0..sum_size {
+            decode_flat_index(sum_flat, &sum_shape, &mut sum_coords);
+            for (&label, &coord) in sum_labels.iter().zip(sum_coords.iter()) {
+                let slot = label_to_slot[&label];
+                label_values[slot] = coord;
+            }
+
+            let mut left_index = vec![0_usize; left_labels.len()];
+            for (&label, &position) in &left_label_pos {
+                let slot = label_to_slot[&label];
+                left_index[position] = label_values[slot];
+            }
+            let mut right_index = vec![0_usize; right_labels.len()];
+            for (&label, &position) in &right_label_pos {
+                let slot = label_to_slot[&label];
+                right_index[position] = label_values[slot];
+            }
+            sum += left[IxDyn(&left_index)] * right[IxDyn(&right_index)];
+        }
+
+        output[IxDyn(&output_coords)] = sum;
+    }
+
+    Ok(())
+}
+
 /// Evaluate two-operand Einstein summation over real tensors.
 ///
 /// Expression format: `"labels_left,labels_right->labels_out"`, for example
@@ -2186,6 +2355,46 @@ pub fn einsum_view<T: NabledReal>(
     einsum_binary_impl(&left_view, &right_view, &left_labels, &right_labels, &output_labels)
 }
 
+/// Evaluate two-operand Einstein summation over real tensors into `output`.
+///
+/// # Errors
+/// Returns an error if expression syntax is invalid, dimensions are incompatible, or output shape
+/// mismatches.
+pub fn einsum_into<T: NabledReal, S: DataMut<Elem = T>>(
+    expression: &str,
+    left: &ArrayD<T>,
+    right: &ArrayD<T>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    einsum_view_into(expression, &left.view(), &right.view(), output)
+}
+
+/// Evaluate two-operand Einstein summation over real tensor views into `output`.
+///
+/// # Errors
+/// Returns an error if expression syntax is invalid, dimensions are incompatible, or output shape
+/// mismatches.
+pub fn einsum_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    expression: &str,
+    left: &ArrayViewD<'_, T>,
+    right: &ArrayViewD<'_, T>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty(&left_view)?;
+    validate_tensor_nd_non_empty(&right_view)?;
+    let (left_labels, right_labels, output_labels) = parse_einsum_two_operands(expression)?;
+    einsum_binary_into_impl(
+        &left_view,
+        &right_view,
+        &left_labels,
+        &right_labels,
+        &output_labels,
+        output,
+    )
+}
+
 /// Evaluate two-operand Einstein summation over complex tensors.
 ///
 /// Expression format: `"labels_left,labels_right->labels_out"`, for example
@@ -2219,6 +2428,46 @@ pub fn einsum_complex_view(
     validate_tensor_nd_non_empty_complex(&right_view)?;
     let (left_labels, right_labels, output_labels) = parse_einsum_two_operands(expression)?;
     einsum_binary_impl_complex(&left_view, &right_view, &left_labels, &right_labels, &output_labels)
+}
+
+/// Evaluate two-operand Einstein summation over complex tensors into `output`.
+///
+/// # Errors
+/// Returns an error if expression syntax is invalid, dimensions are incompatible, or output shape
+/// mismatches.
+pub fn einsum_complex_into<S: DataMut<Elem = Complex64>>(
+    expression: &str,
+    left: &ArrayD<Complex64>,
+    right: &ArrayD<Complex64>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    einsum_complex_view_into(expression, &left.view(), &right.view(), output)
+}
+
+/// Evaluate two-operand Einstein summation over complex tensor views into `output`.
+///
+/// # Errors
+/// Returns an error if expression syntax is invalid, dimensions are incompatible, or output shape
+/// mismatches.
+pub fn einsum_complex_view_into<S: DataMut<Elem = Complex64>>(
+    expression: &str,
+    left: &ArrayViewD<'_, Complex64>,
+    right: &ArrayViewD<'_, Complex64>,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    let left_view = left.view();
+    let right_view = right.view();
+    validate_tensor_nd_non_empty_complex(&left_view)?;
+    validate_tensor_nd_non_empty_complex(&right_view)?;
+    let (left_labels, right_labels, output_labels) = parse_einsum_two_operands(expression)?;
+    einsum_binary_into_impl_complex(
+        &left_view,
+        &right_view,
+        &left_labels,
+        &right_labels,
+        &output_labels,
+        output,
+    )
 }
 
 fn mode0_product<T: NabledReal>(
@@ -2934,7 +3183,7 @@ pub fn cp_als3_reconstruct<T: NabledReal>(
 /// Returns an error if factor dimensions are incompatible.
 pub fn cp_als3_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     result: &CpAls3Result<T>,
-    output: &mut ArrayBase<S, ndarray::Ix3>,
+    output: &mut ArrayBase<S, Ix3>,
 ) -> Result<(), TensorError> {
     let rank = result.weights.len();
     if rank == 0
@@ -3289,6 +3538,43 @@ pub fn hosvd3_reconstruct<T: NabledReal>(
     mode2_product(&mode1, &result.u2)
 }
 
+/// Reconstruct a rank-3 tensor from HOSVD factors into `output`.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible or output shape mismatches.
+pub fn hosvd3_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
+    result: &Hosvd3Result<T>,
+    output: &mut ArrayBase<S, Ix3>,
+) -> Result<(), TensorError> {
+    let (r0, r1, r2) = result.core.dim();
+    if result.u0.ncols() != r0
+        || result.u1.ncols() != r1
+        || result.u2.ncols() != r2
+        || output.dim() != (result.u0.nrows(), result.u1.nrows(), result.u2.nrows())
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    for i in 0..output.dim().0 {
+        for j in 0..output.dim().1 {
+            for k in 0..output.dim().2 {
+                let mut value = T::zero();
+                for a in 0..r0 {
+                    let u0 = result.u0[[i, a]];
+                    for b in 0..r1 {
+                        let u1 = result.u1[[j, b]];
+                        for c in 0..r2 {
+                            value += result.core[[a, b, c]] * u0 * u1 * result.u2[[k, c]];
+                        }
+                    }
+                }
+                output[[i, j, k]] = value;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn mode_axes_order(ndim: usize, mode: usize) -> Result<Vec<usize>, TensorError> {
     if mode >= ndim {
         return Err(TensorError::DimensionMismatch);
@@ -3602,6 +3888,37 @@ pub fn tucker_project_view<T: NabledReal>(
 ) -> Result<ArrayD<T>, TensorError> {
     validate_tucker_factors_for_tensor(tensor, factors)?;
     core_from_factors_nd(tensor, factors)
+}
+
+/// Project an `N`-D tensor into a Tucker core using per-mode factors into `output`.
+///
+/// # Errors
+/// Returns an error if tensor/factor dimensions are incompatible or output shape mismatches.
+pub fn tucker_project_into<T: NabledReal, S: DataMut<Elem = T>>(
+    tensor: &ArrayD<T>,
+    factors: &[Array2<T>],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    tucker_project_view_into(&tensor.view(), factors, output)
+}
+
+/// Project an `N`-D tensor view into a Tucker core using per-mode factors into `output`.
+///
+/// # Errors
+/// Returns an error if tensor/factor dimensions are incompatible or output shape mismatches.
+pub fn tucker_project_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    tensor: &ArrayViewD<'_, T>,
+    factors: &[Array2<T>],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    validate_tucker_factors_for_tensor(tensor, factors)?;
+    let expected_shape = factors.iter().map(Array2::ncols).collect::<Vec<_>>();
+    if output.shape() != expected_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let projected = core_from_factors_nd(tensor, factors)?;
+    output.assign(&projected);
+    Ok(())
 }
 
 /// Expand a Tucker core into the original tensor space using per-mode factors.
@@ -4922,6 +5239,60 @@ mod tests {
     }
 
     #[test]
+    fn einsum_into_variants_match_allocating_paths() {
+        let left =
+            ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), (0..12).map(f64::from).collect()).unwrap();
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 4]),
+            (0..24).map(|value| f64::from(value) * 0.5_f64).collect(),
+        )
+        .unwrap();
+
+        let allocating = einsum("bij,bjk->bik", &left, &right).unwrap();
+        let viewed = einsum_view("bij,bjk->bik", &left.view(), &right.view()).unwrap();
+        let mut into = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 4]));
+        einsum_into("bij,bjk->bik", &left, &right, &mut into).unwrap();
+        let mut view_into = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 4]));
+        einsum_view_into("bij,bjk->bik", &left.view(), &right.view(), &mut view_into).unwrap();
+
+        for (((lhs, rhs), into_value), view_into_value) in
+            allocating.iter().zip(viewed.iter()).zip(into.iter()).zip(view_into.iter())
+        {
+            assert!((lhs - rhs).abs() < 1e-12_f64);
+            assert!((lhs - into_value).abs() < 1e-12_f64);
+            assert!((lhs - view_into_value).abs() < 1e-12_f64);
+        }
+
+        let left_complex = left.mapv(|value| Complex64::new(value, value + 1.0_f64));
+        let right_complex = right.mapv(|value| Complex64::new(value - 0.5_f64, -value));
+        let allocating_complex =
+            einsum_complex("bij,bjk->bik", &left_complex, &right_complex).unwrap();
+        let mut into_complex = ArrayD::<Complex64>::zeros(IxDyn(&[2, 2, 4]));
+        einsum_complex_into("bij,bjk->bik", &left_complex, &right_complex, &mut into_complex)
+            .unwrap();
+        let mut view_into_complex = ArrayD::<Complex64>::zeros(IxDyn(&[2, 2, 4]));
+        einsum_complex_view_into(
+            "bij,bjk->bik",
+            &left_complex.view(),
+            &right_complex.view(),
+            &mut view_into_complex,
+        )
+        .unwrap();
+        for ((lhs, rhs), view_rhs) in
+            allocating_complex.iter().zip(into_complex.iter()).zip(view_into_complex.iter())
+        {
+            assert!((*lhs - *rhs).norm() < 1e-12_f64);
+            assert!((*lhs - *view_rhs).norm() < 1e-12_f64);
+        }
+
+        let mut bad_output = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 5]));
+        assert!(matches!(
+            einsum_view_into("bij,bjk->bik", &left.view(), &right.view(), &mut bad_output),
+            Err(TensorError::DimensionMismatch)
+        ));
+    }
+
+    #[test]
     fn hosvd3_roundtrip_is_consistent() {
         let cube = Array3::from_shape_vec((3, 3, 2), vec![
             1.0_f64, 0.5_f64, 2.0_f64, -1.0_f64, 0.0_f64, 1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64,
@@ -4934,6 +5305,28 @@ mod tests {
         for (lhs, rhs) in reconstructed.iter().zip(cube.iter()) {
             assert!((lhs - rhs).abs() < 1e-8_f64);
         }
+    }
+
+    #[test]
+    fn hosvd3_reconstruct_into_matches_allocating_path_and_rejects_bad_shape() {
+        let cube = Array3::from_shape_vec((3, 3, 2), vec![
+            1.0_f32, 0.5_f32, 2.0_f32, -1.0_f32, 0.0_f32, 1.0_f32, 0.0_f32, 2.0_f32, 1.0_f32,
+            1.5_f32, 3.0_f32, 0.0_f32, -1.0_f32, 1.0_f32, 2.5_f32, -0.5_f32, 0.5_f32, 2.0_f32,
+        ])
+        .unwrap();
+        let decomposition = hosvd3(&cube, (3, 3, 2)).unwrap();
+        let allocating = hosvd3_reconstruct(&decomposition).unwrap();
+        let mut into = Array3::<f32>::zeros(cube.dim());
+        hosvd3_reconstruct_into(&decomposition, &mut into).unwrap();
+        for (lhs, rhs) in allocating.iter().zip(into.iter()) {
+            assert!((lhs - rhs).abs() < 1e-5_f32);
+        }
+
+        let mut bad_output = Array3::<f32>::zeros((3, 2, 3));
+        assert!(matches!(
+            hosvd3_reconstruct_into(&decomposition, &mut bad_output),
+            Err(TensorError::DimensionMismatch)
+        ));
     }
 
     #[test]
@@ -5211,6 +5604,44 @@ mod tests {
             assert!((owned - viewed).abs() < 1.0e-5_f32);
             assert!((owned - into_value).abs() < 1.0e-5_f32);
         }
+    }
+
+    #[test]
+    fn tucker_project_into_matches_allocating_path_and_rejects_bad_shape() {
+        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
+            1.0_f32, 0.5_f32, -0.2_f32, 0.8_f32, 0.7_f32, -0.1_f32, 0.3_f32, 1.2_f32, -0.4_f32,
+            0.6_f32, 0.9_f32, 0.2_f32,
+        ])
+        .unwrap();
+        let factors = vec![
+            Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
+            Array2::from_shape_vec((3, 2), vec![
+                1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32,
+            ])
+            .unwrap(),
+            Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
+        ];
+
+        let allocating = tucker_project(&tensor, &factors).unwrap();
+        let viewed = tucker_project_view(&tensor.view(), &factors).unwrap();
+        let mut into = ArrayD::<f32>::zeros(IxDyn(&[2, 2, 2]));
+        tucker_project_into(&tensor, &factors, &mut into).unwrap();
+        let mut view_into = ArrayD::<f32>::zeros(IxDyn(&[2, 2, 2]));
+        tucker_project_view_into(&tensor.view(), &factors, &mut view_into).unwrap();
+
+        for (((lhs, rhs), into_value), view_into_value) in
+            allocating.iter().zip(viewed.iter()).zip(into.iter()).zip(view_into.iter())
+        {
+            assert!((lhs - rhs).abs() < 1.0e-5_f32);
+            assert!((lhs - into_value).abs() < 1.0e-5_f32);
+            assert!((lhs - view_into_value).abs() < 1.0e-5_f32);
+        }
+
+        let mut bad_output = ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3]));
+        assert!(matches!(
+            tucker_project_view_into(&tensor.view(), &factors, &mut bad_output),
+            Err(TensorError::DimensionMismatch)
+        ));
     }
 
     #[test]

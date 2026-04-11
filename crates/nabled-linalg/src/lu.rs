@@ -3,7 +3,10 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{
+    Array1, Array2, ArrayBase, ArrayView1, ArrayView2, ArrayViewMut1, ArrayViewMut2, DataMut, Ix1,
+    Ix2,
+};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, lu_decompose};
@@ -299,6 +302,131 @@ fn decompose_internal<T: NabledReal>(
     Ok((NdarrayLUResult { l, u }, pivots, sign))
 }
 
+fn validate_factor_shapes<T>(
+    lower_factor: &ArrayView2<'_, T>,
+    upper_factor: &ArrayView2<'_, T>,
+) -> Result<usize, LUError> {
+    if lower_factor.is_empty() || upper_factor.is_empty() {
+        return Err(LUError::EmptyMatrix);
+    }
+    if lower_factor.nrows() != lower_factor.ncols()
+        || upper_factor.nrows() != upper_factor.ncols()
+        || lower_factor.dim() != upper_factor.dim()
+    {
+        return Err(LUError::InvalidInput(
+            "LU factors must both be square with matching dimensions".to_string(),
+        ));
+    }
+    Ok(lower_factor.nrows())
+}
+
+fn pivot_index<I: Copy + TryInto<usize>>(pivot: I, n: usize) -> Result<usize, LUError> {
+    let Ok(index) = pivot.try_into() else {
+        return Err(LUError::InvalidInput(
+            "pivot indices must be non-negative and representable as usize".to_string(),
+        ));
+    };
+    if index >= n {
+        return Err(LUError::InvalidInput(
+            "pivot indices must be within matrix dimensions".to_string(),
+        ));
+    }
+    Ok(index)
+}
+
+fn solve_from_factor_into_impl<T, I>(
+    lower_factor: &ArrayView2<'_, T>,
+    upper_factor: &ArrayView2<'_, T>,
+    pivots: &ArrayView1<'_, I>,
+    rhs: &ArrayView1<'_, T>,
+    mut output: ArrayViewMut1<'_, T>,
+) -> Result<(), LUError>
+where
+    T: NabledReal,
+    I: Copy + TryInto<usize>,
+{
+    let n = validate_factor_shapes(lower_factor, upper_factor)?;
+    if pivots.len() != n || rhs.len() != n || output.len() != n {
+        return Err(LUError::InvalidInput(
+            "LU factors, pivots, RHS, and output must all have matching dimensions".to_string(),
+        ));
+    }
+
+    let mut permuted_rhs = Array1::<T>::zeros(n);
+    for i in 0..n {
+        permuted_rhs[i] = rhs[pivot_index(pivots[i], n)?];
+    }
+
+    let mut y = Array1::<T>::zeros(n);
+    for i in 0..n {
+        let mut sum = permuted_rhs[i];
+        for j in 0..i {
+            sum -= lower_factor[[i, j]] * y[j];
+        }
+        y[i] = sum;
+    }
+
+    for i_rev in 0..n {
+        let i = n - 1 - i_rev;
+        let mut sum = y[i];
+        for j in (i + 1)..n {
+            sum -= upper_factor[[i, j]] * output[j];
+        }
+        let diagonal = upper_factor[[i, i]];
+        if diagonal.abs() <= T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon())
+        {
+            return Err(LUError::SingularMatrix);
+        }
+        output[i] = sum / diagonal;
+    }
+    Ok(())
+}
+
+fn inverse_from_factor_into_impl<T, I>(
+    lower_factor: &ArrayView2<'_, T>,
+    upper_factor: &ArrayView2<'_, T>,
+    pivots: &ArrayView1<'_, I>,
+    mut output: ArrayViewMut2<'_, T>,
+) -> Result<(), LUError>
+where
+    T: NabledReal,
+    I: Copy + TryInto<usize>,
+{
+    let n = validate_factor_shapes(lower_factor, upper_factor)?;
+    if pivots.len() != n || output.dim() != (n, n) {
+        return Err(LUError::InvalidInput(
+            "LU factors, pivots, and output must all have matching dimensions".to_string(),
+        ));
+    }
+
+    for col in 0..n {
+        let mut basis = Array1::<T>::zeros(n);
+        basis[col] = T::one();
+        let column = output.column_mut(col);
+        solve_from_factor_into_impl(lower_factor, upper_factor, pivots, &basis.view(), column)?;
+    }
+    Ok(())
+}
+
+fn determinant_from_factor_impl<T: NabledReal>(
+    upper_factor: &ArrayView2<'_, T>,
+    permutation_sign: i8,
+) -> Result<T, LUError> {
+    validate_square_finite_view(upper_factor)?;
+    if !matches!(permutation_sign, -1 | 1) {
+        return Err(LUError::InvalidInput("permutation sign must be -1 or 1".to_string()));
+    }
+
+    let mut determinant = if permutation_sign >= 0 { T::one() } else { -T::one() };
+    for i in 0..upper_factor.nrows() {
+        determinant *= upper_factor[[i, i]];
+    }
+    if !determinant.is_finite() {
+        return Err(LUError::NumericalInstability);
+    }
+    Ok(determinant)
+}
+
 #[cfg(not(feature = "magma-system"))]
 fn mixed_lu_requires_magma_error() -> LUError {
     LUError::InvalidInput("mixed LU solve requires feature `magma-system`".to_string())
@@ -381,7 +509,7 @@ where
         }
         #[cfg(not(feature = "lapack-provider"))]
         {
-            let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+            let (decomposition, pivots, _) = decompose_view_with_metadata(matrix)?;
             return lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs)
                 .map_err(map_lu_error);
         }
@@ -397,7 +525,7 @@ where
                 }
                 #[cfg(not(feature = "lapack-provider"))]
                 {
-                    let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+                    let (decomposition, pivots, _) = decompose_view_with_metadata(matrix)?;
                     return lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs)
                         .map_err(map_lu_error);
                 }
@@ -420,7 +548,7 @@ where
         }
         #[cfg(not(feature = "lapack-provider"))]
         {
-            let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+            let (decomposition, pivots, _) = decompose_view_with_metadata(matrix)?;
             return inverse_from_lu(&decomposition.l, &decomposition.u, &pivots)
                 .map_err(map_lu_error);
         }
@@ -436,7 +564,7 @@ where
                 }
                 #[cfg(not(feature = "lapack-provider"))]
                 {
-                    let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+                    let (decomposition, pivots, _) = decompose_view_with_metadata(matrix)?;
                     return inverse_from_lu(&decomposition.l, &decomposition.u, &pivots)
                         .map_err(map_lu_error);
                 }
@@ -459,7 +587,7 @@ where
         }
         #[cfg(not(feature = "lapack-provider"))]
         {
-            let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
+            let (decomposition, _, sign) = decompose_view_with_metadata(matrix)?;
             let mut determinant = if sign >= 0 { T::one() } else { -T::one() };
             for i in 0..decomposition.u.nrows() {
                 determinant *= decomposition.u[[i, i]];
@@ -481,7 +609,7 @@ where
                 }
                 #[cfg(not(feature = "lapack-provider"))]
                 {
-                    let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
+                    let (decomposition, _, sign) = decompose_view_with_metadata(matrix)?;
                     let mut determinant = if sign >= 0 { T::one() } else { -T::one() };
                     for i in 0..decomposition.u.nrows() {
                         determinant *= decomposition.u[[i, i]];
@@ -520,7 +648,7 @@ fn solve_mixed_f64_provider(
                 }
                 #[cfg(not(feature = "lapack-provider"))]
                 {
-                    let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+                    let (decomposition, pivots, _) = decompose_view_with_metadata(matrix)?;
                     let solution = lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs)
                         .map_err(map_lu_error)?;
                     return Ok(MixedSolveResult { solution, refinement_iterations: 0 });
@@ -779,10 +907,28 @@ fn determinant_complex_provider(matrix: &ArrayView2<'_, Complex64>) -> Result<Co
     matrix.det().map_err(|_| LUError::SingularMatrix)
 }
 
-fn decompose_with_metadata<T: NabledReal>(
+/// Compute LU decomposition with partial pivoting and return the factorization metadata.
+///
+/// The returned tuple contains `(result, pivots, permutation_sign)`, where `result` stores the
+/// `L` and `U` factors, `pivots` stores the permutation indices, and `permutation_sign` is `-1`
+/// or `1` depending on the pivot parity.
+///
+/// # Errors
+/// Returns an error if input is invalid or decomposition fails.
+pub fn decompose_view_with_metadata<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<(NdarrayLUResult<T>, Vec<usize>, i8), LUError> {
     decompose_internal(matrix)
+}
+
+/// Compute LU decomposition with partial pivoting and return the factorization metadata.
+///
+/// # Errors
+/// Returns an error if input is invalid or decomposition fails.
+pub fn decompose_with_metadata<T: NabledReal>(
+    matrix: &Array2<T>,
+) -> Result<(NdarrayLUResult<T>, Vec<usize>, i8), LUError> {
+    decompose_view_with_metadata(&matrix.view())
 }
 
 /// Compute LU decomposition with partial pivoting.
@@ -790,7 +936,7 @@ fn decompose_with_metadata<T: NabledReal>(
 /// # Errors
 /// Returns an error if input is invalid or decomposition fails.
 pub fn decompose<T: NabledReal>(matrix: &Array2<T>) -> Result<NdarrayLUResult<T>, LUError> {
-    let (result, _, _) = decompose_with_metadata(&matrix.view())?;
+    let (result, _, _) = decompose_view_with_metadata(&matrix.view())?;
     Ok(result)
 }
 
@@ -801,8 +947,117 @@ pub fn decompose<T: NabledReal>(matrix: &Array2<T>) -> Result<NdarrayLUResult<T>
 pub fn decompose_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarrayLUResult<T>, LUError> {
-    let (result, _, _) = decompose_with_metadata(matrix)?;
+    let (result, _, _) = decompose_view_with_metadata(matrix)?;
     Ok(result)
+}
+
+/// Solve `Ax=b` from precomputed LU factors.
+///
+/// # Errors
+/// Returns an error if the factor shapes, pivots, or right-hand side are incompatible, or if the
+/// factorization is singular.
+pub fn solve_from_factor_view<T, I>(
+    lower_factor: &ArrayView2<'_, T>,
+    upper_factor: &ArrayView2<'_, T>,
+    pivots: &ArrayView1<'_, I>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, LUError>
+where
+    T: NabledReal,
+    I: Copy + TryInto<usize>,
+{
+    let mut output = Array1::<T>::zeros(rhs.len());
+    solve_from_factor_into_impl(lower_factor, upper_factor, pivots, rhs, output.view_mut())?;
+    Ok(output)
+}
+
+/// Solve `Ax=b` from precomputed LU factors into a caller-provided output vector.
+///
+/// # Errors
+/// Returns an error if the factor shapes, pivots, right-hand side, or output are incompatible, or
+/// if the factorization is singular.
+pub fn solve_from_factor_into_view<T, I, S>(
+    lower_factor: &ArrayView2<'_, T>,
+    upper_factor: &ArrayView2<'_, T>,
+    pivots: &ArrayView1<'_, I>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), LUError>
+where
+    T: NabledReal,
+    I: Copy + TryInto<usize>,
+    S: DataMut<Elem = T>,
+{
+    solve_from_factor_into_impl(lower_factor, upper_factor, pivots, rhs, output.view_mut())
+}
+
+/// Compute the inverse from precomputed LU factors.
+///
+/// # Errors
+/// Returns an error if the factor shapes or pivots are incompatible, or if the factorization is
+/// singular.
+pub fn inverse_from_factor_view<T, I>(
+    lower_factor: &ArrayView2<'_, T>,
+    upper_factor: &ArrayView2<'_, T>,
+    pivots: &ArrayView1<'_, I>,
+) -> Result<Array2<T>, LUError>
+where
+    T: NabledReal,
+    I: Copy + TryInto<usize>,
+{
+    let n = validate_factor_shapes(lower_factor, upper_factor)?;
+    let mut output = Array2::<T>::zeros((n, n));
+    inverse_from_factor_into_impl(lower_factor, upper_factor, pivots, output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute the inverse from precomputed LU factors into a caller-provided output matrix.
+///
+/// # Errors
+/// Returns an error if the factor shapes, pivots, or output are incompatible, or if the
+/// factorization is singular.
+pub fn inverse_from_factor_into_view<T, I, S>(
+    lower_factor: &ArrayView2<'_, T>,
+    upper_factor: &ArrayView2<'_, T>,
+    pivots: &ArrayView1<'_, I>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), LUError>
+where
+    T: NabledReal,
+    I: Copy + TryInto<usize>,
+    S: DataMut<Elem = T>,
+{
+    inverse_from_factor_into_impl(lower_factor, upper_factor, pivots, output.view_mut())
+}
+
+/// Compute the determinant from a precomputed real LU factorization.
+///
+/// # Errors
+/// Returns an error if `upper_factor` is invalid or `permutation_sign` is not `-1` or `1`.
+pub fn determinant_from_factor_view<T: NabledReal>(
+    upper_factor: &ArrayView2<'_, T>,
+    permutation_sign: i8,
+) -> Result<T, LUError> {
+    determinant_from_factor_impl(upper_factor, permutation_sign)
+}
+
+/// Compute the signed log-determinant from a precomputed real LU factorization.
+///
+/// # Errors
+/// Returns an error if `upper_factor` is invalid, `permutation_sign` is invalid, or the
+/// determinant is singular.
+pub fn log_determinant_from_factor_view<T: NabledReal>(
+    upper_factor: &ArrayView2<'_, T>,
+    permutation_sign: i8,
+) -> Result<LogDetResult<T>, LUError> {
+    let determinant = determinant_from_factor_impl(upper_factor, permutation_sign)?;
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    let determinant_abs = num_traits::Float::abs(determinant);
+    if determinant_abs <= tolerance {
+        return Err(LUError::SingularMatrix);
+    }
+    let sign = if determinant.is_sign_positive() { 1 } else { -1 };
+    Ok(LogDetResult { sign, ln_abs_det: num_traits::Float::ln(determinant_abs) })
 }
 
 /// Solve `Ax=b` using LU decomposition.
@@ -849,7 +1104,7 @@ where
         return Err(LUError::InvalidInput("RHS length must match matrix dimensions".to_string()));
     }
 
-    let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+    let (decomposition, pivots, _) = decompose_view_with_metadata(matrix)?;
     lu_solve(&decomposition.l, &decomposition.u, &pivots, rhs).map_err(map_lu_error)
 }
 
@@ -1008,7 +1263,7 @@ fn inverse_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, LUError>
 where
     T: NabledReal,
 {
-    let (decomposition, pivots, _) = decompose_with_metadata(matrix)?;
+    let (decomposition, pivots, _) = decompose_view_with_metadata(matrix)?;
     inverse_from_lu(&decomposition.l, &decomposition.u, &pivots).map_err(map_lu_error)
 }
 
@@ -1094,15 +1349,8 @@ fn determinant_impl<T>(matrix: &ArrayView2<'_, T>) -> Result<T, LUError>
 where
     T: NabledReal,
 {
-    let (decomposition, _, sign) = decompose_with_metadata(matrix)?;
-    let mut determinant = if sign >= 0 { T::one() } else { -T::one() };
-    for i in 0..decomposition.u.nrows() {
-        determinant *= decomposition.u[[i, i]];
-    }
-    if !determinant.is_finite() {
-        return Err(LUError::NumericalInstability);
-    }
-    Ok(determinant)
+    let (decomposition, _, sign) = decompose_view_with_metadata(matrix)?;
+    determinant_from_factor_impl(&decomposition.u.view(), sign)
 }
 
 /// Compute complex determinant via LU decomposition.
@@ -1370,6 +1618,93 @@ mod tests {
         let logdet_view = log_determinant_view(&matrix.view()).unwrap();
         assert_eq!(logdet_owned.sign, logdet_view.sign);
         assert!((logdet_owned.ln_abs_det - logdet_view.ln_abs_det).abs() < 1e-12);
+    }
+
+    #[test]
+    fn factor_reuse_variants_match_direct_paths() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0_f64, 1.0, 2.0, 3.0]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0]);
+
+        let (factor, pivots, permutation_sign) = decompose_with_metadata(&matrix).unwrap();
+        let pivots = Array1::from_iter(
+            pivots
+                .into_iter()
+                .map(|pivot| i64::try_from(pivot).expect("pivot should fit in int64")),
+        );
+
+        let direct_solution = solve(&matrix, &rhs).unwrap();
+        let factor_solution =
+            solve_from_factor_view(&factor.l.view(), &factor.u.view(), &pivots.view(), &rhs.view())
+                .unwrap();
+        let mut factor_solution_out = Array1::<f64>::zeros(rhs.len());
+        solve_from_factor_into_view(
+            &factor.l.view(),
+            &factor.u.view(),
+            &pivots.view(),
+            &rhs.view(),
+            &mut factor_solution_out,
+        )
+        .unwrap();
+        for i in 0..rhs.len() {
+            assert!((factor_solution[i] - direct_solution[i]).abs() < 1e-12);
+            assert!((factor_solution_out[i] - direct_solution[i]).abs() < 1e-12);
+        }
+
+        let direct_inverse = inverse(&matrix).unwrap();
+        let factor_inverse =
+            inverse_from_factor_view(&factor.l.view(), &factor.u.view(), &pivots.view()).unwrap();
+        let mut factor_inverse_out = Array2::<f64>::zeros(matrix.dim());
+        inverse_from_factor_into_view(
+            &factor.l.view(),
+            &factor.u.view(),
+            &pivots.view(),
+            &mut factor_inverse_out,
+        )
+        .unwrap();
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((factor_inverse[[i, j]] - direct_inverse[[i, j]]).abs() < 1e-12);
+                assert!((factor_inverse_out[[i, j]] - direct_inverse[[i, j]]).abs() < 1e-12);
+            }
+        }
+
+        let direct_determinant = determinant(&matrix).unwrap();
+        let factor_determinant =
+            determinant_from_factor_view(&factor.u.view(), permutation_sign).unwrap();
+        assert!((factor_determinant - direct_determinant).abs() < 1e-12);
+
+        let direct_logdet = log_determinant(&matrix).unwrap();
+        let factor_logdet =
+            log_determinant_from_factor_view(&factor.u.view(), permutation_sign).unwrap();
+        assert_eq!(factor_logdet.sign, direct_logdet.sign);
+        assert!((factor_logdet.ln_abs_det - direct_logdet.ln_abs_det).abs() < 1e-12);
+    }
+
+    #[test]
+    fn factor_reuse_rejects_bad_pivots_and_output_shapes() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![4.0_f64, 1.0, 2.0, 3.0]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0]);
+        let (factor, _, _) = decompose_with_metadata(&matrix).unwrap();
+        let bad_pivots = Array1::from_vec(vec![-1_i64, 1_i64]);
+        let mut bad_output = Array1::<f64>::zeros(3);
+
+        let solve_bad_pivots = solve_from_factor_view(
+            &factor.l.view(),
+            &factor.u.view(),
+            &bad_pivots.view(),
+            &rhs.view(),
+        );
+        assert!(matches!(solve_bad_pivots, Err(LUError::InvalidInput(_))));
+
+        let good_pivots = Array1::from_vec(vec![1_i64, 0_i64]);
+        let solve_bad_output = solve_from_factor_into_view(
+            &factor.l.view(),
+            &factor.u.view(),
+            &good_pivots.view(),
+            &rhs.view(),
+            &mut bad_output,
+        );
+        assert!(matches!(solve_bad_output, Err(LUError::InvalidInput(_))));
     }
 
     #[test]

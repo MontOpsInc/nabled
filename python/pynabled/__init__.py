@@ -137,6 +137,14 @@ def _tt_result(cores) -> TensorTrainResult:
     return TensorTrainResult(cores=list(cores))
 
 
+def _require_lu_metadata(result: LuResult):
+    if result.pivots is None or result.permutation_sign is None:
+        raise TypeError(
+            "LuResult must include pivots and permutation_sign metadata from lu_decompose()",
+        )
+    return result.pivots, result.permutation_sign
+
+
 def _resolve_config(config, config_type, **kwargs):
     if config is None:
         return kwargs
@@ -286,12 +294,23 @@ def qr_solve_least_squares(a, b, rank_tolerance=None, max_iterations=None):
 
 
 def lu_decompose(a) -> LuResult:
-    l, u = _raw.lu_decompose(a)
-    return LuResult(l=l, u=u)
+    l, u, pivots, permutation_sign = _raw.lu_decompose(a)
+    return LuResult(
+        l=l,
+        u=u,
+        pivots=pivots,
+        permutation_sign=permutation_sign,
+    )
 
 
-def lu_solve(a, b):
-    return _raw.lu_solve(a, b)
+def lu_solve(a, b, *, out=None):
+    if isinstance(a, LuResult):
+        pivots, _ = _require_lu_metadata(a)
+        if out is None:
+            return _raw.lu_solve_from_factor(a.l, a.u, pivots, b)
+        _raw.lu_solve_from_factor_into(a.l, a.u, pivots, b, out)
+        return out
+    return _array_binary_out(_raw.lu_solve, _raw.lu_solve_into, a, b, out=out)
 
 
 def lu_solve_mixed(a, b) -> MixedSolveResult:
@@ -302,16 +321,29 @@ def lu_solve_mixed(a, b) -> MixedSolveResult:
     )
 
 
-def lu_inverse(a):
-    return _raw.lu_inverse(a)
+def lu_inverse(a, *, out=None):
+    if isinstance(a, LuResult):
+        pivots, _ = _require_lu_metadata(a)
+        if out is None:
+            return _raw.lu_inverse_from_factor(a.l, a.u, pivots)
+        _raw.lu_inverse_from_factor_into(a.l, a.u, pivots, out)
+        return out
+    return _array_unary_out(_raw.lu_inverse, _raw.lu_inverse_into, a, out=out)
 
 
 def lu_determinant(a):
+    if isinstance(a, LuResult):
+        _, permutation_sign = _require_lu_metadata(a)
+        return _raw.lu_determinant_from_factor(a.u, permutation_sign)
     return _raw.lu_determinant(a)
 
 
 def lu_log_determinant(a) -> LogDetResult:
-    sign, ln_abs_det = _raw.lu_log_determinant(a)
+    if isinstance(a, LuResult):
+        _, permutation_sign = _require_lu_metadata(a)
+        sign, ln_abs_det = _raw.lu_log_determinant_from_factor(a.u, permutation_sign)
+    else:
+        sign, ln_abs_det = _raw.lu_log_determinant(a)
     return LogDetResult(sign=sign, ln_abs_det=ln_abs_det)
 
 
@@ -608,8 +640,11 @@ def tensor_hosvd3(cube, r0, r1, r2) -> Hosvd3Result:
     return Hosvd3Result(core=core, u0=u0, u1=u1, u2=u2)
 
 
-def tensor_hosvd3_reconstruct(result: Hosvd3Result):
-    return _raw.tensor_hosvd3_reconstruct(result.core, result.u0, result.u1, result.u2)
+def tensor_hosvd3_reconstruct(result: Hosvd3Result, *, out=None):
+    if out is None:
+        return _raw.tensor_hosvd3_reconstruct(result.core, result.u0, result.u1, result.u2)
+    _raw.tensor_hosvd3_reconstruct_into(result.core, result.u0, result.u1, result.u2, out)
+    return out
 
 
 def tensor_hosvd_nd(tensor, ranks) -> HosvdNdResult:
@@ -634,8 +669,11 @@ def tensor_hosvd_nd_reconstruct(result: HosvdNdResult, *, out=None):
     return out
 
 
-def tensor_tucker_project(tensor, result: HosvdNdResult):
-    return _raw.tensor_tucker_project(tensor, result.factors)
+def tensor_tucker_project(tensor, result: HosvdNdResult, *, out=None):
+    if out is None:
+        return _raw.tensor_tucker_project(tensor, result.factors)
+    _raw.tensor_tucker_project_into(tensor, result.factors, out)
+    return out
 
 
 def tensor_tucker_expand(result: HosvdNdResult, *, out=None):
@@ -1586,6 +1624,13 @@ def _tensor_contract_out(raw, raw_into, left, right, left_axes, right_axes, *, o
     return out
 
 
+def _tensor_einsum_out(raw, raw_into, equation, left, right, *, out=None):
+    if out is None:
+        return raw(equation, left, right)
+    raw_into(equation, left, right, out)
+    return out
+
+
 def tensor_cube_matvec(cube, vectors, *, out=None):
     return _tensor_binary_out(_raw.tensor_cube_matvec, _raw.tensor_cube_matvec_into, cube, vectors, out=out)
 
@@ -1614,8 +1659,19 @@ def tensor_cube_matmat_complex(left, right, *, out=None):
     )
 
 
-tensor_einsum = _raw.tensor_einsum
-tensor_einsum_complex = _raw.tensor_einsum_complex
+def tensor_einsum(equation, left, right, *, out=None):
+    return _tensor_einsum_out(_raw.tensor_einsum, _raw.tensor_einsum_into, equation, left, right, out=out)
+
+
+def tensor_einsum_complex(equation, left, right, *, out=None):
+    return _tensor_einsum_out(
+        _raw.tensor_einsum_complex,
+        _raw.tensor_einsum_complex_into,
+        equation,
+        left,
+        right,
+        out=out,
+    )
 
 
 def tensor_sum_last_axis(tensor, *, out=None):

@@ -82,10 +82,18 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // LU
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::decompose, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::solve, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::solve_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::solve_from_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::solve_from_factor_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::solve_mixed, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::inverse, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::inverse_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::inverse_from_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::inverse_from_factor_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::determinant, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::determinant_from_factor, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::log_determinant, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::lu::log_determinant_from_factor, m)?)?;
 
     // Cholesky
     m.add_function(pyo3::wrap_pyfunction!(linalg::cholesky::decompose, m)?)?;
@@ -187,14 +195,18 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::einsum, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::einsum_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::einsum_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::einsum_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd3, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd3_reconstruct, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd3_reconstruct_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd_nd, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hooi_nd, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd_nd_reconstruct, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::hosvd_nd_reconstruct_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_project, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_project_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_expand, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::tucker_expand_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cp_als3, m)?)?;

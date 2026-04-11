@@ -26,6 +26,8 @@ class QrResult:
 class LuResult:
     l: np.ndarray
     u: np.ndarray
+    pivots: np.ndarray | None = None
+    permutation_sign: int | None = None
 
 
 @dataclass(slots=True)
