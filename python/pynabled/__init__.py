@@ -222,6 +222,11 @@ def svd_decompose_truncated(a, k) -> SvdResult:
 
 
 def svd_pseudo_inverse(a, *, out=None):
+    if isinstance(a, SvdResult):
+        if out is None:
+            return _raw.svd_pseudo_inverse_from_factors(a.u, a.singular_values, a.vt)
+        _raw.svd_pseudo_inverse_from_factors_into(a.u, a.singular_values, a.vt, out)
+        return out
     return _array_unary_out(_raw.svd_pseudo_inverse, _raw.svd_pseudo_inverse_into, a, out=out)
 
 

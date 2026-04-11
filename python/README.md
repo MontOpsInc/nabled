@@ -75,6 +75,9 @@ the Rust core already exposes `*_into`: `svd_pseudo_inverse`, `svd_reconstruct_m
 `linear_regression_complex(...)` now also accept typed `out=` result buffers
 (`PcaResult` / `RegressionResult`) under the existing public names so repeated ML workflows can
 reuse result storage instead of forcing fresh Python allocations on every call.
+`svd_pseudo_inverse(...)` can also consume a previously computed `SvdResult` directly, so repeated
+pseudo-inverse workflows can reuse decomposition factors instead of recomputing SVD from the
+original matrix each time.
 `svd_condition_number(...)` and `svd_rank(...)` now read singular values directly instead of
 rebuilding owned intermediary SVD objects.
 Tensor reconstruction/projection/contraction helpers now also reuse caller-provided outputs where

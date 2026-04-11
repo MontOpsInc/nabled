@@ -95,8 +95,7 @@ pub struct PseudoInverseConfig<T: NabledReal> {
     pub tolerance: Option<T>,
 }
 
-#[cfg(not(feature = "lapack-provider"))]
-fn decompose_internal_fallback<T: NabledReal>(
+pub(crate) fn decompose_internal_fallback<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<NdarraySVD<T>, SVDError> {
     if matrix.is_empty() {
@@ -750,6 +749,138 @@ pub fn rank<T: NabledReal>(svd: &NdarraySVD<T>, tolerance: Option<T>) -> usize {
     rank_from_singular_values(&svd.singular_values.view(), tolerance)
 }
 
+/// Compute Moore-Penrose pseudo-inverse directly from precomputed real SVD factors into `output`.
+///
+/// # Errors
+/// Returns an error if the SVD factor dimensions are inconsistent or `output` has the wrong shape.
+pub fn pseudo_inverse_from_svd_view_into<T, S>(
+    u: &ArrayView2<'_, T>,
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+    config: &PseudoInverseConfig<T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), SVDError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    let rows = u.nrows();
+    let cols = vt.ncols();
+    let k = u.ncols();
+
+    if output.dim() != (cols, rows) {
+        return Err(SVDError::InvalidInput(
+            "output shape must be (vt.ncols(), u.nrows())".to_string(),
+        ));
+    }
+    if singular_values.len() != vt.nrows() || singular_values.len() != k {
+        return Err(SVDError::InvalidInput("inconsistent SVD factor dimensions".to_string()));
+    }
+
+    let max_sv = singular_values.iter().copied().fold(T::zero(), T::max);
+    let tolerance = config.tolerance.unwrap_or(svd_relative_tolerance(max_sv, rows.max(cols)));
+
+    output.fill(T::zero());
+    for i in 0..k {
+        let sigma = singular_values[i];
+        if sigma <= tolerance {
+            continue;
+        }
+        let inv_sigma = T::one() / sigma;
+        for row in 0..cols {
+            for col in 0..rows {
+                output[[row, col]] += vt[[i, row]] * inv_sigma * u[[col, i]];
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Compute Moore-Penrose pseudo-inverse directly from a precomputed real SVD.
+///
+/// # Errors
+/// Returns an error if the SVD factor dimensions are inconsistent or `output` has the wrong shape.
+pub fn pseudo_inverse_from_svd_into<T: NabledReal>(
+    svd: &NdarraySVD<T>,
+    config: &PseudoInverseConfig<T>,
+    output: &mut Array2<T>,
+) -> Result<(), SVDError> {
+    pseudo_inverse_from_svd_view_into(
+        &svd.u.view(),
+        &svd.singular_values.view(),
+        &svd.vt.view(),
+        config,
+        output,
+    )
+}
+
+/// Compute Moore-Penrose pseudo-inverse directly from precomputed complex SVD factors into
+/// `output`.
+///
+/// # Errors
+/// Returns an error if the SVD factor dimensions are inconsistent or `output` has the wrong shape.
+pub fn pseudo_inverse_complex_from_svd_view_into<S>(
+    u: &ArrayView2<'_, Complex64>,
+    singular_values: &ArrayView1<'_, f64>,
+    vt: &ArrayView2<'_, Complex64>,
+    tolerance: Option<f64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), SVDError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    let rows = u.nrows();
+    let cols = vt.ncols();
+    let k = u.ncols();
+
+    if output.dim() != (cols, rows) {
+        return Err(SVDError::InvalidInput(
+            "output shape must be (vt.ncols(), u.nrows())".to_string(),
+        ));
+    }
+    if singular_values.len() != vt.nrows() || singular_values.len() != k {
+        return Err(SVDError::InvalidInput("inconsistent SVD factor dimensions".to_string()));
+    }
+
+    let max_sv = singular_values.iter().copied().fold(0.0_f64, f64::max);
+    let tolerance = tolerance.unwrap_or(svd_relative_tolerance(max_sv, rows.max(cols)));
+
+    output.fill(Complex64::new(0.0, 0.0));
+    for i in 0..k {
+        let sigma = singular_values[i];
+        if sigma <= tolerance {
+            continue;
+        }
+        let inv_sigma = 1.0_f64 / sigma;
+        for row in 0..cols {
+            for col in 0..rows {
+                output[[row, col]] += vt[[i, row]].conj() * inv_sigma * u[[col, i]].conj();
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Compute Moore-Penrose pseudo-inverse directly from a precomputed complex SVD.
+///
+/// # Errors
+/// Returns an error if the SVD factor dimensions are inconsistent or `output` has the wrong shape.
+pub fn pseudo_inverse_complex_from_svd_into(
+    svd: &NdarrayComplexSVD,
+    tolerance: Option<f64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), SVDError> {
+    pseudo_inverse_complex_from_svd_view_into(
+        &svd.u.view(),
+        &svd.singular_values.view(),
+        &svd.vt.view(),
+        tolerance,
+        output,
+    )
+}
+
 /// Compute Moore-Penrose pseudo-inverse.
 ///
 /// # Errors
@@ -856,26 +987,13 @@ where
     }
 
     let svd = decompose_view(matrix)?;
-    let (rows, cols) = matrix.dim();
-    let max_sv = svd.singular_values.iter().copied().fold(T::zero(), T::max);
-    let tolerance = config.tolerance.unwrap_or(svd_relative_tolerance(max_sv, rows.max(cols)));
-
-    output.fill(T::zero());
-    let k = svd.singular_values.len();
-    for i in 0..k {
-        let sigma = svd.singular_values[i];
-        if sigma <= tolerance {
-            continue;
-        }
-        let inv_sigma = T::one() / sigma;
-        for row in 0..cols {
-            for col in 0..rows {
-                output[[row, col]] += svd.vt[[i, row]] * inv_sigma * svd.u[[col, i]];
-            }
-        }
-    }
-
-    Ok(())
+    pseudo_inverse_from_svd_view_into(
+        &svd.u.view(),
+        &svd.singular_values.view(),
+        &svd.vt.view(),
+        config,
+        output,
+    )
 }
 
 /// Compute Moore-Penrose pseudo-inverse into `output`.
@@ -914,26 +1032,13 @@ where
     }
 
     let svd = decompose_view(matrix)?;
-    let (rows, cols) = matrix.dim();
-    let max_sv = svd.singular_values.iter().copied().fold(T::zero(), T::max);
-    let tolerance = config.tolerance.unwrap_or(svd_relative_tolerance(max_sv, rows.max(cols)));
-
-    output.fill(T::zero());
-    let k = svd.singular_values.len();
-    for i in 0..k {
-        let sigma = svd.singular_values[i];
-        if sigma <= tolerance {
-            continue;
-        }
-        let inv_sigma = T::one() / sigma;
-        for row in 0..cols {
-            for col in 0..rows {
-                output[[row, col]] += svd.vt[[i, row]] * inv_sigma * svd.u[[col, i]];
-            }
-        }
-    }
-
-    Ok(())
+    pseudo_inverse_from_svd_view_into(
+        &svd.u.view(),
+        &svd.singular_values.view(),
+        &svd.vt.view(),
+        config,
+        output,
+    )
 }
 
 /// Compute a basis for the right null-space of `matrix`.
@@ -995,6 +1100,63 @@ mod tests {
         let product = matrix.dot(&pinv);
         assert!((product[[0, 0]] - 1.0_f64).abs() < 1e-8_f64);
         assert!((product[[1, 1]] - 1.0_f64).abs() < 1e-8_f64);
+    }
+
+    #[test]
+    fn pseudo_inverse_from_svd_matches_matrix_path() {
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![1.0_f64, 2.0_f64, 3.0_f64, 5.0_f64])
+                .unwrap();
+        let svd = decompose(&matrix).unwrap();
+
+        let from_matrix = pseudo_inverse(&matrix, &PseudoInverseConfig::<f64>::default()).unwrap();
+        let mut from_factors = Array2::<f64>::zeros((matrix.ncols(), matrix.nrows()));
+        pseudo_inverse_from_svd_into(
+            &svd,
+            &PseudoInverseConfig::<f64>::default(),
+            &mut from_factors,
+        )
+        .unwrap();
+
+        assert_eq!(from_matrix.dim(), from_factors.dim());
+        for row in 0..from_matrix.nrows() {
+            for col in 0..from_matrix.ncols() {
+                assert!((from_matrix[[row, col]] - from_factors[[row, col]]).abs() < 1e-8_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn complex_pseudo_inverse_from_svd_reconstructs_input() {
+        let matrix = Array2::<Complex64>::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(0.5, 0.25),
+            Complex64::new(-1.0, 2.0),
+        ])
+        .unwrap();
+        let svd = decompose_complex(&matrix).unwrap();
+        let mut pinv = Array2::<Complex64>::zeros((matrix.ncols(), matrix.nrows()));
+        pseudo_inverse_complex_from_svd_into(&svd, None, &mut pinv).unwrap();
+
+        let reconstructed = matrix.dot(&pinv).dot(&matrix);
+        for row in 0..matrix.nrows() {
+            for col in 0..matrix.ncols() {
+                assert!((reconstructed[[row, col]] - matrix[[row, col]]).norm() < 1e-8_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn pseudo_inverse_from_svd_rejects_bad_output_shape() {
+        let matrix = Array2::<f64>::eye(2);
+        let svd = decompose(&matrix).unwrap();
+        let mut bad = Array2::<f64>::zeros((1, 2));
+
+        let result =
+            pseudo_inverse_from_svd_into(&svd, &PseudoInverseConfig::<f64>::default(), &mut bad);
+
+        assert!(matches!(result, Err(SVDError::InvalidInput(_))));
     }
 
     #[test]

@@ -152,7 +152,22 @@ bridge wires those through without Python-side helper math. Validation is green 
 `just checks` (Rust coverage gate `90.87%`). Remaining `N-PY-007` work is now narrowed again to
 the smaller still-missing reusable result/workspace families plus any residual higher-level
 materialization points outside the already-landed dense/helper/PCA/regression/tensor-helper/LU
-surfaces. The first
+surfaces. A fourteenth `N-PY-007` SVD factor-reuse and provider-stability pass is now also
+landed: `svd_pseudo_inverse(...)` can now consume a typed `SvdResult` directly instead of
+recomputing SVD from the original matrix, including `out=` reuse on both real and admitted
+complex factor paths, because the Rust core now exposes factor-based pseudo-inverse helpers over
+`(U, singular_values, Vt)` and the PyO3 bridge wires those through under dedicated raw entrypoints.
+The same pass also hardens underdetermined least-squares under `openblas-system`: provider builds
+now route the `m < n` QR solve branch through the internal SVD fallback and reuse those factors
+directly, fixing the provider-side `ConvergenceFailed` regression on small underdetermined systems
+without changing the public API contract. Validation is green end-to-end: `cargo +nightly fmt`
+with the repo config path, targeted provider QR repro (`1 passed`), targeted Rust SVD coverage
+(`cargo test -p nabled-linalg svd -- --nocapture --show-output`), `python-quality`
+(`225 passed, 22 skipped`, `91%` Python coverage), and full `just checks` (Rust coverage gate
+`90.25%`). Remaining `N-PY-007` work is now concentrated in the still-missing higher-level
+reusable result/workspace semantics plus the smaller set of explicit owned-materialization points
+that remain outside the already-landed dense/helper/PCA/regression/tensor-helper/LU/SVD surfaces.
+The first
 `N-PY-003` implementation pass is also landed:
 Python now has
 callable-driven `jacobian` and `optimization` bindings plus complex/high-level ML parity across

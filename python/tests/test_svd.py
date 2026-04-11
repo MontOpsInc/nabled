@@ -29,6 +29,15 @@ def test_svd_pseudo_inverse():
     np.testing.assert_allclose(a @ pinv @ a, a, rtol=1e-10)
 
 
+def test_svd_pseudo_inverse_reuses_result_factors():
+    a = np.array([[1.0, 2.0], [3.0, 5.0]], dtype=np.float64)
+    result = pynabled.svd_decompose(a)
+
+    pinv = pynabled.svd_pseudo_inverse(result)
+
+    np.testing.assert_allclose(a @ pinv @ a, a, rtol=1e-10, atol=1e-12)
+
+
 def test_svd_rank():
     a = np.eye(3, dtype=np.float64)
     result = pynabled.svd_decompose(a)
@@ -137,6 +146,25 @@ def test_svd_helpers_reuse_output_buffers_and_reject_aliasing():
 
     with pytest.raises(TypeError, match="already borrowed"):
         pynabled.svd_pseudo_inverse(a, out=a)
+
+    factor_pinv_out = np.empty((2, 2), dtype=np.float64, order="F")
+    returned_factor_pinv = pynabled.svd_pseudo_inverse(result, out=factor_pinv_out)
+    assert returned_factor_pinv is factor_pinv_out
+    np.testing.assert_allclose(a @ factor_pinv_out @ a, a, rtol=1e-10, atol=1e-12)
+
+
+def test_svd_pseudo_inverse_reuses_complex_result_factors():
+    a = np.array(
+        [[1.0 + 1.0j, 2.0 - 1.0j], [0.5 + 0.25j, -1.0 + 2.0j]],
+        dtype=np.complex128,
+    )
+    result = pynabled.svd_decompose(a)
+    out = np.empty((2, 2), dtype=np.complex128, order="F")
+
+    returned = pynabled.svd_pseudo_inverse(result, out=out)
+
+    assert returned is out
+    np.testing.assert_allclose(a @ out @ a, a, rtol=1e-10, atol=1e-12)
 
 
 def test_svd_reconstruct_matrix_reuses_complex_output_buffers():

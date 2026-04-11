@@ -90,6 +90,9 @@ vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `m
 `linear_regression_complex(...)` now also accept typed `out=` result buffers
 (`PcaResult` / `RegressionResult`) under the existing public names, so repeated ML workflows do
 not have to allocate fresh Python result arrays on every call.
+`svd_pseudo_inverse(...)` can also consume a previously computed `SvdResult` directly, so repeated
+pseudo-inverse workflows can reuse decomposition factors instead of recomputing SVD from the
+original matrix.
 Tensor reconstruction/projection/contraction helpers now follow that same contract where the Rust
 core already exposes a truthful `*_into` path: `tensor_hosvd_nd_reconstruct`,
 `tensor_hosvd3_reconstruct`, `tensor_tucker_project`, `tensor_tucker_expand`, `tensor_einsum`,

@@ -914,8 +914,11 @@ where
     }
 
     if matrix.nrows() < matrix.ncols() {
-        let matrix_owned = matrix.to_owned();
-        let svd = svd::decompose(&matrix_owned).map_err(|_| QRError::ConvergenceFailed)?;
+        // Some LAPACK/OpenBLAS builds fail to converge on small underdetermined SVDs.
+        // Use the internal SVD fallback here so least-squares keeps a stable
+        // minimum-norm contract across provider builds.
+        let svd =
+            svd::decompose_internal_fallback(matrix).map_err(|_| QRError::ConvergenceFailed)?;
         let required_rank = matrix.nrows();
         let computed_rank = svd::rank(
             &svd,
@@ -930,8 +933,10 @@ where
         }
 
         let mut pseudo_inverse = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
-        svd::pseudo_inverse_into(
-            &matrix_owned,
+        svd::pseudo_inverse_from_svd_view_into(
+            &svd.u.view(),
+            &svd.singular_values.view(),
+            &svd.vt.view(),
             &PseudoInverseConfig {
                 tolerance: Some(
                     config.rank_tolerance.max(
@@ -1009,8 +1014,7 @@ fn solve_least_squares_impl<T: QrInternalScalar>(
     }
 
     if matrix.nrows() < matrix.ncols() {
-        let matrix_owned = matrix.to_owned();
-        let svd = svd::decompose(&matrix_owned).map_err(|_| QRError::ConvergenceFailed)?;
+        let svd = svd::decompose_view(matrix).map_err(|_| QRError::ConvergenceFailed)?;
         let required_rank = matrix.nrows();
         let computed_rank = svd::rank(
             &svd,
@@ -1025,8 +1029,10 @@ fn solve_least_squares_impl<T: QrInternalScalar>(
         }
 
         let mut pseudo_inverse = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
-        svd::pseudo_inverse_into(
-            &matrix_owned,
+        svd::pseudo_inverse_from_svd_view_into(
+            &svd.u.view(),
+            &svd.singular_values.view(),
+            &svd.vt.view(),
             &PseudoInverseConfig {
                 tolerance: Some(
                     config.rank_tolerance.max(

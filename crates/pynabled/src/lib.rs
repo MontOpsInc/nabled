@@ -62,6 +62,8 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::decompose_truncated, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::pseudo_inverse, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::pseudo_inverse_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::svd::pseudo_inverse_from_factors, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::svd::pseudo_inverse_from_factors_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::reconstruct_matrix, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::reconstruct_matrix_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::condition_number, m)?)?;

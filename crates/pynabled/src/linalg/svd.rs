@@ -130,6 +130,149 @@ pub fn pseudo_inverse_into(a: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> P
     }
 }
 
+/// Compute pseudo-inverse from precomputed SVD factors.
+#[pyfunction(name = "svd_pseudo_inverse_from_factors")]
+pub fn pseudo_inverse_from_factors<'py>(
+    py: Python<'py>,
+    u: &Bound<'py, PyAny>,
+    singular_values: &Bound<'py, PyAny>,
+    vt: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::numeric_array2(u, "u")?,
+        utils::real_array1(singular_values, "singular_values")?,
+        utils::numeric_array2(vt, "vt")?,
+    ) {
+        (
+            utils::NumericReadonlyArray2::F32(u_arr),
+            utils::RealReadonlyArray1::F32(s_arr),
+            utils::NumericReadonlyArray2::F32(vt_arr),
+        ) => {
+            let mut output = ndarray::Array2::<f32>::zeros((
+                vt_arr.as_array().ncols(),
+                u_arr.as_array().nrows(),
+            ));
+            nabled_linalg::svd::pseudo_inverse_from_svd_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &nabled_linalg::svd::PseudoInverseConfig::default(),
+                &mut output,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, output))
+        }
+        (
+            utils::NumericReadonlyArray2::F64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::F64(vt_arr),
+        ) => {
+            let mut output = ndarray::Array2::<f64>::zeros((
+                vt_arr.as_array().ncols(),
+                u_arr.as_array().nrows(),
+            ));
+            nabled_linalg::svd::pseudo_inverse_from_svd_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &nabled_linalg::svd::PseudoInverseConfig::default(),
+                &mut output,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, output))
+        }
+        (
+            utils::NumericReadonlyArray2::C64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::C64(vt_arr),
+        ) => {
+            let mut output = ndarray::Array2::<num_complex::Complex64>::zeros((
+                vt_arr.as_array().ncols(),
+                u_arr.as_array().nrows(),
+            ));
+            nabled_linalg::svd::pseudo_inverse_complex_from_svd_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                None,
+                &mut output,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, output))
+        }
+        (utils::NumericReadonlyArray2::C64(_), _, utils::NumericReadonlyArray2::C64(_)) => {
+            Err(complex_svd_component_error())
+        }
+        _ => Err(utils::matching_real_dtype_error(&["u", "singular_values", "vt"])),
+    }
+}
+
+/// Compute pseudo-inverse from precomputed SVD factors into `output`.
+#[pyfunction(name = "svd_pseudo_inverse_from_factors_into")]
+pub fn pseudo_inverse_from_factors_into(
+    u: &Bound<'_, PyAny>,
+    singular_values: &Bound<'_, PyAny>,
+    vt: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::numeric_array2(u, "u")?,
+        utils::real_array1(singular_values, "singular_values")?,
+        utils::numeric_array2(vt, "vt")?,
+    ) {
+        (
+            utils::NumericReadonlyArray2::F32(u_arr),
+            utils::RealReadonlyArray1::F32(s_arr),
+            utils::NumericReadonlyArray2::F32(vt_arr),
+        ) => {
+            let mut out_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::svd::pseudo_inverse_from_svd_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &nabled_linalg::svd::PseudoInverseConfig::default(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::F64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::F64(vt_arr),
+        ) => {
+            let mut out_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::svd::pseudo_inverse_from_svd_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &nabled_linalg::svd::PseudoInverseConfig::default(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::C64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::C64(vt_arr),
+        ) => {
+            let mut out_arr =
+                utils::output_array2::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_linalg::svd::pseudo_inverse_complex_from_svd_view_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                None,
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::NumericReadonlyArray2::C64(_), _, utils::NumericReadonlyArray2::C64(_)) => {
+            Err(complex_svd_component_error())
+        }
+        _ => Err(utils::matching_real_dtype_error(&["u", "singular_values", "vt"])),
+    }
+}
+
 /// Reconstruct matrix from SVD components into `output`.
 #[pyfunction(name = "svd_reconstruct_matrix_into")]
 pub fn reconstruct_matrix_into(
