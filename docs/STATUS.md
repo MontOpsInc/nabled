@@ -167,6 +167,21 @@ with the repo config path, targeted provider QR repro (`1 passed`), targeted Rus
 `90.25%`). Remaining `N-PY-007` work is now concentrated in the still-missing higher-level
 reusable result/workspace semantics plus the smaller set of explicit owned-materialization points
 that remain outside the already-landed dense/helper/PCA/regression/tensor-helper/LU/SVD surfaces.
+A fifteenth `N-PY-007` SVD-derived reuse and sparse-normalization hardening pass is now also
+landed: `polar_compute(...)` and `matrix_log_svd(...)` can now consume typed `SvdResult` objects
+directly instead of recomputing the decomposition, with `out=` reuse on the polar path and an
+explicit `workspace=` rejection on factor-backed `matrix_log_svd(...)` calls so the Python
+contract stays unambiguous. The Rust core now exposes factor-based polar and `matrix_log_svd`
+helpers over `(U, singular_values, Vt)`, the PyO3 bridge wires those through as dedicated raw
+entrypoints, and the remaining explicit CSC/COO normalization bridge paths now borrow CSC/COO
+buffers directly for `CSC -> CSR`, `COO -> CSR`, and CSC matvec instead of rebuilding transient
+owned Rust sparse matrices and dense RHS vectors first. Targeted validation is green:
+`cargo +nightly fmt` with the repo config path, `cargo check -p pynabled`, targeted Rust factor /
+view tests, and targeted Python pytest (`56 passed`). Remaining `N-PY-007` work is now narrowed
+again to the still-missing higher-level reusable result/workspace semantics plus the smaller set
+of explicit owned-materialization points that remain outside the already-landed
+dense/helper/PCA/regression/tensor-helper/LU/SVD/polar/matrix-function/sparse-normalization
+surfaces.
 The first
 `N-PY-003` implementation pass is also landed:
 Python now has

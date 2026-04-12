@@ -42,6 +42,28 @@ fn csr_view_from_slices_f64<'a>(
         .map_err(to_py_err)
 }
 
+fn csc_view_from_slices<'a, I: nabled_linalg::sparse::CsrIndex, T>(
+    nrows: usize,
+    ncols: usize,
+    indptr: &'a [I],
+    indices: &'a [I],
+    data: &'a [T],
+) -> PyResult<nabled_linalg::sparse::CscMatrixView<'a, I, T>> {
+    nabled_linalg::sparse::CscMatrixView::new(nrows, ncols, indptr, indices, data)
+        .map_err(to_py_err)
+}
+
+fn coo_view_from_slices<'a, I: nabled_linalg::sparse::CsrIndex, T>(
+    nrows: usize,
+    ncols: usize,
+    row_indices: &'a [I],
+    col_indices: &'a [I],
+    data: &'a [T],
+) -> PyResult<nabled_linalg::sparse::CooMatrixView<'a, I, T>> {
+    nabled_linalg::sparse::CooMatrixView::new(nrows, ncols, row_indices, col_indices, data)
+        .map_err(to_py_err)
+}
+
 fn usize_vec_to_i32(values: Vec<usize>) -> PyResult<Vec<i32>> {
     values
         .into_iter()
@@ -1202,14 +1224,14 @@ pub fn csc_to_csr<'py>(
             utils::IndexReadonlyArray1::I32(indices_arr),
             utils::RealReadonlyArray1::F32(data_arr),
         ) => {
-            let matrix = owned_csc_from_slices(
+            let matrix = csc_view_from_slices(
                 nrows,
                 ncols,
                 indptr_arr.as_slice().map_err(py_value_error)?,
                 indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result = matrix.to_csr().map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::csc_to_csr_view(&matrix).map_err(to_py_err)?;
             py_csr_parts_i32_f32(py, result)
         }
         (
@@ -1217,14 +1239,14 @@ pub fn csc_to_csr<'py>(
             utils::IndexReadonlyArray1::I32(indices_arr),
             utils::RealReadonlyArray1::F64(data_arr),
         ) => {
-            let matrix = owned_csc_from_slices(
+            let matrix = csc_view_from_slices(
                 nrows,
                 ncols,
                 indptr_arr.as_slice().map_err(py_value_error)?,
                 indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result = matrix.to_csr().map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::csc_to_csr_view(&matrix).map_err(to_py_err)?;
             py_csr_parts_i32_f64(py, result)
         }
         (
@@ -1232,14 +1254,14 @@ pub fn csc_to_csr<'py>(
             utils::IndexReadonlyArray1::I64(indices_arr),
             utils::RealReadonlyArray1::F32(data_arr),
         ) => {
-            let matrix = owned_csc_from_slices(
+            let matrix = csc_view_from_slices(
                 nrows,
                 ncols,
                 indptr_arr.as_slice().map_err(py_value_error)?,
                 indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result = matrix.to_csr().map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::csc_to_csr_view(&matrix).map_err(to_py_err)?;
             py_csr_parts_f32(py, result)
         }
         (
@@ -1247,14 +1269,14 @@ pub fn csc_to_csr<'py>(
             utils::IndexReadonlyArray1::I64(indices_arr),
             utils::RealReadonlyArray1::F64(data_arr),
         ) => {
-            let matrix = owned_csc_from_slices(
+            let matrix = csc_view_from_slices(
                 nrows,
                 ncols,
                 indptr_arr.as_slice().map_err(py_value_error)?,
                 indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result = matrix.to_csr().map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::csc_to_csr_view(&matrix).map_err(to_py_err)?;
             py_csr_parts_f64(py, result)
         }
         (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _)
@@ -1284,14 +1306,14 @@ pub fn coo_to_csr<'py>(
             utils::IndexReadonlyArray1::I32(col_indices_arr),
             utils::RealReadonlyArray1::F32(data_arr),
         ) => {
-            let matrix = owned_coo_from_slices(
+            let matrix = coo_view_from_slices(
                 nrows,
                 ncols,
                 row_indices_arr.as_slice().map_err(py_value_error)?,
                 col_indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result = matrix.to_csr().map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::coo_to_csr_view(&matrix).map_err(to_py_err)?;
             py_csr_parts_i32_f32(py, result)
         }
         (
@@ -1299,14 +1321,14 @@ pub fn coo_to_csr<'py>(
             utils::IndexReadonlyArray1::I32(col_indices_arr),
             utils::RealReadonlyArray1::F64(data_arr),
         ) => {
-            let matrix = owned_coo_from_slices(
+            let matrix = coo_view_from_slices(
                 nrows,
                 ncols,
                 row_indices_arr.as_slice().map_err(py_value_error)?,
                 col_indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result = matrix.to_csr().map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::coo_to_csr_view(&matrix).map_err(to_py_err)?;
             py_csr_parts_i32_f64(py, result)
         }
         (
@@ -1314,14 +1336,14 @@ pub fn coo_to_csr<'py>(
             utils::IndexReadonlyArray1::I64(col_indices_arr),
             utils::RealReadonlyArray1::F32(data_arr),
         ) => {
-            let matrix = owned_coo_from_slices(
+            let matrix = coo_view_from_slices(
                 nrows,
                 ncols,
                 row_indices_arr.as_slice().map_err(py_value_error)?,
                 col_indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result = matrix.to_csr().map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::coo_to_csr_view(&matrix).map_err(to_py_err)?;
             py_csr_parts_f32(py, result)
         }
         (
@@ -1329,14 +1351,14 @@ pub fn coo_to_csr<'py>(
             utils::IndexReadonlyArray1::I64(col_indices_arr),
             utils::RealReadonlyArray1::F64(data_arr),
         ) => {
-            let matrix = owned_coo_from_slices(
+            let matrix = coo_view_from_slices(
                 nrows,
                 ncols,
                 row_indices_arr.as_slice().map_err(py_value_error)?,
                 col_indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result = matrix.to_csr().map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::coo_to_csr_view(&matrix).map_err(to_py_err)?;
             py_csr_parts_f64(py, result)
         }
         (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _)
@@ -1369,16 +1391,15 @@ pub fn matvec_csc<'py>(
             utils::RealReadonlyArray1::F32(data_arr),
             utils::RealReadonlyArray1::F32(vector_arr),
         ) => {
-            let matrix = owned_csc_from_slices(
+            let matrix = csc_view_from_slices(
                 nrows,
                 ncols,
                 indptr_arr.as_slice().map_err(py_value_error)?,
                 indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result =
-                nabled_linalg::sparse::matvec_csc(&matrix, &vector_arr.as_array().to_owned())
-                    .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::matvec_csc_view(&matrix, &vector_arr.as_array())
+                .map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, result))
         }
         (
@@ -1387,16 +1408,15 @@ pub fn matvec_csc<'py>(
             utils::RealReadonlyArray1::F64(data_arr),
             utils::RealReadonlyArray1::F64(vector_arr),
         ) => {
-            let matrix = owned_csc_from_slices(
+            let matrix = csc_view_from_slices(
                 nrows,
                 ncols,
                 indptr_arr.as_slice().map_err(py_value_error)?,
                 indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result =
-                nabled_linalg::sparse::matvec_csc(&matrix, &vector_arr.as_array().to_owned())
-                    .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::matvec_csc_view(&matrix, &vector_arr.as_array())
+                .map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, result))
         }
         (
@@ -1405,16 +1425,15 @@ pub fn matvec_csc<'py>(
             utils::RealReadonlyArray1::F32(data_arr),
             utils::RealReadonlyArray1::F32(vector_arr),
         ) => {
-            let matrix = owned_csc_from_slices(
+            let matrix = csc_view_from_slices(
                 nrows,
                 ncols,
                 indptr_arr.as_slice().map_err(py_value_error)?,
                 indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result =
-                nabled_linalg::sparse::matvec_csc(&matrix, &vector_arr.as_array().to_owned())
-                    .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::matvec_csc_view(&matrix, &vector_arr.as_array())
+                .map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, result))
         }
         (
@@ -1423,16 +1442,15 @@ pub fn matvec_csc<'py>(
             utils::RealReadonlyArray1::F64(data_arr),
             utils::RealReadonlyArray1::F64(vector_arr),
         ) => {
-            let matrix = owned_csc_from_slices(
+            let matrix = csc_view_from_slices(
                 nrows,
                 ncols,
                 indptr_arr.as_slice().map_err(py_value_error)?,
                 indices_arr.as_slice().map_err(py_value_error)?,
                 data_arr.as_slice().map_err(py_value_error)?,
             )?;
-            let result =
-                nabled_linalg::sparse::matvec_csc(&matrix, &vector_arr.as_array().to_owned())
-                    .map_err(to_py_err)?;
+            let result = nabled_linalg::sparse::matvec_csc_view(&matrix, &vector_arr.as_array())
+                .map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, result))
         }
         (utils::IndexReadonlyArray1::I32(_), utils::IndexReadonlyArray1::I64(_), _, _)
@@ -1725,66 +1743,6 @@ where
         .collect::<Result<Vec<_>, _>>()
         .map_err(to_py_err)?;
     nabled_linalg::sparse::CsrMatrix::new(nrows, ncols, indptr, indices, values.to_vec())
-        .map_err(to_py_err)
-}
-
-fn owned_csc_from_slices<
-    T,
-    R: nabled_linalg::sparse::CsrIndex,
-    C: nabled_linalg::sparse::CsrIndex,
->(
-    nrows: usize,
-    ncols: usize,
-    col_ptrs: &[R],
-    row_indices: &[C],
-    values: &[T],
-) -> PyResult<nabled_linalg::sparse::CscMatrix<T>>
-where
-    T: nabled_core::scalar::NabledReal + Clone,
-{
-    let indptr = col_ptrs
-        .iter()
-        .copied()
-        .map(nabled_linalg::sparse::CsrIndex::to_usize)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(to_py_err)?;
-    let indices = row_indices
-        .iter()
-        .copied()
-        .map(nabled_linalg::sparse::CsrIndex::to_usize)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(to_py_err)?;
-    nabled_linalg::sparse::CscMatrix::new(nrows, ncols, indptr, indices, values.to_vec())
-        .map_err(to_py_err)
-}
-
-fn owned_coo_from_slices<
-    T,
-    R: nabled_linalg::sparse::CsrIndex,
-    C: nabled_linalg::sparse::CsrIndex,
->(
-    nrows: usize,
-    ncols: usize,
-    row_indices: &[R],
-    col_indices: &[C],
-    values: &[T],
-) -> PyResult<nabled_linalg::sparse::CooMatrix<T>>
-where
-    T: nabled_core::scalar::NabledReal + Clone,
-{
-    let row_indices = row_indices
-        .iter()
-        .copied()
-        .map(nabled_linalg::sparse::CsrIndex::to_usize)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(to_py_err)?;
-    let col_indices = col_indices
-        .iter()
-        .copied()
-        .map(nabled_linalg::sparse::CsrIndex::to_usize)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(to_py_err)?;
-    nabled_linalg::sparse::CooMatrix::new(nrows, ncols, row_indices, col_indices, values.to_vec())
         .map_err(to_py_err)
 }
 

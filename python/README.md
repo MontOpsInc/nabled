@@ -78,6 +78,12 @@ reuse result storage instead of forcing fresh Python allocations on every call.
 `svd_pseudo_inverse(...)` can also consume a previously computed `SvdResult` directly, so repeated
 pseudo-inverse workflows can reuse decomposition factors instead of recomputing SVD from the
 original matrix each time.
+`polar_compute(...)` and `matrix_log_svd(...)` now follow that same SVD-derived reuse story:
+`polar_compute(...)` can consume a typed `SvdResult` with optional typed `out=PolarResult(...)`
+reuse, and `matrix_log_svd(...)` can consume `SvdResult` directly instead of recomputing the
+decomposition. `workspace=` remains a matrix-input-only contract for `matrix_log_svd(...)`, so
+passing both a precomputed `SvdResult` and `workspace=` fails explicitly instead of silently
+ignoring the workspace.
 `svd_condition_number(...)` and `svd_rank(...)` now read singular values directly instead of
 rebuilding owned intermediary SVD objects.
 Tensor reconstruction/projection/contraction helpers now also reuse caller-provided outputs where

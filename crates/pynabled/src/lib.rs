@@ -121,6 +121,9 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Polar
     m.add_function(pyo3::wrap_pyfunction!(linalg::polar::compute_polar, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::polar::compute_polar_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::polar::compute_polar_from_factors, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::polar::compute_polar_from_factors_into, m)?)?;
 
     // Sylvester
     m.add_function(pyo3::wrap_pyfunction!(linalg::sylvester::solve_sylvester, m)?)?;
@@ -147,6 +150,14 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_eigen_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_svd, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_svd_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_log_svd_from_factors,
+        m
+    )?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_log_svd_from_factors_into,
+        m
+    )?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_power, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_power_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_sign, m)?)?;

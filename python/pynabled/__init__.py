@@ -442,9 +442,26 @@ def schur_compute(a, *, out: SchurResult | None = None, workspace: SchurWorkspac
     return schur_out
 
 
-def polar_compute(a) -> PolarResult:
-    u, p = _raw.polar_compute(a)
-    return PolarResult(u=u, p=p)
+def polar_compute(a, *, out: PolarResult | None = None) -> PolarResult:
+    if isinstance(a, SvdResult):
+        if out is None:
+            u, p = _raw.polar_compute_from_factors(a.u, a.singular_values, a.vt)
+            return PolarResult(u=u, p=p)
+        polar_out = _require_result_out(out, PolarResult)
+        _raw.polar_compute_from_factors_into(
+            a.u,
+            a.singular_values,
+            a.vt,
+            polar_out.u,
+            polar_out.p,
+        )
+        return polar_out
+    if out is None:
+        u, p = _raw.polar_compute(a)
+        return PolarResult(u=u, p=p)
+    polar_out = _require_result_out(out, PolarResult)
+    _raw.polar_compute_into(a, polar_out.u, polar_out.p)
+    return polar_out
 
 
 def sylvester_solve(a, b, c, *, out=None, workspace: SylvesterWorkspace | None = None):
@@ -1181,6 +1198,15 @@ def matrix_log_eigen(matrix, *, out=None, workspace: MatrixFunctionWorkspace | N
 
 
 def matrix_log_svd(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
+    if isinstance(matrix, SvdResult):
+        if workspace is not None:
+            raise TypeError(
+                "workspace= is only supported when passing a matrix, not a precomputed SvdResult"
+            )
+        if out is None:
+            return _raw.matrix_log_svd_from_factors(matrix.u, matrix.singular_values, matrix.vt)
+        _raw.matrix_log_svd_from_factors_into(matrix.u, matrix.singular_values, matrix.vt, out)
+        return out
     if workspace is None:
         return _array_unary_out(_raw.matrix_log_svd, _raw.matrix_log_svd_into, matrix, out=out)
     return _require_workspace(workspace, MatrixFunctionWorkspace).log_svd(matrix, out=out)

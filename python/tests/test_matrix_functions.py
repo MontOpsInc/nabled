@@ -50,6 +50,40 @@ def test_matrix_log_svd():
     np.testing.assert_allclose(exp_log, a, rtol=1e-9)
 
 
+def test_matrix_log_svd_reuses_svd_result():
+    a = _make_spd(2)
+    svd = pynabled.svd_decompose(a)
+    out = np.empty((2, 2), dtype=np.float64, order="F")
+
+    returned = pynabled.matrix_log_svd(svd, out=out)
+
+    assert returned is out
+    np.testing.assert_allclose(pynabled.matrix_exp_eigen(out), a, rtol=1e-9, atol=1e-11)
+
+
+def test_matrix_log_svd_reuses_complex_svd_result_and_rejects_workspace():
+    hermitian_pd = np.array(
+        [[3.0 + 0.0j, 1.0 - 0.5j], [1.0 + 0.5j, 2.5 + 0.0j]],
+        dtype=np.complex128,
+    )
+    svd = pynabled.svd_decompose(hermitian_pd)
+    out = np.empty((2, 2), dtype=np.complex128, order="F")
+
+    returned = pynabled.matrix_log_svd(svd, out=out)
+
+    assert returned is out
+    np.testing.assert_allclose(
+        pynabled.matrix_exp(out, None, None),
+        hermitian_pd,
+        rtol=1e-9,
+        atol=1e-11,
+    )
+
+    workspace = pynabled.MatrixFunctionWorkspace(np.complex128)
+    with pytest.raises(TypeError, match="workspace="):
+        pynabled.matrix_log_svd(svd, workspace=workspace)
+
+
 def test_matrix_power():
     a = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)  # symmetric
     a2 = pynabled.matrix_power(a, 2.0)

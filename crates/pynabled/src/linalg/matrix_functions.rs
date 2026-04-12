@@ -11,6 +11,12 @@ const DEFAULT_MAX_TERMS: usize = 64;
 
 const DEFAULT_TOLERANCE: f64 = 1e-14;
 
+fn complex_svd_component_error() -> PyErr {
+    PyTypeError::new_err(
+        "u, vt must both be complex128 and singular_values must be float64 for complex SVD results",
+    )
+}
+
 pub(crate) enum PyMatrixFunctionWorkspaceInner {
     F32(nabled_linalg::matrix_functions::MatrixFunctionWorkspace<f32>),
     F64(nabled_linalg::matrix_functions::MatrixFunctionWorkspace<f64>),
@@ -1079,6 +1085,65 @@ pub fn matrix_log_svd<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyRes
     }
 }
 
+/// Matrix log via precomputed SVD factors.
+#[pyfunction(name = "matrix_log_svd_from_factors")]
+pub fn matrix_log_svd_from_factors<'py>(
+    py: Python<'py>,
+    u: &Bound<'py, PyAny>,
+    singular_values: &Bound<'py, PyAny>,
+    vt: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::numeric_array2(u, "u")?,
+        utils::real_array1(singular_values, "singular_values")?,
+        utils::numeric_array2(vt, "vt")?,
+    ) {
+        (
+            utils::NumericReadonlyArray2::F32(u_arr),
+            utils::RealReadonlyArray1::F32(s_arr),
+            utils::NumericReadonlyArray2::F32(vt_arr),
+        ) => {
+            let result = nabled_linalg::matrix_functions::matrix_log_svd_from_svd_view(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (
+            utils::NumericReadonlyArray2::F64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::F64(vt_arr),
+        ) => {
+            let result = nabled_linalg::matrix_functions::matrix_log_svd_from_svd_view(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (
+            utils::NumericReadonlyArray2::C64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::C64(vt_arr),
+        ) => {
+            let result = nabled_linalg::matrix_functions::matrix_log_svd_complex_from_svd_view(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::NumericReadonlyArray2::C64(_), _, utils::NumericReadonlyArray2::C64(_)) => {
+            Err(complex_svd_component_error())
+        }
+        _ => Err(utils::matching_real_dtype_error(&["u", "singular_values", "vt"])),
+    }
+}
+
 /// Matrix log via SVD into `output`.
 #[pyfunction(name = "matrix_log_svd_into")]
 pub fn matrix_log_svd_into(matrix: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> PyResult<()> {
@@ -1108,6 +1173,69 @@ pub fn matrix_log_svd_into(matrix: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>)
             )
             .map_err(to_py_err)
         }
+    }
+}
+
+/// Matrix log via precomputed SVD factors into `output`.
+#[pyfunction(name = "matrix_log_svd_from_factors_into")]
+pub fn matrix_log_svd_from_factors_into(
+    u: &Bound<'_, PyAny>,
+    singular_values: &Bound<'_, PyAny>,
+    vt: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::numeric_array2(u, "u")?,
+        utils::real_array1(singular_values, "singular_values")?,
+        utils::numeric_array2(vt, "vt")?,
+    ) {
+        (
+            utils::NumericReadonlyArray2::F32(u_arr),
+            utils::RealReadonlyArray1::F32(s_arr),
+            utils::NumericReadonlyArray2::F32(vt_arr),
+        ) => {
+            let mut out_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::matrix_functions::matrix_log_svd_from_svd_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::F64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::F64(vt_arr),
+        ) => {
+            let mut out_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::matrix_functions::matrix_log_svd_from_svd_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::NumericReadonlyArray2::C64(u_arr),
+            utils::RealReadonlyArray1::F64(s_arr),
+            utils::NumericReadonlyArray2::C64(vt_arr),
+        ) => {
+            let mut out_arr =
+                utils::output_array2::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_linalg::matrix_functions::matrix_log_svd_complex_from_svd_into(
+                &u_arr.as_array(),
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::NumericReadonlyArray2::C64(_), _, utils::NumericReadonlyArray2::C64(_)) => {
+            Err(complex_svd_component_error())
+        }
+        _ => Err(utils::matching_real_dtype_error(&["u", "singular_values", "vt"])),
     }
 }
 

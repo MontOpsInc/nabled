@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayBase, ArrayView2, Data, DataMut, Ix2};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, DataMut, Ix2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, identity, is_symmetric};
@@ -135,6 +135,59 @@ fn normalized_taylor_tolerance<T: NabledReal>(requested: T) -> T {
 fn base_tolerance<T: NabledReal>() -> T {
     T::from_f64(DenseKernelPolicy::BASE_TOLERANCE)
         .unwrap_or_else(|| num_traits::Float::sqrt(T::epsilon()).max(T::epsilon()))
+}
+
+fn validate_real_svd_factor_dimensions<T>(
+    u: &ArrayView2<'_, T>,
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: NabledReal,
+{
+    if u.is_empty() || singular_values.is_empty() || vt.is_empty() {
+        return Err(MatrixFunctionError::EmptyMatrix);
+    }
+    if u.nrows() != vt.ncols() {
+        return Err(MatrixFunctionError::NotSquare);
+    }
+    if u.ncols() != singular_values.len() || vt.nrows() != singular_values.len() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "SVD factor shapes are inconsistent".to_string(),
+        ));
+    }
+    if u.iter().any(|value| !value.is_finite())
+        || vt.iter().any(|value| !value.is_finite())
+        || singular_values.iter().any(|value| !value.is_finite())
+    {
+        return Err(MatrixFunctionError::InvalidInput("SVD factors must be finite".to_string()));
+    }
+    Ok(())
+}
+
+fn validate_complex_svd_factor_dimensions(
+    u: &ArrayView2<'_, Complex64>,
+    singular_values: &ArrayView1<'_, f64>,
+    vt: &ArrayView2<'_, Complex64>,
+) -> Result<(), MatrixFunctionError> {
+    if u.is_empty() || singular_values.is_empty() || vt.is_empty() {
+        return Err(MatrixFunctionError::EmptyMatrix);
+    }
+    if u.nrows() != vt.ncols() {
+        return Err(MatrixFunctionError::NotSquare);
+    }
+    if u.ncols() != singular_values.len() || vt.nrows() != singular_values.len() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "SVD factor shapes are inconsistent".to_string(),
+        ));
+    }
+    if u.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        || vt.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+        || singular_values.iter().any(|value| !value.is_finite())
+    {
+        return Err(MatrixFunctionError::InvalidInput("SVD factors must be finite".to_string()));
+    }
+    Ok(())
 }
 
 fn validate_square<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<(), MatrixFunctionError> {
@@ -1183,13 +1236,7 @@ where
 {
     validate_square(matrix)?;
     let svd = svd::decompose_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    let tolerance = base_tolerance::<T>();
-    if svd.singular_values.iter().any(|value| *value <= tolerance) {
-        return Err(MatrixFunctionError::NotPositiveDefinite);
-    }
-
-    let log_sigma = diagonal_from(&svd.singular_values.mapv(num_traits::Float::ln));
-    Ok(svd.u.dot(&log_sigma).dot(&svd.vt))
+    matrix_log_svd_from_svd_view(&svd.u.view(), &svd.singular_values.view(), &svd.vt.view())
 }
 
 /// Compute complex matrix logarithm via SVD.
@@ -1212,12 +1259,74 @@ fn matrix_log_svd_complex_impl(
         svd::SVDError::ConvergenceFailed => MatrixFunctionError::ConvergenceFailed,
         svd::SVDError::InvalidInput(message) => MatrixFunctionError::InvalidInput(message),
     })?;
-    if svd.singular_values.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
+    matrix_log_svd_complex_from_svd_view(&svd.u.view(), &svd.singular_values.view(), &svd.vt.view())
+}
+
+/// Compute matrix logarithm via precomputed SVD factors.
+///
+/// # Errors
+/// Returns an error if the factors are inconsistent or not positive definite.
+pub fn matrix_log_svd_from_svd<T>(
+    u: &Array2<T>,
+    singular_values: &Array1<T>,
+    vt: &Array2<T>,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    matrix_log_svd_from_svd_view(&u.view(), &singular_values.view(), &vt.view())
+}
+
+/// Compute matrix logarithm via borrowed SVD factor views.
+///
+/// # Errors
+/// Returns an error if the factors are inconsistent or not positive definite.
+pub fn matrix_log_svd_from_svd_view<T>(
+    u: &ArrayView2<'_, T>,
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    validate_real_svd_factor_dimensions(u, singular_values, vt)?;
+    let tolerance = base_tolerance::<T>();
+    if singular_values.iter().any(|value| *value <= tolerance) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
 
-    let log_sigma = diagonal_from_real_complex(&svd.singular_values.mapv(num_traits::Float::ln));
-    Ok(svd.u.dot(&log_sigma).dot(&svd.vt))
+    let log_sigma = diagonal_from(&singular_values.mapv(num_traits::Float::ln));
+    Ok(u.dot(&log_sigma).dot(vt))
+}
+
+/// Compute complex matrix logarithm via precomputed complex SVD factors.
+///
+/// # Errors
+/// Returns an error if the factors are inconsistent or not positive definite.
+pub fn matrix_log_svd_complex_from_svd(
+    u: &Array2<Complex64>,
+    singular_values: &Array1<f64>,
+    vt: &Array2<Complex64>,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    matrix_log_svd_complex_from_svd_view(&u.view(), &singular_values.view(), &vt.view())
+}
+
+/// Compute complex matrix logarithm via borrowed complex SVD factor views.
+///
+/// # Errors
+/// Returns an error if the factors are inconsistent or not positive definite.
+pub fn matrix_log_svd_complex_from_svd_view(
+    u: &ArrayView2<'_, Complex64>,
+    singular_values: &ArrayView1<'_, f64>,
+    vt: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, MatrixFunctionError> {
+    validate_complex_svd_factor_dimensions(u, singular_values, vt)?;
+    if singular_values.iter().any(|value| *value <= DenseKernelPolicy::BASE_TOLERANCE) {
+        return Err(MatrixFunctionError::NotPositiveDefinite);
+    }
+
+    let log_sigma = diagonal_from_real_complex(&singular_values.mapv(num_traits::Float::ln));
+    Ok(u.dot(&log_sigma).dot(vt))
 }
 
 /// Compute matrix logarithm via SVD from a matrix view.
@@ -1256,6 +1365,30 @@ where
     matrix_log_svd_with_workspace_into(matrix, output, &mut workspace)
 }
 
+/// Compute matrix logarithm via precomputed SVD factors into `output`.
+///
+/// # Errors
+/// Returns an error if the factors are inconsistent or `output` has the wrong shape.
+pub fn matrix_log_svd_from_svd_into<T, S>(
+    u: &ArrayView2<'_, T>,
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    if output.dim() != (u.nrows(), vt.ncols()) {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match the square matrix implied by the SVD factors".to_string(),
+        ));
+    }
+    let result = matrix_log_svd_from_svd_view(u, singular_values, vt)?;
+    output.assign(&result);
+    Ok(())
+}
+
 /// Compute matrix logarithm via SVD from a view into `output`.
 ///
 /// # Errors
@@ -1283,6 +1416,29 @@ pub fn matrix_log_svd_complex_into(
 ) -> Result<(), MatrixFunctionError> {
     let mut workspace = MatrixFunctionComplexWorkspace::default();
     matrix_log_svd_complex_with_workspace_into(matrix, output, &mut workspace)
+}
+
+/// Compute complex matrix logarithm via precomputed complex SVD factors into `output`.
+///
+/// # Errors
+/// Returns an error if the factors are inconsistent or `output` has the wrong shape.
+pub fn matrix_log_svd_complex_from_svd_into<S>(
+    u: &ArrayView2<'_, Complex64>,
+    singular_values: &ArrayView1<'_, f64>,
+    vt: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    if output.dim() != (u.nrows(), vt.ncols()) {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match the square matrix implied by the SVD factors".to_string(),
+        ));
+    }
+    let result = matrix_log_svd_complex_from_svd_view(u, singular_values, vt)?;
+    output.assign(&result);
+    Ok(())
 }
 
 /// Compute complex matrix logarithm via SVD from a view into `output`.
@@ -2698,5 +2854,59 @@ mod tests {
             matrix_sign_complex_view_into(&complex_matrix.view(), &mut complex_bad_view),
             Err(MatrixFunctionError::InvalidInput(_))
         ));
+    }
+
+    #[test]
+    fn matrix_log_svd_from_factors_matches_direct() {
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![2.0_f64, 0.2_f64, 0.2_f64, 3.0_f64]).unwrap();
+        let direct = matrix_log_svd(&matrix).unwrap();
+        let svd = svd::decompose(&matrix).unwrap();
+        let from_factors = matrix_log_svd_from_svd(&svd.u, &svd.singular_values, &svd.vt).unwrap();
+        let mut into = Array2::<f64>::zeros((2, 2));
+        matrix_log_svd_from_svd_into(
+            &svd.u.view(),
+            &svd.singular_values.view(),
+            &svd.vt.view(),
+            &mut into.view_mut(),
+        )
+        .unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((direct[[i, j]] - from_factors[[i, j]]).abs() < 1e-12_f64);
+                assert!((direct[[i, j]] - into[[i, j]]).abs() < 1e-12_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn matrix_log_svd_complex_from_factors_matches_direct() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(4.0_f64, 0.0_f64),
+            Complex64::new(0.5_f64, 0.25_f64),
+            Complex64::new(0.5_f64, -0.25_f64),
+            Complex64::new(3.0_f64, 0.0_f64),
+        ])
+        .unwrap();
+        let direct = matrix_log_svd_complex(&matrix).unwrap();
+        let svd = svd::decompose_complex(&matrix).unwrap();
+        let from_factors =
+            matrix_log_svd_complex_from_svd(&svd.u, &svd.singular_values, &svd.vt).unwrap();
+        let mut into = Array2::<Complex64>::zeros((2, 2));
+        matrix_log_svd_complex_from_svd_into(
+            &svd.u.view(),
+            &svd.singular_values.view(),
+            &svd.vt.view(),
+            &mut into.view_mut(),
+        )
+        .unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((direct[[i, j]] - from_factors[[i, j]]).norm() < 1e-12_f64);
+                assert!((direct[[i, j]] - into[[i, j]]).norm() < 1e-12_f64);
+            }
+        }
     }
 }

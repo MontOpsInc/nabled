@@ -93,6 +93,10 @@ not have to allocate fresh Python result arrays on every call.
 `svd_pseudo_inverse(...)` can also consume a previously computed `SvdResult` directly, so repeated
 pseudo-inverse workflows can reuse decomposition factors instead of recomputing SVD from the
 original matrix.
+`polar_compute(...)` and `matrix_log_svd(...)` now follow that same SVD-derived reuse story:
+`polar_compute(...)` can consume a typed `SvdResult` with optional typed `out=PolarResult(...)`
+reuse, and `matrix_log_svd(...)` can consume `SvdResult` directly instead of recomputing the
+decomposition.
 Tensor reconstruction/projection/contraction helpers now follow that same contract where the Rust
 core already exposes a truthful `*_into` path: `tensor_hosvd_nd_reconstruct`,
 `tensor_hosvd3_reconstruct`, `tensor_tucker_project`, `tensor_tucker_expand`, `tensor_einsum`,
