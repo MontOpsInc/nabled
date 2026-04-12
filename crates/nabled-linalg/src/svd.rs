@@ -351,6 +351,31 @@ fn null_space_internal<T: NabledReal>(
     Ok(basis)
 }
 
+fn validate_null_space_factor_dimensions<T: NabledReal>(
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+) -> Result<(), SVDError> {
+    if singular_values.is_empty() || vt.is_empty() {
+        return Err(SVDError::EmptyMatrix);
+    }
+    if vt.nrows() != singular_values.len() {
+        return Err(SVDError::InvalidInput(
+            "singular_values length must match vt rows".to_string(),
+        ));
+    }
+    if vt.nrows() != vt.ncols() {
+        return Err(SVDError::InvalidInput(
+            "SVD factors must retain a full right-singular basis (vt must be square)".to_string(),
+        ));
+    }
+    if singular_values.iter().any(|value| !value.is_finite())
+        || vt.iter().any(|value| !value.is_finite())
+    {
+        return Err(SVDError::InvalidInput("SVD factors must be finite".to_string()));
+    }
+    Ok(())
+}
+
 /// Compute the SVD of `matrix`.
 ///
 /// # Errors
@@ -1063,6 +1088,56 @@ pub fn null_space_view<T: NabledReal>(
     null_space_internal(matrix, tolerance)
 }
 
+/// Compute a basis for the right null-space directly from real SVD factors.
+///
+/// This requires a full right-singular basis (`vt` square), which is available for square/tall
+/// full SVDs but not for reduced wide/truncated SVD results.
+///
+/// # Errors
+/// Returns an error if the factor dimensions are inconsistent.
+pub fn null_space_from_svd_view<T: NabledReal>(
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+    tolerance: Option<T>,
+) -> Result<Array2<T>, SVDError> {
+    validate_null_space_factor_dimensions(singular_values, vt)?;
+
+    let max_sv = singular_values.iter().copied().fold(T::zero(), T::max);
+    let tol = tolerance.unwrap_or(svd_relative_tolerance(max_sv, vt.ncols()));
+    let null_indices = singular_values
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(index, value)| (value <= tol).then_some(index))
+        .collect::<Vec<_>>();
+
+    if null_indices.is_empty() {
+        return Ok(Array2::<T>::zeros((vt.ncols(), 0)));
+    }
+
+    let mut basis = Array2::<T>::zeros((vt.ncols(), null_indices.len()));
+    for (col_out, row_in) in null_indices.into_iter().enumerate() {
+        for row in 0..vt.ncols() {
+            basis[[row, col_out]] = vt[[row_in, row]];
+        }
+    }
+    Ok(basis)
+}
+
+/// Compute a basis for the right null-space directly from real SVD factors.
+///
+/// This requires a full right-singular basis (`vt` square), which is available for square/tall
+/// full SVDs but not for reduced wide/truncated SVD results.
+///
+/// # Errors
+/// Returns an error if the factor dimensions are inconsistent.
+pub fn null_space_from_svd<T: NabledReal>(
+    svd: &NdarraySVD<T>,
+    tolerance: Option<T>,
+) -> Result<Array2<T>, SVDError> {
+    null_space_from_svd_view(&svd.singular_values.view(), &svd.vt.view(), tolerance)
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
@@ -1276,6 +1351,37 @@ mod tests {
         let basis = null_space(&matrix, None).unwrap();
         assert_eq!(basis.ncols(), 0);
         assert_eq!(basis.nrows(), 3);
+    }
+
+    #[test]
+    fn null_space_from_full_svd_factors_matches_matrix_path() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 4.0_f64, 3.0_f64, 6.0_f64,
+        ])
+        .unwrap();
+        let direct = null_space(&matrix, Some(1.0e-10_f64)).unwrap();
+        let svd = decompose(&matrix).unwrap();
+        let from_factors = null_space_from_svd(&svd, Some(1.0e-10_f64)).unwrap();
+
+        assert_eq!(direct.dim(), from_factors.dim());
+        for row in 0..direct.nrows() {
+            for col in 0..direct.ncols() {
+                assert!((direct[[row, col]].abs() - from_factors[[row, col]].abs()) < 1.0e-8_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn null_space_from_svd_rejects_missing_full_right_basis() {
+        let singular_values = Array1::from_vec(vec![3.0_f64, 1.0_f64]);
+        let vt = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 0.0_f64,
+        ])
+        .unwrap();
+
+        let result = null_space_from_svd_view(&singular_values.view(), &vt.view(), None);
+
+        assert!(matches!(result, Err(SVDError::InvalidInput(_))));
     }
 
     #[test]

@@ -84,6 +84,16 @@ reuse, and `matrix_log_svd(...)` can consume `SvdResult` directly instead of rec
 decomposition. `workspace=` remains a matrix-input-only contract for `matrix_log_svd(...)`, so
 passing both a precomputed `SvdResult` and `workspace=` fails explicitly instead of silently
 ignoring the workspace.
+The real symmetric eigen-backed matrix-function helpers now follow that same typed-factor pattern:
+`matrix_exp_eigen(...)`, `matrix_log_eigen(...)`, `matrix_power(...)`, and `matrix_sign(...)` can
+consume `EigenResult` directly with optional `out=` reuse, while `workspace=` remains a
+matrix-input-only contract on factor-backed calls. `qr_solve_least_squares(...)` now also accepts
+Rust-backed `out=` reuse for direct matrix inputs and can reuse a typed `QrResult` directly for
+square/tall factorizations; underdetermined factor reuse fails explicitly because reduced QR
+factors do not retain the minimum-norm solve contract. `svd_null_space(...)` can also reuse a
+typed `SvdResult` when that result retains a full right-singular basis (`vt` square), and wide or
+truncated factor results fail explicitly instead of pretending to provide a complete null-space
+basis.
 `svd_condition_number(...)` and `svd_rank(...)` now read singular values directly instead of
 rebuilding owned intermediary SVD objects.
 Tensor reconstruction/projection/contraction helpers now also reuse caller-provided outputs where

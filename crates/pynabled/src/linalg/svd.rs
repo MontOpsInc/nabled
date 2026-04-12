@@ -460,3 +460,36 @@ pub fn null_space<'py>(
         }
     }
 }
+
+/// Compute a basis for the right null-space directly from real SVD factors.
+#[pyfunction(name = "svd_null_space_from_factors", signature = (singular_values, vt, tolerance=None))]
+pub fn null_space_from_factors<'py>(
+    py: Python<'py>,
+    singular_values: &Bound<'py, PyAny>,
+    vt: &Bound<'py, PyAny>,
+    tolerance: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_array1(singular_values, "singular_values")?, utils::real_array2(vt, "vt")?) {
+        (utils::RealReadonlyArray1::F32(s_arr), utils::RealReadonlyArray2::F32(vt_arr)) => {
+            let tolerance =
+                tolerance.map(|value| utils::f64_to_f32(value, "tolerance")).transpose()?;
+            let result = nabled_linalg::svd::null_space_from_svd_view(
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                tolerance,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray1::F64(s_arr), utils::RealReadonlyArray2::F64(vt_arr)) => {
+            let result = nabled_linalg::svd::null_space_from_svd_view(
+                &s_arr.as_array(),
+                &vt_arr.as_array(),
+                tolerance,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["singular_values", "vt"])),
+    }
+}

@@ -908,6 +908,70 @@ pub fn matrix_exp_eigen_into(matrix: &Bound<'_, PyAny>, output: &Bound<'_, PyAny
     }
 }
 
+/// Matrix exponential via precomputed real eigendecomposition factors.
+#[pyfunction(name = "matrix_exp_eigen_from_factors")]
+pub fn matrix_exp_eigen_from_factors<'py>(
+    py: Python<'py>,
+    eigenvalues: &Bound<'py, PyAny>,
+    eigenvectors: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::real_array1(eigenvalues, "eigenvalues")?,
+        utils::real_array2(eigenvectors, "eigenvectors")?,
+    ) {
+        (utils::RealReadonlyArray1::F32(values), utils::RealReadonlyArray2::F32(vectors)) => {
+            let result = nabled_linalg::matrix_functions::matrix_exp_eigen_from_factors_view(
+                &values.as_array(),
+                &vectors.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray1::F64(values), utils::RealReadonlyArray2::F64(vectors)) => {
+            let result = nabled_linalg::matrix_functions::matrix_exp_eigen_from_factors_view(
+                &values.as_array(),
+                &vectors.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["eigenvalues", "eigenvectors"])),
+    }
+}
+
+/// Matrix exponential via precomputed real eigendecomposition factors into `output`.
+#[pyfunction(name = "matrix_exp_eigen_from_factors_into")]
+pub fn matrix_exp_eigen_from_factors_into(
+    eigenvalues: &Bound<'_, PyAny>,
+    eigenvectors: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::real_array1(eigenvalues, "eigenvalues")?,
+        utils::real_array2(eigenvectors, "eigenvectors")?,
+    ) {
+        (utils::RealReadonlyArray1::F32(values), utils::RealReadonlyArray2::F32(vectors)) => {
+            let mut out_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::matrix_functions::matrix_exp_eigen_from_factors_view_into(
+                &values.as_array(),
+                &vectors.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray1::F64(values), utils::RealReadonlyArray2::F64(vectors)) => {
+            let mut out_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::matrix_functions::matrix_exp_eigen_from_factors_view_into(
+                &values.as_array(),
+                &vectors.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["eigenvalues", "eigenvectors", "output"])),
+    }
+}
+
 /// Matrix log via Taylor series.
 #[pyfunction(name = "matrix_log_taylor")]
 pub fn matrix_log_taylor<'py>(
@@ -1051,6 +1115,70 @@ pub fn matrix_log_eigen_into(matrix: &Bound<'_, PyAny>, output: &Bound<'_, PyAny
             )
             .map_err(to_py_err)
         }
+    }
+}
+
+/// Matrix log via precomputed real eigendecomposition factors.
+#[pyfunction(name = "matrix_log_eigen_from_factors")]
+pub fn matrix_log_eigen_from_factors<'py>(
+    py: Python<'py>,
+    eigenvalues: &Bound<'py, PyAny>,
+    eigenvectors: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::real_array1(eigenvalues, "eigenvalues")?,
+        utils::real_array2(eigenvectors, "eigenvectors")?,
+    ) {
+        (utils::RealReadonlyArray1::F32(values), utils::RealReadonlyArray2::F32(vectors)) => {
+            let result = nabled_linalg::matrix_functions::matrix_log_eigen_from_factors_view(
+                &values.as_array(),
+                &vectors.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray1::F64(values), utils::RealReadonlyArray2::F64(vectors)) => {
+            let result = nabled_linalg::matrix_functions::matrix_log_eigen_from_factors_view(
+                &values.as_array(),
+                &vectors.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["eigenvalues", "eigenvectors"])),
+    }
+}
+
+/// Matrix log via precomputed real eigendecomposition factors into `output`.
+#[pyfunction(name = "matrix_log_eigen_from_factors_into")]
+pub fn matrix_log_eigen_from_factors_into(
+    eigenvalues: &Bound<'_, PyAny>,
+    eigenvectors: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::real_array1(eigenvalues, "eigenvalues")?,
+        utils::real_array2(eigenvectors, "eigenvectors")?,
+    ) {
+        (utils::RealReadonlyArray1::F32(values), utils::RealReadonlyArray2::F32(vectors)) => {
+            let mut out_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::matrix_functions::matrix_log_eigen_from_factors_view_into(
+                &values.as_array(),
+                &vectors.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray1::F64(values), utils::RealReadonlyArray2::F64(vectors)) => {
+            let mut out_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::matrix_functions::matrix_log_eigen_from_factors_view_into(
+                &values.as_array(),
+                &vectors.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["eigenvalues", "eigenvectors", "output"])),
     }
 }
 
@@ -1324,6 +1452,78 @@ pub fn matrix_power_into(
     }
 }
 
+/// Matrix power via precomputed real eigendecomposition factors.
+#[pyfunction(name = "matrix_power_from_factors")]
+pub fn matrix_power_from_factors<'py>(
+    py: Python<'py>,
+    eigenvalues: &Bound<'py, PyAny>,
+    eigenvectors: &Bound<'py, PyAny>,
+    power: f64,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::real_array1(eigenvalues, "eigenvalues")?,
+        utils::real_array2(eigenvectors, "eigenvectors")?,
+    ) {
+        (utils::RealReadonlyArray1::F32(values), utils::RealReadonlyArray2::F32(vectors)) => {
+            let power = utils::f64_to_f32(power, "power")?;
+            let result = nabled_linalg::matrix_functions::matrix_power_from_factors_view(
+                &values.as_array(),
+                &vectors.as_array(),
+                power,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray1::F64(values), utils::RealReadonlyArray2::F64(vectors)) => {
+            let result = nabled_linalg::matrix_functions::matrix_power_from_factors_view(
+                &values.as_array(),
+                &vectors.as_array(),
+                power,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["eigenvalues", "eigenvectors"])),
+    }
+}
+
+/// Matrix power via precomputed real eigendecomposition factors into `output`.
+#[pyfunction(name = "matrix_power_from_factors_into")]
+pub fn matrix_power_from_factors_into(
+    eigenvalues: &Bound<'_, PyAny>,
+    eigenvectors: &Bound<'_, PyAny>,
+    power: f64,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::real_array1(eigenvalues, "eigenvalues")?,
+        utils::real_array2(eigenvectors, "eigenvectors")?,
+    ) {
+        (utils::RealReadonlyArray1::F32(values), utils::RealReadonlyArray2::F32(vectors)) => {
+            let power = utils::f64_to_f32(power, "power")?;
+            let mut out_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::matrix_functions::matrix_power_from_factors_view_into(
+                &values.as_array(),
+                &vectors.as_array(),
+                power,
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray1::F64(values), utils::RealReadonlyArray2::F64(vectors)) => {
+            let mut out_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::matrix_functions::matrix_power_from_factors_view_into(
+                &values.as_array(),
+                &vectors.as_array(),
+                power,
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["eigenvalues", "eigenvectors", "output"])),
+    }
+}
+
 /// Matrix sign function.
 #[pyfunction(name = "matrix_sign")]
 pub fn matrix_sign<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
@@ -1352,6 +1552,70 @@ pub fn matrix_sign<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyResult
             .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, output))
         }
+    }
+}
+
+/// Matrix sign via precomputed real eigendecomposition factors.
+#[pyfunction(name = "matrix_sign_from_factors")]
+pub fn matrix_sign_from_factors<'py>(
+    py: Python<'py>,
+    eigenvalues: &Bound<'py, PyAny>,
+    eigenvectors: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match (
+        utils::real_array1(eigenvalues, "eigenvalues")?,
+        utils::real_array2(eigenvectors, "eigenvectors")?,
+    ) {
+        (utils::RealReadonlyArray1::F32(values), utils::RealReadonlyArray2::F32(vectors)) => {
+            let result = nabled_linalg::matrix_functions::matrix_sign_from_factors_view(
+                &values.as_array(),
+                &vectors.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        (utils::RealReadonlyArray1::F64(values), utils::RealReadonlyArray2::F64(vectors)) => {
+            let result = nabled_linalg::matrix_functions::matrix_sign_from_factors_view(
+                &values.as_array(),
+                &vectors.as_array(),
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["eigenvalues", "eigenvectors"])),
+    }
+}
+
+/// Matrix sign via precomputed real eigendecomposition factors into `output`.
+#[pyfunction(name = "matrix_sign_from_factors_into")]
+pub fn matrix_sign_from_factors_into(
+    eigenvalues: &Bound<'_, PyAny>,
+    eigenvectors: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match (
+        utils::real_array1(eigenvalues, "eigenvalues")?,
+        utils::real_array2(eigenvectors, "eigenvectors")?,
+    ) {
+        (utils::RealReadonlyArray1::F32(values), utils::RealReadonlyArray2::F32(vectors)) => {
+            let mut out_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_linalg::matrix_functions::matrix_sign_from_factors_view_into(
+                &values.as_array(),
+                &vectors.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray1::F64(values), utils::RealReadonlyArray2::F64(vectors)) => {
+            let mut out_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_linalg::matrix_functions::matrix_sign_from_factors_view_into(
+                &values.as_array(),
+                &vectors.as_array(),
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["eigenvalues", "eigenvectors", "output"])),
     }
 }
 

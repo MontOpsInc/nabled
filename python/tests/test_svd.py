@@ -70,6 +70,25 @@ def test_svd_null_space():
         np.testing.assert_allclose(a @ null[:, j], np.zeros(2), atol=1e-10)
 
 
+def test_svd_null_space_reuses_full_svd_factors_when_available():
+    a = np.array([[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]], dtype=np.float64)
+    result = pynabled.svd_decompose(a)
+
+    null = pynabled.svd_null_space(result, None)
+
+    assert null.ndim == 2
+    for j in range(null.shape[1]):
+        np.testing.assert_allclose(a @ null[:, j], np.zeros(a.shape[0]), atol=1e-10)
+
+
+def test_svd_null_space_rejects_factors_without_full_right_basis():
+    a = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64)
+    result = pynabled.svd_decompose(a)
+
+    with pytest.raises(ValueError, match="full right-singular basis"):
+        pynabled.svd_null_space(result)
+
+
 def test_svd_accepts_non_contiguous_inputs():
     a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
     a_non_contig = a.T

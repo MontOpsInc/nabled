@@ -402,6 +402,199 @@ pub fn solve_least_squares<'py>(
     }
 }
 
+/// Solve least-squares problem `min ||Ax - b||` into caller-provided `output`.
+#[pyfunction(
+    name = "qr_solve_least_squares_into",
+    signature = (a, b, output, rank_tolerance=None, max_iterations=None)
+)]
+pub fn solve_least_squares_into(
+    a: &Bound<'_, PyAny>,
+    b: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+    rank_tolerance: Option<f64>,
+    max_iterations: Option<usize>,
+) -> PyResult<()> {
+    match (utils::real_array2(a, "a")?, utils::real_array1(b, "b")?) {
+        (utils::RealReadonlyArray2::F32(a_arr), utils::RealReadonlyArray1::F32(b_arr)) => {
+            let config = qr_config_f32(rank_tolerance, max_iterations, false)?;
+            let mut out_arr = utils::output_array1::<f32>(output, "output", "float32")?;
+            nabled_linalg::qr::solve_least_squares_view_into(
+                &a_arr.as_array(),
+                &b_arr.as_array(),
+                &config,
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (utils::RealReadonlyArray2::F64(a_arr), utils::RealReadonlyArray1::F64(b_arr)) => {
+            let config = qr_config_f64(rank_tolerance, max_iterations, false);
+            let mut out_arr = utils::output_array1::<f64>(output, "output", "float64")?;
+            nabled_linalg::qr::solve_least_squares_view_into(
+                &a_arr.as_array(),
+                &b_arr.as_array(),
+                &config,
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["a", "b", "output"])),
+    }
+}
+
+/// Solve least squares directly from precomputed QR factors.
+#[pyfunction(
+    name = "qr_solve_least_squares_from_factor",
+    signature = (q, r, b, p=None, rank_tolerance=None)
+)]
+pub fn solve_least_squares_from_factor<'py>(
+    py: Python<'py>,
+    q: &Bound<'py, PyAny>,
+    r: &Bound<'py, PyAny>,
+    b: &Bound<'py, PyAny>,
+    p: Option<&Bound<'py, PyAny>>,
+    rank_tolerance: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    match (utils::real_array2(q, "q")?, utils::real_array2(r, "r")?, utils::real_array1(b, "b")?) {
+        (
+            utils::RealReadonlyArray2::F32(q_arr),
+            utils::RealReadonlyArray2::F32(r_arr),
+            utils::RealReadonlyArray1::F32(b_arr),
+        ) => {
+            let permutation = match p {
+                Some(value) => match utils::real_array2(value, "p")? {
+                    utils::RealReadonlyArray2::F32(permutation) => Some(permutation),
+                    utils::RealReadonlyArray2::F64(_) => {
+                        return Err(utils::matching_real_dtype_error(&["q", "r", "b", "p"]));
+                    }
+                },
+                None => None,
+            };
+            let config = qr_config_f32(rank_tolerance, None, permutation.is_some())?;
+            let qr = nabled_linalg::qr::QRResult {
+                q:    q_arr.as_array().to_owned(),
+                r:    r_arr.as_array().to_owned(),
+                p:    permutation.map(|value| value.as_array().to_owned()),
+                rank: q_arr.as_array().ncols().min(r_arr.as_array().ncols()),
+            };
+            let result = nabled_linalg::qr::solve_least_squares_from_qr_result_view(
+                &qr,
+                &b_arr.as_array(),
+                &config,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        (
+            utils::RealReadonlyArray2::F64(q_arr),
+            utils::RealReadonlyArray2::F64(r_arr),
+            utils::RealReadonlyArray1::F64(b_arr),
+        ) => {
+            let permutation = match p {
+                Some(value) => match utils::real_array2(value, "p")? {
+                    utils::RealReadonlyArray2::F64(permutation) => Some(permutation),
+                    utils::RealReadonlyArray2::F32(_) => {
+                        return Err(utils::matching_real_dtype_error(&["q", "r", "b", "p"]));
+                    }
+                },
+                None => None,
+            };
+            let config = qr_config_f64(rank_tolerance, None, permutation.is_some());
+            let qr = nabled_linalg::qr::QRResult {
+                q:    q_arr.as_array().to_owned(),
+                r:    r_arr.as_array().to_owned(),
+                p:    permutation.map(|value| value.as_array().to_owned()),
+                rank: q_arr.as_array().ncols().min(r_arr.as_array().ncols()),
+            };
+            let result = nabled_linalg::qr::solve_least_squares_from_qr_result_view(
+                &qr,
+                &b_arr.as_array(),
+                &config,
+            )
+            .map_err(to_py_err)?;
+            Ok(utils::pyarray1_from_owned(py, result))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["q", "r", "b"])),
+    }
+}
+
+/// Solve least squares directly from precomputed QR factors into caller-provided `output`.
+#[pyfunction(
+    name = "qr_solve_least_squares_from_factor_into",
+    signature = (q, r, b, output, p=None, rank_tolerance=None)
+)]
+pub fn solve_least_squares_from_factor_into(
+    q: &Bound<'_, PyAny>,
+    r: &Bound<'_, PyAny>,
+    b: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+    p: Option<&Bound<'_, PyAny>>,
+    rank_tolerance: Option<f64>,
+) -> PyResult<()> {
+    match (utils::real_array2(q, "q")?, utils::real_array2(r, "r")?, utils::real_array1(b, "b")?) {
+        (
+            utils::RealReadonlyArray2::F32(q_arr),
+            utils::RealReadonlyArray2::F32(r_arr),
+            utils::RealReadonlyArray1::F32(b_arr),
+        ) => {
+            let permutation = match p {
+                Some(value) => match utils::real_array2(value, "p")? {
+                    utils::RealReadonlyArray2::F32(permutation) => Some(permutation),
+                    utils::RealReadonlyArray2::F64(_) => {
+                        return Err(utils::matching_real_dtype_error(&["q", "r", "b", "p"]));
+                    }
+                },
+                None => None,
+            };
+            let config = qr_config_f32(rank_tolerance, None, permutation.is_some())?;
+            let qr = nabled_linalg::qr::QRResult {
+                q:    q_arr.as_array().to_owned(),
+                r:    r_arr.as_array().to_owned(),
+                p:    permutation.map(|value| value.as_array().to_owned()),
+                rank: q_arr.as_array().ncols().min(r_arr.as_array().ncols()),
+            };
+            let mut out_arr = utils::output_array1::<f32>(output, "output", "float32")?;
+            nabled_linalg::qr::solve_least_squares_from_qr_result_view_into(
+                &qr,
+                &b_arr.as_array(),
+                &config,
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        (
+            utils::RealReadonlyArray2::F64(q_arr),
+            utils::RealReadonlyArray2::F64(r_arr),
+            utils::RealReadonlyArray1::F64(b_arr),
+        ) => {
+            let permutation = match p {
+                Some(value) => match utils::real_array2(value, "p")? {
+                    utils::RealReadonlyArray2::F64(permutation) => Some(permutation),
+                    utils::RealReadonlyArray2::F32(_) => {
+                        return Err(utils::matching_real_dtype_error(&["q", "r", "b", "p"]));
+                    }
+                },
+                None => None,
+            };
+            let config = qr_config_f64(rank_tolerance, None, permutation.is_some());
+            let qr = nabled_linalg::qr::QRResult {
+                q:    q_arr.as_array().to_owned(),
+                r:    r_arr.as_array().to_owned(),
+                p:    permutation.map(|value| value.as_array().to_owned()),
+                rank: q_arr.as_array().ncols().min(r_arr.as_array().ncols()),
+            };
+            let mut out_arr = utils::output_array1::<f64>(output, "output", "float64")?;
+            nabled_linalg::qr::solve_least_squares_from_qr_result_view_into(
+                &qr,
+                &b_arr.as_array(),
+                &config,
+                &mut out_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["q", "r", "b", "output"])),
+    }
+}
+
 /// Reconstruct matrix `Q * R`.
 #[pyfunction(name = "qr_reconstruct_matrix")]
 pub fn reconstruct_matrix<'py>(

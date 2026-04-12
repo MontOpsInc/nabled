@@ -97,6 +97,13 @@ original matrix.
 `polar_compute(...)` can consume a typed `SvdResult` with optional typed `out=PolarResult(...)`
 reuse, and `matrix_log_svd(...)` can consume `SvdResult` directly instead of recomputing the
 decomposition.
+The real symmetric eigen-backed matrix-function helpers now follow the same pattern too:
+`matrix_exp_eigen(...)`, `matrix_log_eigen(...)`, `matrix_power(...)`, and `matrix_sign(...)` can
+consume a typed `EigenResult` directly with optional `out=` reuse, while `workspace=` remains a
+matrix-input-only contract on those factor-backed calls. `qr_solve_least_squares(...)` now also
+accepts both direct matrix `out=` reuse and typed `QrResult` reuse for square/tall factorizations,
+and `svd_null_space(...)` can reuse `SvdResult` when it retains a full right-singular basis
+(`vt` square).
 Tensor reconstruction/projection/contraction helpers now follow that same contract where the Rust
 core already exposes a truthful `*_into` path: `tensor_hosvd_nd_reconstruct`,
 `tensor_hosvd3_reconstruct`, `tensor_tucker_project`, `tensor_tucker_expand`, `tensor_einsum`,

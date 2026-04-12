@@ -246,6 +246,8 @@ def svd_rank(result: SvdResult, tolerance=None):
 
 
 def svd_null_space(a, tolerance=None):
+    if isinstance(a, SvdResult):
+        return _raw.svd_null_space_from_factors(a.singular_values, a.vt, tolerance)
     return _raw.svd_null_space(a, tolerance)
 
 
@@ -289,13 +291,37 @@ def qr_condition_number(result: QrResult):
     return _raw.qr_condition_number(result.r)
 
 
-def qr_solve_least_squares(a, b, rank_tolerance=None, max_iterations=None):
-    return _raw.qr_solve_least_squares(
+def qr_solve_least_squares(a, b, rank_tolerance=None, max_iterations=None, *, out=None):
+    if isinstance(a, QrResult):
+        if max_iterations is not None:
+            raise TypeError(
+                "max_iterations= is only supported when passing a matrix, not a precomputed QrResult"
+            )
+        kwargs = {"rank_tolerance": rank_tolerance}
+        if a.p is None:
+            if out is None:
+                return _raw.qr_solve_least_squares_from_factor(a.q, a.r, b, **kwargs)
+            _raw.qr_solve_least_squares_from_factor_into(a.q, a.r, b, out, **kwargs)
+            return out
+        if out is None:
+            return _raw.qr_solve_least_squares_from_factor(a.q, a.r, b, p=a.p, **kwargs)
+        _raw.qr_solve_least_squares_from_factor_into(a.q, a.r, b, out, p=a.p, **kwargs)
+        return out
+    if out is None:
+        return _raw.qr_solve_least_squares(
+            a,
+            b,
+            rank_tolerance=rank_tolerance,
+            max_iterations=max_iterations,
+        )
+    _raw.qr_solve_least_squares_into(
         a,
         b,
+        out,
         rank_tolerance=rank_tolerance,
         max_iterations=max_iterations,
     )
+    return out
 
 
 def lu_decompose(a) -> LuResult:
@@ -1186,12 +1212,30 @@ def matrix_exp(
 
 
 def matrix_exp_eigen(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
+    if isinstance(matrix, EigenResult):
+        if workspace is not None:
+            raise TypeError(
+                "workspace= is only supported when passing a matrix, not a precomputed EigenResult"
+            )
+        if out is None:
+            return _raw.matrix_exp_eigen_from_factors(matrix.eigenvalues, matrix.eigenvectors)
+        _raw.matrix_exp_eigen_from_factors_into(matrix.eigenvalues, matrix.eigenvectors, out)
+        return out
     if workspace is None:
         return _array_unary_out(_raw.matrix_exp_eigen, _raw.matrix_exp_eigen_into, matrix, out=out)
     return _require_workspace(workspace, MatrixFunctionWorkspace).exp_eigen(matrix, out=out)
 
 
 def matrix_log_eigen(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
+    if isinstance(matrix, EigenResult):
+        if workspace is not None:
+            raise TypeError(
+                "workspace= is only supported when passing a matrix, not a precomputed EigenResult"
+            )
+        if out is None:
+            return _raw.matrix_log_eigen_from_factors(matrix.eigenvalues, matrix.eigenvectors)
+        _raw.matrix_log_eigen_from_factors_into(matrix.eigenvalues, matrix.eigenvectors, out)
+        return out
     if workspace is None:
         return _array_unary_out(_raw.matrix_log_eigen, _raw.matrix_log_eigen_into, matrix, out=out)
     return _require_workspace(workspace, MatrixFunctionWorkspace).log_eigen(matrix, out=out)
@@ -1244,6 +1288,15 @@ def matrix_power(
     out=None,
     workspace: MatrixFunctionWorkspace | None = None,
 ):
+    if isinstance(matrix, EigenResult):
+        if workspace is not None:
+            raise TypeError(
+                "workspace= is only supported when passing a matrix, not a precomputed EigenResult"
+            )
+        if out is None:
+            return _raw.matrix_power_from_factors(matrix.eigenvalues, matrix.eigenvectors, power)
+        _raw.matrix_power_from_factors_into(matrix.eigenvalues, matrix.eigenvectors, power, out)
+        return out
     if workspace is None:
         return _array_binary_scalar_out(
             _raw.matrix_power,
@@ -1256,6 +1309,15 @@ def matrix_power(
 
 
 def matrix_sign(matrix, *, out=None, workspace: MatrixFunctionWorkspace | None = None):
+    if isinstance(matrix, EigenResult):
+        if workspace is not None:
+            raise TypeError(
+                "workspace= is only supported when passing a matrix, not a precomputed EigenResult"
+            )
+        if out is None:
+            return _raw.matrix_sign_from_factors(matrix.eigenvalues, matrix.eigenvectors)
+        _raw.matrix_sign_from_factors_into(matrix.eigenvalues, matrix.eigenvectors, out)
+        return out
     if workspace is None:
         return _array_unary_out(_raw.matrix_sign, _raw.matrix_sign_into, matrix, out=out)
     return _require_workspace(workspace, MatrixFunctionWorkspace).sign(matrix, out=out)

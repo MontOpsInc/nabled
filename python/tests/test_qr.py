@@ -25,6 +25,42 @@ def test_qr_solve_least_squares():
     np.testing.assert_allclose(x, x_true, rtol=1e-10)
 
 
+def test_qr_solve_least_squares_supports_out_and_factor_reuse():
+    np.random.seed(7)
+    a = np.random.randn(6, 3).astype(np.float64)
+    x_true = np.array([0.25, -1.5, 2.0], dtype=np.float64)
+    b = a @ x_true
+
+    direct_out = np.empty(3, dtype=np.float64, order="F")
+    direct = pynabled.qr_solve_least_squares(a, b, out=direct_out)
+    result = pynabled.qr_decompose_reduced(a)
+    factor_out = np.empty(3, dtype=np.float64, order="F")
+    factor = pynabled.qr_solve_least_squares(result, b, out=factor_out, rank_tolerance=1.0e-12)
+
+    assert direct is direct_out
+    assert factor is factor_out
+    np.testing.assert_allclose(direct_out, x_true, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(factor_out, x_true, rtol=1e-10, atol=1e-12)
+
+
+def test_qr_solve_least_squares_qr_result_rejects_underdetermined_reuse():
+    a = np.array([[1.0, 0.0, 2.0], [0.0, 1.0, 3.0]], dtype=np.float64)
+    b = np.array([1.0, 2.0], dtype=np.float64)
+    result = pynabled.qr_decompose_reduced(a)
+
+    with pytest.raises(ValueError, match="underdetermined"):
+        pynabled.qr_solve_least_squares(result, b)
+
+
+def test_qr_solve_least_squares_qr_result_rejects_max_iterations_override():
+    a = np.array([[1.0, 2.0], [3.0, 5.0], [7.0, 11.0]], dtype=np.float64)
+    b = np.array([0.5, -1.0, 3.0], dtype=np.float64)
+    result = pynabled.qr_decompose_reduced(a)
+
+    with pytest.raises(TypeError, match="max_iterations="):
+        pynabled.qr_solve_least_squares(result, b, max_iterations=32)
+
+
 def test_qr_accepts_float32():
     a = np.array([[1.0, 2.0], [3.0, 5.0], [7.0, 11.0]], dtype=np.float32)
     x_true = np.array([0.5, -1.25], dtype=np.float32)

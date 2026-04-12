@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2, s};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, DataMut, Ix1, s};
 use num_complex::Complex64;
 
 use crate::internal::DenseKernelPolicy;
@@ -1094,6 +1094,95 @@ fn solve_least_squares_impl<T: QrInternalScalar>(
     }
 }
 
+/// Solve least squares directly from precomputed QR factors into caller-provided `output`.
+///
+/// # Errors
+/// Returns an error if the QR factors are inconsistent, correspond to an underdetermined reduced
+/// QR result, the system is rank-deficient, or `output` has the wrong length.
+pub fn solve_least_squares_from_qr_result_view_into<T, S>(
+    qr: &QRResult<T>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), QRError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    if qr.q.ncols() != qr.r.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if rhs.len() != qr.q.nrows() {
+        return Err(QRError::InvalidDimensions("RHS length must equal q rows".to_string()));
+    }
+    if output.len() != qr.r.ncols() {
+        return Err(QRError::InvalidDimensions("output length must equal r columns".to_string()));
+    }
+    if qr.q.ncols() < qr.r.ncols() {
+        return Err(QRError::InvalidInput(
+            "QR factors do not retain enough columns for underdetermined least-squares; pass the \
+             original matrix"
+                .to_string(),
+        ));
+    }
+
+    let n = qr.r.ncols();
+    let mut y = Array1::<T>::zeros(n);
+    for i in 0..n {
+        let mut dot = T::zero();
+        for row in 0..qr.q.nrows() {
+            dot += qr.q[[row, i]] * rhs[row];
+        }
+        y[i] = dot;
+    }
+
+    let mut permuted_solution = Array1::<T>::zeros(n);
+    for i_rev in 0..n {
+        let i = n - 1 - i_rev;
+        let mut sum = y[i];
+        for j in (i + 1)..n {
+            sum -= qr.r[[i, j]] * permuted_solution[j];
+        }
+        let diagonal = qr.r[[i, i]];
+        if num_traits::Float::abs(diagonal)
+            <= config
+                .rank_tolerance
+                .max(T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()))
+        {
+            return Err(QRError::SingularMatrix);
+        }
+        permuted_solution[i] = sum / diagonal;
+    }
+
+    if let Some(permutation) = &qr.p {
+        if permutation.nrows() != n || permutation.ncols() != n {
+            return Err(QRError::InvalidDimensions(
+                "permutation shape must match r column dimensions".to_string(),
+            ));
+        }
+        let solution = permutation.dot(&permuted_solution);
+        output.assign(&solution);
+    } else {
+        output.assign(&permuted_solution);
+    }
+    Ok(())
+}
+
+/// Solve least squares directly from precomputed QR factors.
+///
+/// # Errors
+/// Returns an error if the QR factors are inconsistent, correspond to an underdetermined reduced
+/// QR result, or the system is rank-deficient.
+pub fn solve_least_squares_from_qr_result_view<T: NabledReal>(
+    qr: &QRResult<T>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<Array1<T>, QRError> {
+    let mut output = Array1::<T>::zeros(qr.r.ncols());
+    solve_least_squares_from_qr_result_view_into(qr, rhs, config, &mut output)?;
+    Ok(output)
+}
+
 /// Solve least squares from matrix/vector views.
 ///
 /// # Errors
@@ -1121,6 +1210,80 @@ pub fn solve_least_squares_view<T: QrInternalScalar>(
     config: &QRConfig<T>,
 ) -> Result<Array1<T>, QRError> {
     solve_least_squares_impl(matrix, rhs, config)
+}
+
+/// Solve least squares from matrix/vector views into caller-provided `output`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or rank-deficient systems.
+#[cfg(feature = "lapack-provider")]
+pub fn solve_least_squares_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), QRError>
+where
+    T: QrProviderScalar,
+    S: DataMut<Elem = T>,
+{
+    if matrix.nrows() < matrix.ncols() {
+        let result = solve_least_squares_impl(matrix, rhs, config)?;
+        if output.len() != result.len() {
+            return Err(QRError::InvalidDimensions(
+                "output length must equal matrix columns".to_string(),
+            ));
+        }
+        output.assign(&result);
+        return Ok(());
+    }
+
+    let full = decompose_view(matrix, config)?;
+    let keep = matrix.nrows().min(matrix.ncols());
+    let qr = QRResult {
+        q:    full.q.slice(s![.., ..keep]).to_owned(),
+        r:    full.r.slice(s![..keep, ..]).to_owned(),
+        p:    full.p,
+        rank: full.rank.min(keep),
+    };
+    solve_least_squares_from_qr_result_view_into(&qr, rhs, config, output)
+}
+
+/// Solve least squares from matrix/vector views into caller-provided `output`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or rank-deficient systems.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn solve_least_squares_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), QRError>
+where
+    T: QrInternalScalar,
+    S: DataMut<Elem = T>,
+{
+    if matrix.nrows() < matrix.ncols() {
+        let result = solve_least_squares_impl(matrix, rhs, config)?;
+        if output.len() != result.len() {
+            return Err(QRError::InvalidDimensions(
+                "output length must equal matrix columns".to_string(),
+            ));
+        }
+        output.assign(&result);
+        return Ok(());
+    }
+
+    let full = decompose_view(matrix, config)?;
+    let keep = matrix.nrows().min(matrix.ncols());
+    let qr = QRResult {
+        q:    full.q.slice(s![.., ..keep]).to_owned(),
+        r:    full.r.slice(s![..keep, ..]).to_owned(),
+        p:    full.p,
+        rank: full.rank.min(keep),
+    };
+    solve_least_squares_from_qr_result_view_into(&qr, rhs, config, output)
 }
 
 /// Reconstruct matrix `Q * R`.
@@ -1378,6 +1541,49 @@ mod tests {
         let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64, 3.0_f64]);
         let result = solve_least_squares(&matrix, &rhs, &QRConfig::default());
         assert!(matches!(result, Err(QRError::InvalidDimensions(_))));
+    }
+
+    #[test]
+    fn least_squares_from_qr_result_matches_matrix_path() {
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            1.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 4.0_f64,
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64]);
+        let config = QRConfig::default();
+
+        let direct = solve_least_squares(&matrix, &rhs, &config).unwrap();
+        let qr = decompose_reduced(&matrix, &config).unwrap();
+        let from_factors =
+            solve_least_squares_from_qr_result_view(&qr, &rhs.view(), &config).unwrap();
+        let mut out = Array1::<f64>::zeros(2);
+        solve_least_squares_from_qr_result_view_into(
+            &qr,
+            &rhs.view(),
+            &config,
+            &mut out.view_mut(),
+        )
+        .unwrap();
+
+        for i in 0..direct.len() {
+            assert!((direct[i] - from_factors[i]).abs() < 1.0e-10_f64);
+            assert!((direct[i] - out[i]).abs() < 1.0e-10_f64);
+        }
+    }
+
+    #[test]
+    fn least_squares_from_wide_qr_result_is_rejected() {
+        let matrix = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 0.0_f64, 2.0_f64, 0.0_f64, 1.0_f64, 3.0_f64,
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64]);
+        let config = QRConfig::default();
+        let qr = decompose_reduced(&matrix, &config).unwrap();
+
+        let result = solve_least_squares_from_qr_result_view(&qr, &rhs.view(), &config);
+
+        assert!(matches!(result, Err(QRError::InvalidInput(_))));
     }
 
     #[test]

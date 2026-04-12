@@ -279,3 +279,36 @@ def test_matrix_exp_eigen_supports_workspace_reuse():
         rtol=1e-10,
         atol=1e-12,
     )
+
+
+def test_matrix_functions_reuse_real_eigen_result():
+    spd = np.array([[4.0, 1.0], [1.0, 3.0]], dtype=np.float64)
+    signed = np.array([[2.0, 0.0], [0.0, -3.0]], dtype=np.float64)
+    eigen_spd = pynabled.eigen_symmetric(spd)
+    eigen_signed = pynabled.eigen_symmetric(signed)
+
+    exp_from_result = pynabled.matrix_exp_eigen(eigen_spd)
+    log_out = np.empty_like(spd, order="F")
+    returned_log = pynabled.matrix_log_eigen(eigen_spd, out=log_out)
+    power_from_result = pynabled.matrix_power(eigen_spd, 2.0)
+    sign_from_result = pynabled.matrix_sign(eigen_signed)
+
+    assert returned_log is log_out
+    np.testing.assert_allclose(exp_from_result, pynabled.matrix_exp_eigen(spd), rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(log_out, pynabled.matrix_log_eigen(spd), rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(power_from_result, spd @ spd, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        sign_from_result,
+        np.array([[1.0, 0.0], [0.0, -1.0]], dtype=np.float64),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+
+def test_matrix_eigen_result_paths_reject_workspace_override():
+    spd = np.array([[4.0, 1.0], [1.0, 3.0]], dtype=np.float64)
+    eigen = pynabled.eigen_symmetric(spd)
+    workspace = pynabled.MatrixFunctionWorkspace(np.float64)
+
+    with pytest.raises(TypeError, match="workspace="):
+        pynabled.matrix_exp_eigen(eigen, workspace=workspace)

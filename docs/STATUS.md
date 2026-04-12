@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-10
+Last updated: 2026-04-12
 
 ## Summary
 
@@ -182,6 +182,19 @@ again to the still-missing higher-level reusable result/workspace semantics plus
 of explicit owned-materialization points that remain outside the already-landed
 dense/helper/PCA/regression/tensor-helper/LU/SVD/polar/matrix-function/sparse-normalization
 surfaces.
+A sixteenth `N-PY-007` decomposition-result reuse pass is now also landed: the real symmetric
+eigen-backed matrix-function rows no longer have to recompute eigendecomposition when the caller
+already has a typed `EigenResult`, so `matrix_exp_eigen(...)`, `matrix_log_eigen(...)`,
+`matrix_power(...)`, and `matrix_sign(...)` now accept `EigenResult` directly with `out=` reuse
+and explicit `workspace=` rejection on factor-backed calls. `qr_solve_least_squares(...)` now
+also exposes both Rust-backed `out=` reuse and typed `QrResult` reuse for square/tall QR factors,
+while still rejecting underdetermined factor reuse explicitly because reduced QR factors do not
+retain the minimum-norm solve contract. `svd_null_space(...)` can now reuse a typed `SvdResult`
+when that result retains a full right-singular basis (`vt` square), and wide/truncated factor
+results now fail explicitly instead of pretending to provide a complete null-space basis. This
+narrows `N-PY-007` again to the smaller set of remaining higher-level reusable result/workspace
+families plus any residual higher-level materialization/copy traps outside the already-landed
+dense/helper/PCA/regression/tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor surfaces.
 The first
 `N-PY-003` implementation pass is also landed:
 Python now has

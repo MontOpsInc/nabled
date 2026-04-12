@@ -69,6 +69,7 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::condition_number, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::rank, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::svd::null_space, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::svd::null_space_from_factors, m)?)?;
 
     // QR
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::decompose, m)?)?;
@@ -80,6 +81,9 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::reconstruct_matrix_pivoted_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::condition_number, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::qr::solve_least_squares, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::solve_least_squares_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::solve_least_squares_from_factor, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::qr::solve_least_squares_from_factor_into, m)?)?;
 
     // LU
     m.add_function(pyo3::wrap_pyfunction!(linalg::lu::decompose, m)?)?;
@@ -144,10 +148,26 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_exp_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_exp_eigen, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_exp_eigen_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_exp_eigen_from_factors,
+        m
+    )?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_exp_eigen_from_factors_into,
+        m
+    )?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_taylor, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_taylor_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_eigen, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_eigen_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_log_eigen_from_factors,
+        m
+    )?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_log_eigen_from_factors_into,
+        m
+    )?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_svd, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_log_svd_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(
@@ -160,8 +180,21 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_power, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_power_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_power_from_factors,
+        m
+    )?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_power_from_factors_into,
+        m
+    )?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_sign, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_sign_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_sign_from_factors, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::matrix_functions::matrix_sign_from_factors_into,
+        m
+    )?)?;
 
     // Orthogonalization
     m.add_function(pyo3::wrap_pyfunction!(linalg::orthogonalization::gram_schmidt, m)?)?;

@@ -190,6 +190,32 @@ fn validate_complex_svd_factor_dimensions(
     Ok(())
 }
 
+fn validate_real_eigen_factor_dimensions<T>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: NabledReal,
+{
+    if eigenvalues.is_empty() || eigenvectors.is_empty() {
+        return Err(MatrixFunctionError::EmptyMatrix);
+    }
+    if eigenvectors.nrows() != eigenvectors.ncols() {
+        return Err(MatrixFunctionError::NotSquare);
+    }
+    if eigenvectors.nrows() != eigenvalues.len() {
+        return Err(MatrixFunctionError::InvalidInput(
+            "eigen factor shapes are inconsistent".to_string(),
+        ));
+    }
+    if eigenvalues.iter().any(|value| !value.is_finite())
+        || eigenvectors.iter().any(|value| !value.is_finite())
+    {
+        return Err(MatrixFunctionError::InvalidInput("eigen factors must be finite".to_string()));
+    }
+    Ok(())
+}
+
 fn validate_square<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<(), MatrixFunctionError> {
     if matrix.is_empty() {
         return Err(MatrixFunctionError::EmptyMatrix);
@@ -629,9 +655,46 @@ where
 
     let eigen =
         eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    let exp_values = eigen.eigenvalues.mapv(num_traits::Float::exp);
+    matrix_exp_eigen_from_factors_view(&eigen.eigenvalues.view(), &eigen.eigenvectors.view())
+}
+
+/// Compute matrix exponential directly from real symmetric eigendecomposition factors.
+///
+/// # Errors
+/// Returns an error if the eigen factor dimensions are inconsistent.
+pub fn matrix_exp_eigen_from_factors_view<T>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    let exp_values = eigenvalues.mapv(num_traits::Float::exp);
     let diagonal = diagonal_from(&exp_values);
-    Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
+    Ok(eigenvectors.dot(&diagonal).dot(&eigenvectors.t()))
+}
+
+/// Compute matrix exponential directly from real symmetric eigendecomposition factors into
+/// `output`.
+///
+/// # Errors
+/// Returns an error if the eigen factor dimensions are inconsistent or `output` has the wrong
+/// shape.
+pub fn matrix_exp_eigen_from_factors_view_into<T, S>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    validate_output_shape(eigenvectors, output)?;
+    let result = matrix_exp_eigen_from_factors_view(eigenvalues, eigenvectors)?;
+    output.assign(&result);
+    Ok(())
 }
 
 /// Compute matrix exponential via eigen decomposition from a matrix view.
@@ -1009,13 +1072,52 @@ where
 
     let eigen =
         eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    if eigen.eigenvalues.iter().any(|value| *value <= tolerance) {
+    matrix_log_eigen_from_factors_view(&eigen.eigenvalues.view(), &eigen.eigenvectors.view())
+}
+
+/// Compute matrix logarithm directly from real symmetric eigendecomposition factors.
+///
+/// # Errors
+/// Returns an error if the eigen factor dimensions are inconsistent or the spectrum is not
+/// positive definite.
+pub fn matrix_log_eigen_from_factors_view<T>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    let tolerance = base_tolerance::<T>();
+    if eigenvalues.iter().any(|value| *value <= tolerance) {
         return Err(MatrixFunctionError::NotPositiveDefinite);
     }
 
-    let log_values = eigen.eigenvalues.mapv(num_traits::Float::ln);
+    let log_values = eigenvalues.mapv(num_traits::Float::ln);
     let diagonal = diagonal_from(&log_values);
-    Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
+    Ok(eigenvectors.dot(&diagonal).dot(&eigenvectors.t()))
+}
+
+/// Compute matrix logarithm directly from real symmetric eigendecomposition factors into
+/// `output`.
+///
+/// # Errors
+/// Returns an error if the eigen factor dimensions are inconsistent, the spectrum is not positive
+/// definite, or `output` has the wrong shape.
+pub fn matrix_log_eigen_from_factors_view_into<T, S>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    validate_output_shape(eigenvectors, output)?;
+    let result = matrix_log_eigen_from_factors_view(eigenvalues, eigenvectors)?;
+    output.assign(&result);
+    Ok(())
 }
 
 /// Compute matrix logarithm via eigen decomposition from a matrix view.
@@ -1571,9 +1673,47 @@ where
 
     let eigen =
         eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    let powered_values = eigen.eigenvalues.mapv(|value| num_traits::Float::powf(value, power));
+    matrix_power_from_factors_view(&eigen.eigenvalues.view(), &eigen.eigenvectors.view(), power)
+}
+
+/// Compute matrix power directly from real symmetric eigendecomposition factors.
+///
+/// # Errors
+/// Returns an error if the eigen factor dimensions are inconsistent.
+pub fn matrix_power_from_factors_view<T>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+    power: T,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    let powered_values = eigenvalues.mapv(|value| num_traits::Float::powf(value, power));
     let diagonal = diagonal_from(&powered_values);
-    Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
+    Ok(eigenvectors.dot(&diagonal).dot(&eigenvectors.t()))
+}
+
+/// Compute matrix power directly from real symmetric eigendecomposition factors into `output`.
+///
+/// # Errors
+/// Returns an error if the eigen factor dimensions are inconsistent or `output` has the wrong
+/// shape.
+pub fn matrix_power_from_factors_view_into<T, S>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+    power: T,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    validate_output_shape(eigenvectors, output)?;
+    let result = matrix_power_from_factors_view(eigenvalues, eigenvectors, power)?;
+    output.assign(&result);
+    Ok(())
 }
 
 /// Compute matrix power via eigen decomposition from a matrix view.
@@ -1807,7 +1947,23 @@ where
 
     let eigen =
         eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
-    let sign_values = eigen.eigenvalues.map(|value| {
+    matrix_sign_from_factors_view(&eigen.eigenvalues.view(), &eigen.eigenvectors.view())
+}
+
+/// Compute matrix sign directly from real symmetric eigendecomposition factors.
+///
+/// # Errors
+/// Returns an error if the eigen factor dimensions are inconsistent.
+pub fn matrix_sign_from_factors_view<T>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+) -> Result<Array2<T>, MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    let tolerance = base_tolerance::<T>();
+    let sign_values = eigenvalues.map(|value| {
         if *value > tolerance {
             T::one()
         } else if *value < -tolerance {
@@ -1817,7 +1973,28 @@ where
         }
     });
     let diagonal = diagonal_from(&sign_values);
-    Ok(eigen.eigenvectors.dot(&diagonal).dot(&eigen.eigenvectors.t()))
+    Ok(eigenvectors.dot(&diagonal).dot(&eigenvectors.t()))
+}
+
+/// Compute matrix sign directly from real symmetric eigendecomposition factors into `output`.
+///
+/// # Errors
+/// Returns an error if the eigen factor dimensions are inconsistent or `output` has the wrong
+/// shape.
+pub fn matrix_sign_from_factors_view_into<T, S>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    validate_output_shape(eigenvectors, output)?;
+    let result = matrix_sign_from_factors_view(eigenvalues, eigenvectors)?;
+    output.assign(&result);
+    Ok(())
 }
 
 /// Compute matrix sign via eigen decomposition from a matrix view.
@@ -2906,6 +3083,61 @@ mod tests {
             for j in 0..2 {
                 assert!((direct[[i, j]] - from_factors[[i, j]]).norm() < 1e-12_f64);
                 assert!((direct[[i, j]] - into[[i, j]]).norm() < 1e-12_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn real_eigen_factor_paths_match_direct_matrix_paths() {
+        let spd = Array2::from_shape_vec((2, 2), vec![4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64]).unwrap();
+        let signed =
+            Array2::from_shape_vec((2, 2), vec![2.0_f64, 0.0_f64, 0.0_f64, -3.0_f64]).unwrap();
+        let eigen = eigen::symmetric(&spd).unwrap();
+        let signed_eigen = eigen::symmetric(&signed).unwrap();
+
+        let exp_direct = matrix_exp_eigen(&spd).unwrap();
+        let exp_from_factors = matrix_exp_eigen_from_factors_view(
+            &eigen.eigenvalues.view(),
+            &eigen.eigenvectors.view(),
+        )
+        .unwrap();
+        let mut exp_out = Array2::<f64>::zeros((2, 2));
+        matrix_exp_eigen_from_factors_view_into(
+            &eigen.eigenvalues.view(),
+            &eigen.eigenvectors.view(),
+            &mut exp_out.view_mut(),
+        )
+        .unwrap();
+
+        let log_direct = matrix_log_eigen(&spd).unwrap();
+        let log_from_factors = matrix_log_eigen_from_factors_view(
+            &eigen.eigenvalues.view(),
+            &eigen.eigenvectors.view(),
+        )
+        .unwrap();
+
+        let power_direct = matrix_power(&spd, 2.0_f64).unwrap();
+        let power_from_factors = matrix_power_from_factors_view(
+            &eigen.eigenvalues.view(),
+            &eigen.eigenvectors.view(),
+            2.0_f64,
+        )
+        .unwrap();
+
+        let sign_direct = matrix_sign(&signed).unwrap();
+        let sign_from_factors = matrix_sign_from_factors_view(
+            &signed_eigen.eigenvalues.view(),
+            &signed_eigen.eigenvectors.view(),
+        )
+        .unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((exp_direct[[i, j]] - exp_from_factors[[i, j]]).abs() < 1e-12_f64);
+                assert!((exp_direct[[i, j]] - exp_out[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_direct[[i, j]] - log_from_factors[[i, j]]).abs() < 1e-12_f64);
+                assert!((power_direct[[i, j]] - power_from_factors[[i, j]]).abs() < 1e-12_f64);
+                assert!((sign_direct[[i, j]] - sign_from_factors[[i, j]]).abs() < 1e-12_f64);
             }
         }
     }
