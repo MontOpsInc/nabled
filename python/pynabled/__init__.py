@@ -1894,10 +1894,44 @@ def tensor_batched_matmul_last_two_complex(left, right, *, out=None):
     )
 
 
-triangular_solve_lower = _raw.triangular_solve_lower
-triangular_solve_lower_matrix = _raw.triangular_solve_lower_matrix
-triangular_solve_upper = _raw.triangular_solve_upper
-triangular_solve_upper_matrix = _raw.triangular_solve_upper_matrix
+def triangular_solve_lower(matrix, rhs, *, out=None):
+    return _array_binary_out(
+        _raw.triangular_solve_lower,
+        _raw.triangular_solve_lower_into,
+        matrix,
+        rhs,
+        out=out,
+    )
+
+
+def triangular_solve_upper(matrix, rhs, *, out=None):
+    return _array_binary_out(
+        _raw.triangular_solve_upper,
+        _raw.triangular_solve_upper_into,
+        matrix,
+        rhs,
+        out=out,
+    )
+
+
+def triangular_solve_lower_matrix(matrix, rhs, *, out=None):
+    return _array_binary_out(
+        _raw.triangular_solve_lower_matrix,
+        _raw.triangular_solve_lower_matrix_into,
+        matrix,
+        rhs,
+        out=out,
+    )
+
+
+def triangular_solve_upper_matrix(matrix, rhs, *, out=None):
+    return _array_binary_out(
+        _raw.triangular_solve_upper_matrix,
+        _raw.triangular_solve_upper_matrix_into,
+        matrix,
+        rhs,
+        out=out,
+    )
 
 
 __all__ = [

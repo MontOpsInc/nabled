@@ -139,9 +139,13 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Triangular
     m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_lower, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_lower_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_upper, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_upper_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_lower_matrix, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_lower_matrix_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_upper_matrix, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::triangular::solve_upper_matrix_into, m)?)?;
 
     // Matrix functions
     m.add_function(pyo3::wrap_pyfunction!(linalg::matrix_functions::matrix_exp, m)?)?;

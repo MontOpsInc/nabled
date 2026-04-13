@@ -72,17 +72,11 @@ fn output_arrayd<'py, T: Element>(
         .map_err(Into::into)
 }
 
-fn standard_array2<T: Clone>(array: Array2<T>) -> Array2<T> {
-    array.as_standard_layout().to_owned()
-}
+fn standard_array2<T>(array: Array2<T>) -> Array2<T> { array }
 
-fn standard_array3<T: Clone>(array: Array3<T>) -> Array3<T> {
-    array.as_standard_layout().to_owned()
-}
+fn standard_array3<T>(array: Array3<T>) -> Array3<T> { array }
 
-fn standard_arrayd<T: Clone>(array: ArrayD<T>) -> ArrayD<T> {
-    array.as_standard_layout().to_owned()
-}
+fn standard_arrayd<T>(array: ArrayD<T>) -> ArrayD<T> { array }
 
 pub(crate) fn real_scalar_to_f64<T: ToPrimitive>(value: T, name: &str) -> PyResult<f64> {
     value
@@ -316,21 +310,14 @@ pub(crate) fn extract_array3_sequence_views<'py, T: Element>(
     Ok(out)
 }
 
-pub(crate) enum RealTensorTrainResult {
-    F32(nabled_linalg::tensor::TensorTrainResult<f32>),
-    F64(nabled_linalg::tensor::TensorTrainResult<f64>),
+pub(crate) enum RealTensorTrainCoreArrays<'py> {
+    F32(Vec<PyReadonlyArray3<'py, f32>>),
+    F64(Vec<PyReadonlyArray3<'py, f64>>),
 }
 
-fn tensor_train_result_from_cores<T: NabledReal>(
-    cores: Vec<Array3<T>>,
-) -> nabled_linalg::tensor::TensorTrainResult<T> {
-    let shape = cores.iter().map(|core| core.dim().1).collect();
-    nabled_linalg::tensor::TensorTrainResult { cores, shape }
-}
-
-pub(crate) fn real_tt_result_from_cores(
-    cores: &Bound<'_, PyAny>,
-) -> PyResult<RealTensorTrainResult> {
+pub(crate) fn real_tt_core_arrays<'py>(
+    cores: &Bound<'py, PyAny>,
+) -> PyResult<RealTensorTrainCoreArrays<'py>> {
     let mut iter = cores.try_iter()?;
     let Some(first) = iter.next() else {
         return Err(PyValueError::new_err(
@@ -340,35 +327,11 @@ pub(crate) fn real_tt_result_from_cores(
     let first = first?;
     if let Ok(array) = first.cast::<PyArray3<f32>>() {
         utils::require_contiguous(array)?;
-        let mut owned = vec![array.readonly().as_array().to_owned()];
-        for item in iter {
-            let item = item?;
-            let array = item.cast::<PyArray3<f32>>().map_err(|_| {
-                PyValueError::new_err(
-                    "expected a non-empty sequence of 3D NumPy arrays with matching \
-                     float32/float64 dtype",
-                )
-            })?;
-            utils::require_contiguous(array)?;
-            owned.push(array.readonly().as_array().to_owned());
-        }
-        return Ok(RealTensorTrainResult::F32(tensor_train_result_from_cores(owned)));
+        return Ok(RealTensorTrainCoreArrays::F32(extract_array3_sequence_views::<f32>(cores)?));
     }
     if let Ok(array) = first.cast::<PyArray3<f64>>() {
         utils::require_contiguous(array)?;
-        let mut owned = vec![array.readonly().as_array().to_owned()];
-        for item in iter {
-            let item = item?;
-            let array = item.cast::<PyArray3<f64>>().map_err(|_| {
-                PyValueError::new_err(
-                    "expected a non-empty sequence of 3D NumPy arrays with matching \
-                     float32/float64 dtype",
-                )
-            })?;
-            utils::require_contiguous(array)?;
-            owned.push(array.readonly().as_array().to_owned());
-        }
-        return Ok(RealTensorTrainResult::F64(tensor_train_result_from_cores(owned)));
+        return Ok(RealTensorTrainCoreArrays::F64(extract_array3_sequence_views::<f64>(cores)?));
     }
     Err(PyValueError::new_err(
         "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
@@ -1337,19 +1300,15 @@ pub fn hosvd3<'py>(
 ) -> PyResult<PyHosvd3Result> {
     match utils::real_array3(cube, "cube")? {
         utils::RealReadonlyArray3::F32(cube_arr) => {
-            let result = nabled_linalg::tensor::hosvd3(
-                &cube_arr.as_array().to_owned(),
-                (rank0, rank1, rank2),
-            )
-            .map_err(to_py_err)?;
+            let result =
+                nabled_linalg::tensor::hosvd3_view(&cube_arr.as_array(), (rank0, rank1, rank2))
+                    .map_err(to_py_err)?;
             Ok(py_hosvd3_result(py, result))
         }
         utils::RealReadonlyArray3::F64(cube_arr) => {
-            let result = nabled_linalg::tensor::hosvd3(
-                &cube_arr.as_array().to_owned(),
-                (rank0, rank1, rank2),
-            )
-            .map_err(to_py_err)?;
+            let result =
+                nabled_linalg::tensor::hosvd3_view(&cube_arr.as_array(), (rank0, rank1, rank2))
+                    .map_err(to_py_err)?;
             Ok(py_hosvd3_result(py, result))
         }
     }
@@ -2138,15 +2097,17 @@ pub fn tt_orthogonalize_left<'py>(
     py: Python<'py>,
     cores: &Bound<'py, PyAny>,
 ) -> PyResult<PyTensorTrainResult> {
-    match real_tt_result_from_cores(cores)? {
-        RealTensorTrainResult::F32(result) => {
-            let result =
-                nabled_linalg::tensor::tt_orthogonalize_left(&result).map_err(to_py_err)?;
+    match real_tt_core_arrays(cores)? {
+        RealTensorTrainCoreArrays::F32(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_orthogonalize_left_from_cores_view(&core_views)
+                .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
-        RealTensorTrainResult::F64(result) => {
-            let result =
-                nabled_linalg::tensor::tt_orthogonalize_left(&result).map_err(to_py_err)?;
+        RealTensorTrainCoreArrays::F64(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_orthogonalize_left_from_cores_view(&core_views)
+                .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
     }
@@ -2158,15 +2119,17 @@ pub fn tt_orthogonalize_right<'py>(
     py: Python<'py>,
     cores: &Bound<'py, PyAny>,
 ) -> PyResult<PyTensorTrainResult> {
-    match real_tt_result_from_cores(cores)? {
-        RealTensorTrainResult::F32(result) => {
-            let result =
-                nabled_linalg::tensor::tt_orthogonalize_right(&result).map_err(to_py_err)?;
+    match real_tt_core_arrays(cores)? {
+        RealTensorTrainCoreArrays::F32(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_orthogonalize_right_from_cores_view(&core_views)
+                .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
-        RealTensorTrainResult::F64(result) => {
-            let result =
-                nabled_linalg::tensor::tt_orthogonalize_right(&result).map_err(to_py_err)?;
+        RealTensorTrainCoreArrays::F64(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_orthogonalize_right_from_cores_view(&core_views)
+                .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
     }
@@ -2180,15 +2143,19 @@ pub fn tt_round<'py>(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<PyTensorTrainResult> {
-    match real_tt_result_from_cores(cores)? {
-        RealTensorTrainResult::F32(result) => {
+    match real_tt_core_arrays(cores)? {
+        RealTensorTrainCoreArrays::F32(core_arrays) => {
             let config = tt_round_config::<f32>(max_rank, tolerance)?;
-            let result = nabled_linalg::tensor::tt_round(&result, &config).map_err(to_py_err)?;
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_round_from_cores_view(&core_views, &config)
+                .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
-        RealTensorTrainResult::F64(result) => {
+        RealTensorTrainCoreArrays::F64(core_arrays) => {
             let config = tt_round_config::<f64>(max_rank, tolerance)?;
-            let result = nabled_linalg::tensor::tt_round(&result, &config).map_err(to_py_err)?;
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_round_from_cores_view(&core_views, &config)
+                .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
     }
@@ -2197,12 +2164,20 @@ pub fn tt_round<'py>(
 /// Inner product between two Tensor-Train tensors.
 #[pyfunction(name = "tensor_tt_inner")]
 pub fn tt_inner(left_cores: &Bound<'_, PyAny>, right_cores: &Bound<'_, PyAny>) -> PyResult<f64> {
-    match (real_tt_result_from_cores(left_cores)?, real_tt_result_from_cores(right_cores)?) {
-        (RealTensorTrainResult::F32(left), RealTensorTrainResult::F32(right)) => {
-            Ok(f64::from(nabled_linalg::tensor::tt_inner(&left, &right).map_err(to_py_err)?))
+    match (real_tt_core_arrays(left_cores)?, real_tt_core_arrays(right_cores)?) {
+        (RealTensorTrainCoreArrays::F32(left), RealTensorTrainCoreArrays::F32(right)) => {
+            let left_views = left.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let right_views = right.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            Ok(f64::from(
+                nabled_linalg::tensor::tt_inner_from_cores_view(&left_views, &right_views)
+                    .map_err(to_py_err)?,
+            ))
         }
-        (RealTensorTrainResult::F64(left), RealTensorTrainResult::F64(right)) => {
-            nabled_linalg::tensor::tt_inner(&left, &right).map_err(to_py_err)
+        (RealTensorTrainCoreArrays::F64(left), RealTensorTrainCoreArrays::F64(right)) => {
+            let left_views = left.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let right_views = right.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            nabled_linalg::tensor::tt_inner_from_cores_view(&left_views, &right_views)
+                .map_err(to_py_err)
         }
         _ => Err(utils::matching_real_dtype_error(&["left_cores", "right_cores"])),
     }
@@ -2211,12 +2186,16 @@ pub fn tt_inner(left_cores: &Bound<'_, PyAny>, right_cores: &Bound<'_, PyAny>) -
 /// Frobenius norm of a Tensor-Train tensor.
 #[pyfunction(name = "tensor_tt_norm")]
 pub fn tt_norm(cores: &Bound<'_, PyAny>) -> PyResult<f64> {
-    match real_tt_result_from_cores(cores)? {
-        RealTensorTrainResult::F32(result) => {
-            Ok(f64::from(nabled_linalg::tensor::tt_norm(&result).map_err(to_py_err)?))
+    match real_tt_core_arrays(cores)? {
+        RealTensorTrainCoreArrays::F32(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            Ok(f64::from(
+                nabled_linalg::tensor::tt_norm_from_cores_view(&core_views).map_err(to_py_err)?,
+            ))
         }
-        RealTensorTrainResult::F64(result) => {
-            nabled_linalg::tensor::tt_norm(&result).map_err(to_py_err)
+        RealTensorTrainCoreArrays::F64(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            nabled_linalg::tensor::tt_norm_from_cores_view(&core_views).map_err(to_py_err)
         }
     }
 }
@@ -2228,13 +2207,19 @@ pub fn tt_add<'py>(
     left_cores: &Bound<'py, PyAny>,
     right_cores: &Bound<'py, PyAny>,
 ) -> PyResult<PyTensorTrainResult> {
-    match (real_tt_result_from_cores(left_cores)?, real_tt_result_from_cores(right_cores)?) {
-        (RealTensorTrainResult::F32(left), RealTensorTrainResult::F32(right)) => {
-            let result = nabled_linalg::tensor::tt_add(&left, &right).map_err(to_py_err)?;
+    match (real_tt_core_arrays(left_cores)?, real_tt_core_arrays(right_cores)?) {
+        (RealTensorTrainCoreArrays::F32(left), RealTensorTrainCoreArrays::F32(right)) => {
+            let left_views = left.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let right_views = right.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_add_from_cores_view(&left_views, &right_views)
+                .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
-        (RealTensorTrainResult::F64(left), RealTensorTrainResult::F64(right)) => {
-            let result = nabled_linalg::tensor::tt_add(&left, &right).map_err(to_py_err)?;
+        (RealTensorTrainCoreArrays::F64(left), RealTensorTrainCoreArrays::F64(right)) => {
+            let left_views = left.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let right_views = right.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_add_from_cores_view(&left_views, &right_views)
+                .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
         _ => Err(utils::matching_real_dtype_error(&["left_cores", "right_cores"])),
@@ -2248,13 +2233,21 @@ pub fn tt_hadamard<'py>(
     left_cores: &Bound<'py, PyAny>,
     right_cores: &Bound<'py, PyAny>,
 ) -> PyResult<PyTensorTrainResult> {
-    match (real_tt_result_from_cores(left_cores)?, real_tt_result_from_cores(right_cores)?) {
-        (RealTensorTrainResult::F32(left), RealTensorTrainResult::F32(right)) => {
-            let result = nabled_linalg::tensor::tt_hadamard(&left, &right).map_err(to_py_err)?;
+    match (real_tt_core_arrays(left_cores)?, real_tt_core_arrays(right_cores)?) {
+        (RealTensorTrainCoreArrays::F32(left), RealTensorTrainCoreArrays::F32(right)) => {
+            let left_views = left.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let right_views = right.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result =
+                nabled_linalg::tensor::tt_hadamard_from_cores_view(&left_views, &right_views)
+                    .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
-        (RealTensorTrainResult::F64(left), RealTensorTrainResult::F64(right)) => {
-            let result = nabled_linalg::tensor::tt_hadamard(&left, &right).map_err(to_py_err)?;
+        (RealTensorTrainCoreArrays::F64(left), RealTensorTrainCoreArrays::F64(right)) => {
+            let left_views = left.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let right_views = right.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result =
+                nabled_linalg::tensor::tt_hadamard_from_cores_view(&left_views, &right_views)
+                    .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
         _ => Err(utils::matching_real_dtype_error(&["left_cores", "right_cores"])),
@@ -2270,17 +2263,29 @@ pub fn tt_hadamard_round<'py>(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<PyTensorTrainResult> {
-    match (real_tt_result_from_cores(left_cores)?, real_tt_result_from_cores(right_cores)?) {
-        (RealTensorTrainResult::F32(left), RealTensorTrainResult::F32(right)) => {
+    match (real_tt_core_arrays(left_cores)?, real_tt_core_arrays(right_cores)?) {
+        (RealTensorTrainCoreArrays::F32(left), RealTensorTrainCoreArrays::F32(right)) => {
             let config = tt_round_config::<f32>(max_rank, tolerance)?;
-            let result = nabled_linalg::tensor::tt_hadamard_round(&left, &right, &config)
-                .map_err(to_py_err)?;
+            let left_views = left.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let right_views = right.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_hadamard_round_from_cores_view(
+                &left_views,
+                &right_views,
+                &config,
+            )
+            .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
-        (RealTensorTrainResult::F64(left), RealTensorTrainResult::F64(right)) => {
+        (RealTensorTrainCoreArrays::F64(left), RealTensorTrainCoreArrays::F64(right)) => {
             let config = tt_round_config::<f64>(max_rank, tolerance)?;
-            let result = nabled_linalg::tensor::tt_hadamard_round(&left, &right, &config)
-                .map_err(to_py_err)?;
+            let left_views = left.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let right_views = right.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_hadamard_round_from_cores_view(
+                &left_views,
+                &right_views,
+                &config,
+            )
+            .map_err(to_py_err)?;
             Ok(py_tt_result(py, result))
         }
         _ => Err(utils::matching_real_dtype_error(&["left_cores", "right_cores"])),
@@ -2290,30 +2295,20 @@ pub fn tt_hadamard_round<'py>(
 /// Reconstruct a dense tensor from Tensor-Train cores.
 #[pyfunction(name = "tensor_tt_svd_reconstruct")]
 pub fn tt_svd_reconstruct<'py>(py: Python<'py>, cores: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
-    let mut iter = cores.try_iter()?;
-    let Some(first) = iter.next() else {
-        return Err(PyValueError::new_err(
-            "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
-        ));
-    };
-    let first = first?;
-    if first.cast::<PyArray3<f32>>().is_ok() {
-        let core_arrays = extract_array3_sequence_views::<f32>(cores)?;
-        let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
-        let result = nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view(&core_views)
-            .map_err(to_py_err)?;
-        return Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)));
+    match real_tt_core_arrays(cores)? {
+        RealTensorTrainCoreArrays::F32(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view(&core_views)
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
+        RealTensorTrainCoreArrays::F64(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view(&core_views)
+                .map_err(to_py_err)?;
+            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
+        }
     }
-    if first.cast::<PyArray3<f64>>().is_ok() {
-        let core_arrays = extract_array3_sequence_views::<f64>(cores)?;
-        let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
-        let result = nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view(&core_views)
-            .map_err(to_py_err)?;
-        return Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)));
-    }
-    Err(PyValueError::new_err(
-        "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
-    ))
 }
 
 /// Reconstruct a dense tensor from Tensor-Train cores into a caller-provided output array.
@@ -2322,36 +2317,51 @@ pub fn tt_svd_reconstruct_into(
     cores: &Bound<'_, PyAny>,
     output: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
-    let mut iter = cores.try_iter()?;
-    let Some(first) = iter.next() else {
-        return Err(PyValueError::new_err(
-            "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
-        ));
-    };
-    let first = first?;
-    if first.cast::<PyArray3<f32>>().is_ok() {
-        let core_arrays = extract_array3_sequence_views::<f32>(cores)?;
-        let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
-        let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
-        let mut output_view = output_arr.as_array_mut();
-        return nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view_into(
-            &core_views,
-            &mut output_view,
-        )
-        .map_err(to_py_err);
+    match real_tt_core_arrays(cores)? {
+        RealTensorTrainCoreArrays::F32(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view_into(
+                &core_views,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
+        RealTensorTrainCoreArrays::F64(core_arrays) => {
+            let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+            let mut output_view = output_arr.as_array_mut();
+            nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view_into(
+                &core_views,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
+        }
     }
-    if first.cast::<PyArray3<f64>>().is_ok() {
-        let core_arrays = extract_array3_sequence_views::<f64>(cores)?;
-        let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
-        let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
-        let mut output_view = output_arr.as_array_mut();
-        return nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view_into(
-            &core_views,
-            &mut output_view,
-        )
-        .map_err(to_py_err);
+}
+
+#[cfg(test)]
+mod tests {
+    use ndarray::{Array2, Array3, ArrayD, ShapeBuilder};
+
+    use super::{standard_array2, standard_array3, standard_arrayd};
+
+    #[test]
+    fn tensor_egress_helpers_preserve_owned_layout() {
+        let matrix = Array2::from_shape_vec((2, 3).f(), (0..6).collect()).unwrap();
+        let matrix_strides = matrix.strides().to_vec();
+        let preserved_matrix = standard_array2(matrix);
+        assert_eq!(preserved_matrix.strides(), matrix_strides.as_slice());
+
+        let tensor3 = Array3::from_shape_vec((2, 2, 3).f(), (0..12).collect()).unwrap();
+        let tensor3_strides = tensor3.strides().to_vec();
+        let preserved_tensor3 = standard_array3(tensor3);
+        assert_eq!(preserved_tensor3.strides(), tensor3_strides.as_slice());
+
+        let tensor_dyn = ArrayD::from_shape_vec(vec![2, 2, 3].f(), (0..12).collect()).unwrap();
+        let tensor_dyn_strides = tensor_dyn.strides().to_vec();
+        let preserved_tensor_dyn = standard_arrayd(tensor_dyn);
+        assert_eq!(preserved_tensor_dyn.strides(), tensor_dyn_strides.as_slice());
     }
-    Err(PyValueError::new_err(
-        "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
-    ))
 }

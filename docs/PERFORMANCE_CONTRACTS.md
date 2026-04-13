@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-04-12
+Last updated: 2026-04-13
 
 ## Purpose
 
@@ -28,6 +28,9 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 8. Sparse factorization-backed direct and iterative reuse paths now admit borrowed dense RHS `ArrayBase` views all the way through the Rust core, so the Python sparse bridge no longer has to clone dense RHS arrays before calling reusable `GMRES` / `BiCGSTAB` / sparse-LU factor workflows.
 9. `pynabled` QR least-squares factor reuse now dispatches directly over borrowed `Q` / `R` / optional permutation views instead of rebuilding an owned Rust `QRResult` from Python arrays just to reach the existing solver path.
 10. Tensor reconstruction/diagnostic helper paths now borrow result factor/core arrays directly through the Rust core: HOSVD/Tucker/CP/TT reconstruct helpers and CP diagnostics no longer rebuild owned Rust result structs from Python arrays, and CP diagnostics now compute residual metrics directly instead of allocating a full reconstructed tensor first.
+11. Tensor-Train borrowed-core helper paths now materialize only the SVD work matrices they already need for TT orthogonalization/rounding sweeps, instead of first rebuilding an owned `TensorTrainResult` or requiring standard-layout TT core views at the Python/Arrow boundary.
+12. Direct Python triangular solve `out=` paths now pass borrowed RHS views into generic mutable-output `nabled-linalg::triangular` helpers, so the binding no longer clones vector or matrix RHS/result arrays just to reuse caller-provided output buffers.
+13. Owned tensor egress in `pynabled` no longer standardizes ndarray layout before NumPy handoff; owned Fortran/strided tensor results are now handed to NumPy with preserved strides instead of an extra full clone.
 
 ### Unavoidable internal materializations
 

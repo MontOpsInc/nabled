@@ -6344,15 +6344,23 @@ pub fn tensor_tt_orthogonalize_left(
     py: Python<'_>,
     cores: &Bound<'_, PyAny>,
 ) -> PyResult<py_tensor::PyTensorTrainResult> {
-    match py_tensor::real_tt_result_from_cores(cores)? {
-        py_tensor::RealTensorTrainResult::F32(result) => Ok(py_tensor::py_tt_result(
-            py,
-            nabled::arrow::tensor::tt_orthogonalize_left(&result).map_err(to_py_err)?,
-        )),
-        py_tensor::RealTensorTrainResult::F64(result) => Ok(py_tensor::py_tt_result(
-            py,
-            nabled::arrow::tensor::tt_orthogonalize_left(&result).map_err(to_py_err)?,
-        )),
+    match py_tensor::real_tt_core_arrays(cores)? {
+        py_tensor::RealTensorTrainCoreArrays::F32(core_arrays) => {
+            let core_views = core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>();
+            Ok(py_tensor::py_tt_result(
+                py,
+                nabled::arrow::tensor::tt_orthogonalize_left_from_cores_view(&core_views)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        py_tensor::RealTensorTrainCoreArrays::F64(core_arrays) => {
+            let core_views = core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>();
+            Ok(py_tensor::py_tt_result(
+                py,
+                nabled::arrow::tensor::tt_orthogonalize_left_from_cores_view(&core_views)
+                    .map_err(to_py_err)?,
+            ))
+        }
     }
 }
 
@@ -6362,15 +6370,23 @@ pub fn tensor_tt_orthogonalize_right(
     py: Python<'_>,
     cores: &Bound<'_, PyAny>,
 ) -> PyResult<py_tensor::PyTensorTrainResult> {
-    match py_tensor::real_tt_result_from_cores(cores)? {
-        py_tensor::RealTensorTrainResult::F32(result) => Ok(py_tensor::py_tt_result(
-            py,
-            nabled::arrow::tensor::tt_orthogonalize_right(&result).map_err(to_py_err)?,
-        )),
-        py_tensor::RealTensorTrainResult::F64(result) => Ok(py_tensor::py_tt_result(
-            py,
-            nabled::arrow::tensor::tt_orthogonalize_right(&result).map_err(to_py_err)?,
-        )),
+    match py_tensor::real_tt_core_arrays(cores)? {
+        py_tensor::RealTensorTrainCoreArrays::F32(core_arrays) => {
+            let core_views = core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>();
+            Ok(py_tensor::py_tt_result(
+                py,
+                nabled::arrow::tensor::tt_orthogonalize_right_from_cores_view(&core_views)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        py_tensor::RealTensorTrainCoreArrays::F64(core_arrays) => {
+            let core_views = core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>();
+            Ok(py_tensor::py_tt_result(
+                py,
+                nabled::arrow::tensor::tt_orthogonalize_right_from_cores_view(&core_views)
+                    .map_err(to_py_err)?,
+            ))
+        }
     }
 }
 
@@ -6382,45 +6398,56 @@ pub fn tensor_tt_round(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<py_tensor::PyTensorTrainResult> {
-    match py_tensor::real_tt_result_from_cores(cores)? {
-        py_tensor::RealTensorTrainResult::F32(result) => Ok(py_tensor::py_tt_result(
-            py,
-            nabled::arrow::tensor::tt_round(
-                &result,
-                &py_tensor::tt_round_config::<f32>(max_rank, tolerance)?,
-            )
-            .map_err(to_py_err)?,
-        )),
-        py_tensor::RealTensorTrainResult::F64(result) => Ok(py_tensor::py_tt_result(
-            py,
-            nabled::arrow::tensor::tt_round(
-                &result,
-                &py_tensor::tt_round_config::<f64>(max_rank, tolerance)?,
-            )
-            .map_err(to_py_err)?,
-        )),
+    match py_tensor::real_tt_core_arrays(cores)? {
+        py_tensor::RealTensorTrainCoreArrays::F32(core_arrays) => {
+            let core_views = core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>();
+            Ok(py_tensor::py_tt_result(
+                py,
+                nabled::arrow::tensor::tt_round_from_cores_view(
+                    &core_views,
+                    &py_tensor::tt_round_config::<f32>(max_rank, tolerance)?,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        py_tensor::RealTensorTrainCoreArrays::F64(core_arrays) => {
+            let core_views = core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>();
+            Ok(py_tensor::py_tt_result(
+                py,
+                nabled::arrow::tensor::tt_round_from_cores_view(
+                    &core_views,
+                    &py_tensor::tt_round_config::<f64>(max_rank, tolerance)?,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
     }
 }
 
 /// Compute the inner product of two real Tensor-Train results.
 #[pyfunction(name = "arrow_tensor_tt_inner")]
 pub fn tensor_tt_inner(left: &Bound<'_, PyAny>, right: &Bound<'_, PyAny>) -> PyResult<f64> {
-    match (
-        py_tensor::real_tt_result_from_cores(left)?,
-        py_tensor::real_tt_result_from_cores(right)?,
-    ) {
+    match (py_tensor::real_tt_core_arrays(left)?, py_tensor::real_tt_core_arrays(right)?) {
         (
-            py_tensor::RealTensorTrainResult::F32(left),
-            py_tensor::RealTensorTrainResult::F32(right),
+            py_tensor::RealTensorTrainCoreArrays::F32(left),
+            py_tensor::RealTensorTrainCoreArrays::F32(right),
         ) => py_tensor::real_scalar_to_f64(
-            nabled::arrow::tensor::tt_inner(&left, &right).map_err(to_py_err)?,
+            nabled::arrow::tensor::tt_inner_from_cores_view(
+                &left.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                &right.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+            )
+            .map_err(to_py_err)?,
             "tt_inner",
         ),
         (
-            py_tensor::RealTensorTrainResult::F64(left),
-            py_tensor::RealTensorTrainResult::F64(right),
+            py_tensor::RealTensorTrainCoreArrays::F64(left),
+            py_tensor::RealTensorTrainCoreArrays::F64(right),
         ) => py_tensor::real_scalar_to_f64(
-            nabled::arrow::tensor::tt_inner(&left, &right).map_err(to_py_err)?,
+            nabled::arrow::tensor::tt_inner_from_cores_view(
+                &left.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                &right.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+            )
+            .map_err(to_py_err)?,
             "tt_inner",
         ),
         _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
@@ -6430,13 +6457,19 @@ pub fn tensor_tt_inner(left: &Bound<'_, PyAny>, right: &Bound<'_, PyAny>) -> PyR
 /// Compute the Frobenius norm of a real Tensor-Train result.
 #[pyfunction(name = "arrow_tensor_tt_norm")]
 pub fn tensor_tt_norm(cores: &Bound<'_, PyAny>) -> PyResult<f64> {
-    match py_tensor::real_tt_result_from_cores(cores)? {
-        py_tensor::RealTensorTrainResult::F32(result) => py_tensor::real_scalar_to_f64(
-            nabled::arrow::tensor::tt_norm(&result).map_err(to_py_err)?,
+    match py_tensor::real_tt_core_arrays(cores)? {
+        py_tensor::RealTensorTrainCoreArrays::F32(core_arrays) => py_tensor::real_scalar_to_f64(
+            nabled::arrow::tensor::tt_norm_from_cores_view(
+                &core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+            )
+            .map_err(to_py_err)?,
             "tt_norm",
         ),
-        py_tensor::RealTensorTrainResult::F64(result) => py_tensor::real_scalar_to_f64(
-            nabled::arrow::tensor::tt_norm(&result).map_err(to_py_err)?,
+        py_tensor::RealTensorTrainCoreArrays::F64(core_arrays) => py_tensor::real_scalar_to_f64(
+            nabled::arrow::tensor::tt_norm_from_cores_view(
+                &core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+            )
+            .map_err(to_py_err)?,
             "tt_norm",
         ),
     }
@@ -6449,23 +6482,28 @@ pub fn tensor_tt_add(
     left: &Bound<'_, PyAny>,
     right: &Bound<'_, PyAny>,
 ) -> PyResult<py_tensor::PyTensorTrainResult> {
-    match (
-        py_tensor::real_tt_result_from_cores(left)?,
-        py_tensor::real_tt_result_from_cores(right)?,
-    ) {
+    match (py_tensor::real_tt_core_arrays(left)?, py_tensor::real_tt_core_arrays(right)?) {
         (
-            py_tensor::RealTensorTrainResult::F32(left),
-            py_tensor::RealTensorTrainResult::F32(right),
+            py_tensor::RealTensorTrainCoreArrays::F32(left),
+            py_tensor::RealTensorTrainCoreArrays::F32(right),
         ) => Ok(py_tensor::py_tt_result(
             py,
-            nabled::arrow::tensor::tt_add(&left, &right).map_err(to_py_err)?,
+            nabled::arrow::tensor::tt_add_from_cores_view(
+                &left.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                &right.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+            )
+            .map_err(to_py_err)?,
         )),
         (
-            py_tensor::RealTensorTrainResult::F64(left),
-            py_tensor::RealTensorTrainResult::F64(right),
+            py_tensor::RealTensorTrainCoreArrays::F64(left),
+            py_tensor::RealTensorTrainCoreArrays::F64(right),
         ) => Ok(py_tensor::py_tt_result(
             py,
-            nabled::arrow::tensor::tt_add(&left, &right).map_err(to_py_err)?,
+            nabled::arrow::tensor::tt_add_from_cores_view(
+                &left.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                &right.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+            )
+            .map_err(to_py_err)?,
         )),
         _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
     }
@@ -6478,23 +6516,28 @@ pub fn tensor_tt_hadamard(
     left: &Bound<'_, PyAny>,
     right: &Bound<'_, PyAny>,
 ) -> PyResult<py_tensor::PyTensorTrainResult> {
-    match (
-        py_tensor::real_tt_result_from_cores(left)?,
-        py_tensor::real_tt_result_from_cores(right)?,
-    ) {
+    match (py_tensor::real_tt_core_arrays(left)?, py_tensor::real_tt_core_arrays(right)?) {
         (
-            py_tensor::RealTensorTrainResult::F32(left),
-            py_tensor::RealTensorTrainResult::F32(right),
+            py_tensor::RealTensorTrainCoreArrays::F32(left),
+            py_tensor::RealTensorTrainCoreArrays::F32(right),
         ) => Ok(py_tensor::py_tt_result(
             py,
-            nabled::arrow::tensor::tt_hadamard(&left, &right).map_err(to_py_err)?,
+            nabled::arrow::tensor::tt_hadamard_from_cores_view(
+                &left.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                &right.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+            )
+            .map_err(to_py_err)?,
         )),
         (
-            py_tensor::RealTensorTrainResult::F64(left),
-            py_tensor::RealTensorTrainResult::F64(right),
+            py_tensor::RealTensorTrainCoreArrays::F64(left),
+            py_tensor::RealTensorTrainCoreArrays::F64(right),
         ) => Ok(py_tensor::py_tt_result(
             py,
-            nabled::arrow::tensor::tt_hadamard(&left, &right).map_err(to_py_err)?,
+            nabled::arrow::tensor::tt_hadamard_from_cores_view(
+                &left.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                &right.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+            )
+            .map_err(to_py_err)?,
         )),
         _ => Err(utils::matching_real_dtype_error(&["left", "right"])),
     }
@@ -6509,30 +6552,27 @@ pub fn tensor_tt_hadamard_round(
     max_rank: Option<usize>,
     tolerance: Option<f64>,
 ) -> PyResult<py_tensor::PyTensorTrainResult> {
-    match (
-        py_tensor::real_tt_result_from_cores(left)?,
-        py_tensor::real_tt_result_from_cores(right)?,
-    ) {
+    match (py_tensor::real_tt_core_arrays(left)?, py_tensor::real_tt_core_arrays(right)?) {
         (
-            py_tensor::RealTensorTrainResult::F32(left),
-            py_tensor::RealTensorTrainResult::F32(right),
+            py_tensor::RealTensorTrainCoreArrays::F32(left),
+            py_tensor::RealTensorTrainCoreArrays::F32(right),
         ) => Ok(py_tensor::py_tt_result(
             py,
-            nabled::arrow::tensor::tt_hadamard_round(
-                &left,
-                &right,
+            nabled::arrow::tensor::tt_hadamard_round_from_cores_view(
+                &left.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                &right.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
                 &py_tensor::tt_round_config::<f32>(max_rank, tolerance)?,
             )
             .map_err(to_py_err)?,
         )),
         (
-            py_tensor::RealTensorTrainResult::F64(left),
-            py_tensor::RealTensorTrainResult::F64(right),
+            py_tensor::RealTensorTrainCoreArrays::F64(left),
+            py_tensor::RealTensorTrainCoreArrays::F64(right),
         ) => Ok(py_tensor::py_tt_result(
             py,
-            nabled::arrow::tensor::tt_hadamard_round(
-                &left,
-                &right,
+            nabled::arrow::tensor::tt_hadamard_round_from_cores_view(
+                &left.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                &right.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
                 &py_tensor::tt_round_config::<f64>(max_rank, tolerance)?,
             )
             .map_err(to_py_err)?,
@@ -6547,14 +6587,24 @@ pub fn tensor_tt_svd_reconstruct(
     field_name: &str,
     cores: &Bound<'_, PyAny>,
 ) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
-    match py_tensor::real_tt_result_from_cores(cores)? {
-        py_tensor::RealTensorTrainResult::F32(result) => Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::tt_svd_reconstruct::<Float32Type>(field_name, &result)
+    match py_tensor::real_tt_core_arrays(cores)? {
+        py_tensor::RealTensorTrainCoreArrays::F32(core_arrays) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::tt_svd_reconstruct_from_cores_view::<Float32Type>(
+                    field_name,
+                    &core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                )
                 .map_err(to_py_err)?,
-        )),
-        py_tensor::RealTensorTrainResult::F64(result) => Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::tt_svd_reconstruct::<Float64Type>(field_name, &result)
+            ))
+        }
+        py_tensor::RealTensorTrainCoreArrays::F64(core_arrays) => {
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::tt_svd_reconstruct_from_cores_view::<Float64Type>(
+                    field_name,
+                    &core_arrays.iter().map(|core| core.as_array()).collect::<Vec<_>>(),
+                )
                 .map_err(to_py_err)?,
-        )),
+            ))
+        }
     }
 }

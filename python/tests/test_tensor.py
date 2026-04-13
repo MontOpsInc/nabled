@@ -370,6 +370,69 @@ def test_tensor_result_helpers_accept_borrowed_factor_views():
     assert returned_tt is tt_out
     np.testing.assert_allclose(tt_out, tt_expected, rtol=1e-10, atol=1e-10)
 
+    left_orth = pynabled.tensor_tt_orthogonalize_left(tt)
+    right_orth = pynabled.tensor_tt_orthogonalize_right(tt)
+    rounded = pynabled.tensor_tt_round(tt, 2, 1e-8)
+    np.testing.assert_allclose(
+        pynabled.tensor_tt_svd_reconstruct(left_orth),
+        tt_expected,
+        rtol=1e-10,
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        pynabled.tensor_tt_svd_reconstruct(right_orth),
+        tt_expected,
+        rtol=1e-10,
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        pynabled.tensor_tt_svd_reconstruct(rounded),
+        tt_expected,
+        rtol=5e-3,
+        atol=5e-3,
+    )
+    assert abs(pynabled.tensor_tt_inner(tt, tt) - float(np.sum(tt_expected * tt_expected))) < 1e-10
+    assert abs(pynabled.tensor_tt_norm(tt) - float(np.linalg.norm(tt_expected))) < 1e-10
+
+    other_tensor = 0.5 * tt_expected + np.linspace(
+        -0.3,
+        0.3,
+        num=tt_expected.size,
+        dtype=np.float64,
+    ).reshape(tt_expected.shape)
+    other_tt = pynabled.tensor_tt_svd(other_tensor, 4, 1e-12)
+    borrowed_other_tt = pynabled.TensorTrainResult(
+        cores=[_borrowed_tensor_view(core) for core in other_tt.cores]
+    )
+    np.testing.assert_allclose(
+        pynabled.tensor_tt_svd_reconstruct(pynabled.tensor_tt_add(tt, borrowed_other_tt)),
+        tt_expected + other_tensor,
+        rtol=5e-4,
+        atol=5e-4,
+    )
+    np.testing.assert_allclose(
+        pynabled.tensor_tt_svd_reconstruct(pynabled.tensor_tt_hadamard(tt, borrowed_other_tt)),
+        tt_expected * other_tensor,
+        rtol=5e-4,
+        atol=5e-4,
+    )
+    expected_hadamard_round = pynabled.tensor_tt_svd_reconstruct(
+        pynabled.tensor_tt_hadamard_round(
+            pynabled.TensorTrainResult(cores=_tt_reference()),
+            other_tt,
+            2,
+            1e-8,
+        )
+    )
+    np.testing.assert_allclose(
+        pynabled.tensor_tt_svd_reconstruct(
+            pynabled.tensor_tt_hadamard_round(tt, borrowed_other_tt, 2, 1e-8)
+        ),
+        expected_hadamard_round,
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
 
 def test_tensor_reconstruction_helpers_reject_wrong_output_dtype():
     cube = np.arange(60, dtype=np.float64).reshape(3, 4, 5)

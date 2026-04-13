@@ -2470,10 +2470,15 @@ pub fn einsum_complex_view_into<S: DataMut<Elem = Complex64>>(
     )
 }
 
-fn mode0_product<T: NabledReal>(
-    tensor: &Array3<T>,
-    matrix: &Array2<T>,
-) -> Result<Array3<T>, TensorError> {
+fn mode0_product<T, S, M>(
+    tensor: &ArrayBase<S, Ix3>,
+    matrix: &ArrayBase<M, Ix2>,
+) -> Result<Array3<T>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+    M: Data<Elem = T>,
+{
     let (i0, i1, i2) = tensor.dim();
     if matrix.ncols() != i0 {
         return Err(TensorError::DimensionMismatch);
@@ -2492,10 +2497,15 @@ fn mode0_product<T: NabledReal>(
     Ok(output)
 }
 
-fn mode1_product<T: NabledReal>(
-    tensor: &Array3<T>,
-    matrix: &Array2<T>,
-) -> Result<Array3<T>, TensorError> {
+fn mode1_product<T, S, M>(
+    tensor: &ArrayBase<S, Ix3>,
+    matrix: &ArrayBase<M, Ix2>,
+) -> Result<Array3<T>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+    M: Data<Elem = T>,
+{
     let (i0, i1, i2) = tensor.dim();
     if matrix.ncols() != i1 {
         return Err(TensorError::DimensionMismatch);
@@ -2514,10 +2524,15 @@ fn mode1_product<T: NabledReal>(
     Ok(output)
 }
 
-fn mode2_product<T: NabledReal>(
-    tensor: &Array3<T>,
-    matrix: &Array2<T>,
-) -> Result<Array3<T>, TensorError> {
+fn mode2_product<T, S, M>(
+    tensor: &ArrayBase<S, Ix3>,
+    matrix: &ArrayBase<M, Ix2>,
+) -> Result<Array3<T>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+    M: Data<Elem = T>,
+{
     let (i0, i1, i2) = tensor.dim();
     if matrix.ncols() != i2 {
         return Err(TensorError::DimensionMismatch);
@@ -2536,7 +2551,11 @@ fn mode2_product<T: NabledReal>(
     Ok(output)
 }
 
-fn unfold_mode0<T: NabledReal>(tensor: &Array3<T>) -> Array2<T> {
+fn unfold_mode0<T, S>(tensor: &ArrayBase<S, Ix3>) -> Array2<T>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     let (i0, i1, i2) = tensor.dim();
     let mut unfolded = Array2::<T>::zeros((i0, i1 * i2));
     for i in 0..i0 {
@@ -2549,7 +2568,11 @@ fn unfold_mode0<T: NabledReal>(tensor: &Array3<T>) -> Array2<T> {
     unfolded
 }
 
-fn unfold_mode1<T: NabledReal>(tensor: &Array3<T>) -> Array2<T> {
+fn unfold_mode1<T, S>(tensor: &ArrayBase<S, Ix3>) -> Array2<T>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     let (i0, i1, i2) = tensor.dim();
     let mut unfolded = Array2::<T>::zeros((i1, i0 * i2));
     for j in 0..i1 {
@@ -2562,7 +2585,11 @@ fn unfold_mode1<T: NabledReal>(tensor: &Array3<T>) -> Array2<T> {
     unfolded
 }
 
-fn unfold_mode2<T: NabledReal>(tensor: &Array3<T>) -> Array2<T> {
+fn unfold_mode2<T, S>(tensor: &ArrayBase<S, Ix3>) -> Array2<T>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     let (i0, i1, i2) = tensor.dim();
     let mut unfolded = Array2::<T>::zeros((i2, i0 * i1));
     for k in 0..i2 {
@@ -3609,6 +3636,21 @@ pub fn hosvd3<T>(
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T> + AddAssign,
 {
+    hosvd3_view(&cube.view(), ranks)
+}
+
+/// Compute rank-truncated HOSVD for a rank-3 real tensor view.
+///
+/// # Errors
+/// Returns an error if input is empty, ranks are invalid, or factorization fails.
+#[cfg(feature = "lapack-provider")]
+pub fn hosvd3_view<T>(
+    cube: &ArrayView3<'_, T>,
+    ranks: (usize, usize, usize),
+) -> Result<Hosvd3Result<T>, TensorError>
+where
+    T: NabledReal + ndarray_linalg::Lapack<Real = T> + AddAssign,
+{
     hosvd3_impl(cube, ranks)
 }
 
@@ -3621,16 +3663,27 @@ pub fn hosvd3<T: svd::SvdInternalScalar>(
     cube: &Array3<T>,
     ranks: (usize, usize, usize),
 ) -> Result<Hosvd3Result<T>, TensorError> {
+    hosvd3_view(&cube.view(), ranks)
+}
+
+/// Compute rank-truncated HOSVD for a rank-3 real tensor view.
+///
+/// # Errors
+/// Returns an error if input is empty, ranks are invalid, or factorization fails.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn hosvd3_view<T: svd::SvdInternalScalar>(
+    cube: &ArrayView3<'_, T>,
+    ranks: (usize, usize, usize),
+) -> Result<Hosvd3Result<T>, TensorError> {
     hosvd3_impl(cube, ranks)
 }
 
 #[cfg(not(feature = "lapack-provider"))]
 fn hosvd3_impl<T: svd::SvdInternalScalar>(
-    cube: &Array3<T>,
+    cube: &ArrayView3<'_, T>,
     ranks: (usize, usize, usize),
 ) -> Result<Hosvd3Result<T>, TensorError> {
-    let cube_view = cube.view();
-    validate_cube_non_empty(&cube_view)?;
+    validate_cube_non_empty(cube)?;
     let (i0, i1, i2) = cube.dim();
     if ranks.0 == 0 || ranks.1 == 0 || ranks.2 == 0 || ranks.0 > i0 || ranks.1 > i1 || ranks.2 > i2
     {
@@ -3648,22 +3701,21 @@ fn hosvd3_impl<T: svd::SvdInternalScalar>(
     let u1 = u1_full.slice(s![.., 0..ranks.1]).to_owned();
     let u2 = u2_full.slice(s![.., 0..ranks.2]).to_owned();
 
-    let core_mode0 = mode0_product(cube, &u0.t().to_owned())?;
-    let core_mode1 = mode1_product(&core_mode0, &u1.t().to_owned())?;
-    let core = mode2_product(&core_mode1, &u2.t().to_owned())?;
+    let core_mode0 = mode0_product(cube, &u0.t())?;
+    let core_mode1 = mode1_product(&core_mode0, &u1.t())?;
+    let core = mode2_product(&core_mode1, &u2.t())?;
     Ok(Hosvd3Result { core, u0, u1, u2 })
 }
 
 #[cfg(feature = "lapack-provider")]
 fn hosvd3_impl<T>(
-    cube: &Array3<T>,
+    cube: &ArrayView3<'_, T>,
     ranks: (usize, usize, usize),
 ) -> Result<Hosvd3Result<T>, TensorError>
 where
     T: NabledReal + ndarray_linalg::Lapack<Real = T> + AddAssign,
 {
-    let cube_view = cube.view();
-    validate_cube_non_empty(&cube_view)?;
+    validate_cube_non_empty(cube)?;
     let (i0, i1, i2) = cube.dim();
     if ranks.0 == 0 || ranks.1 == 0 || ranks.2 == 0 || ranks.0 > i0 || ranks.1 > i1 || ranks.2 > i2
     {
@@ -3681,9 +3733,9 @@ where
     let u1 = u1_full.slice(s![.., 0..ranks.1]).to_owned();
     let u2 = u2_full.slice(s![.., 0..ranks.2]).to_owned();
 
-    let core_mode0 = mode0_product(cube, &u0.t().to_owned())?;
-    let core_mode1 = mode1_product(&core_mode0, &u1.t().to_owned())?;
-    let core = mode2_product(&core_mode1, &u2.t().to_owned())?;
+    let core_mode0 = mode0_product(cube, &u0.t())?;
+    let core_mode1 = mode1_product(&core_mode0, &u1.t())?;
+    let core = mode2_product(&core_mode1, &u2.t())?;
     Ok(Hosvd3Result { core, u0, u1, u2 })
 }
 
@@ -4451,16 +4503,21 @@ where
     Ok(shape)
 }
 
-fn validate_tt_binary_inputs<T: NabledReal>(
-    left: &TensorTrainResult<T>,
-    right: &TensorTrainResult<T>,
-) -> Result<(), TensorError> {
-    validate_tt_result(left)?;
-    validate_tt_result(right)?;
-    if left.shape != right.shape || left.cores.len() != right.cores.len() {
+fn validate_tt_binary_inputs<T, L, R>(
+    left: &[ArrayBase<L, Ix3>],
+    right: &[ArrayBase<R, Ix3>],
+) -> Result<Vec<usize>, TensorError>
+where
+    T: NabledReal,
+    L: Data<Elem = T>,
+    R: Data<Elem = T>,
+{
+    let left_shape = validate_tt_cores(left)?;
+    let right_shape = validate_tt_cores(right)?;
+    if left_shape != right_shape || left.len() != right.len() {
         return Err(TensorError::DimensionMismatch);
     }
-    Ok(())
+    Ok(left_shape)
 }
 
 fn validate_tt_round_config<T: NabledReal>(config: &TtRoundConfig<T>) -> Result<(), TensorError> {
@@ -4475,17 +4532,25 @@ fn validate_tt_round_config<T: NabledReal>(config: &TtRoundConfig<T>) -> Result<
     Ok(())
 }
 
-fn tt_factor_core_with_svd<T: TtSvdScalar>(
-    core: &Array3<T>,
+fn tt_factor_core_with_svd<T, S>(
+    core: &ArrayBase<S, Ix3>,
     truncation: Option<(T, usize)>,
-) -> Result<(Array3<T>, Array2<T>), TensorError> {
+) -> Result<(Array3<T>, Array2<T>), TensorError>
+where
+    T: TtSvdScalar,
+    S: Data<Elem = T>,
+{
     let (left_rank, mode_extent, right_rank) = core.dim();
-    let matrix = core
-        .view()
-        .into_shape_with_order((left_rank * mode_extent, right_rank))
-        .map_err(|_| TensorError::DimensionMismatch)?;
-    let decomposition =
-        svd::decompose(&matrix.to_owned()).map_err(|_| TensorError::DimensionMismatch)?;
+    let mut matrix = Array2::<T>::zeros((left_rank * mode_extent, right_rank));
+    for left in 0..left_rank {
+        for mode in 0..mode_extent {
+            let row = left * mode_extent + mode;
+            for right in 0..right_rank {
+                matrix[[row, right]] = core[[left, mode, right]];
+            }
+        }
+    }
+    let decomposition = svd::decompose(&matrix).map_err(|_| TensorError::DimensionMismatch)?;
     let available_rank = decomposition.singular_values.len();
     if available_rank == 0 {
         return Err(TensorError::DimensionMismatch);
@@ -4520,10 +4585,14 @@ fn tt_factor_core_with_svd<T: TtSvdScalar>(
     Ok((q, transfer))
 }
 
-fn tt_apply_transfer_to_next<T: NabledReal>(
+fn tt_apply_transfer_to_next<T, S>(
     transfer: &Array2<T>,
-    next: &Array3<T>,
-) -> Result<Array3<T>, TensorError> {
+    next: &ArrayBase<S, Ix3>,
+) -> Result<Array3<T>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     let (transfer_rows, transfer_cols) = transfer.dim();
     let (next_left, next_mode, next_right) = next.dim();
     if transfer_cols != next_left {
@@ -4544,16 +4613,24 @@ fn tt_apply_transfer_to_next<T: NabledReal>(
     Ok(output)
 }
 
-fn tt_factor_core_right_with_svd<T: TtSvdScalar>(
-    core: &Array3<T>,
-) -> Result<(Array2<T>, Array3<T>), TensorError> {
+fn tt_factor_core_right_with_svd<T, S>(
+    core: &ArrayBase<S, Ix3>,
+) -> Result<(Array2<T>, Array3<T>), TensorError>
+where
+    T: TtSvdScalar,
+    S: Data<Elem = T>,
+{
     let (left_rank, mode_extent, right_rank) = core.dim();
-    let matrix = core
-        .view()
-        .into_shape_with_order((left_rank, mode_extent * right_rank))
-        .map_err(|_| TensorError::DimensionMismatch)?;
-    let decomposition =
-        svd::decompose(&matrix.to_owned()).map_err(|_| TensorError::DimensionMismatch)?;
+    let mut matrix = Array2::<T>::zeros((left_rank, mode_extent * right_rank));
+    for left in 0..left_rank {
+        for mode in 0..mode_extent {
+            for right in 0..right_rank {
+                let col = mode * right_rank + right;
+                matrix[[left, col]] = core[[left, mode, right]];
+            }
+        }
+    }
+    let decomposition = svd::decompose(&matrix).map_err(|_| TensorError::DimensionMismatch)?;
     let available_rank = decomposition.singular_values.len();
     if available_rank == 0 {
         return Err(TensorError::DimensionMismatch);
@@ -4577,10 +4654,14 @@ fn tt_factor_core_right_with_svd<T: TtSvdScalar>(
     Ok((left_transfer, right_core))
 }
 
-fn tt_apply_transfer_to_previous<T: NabledReal>(
-    previous: &Array3<T>,
+fn tt_apply_transfer_to_previous<T, S>(
+    previous: &ArrayBase<S, Ix3>,
     transfer: &Array2<T>,
-) -> Result<Array3<T>, TensorError> {
+) -> Result<Array3<T>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     let (previous_left, previous_mode, previous_right) = previous.dim();
     let (transfer_rows, transfer_cols) = transfer.dim();
     if previous_right != transfer_rows {
@@ -4601,45 +4682,70 @@ fn tt_apply_transfer_to_previous<T: NabledReal>(
     Ok(output)
 }
 
-fn tt_right_orthogonalize_impl<T: TtSvdScalar>(
-    result: &TensorTrainResult<T>,
-) -> Result<TensorTrainResult<T>, TensorError> {
-    validate_tt_result(result)?;
-    if result.cores.len() <= 1 {
-        return Ok(result.clone());
+fn tt_right_orthogonalize_impl<T, S>(
+    cores: &[ArrayBase<S, Ix3>],
+) -> Result<TensorTrainResult<T>, TensorError>
+where
+    T: TtSvdScalar,
+    S: Data<Elem = T>,
+{
+    let shape = validate_tt_cores(cores)?;
+    if cores.len() <= 1 {
+        return Ok(TensorTrainResult {
+            cores: cores.iter().map(ArrayBase::to_owned).collect(),
+            shape,
+        });
     }
 
-    let mut cores = result.cores.clone();
-    for mode in (1..cores.len()).rev() {
-        let (left_transfer, orth_core) = tt_factor_core_right_with_svd(&cores[mode])?;
-        let updated_previous = tt_apply_transfer_to_previous(&cores[mode - 1], &left_transfer)?;
-        cores[mode] = orth_core;
-        cores[mode - 1] = updated_previous;
+    let mut output_rev = Vec::<Array3<T>>::with_capacity(cores.len());
+    let (left_transfer, orth_core) = tt_factor_core_right_with_svd(&cores[cores.len() - 1])?;
+    output_rev.push(orth_core);
+    let mut previous = tt_apply_transfer_to_previous(&cores[cores.len() - 2], &left_transfer)?;
+
+    for mode in (1..cores.len() - 1).rev() {
+        let (left_transfer, orth_core) = tt_factor_core_right_with_svd(&previous)?;
+        output_rev.push(orth_core);
+        previous = tt_apply_transfer_to_previous(&cores[mode - 1], &left_transfer)?;
     }
 
-    let transformed = TensorTrainResult { cores, shape: result.shape.clone() };
+    output_rev.push(previous);
+    output_rev.reverse();
+    let transformed = TensorTrainResult { cores: output_rev, shape };
     validate_tt_result(&transformed)?;
     Ok(transformed)
 }
 
-fn tt_transform_impl<T: TtSvdScalar>(
-    result: &TensorTrainResult<T>,
+fn tt_transform_impl<T, S>(
+    cores: &[ArrayBase<S, Ix3>],
     truncation: Option<(T, usize)>,
-) -> Result<TensorTrainResult<T>, TensorError> {
-    validate_tt_result(result)?;
-    if result.cores.len() <= 1 {
-        return Ok(result.clone());
+) -> Result<TensorTrainResult<T>, TensorError>
+where
+    T: TtSvdScalar,
+    S: Data<Elem = T>,
+{
+    let shape = validate_tt_cores(cores)?;
+    if cores.len() <= 1 {
+        return Ok(TensorTrainResult {
+            cores: cores.iter().map(ArrayBase::to_owned).collect(),
+            shape,
+        });
     }
 
-    let mut cores = result.cores.clone();
-    for mode in 0..(cores.len() - 1) {
-        let (orth_core, transfer) = tt_factor_core_with_svd(&cores[mode], truncation)?;
-        let updated_next = tt_apply_transfer_to_next(&transfer, &cores[mode + 1])?;
-        cores[mode] = orth_core;
-        cores[mode + 1] = updated_next;
+    let mut output = Vec::<Array3<T>>::with_capacity(cores.len());
+    let (orth_core, transfer) = tt_factor_core_with_svd(&cores[0], truncation)?;
+    output.push(orth_core);
+    let mut next = tt_apply_transfer_to_next(&transfer, &cores[1])?;
+
+    for mode in 1..(cores.len() - 1) {
+        let (orth_core, transfer) = tt_factor_core_with_svd(&next, truncation)?;
+        output.push(orth_core);
+        if mode + 1 < cores.len() {
+            next = tt_apply_transfer_to_next(&transfer, &cores[mode + 1])?;
+        }
     }
 
-    let transformed = TensorTrainResult { cores, shape: result.shape.clone() };
+    output.push(next);
+    let transformed = TensorTrainResult { cores: output, shape };
     validate_tt_result(&transformed)?;
     Ok(transformed)
 }
@@ -4676,7 +4782,19 @@ pub fn tt_svd_view<T: TtSvdScalar>(
 pub fn tt_orthogonalize_left<T: TtSvdScalar>(
     result: &TensorTrainResult<T>,
 ) -> Result<TensorTrainResult<T>, TensorError> {
-    tt_transform_impl(result, None)
+    tt_orthogonalize_left_from_cores_view(
+        &result.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Left-orthogonalize borrowed TT cores while preserving represented tensor values.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible.
+pub fn tt_orthogonalize_left_from_cores_view<T: TtSvdScalar>(
+    cores: &[ArrayView3<'_, T>],
+) -> Result<TensorTrainResult<T>, TensorError> {
+    tt_transform_impl(cores, None)
 }
 
 /// Right-orthogonalize TT cores while preserving represented tensor values.
@@ -4689,7 +4807,19 @@ pub fn tt_orthogonalize_left<T: TtSvdScalar>(
 pub fn tt_orthogonalize_right<T: TtSvdScalar>(
     result: &TensorTrainResult<T>,
 ) -> Result<TensorTrainResult<T>, TensorError> {
-    tt_right_orthogonalize_impl(result)
+    tt_orthogonalize_right_from_cores_view(
+        &result.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Right-orthogonalize borrowed TT cores while preserving represented tensor values.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible.
+pub fn tt_orthogonalize_right_from_cores_view<T: TtSvdScalar>(
+    cores: &[ArrayView3<'_, T>],
+) -> Result<TensorTrainResult<T>, TensorError> {
+    tt_right_orthogonalize_impl(cores)
 }
 
 /// Round/compress a TT decomposition with optional rank truncation.
@@ -4704,10 +4834,27 @@ pub fn tt_round<T: TtSvdScalar>(
     result: &TensorTrainResult<T>,
     config: &TtRoundConfig<T>,
 ) -> Result<TensorTrainResult<T>, TensorError> {
+    tt_round_from_cores_view(
+        &result.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        config,
+    )
+}
+
+/// Round/compress borrowed TT cores with optional rank truncation.
+///
+/// # Errors
+/// Returns an error if TT core dimensions or configuration are invalid.
+pub fn tt_round_from_cores_view<T: TtSvdScalar>(
+    cores: &[ArrayView3<'_, T>],
+    config: &TtRoundConfig<T>,
+) -> Result<TensorTrainResult<T>, TensorError> {
     validate_tt_round_config(config)?;
-    let orthogonalized = tt_right_orthogonalize_impl(result)?;
+    let orthogonalized = tt_right_orthogonalize_impl(cores)?;
     let max_rank = config.max_rank.unwrap_or(usize::MAX);
-    tt_transform_impl(&orthogonalized, Some((config.tolerance, max_rank)))
+    tt_transform_impl(
+        &orthogonalized.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        Some((config.tolerance, max_rank)),
+    )
 }
 
 /// Compute inner product of two Tensor-Train tensors with matching shape.
@@ -4718,12 +4865,26 @@ pub fn tt_inner<T: NabledReal>(
     left: &TensorTrainResult<T>,
     right: &TensorTrainResult<T>,
 ) -> Result<T, TensorError> {
-    validate_tt_binary_inputs(left, right)?;
+    tt_inner_from_cores_view(
+        &left.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        &right.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Compute inner product of two borrowed Tensor-Train tensors with matching shape.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible or shapes mismatch.
+pub fn tt_inner_from_cores_view<T: NabledReal>(
+    left: &[ArrayView3<'_, T>],
+    right: &[ArrayView3<'_, T>],
+) -> Result<T, TensorError> {
+    let _shape = validate_tt_binary_inputs(left, right)?;
 
     let mut contraction = Array2::<T>::from_elem((1, 1), T::one());
-    for mode in 0..left.cores.len() {
-        let left_core = &left.cores[mode];
-        let right_core = &right.cores[mode];
+    for mode in 0..left.len() {
+        let left_core = &left[mode];
+        let right_core = &right[mode];
         let (left_prev_rank, mode_extent, left_next_rank) = left_core.dim();
         let (right_prev_rank, right_mode_extent, right_next_rank) = right_core.dim();
 
@@ -4764,7 +4925,17 @@ pub fn tt_inner<T: NabledReal>(
 /// # Errors
 /// Returns an error if TT core dimensions are incompatible.
 pub fn tt_norm<T: NabledReal>(result: &TensorTrainResult<T>) -> Result<T, TensorError> {
-    let squared = tt_inner(result, result)?;
+    tt_norm_from_cores_view(&result.cores.iter().map(|core| core.view()).collect::<Vec<_>>())
+}
+
+/// Compute Frobenius norm of borrowed Tensor-Train cores.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible.
+pub fn tt_norm_from_cores_view<T: NabledReal>(
+    cores: &[ArrayView3<'_, T>],
+) -> Result<T, TensorError> {
+    let squared = tt_inner_from_cores_view(cores, cores)?;
     if squared < T::zero() && squared.abs() > T::epsilon() * T::from_f64(64.0).unwrap_or(T::one()) {
         return Err(TensorError::DimensionMismatch);
     }
@@ -4779,21 +4950,35 @@ pub fn tt_add<T: NabledReal>(
     left: &TensorTrainResult<T>,
     right: &TensorTrainResult<T>,
 ) -> Result<TensorTrainResult<T>, TensorError> {
-    validate_tt_binary_inputs(left, right)?;
+    tt_add_from_cores_view(
+        &left.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        &right.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+    )
+}
 
-    if left.cores.len() == 1 {
-        let mut core = left.cores[0].clone();
+/// Add two borrowed Tensor-Train tensors with identical shape.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible or shapes mismatch.
+pub fn tt_add_from_cores_view<T: NabledReal>(
+    left: &[ArrayView3<'_, T>],
+    right: &[ArrayView3<'_, T>],
+) -> Result<TensorTrainResult<T>, TensorError> {
+    let shape = validate_tt_binary_inputs(left, right)?;
+
+    if left.len() == 1 {
+        let mut core = left[0].to_owned();
         for mode_index in 0..core.dim().1 {
-            core[[0, mode_index, 0]] += right.cores[0][[0, mode_index, 0]];
+            core[[0, mode_index, 0]] += right[0][[0, mode_index, 0]];
         }
-        return Ok(TensorTrainResult { cores: vec![core], shape: left.shape.clone() });
+        return Ok(TensorTrainResult { cores: vec![core], shape });
     }
 
-    let mut cores = Vec::<Array3<T>>::with_capacity(left.cores.len());
+    let mut cores = Vec::<Array3<T>>::with_capacity(left.len());
 
     {
-        let left_core = &left.cores[0];
-        let right_core = &right.cores[0];
+        let left_core = &left[0];
+        let right_core = &right[0];
         let (_, mode_extent, left_rank) = left_core.dim();
         let (_, _, right_rank) = right_core.dim();
         let mut core = Array3::<T>::zeros((1, mode_extent, left_rank + right_rank));
@@ -4808,9 +4993,9 @@ pub fn tt_add<T: NabledReal>(
         cores.push(core);
     }
 
-    for mode in 1..(left.cores.len() - 1) {
-        let left_core = &left.cores[mode];
-        let right_core = &right.cores[mode];
+    for mode in 1..(left.len() - 1) {
+        let left_core = &left[mode];
+        let right_core = &right[mode];
         let (left_prev, mode_extent, left_next) = left_core.dim();
         let (right_prev, right_mode_extent, right_next) = right_core.dim();
         if mode_extent != right_mode_extent {
@@ -4837,9 +5022,9 @@ pub fn tt_add<T: NabledReal>(
     }
 
     {
-        let mode = left.cores.len() - 1;
-        let left_core = &left.cores[mode];
-        let right_core = &right.cores[mode];
+        let mode = left.len() - 1;
+        let left_core = &left[mode];
+        let right_core = &right[mode];
         let (left_prev, mode_extent, left_last) = left_core.dim();
         let (right_prev, right_mode_extent, right_last) = right_core.dim();
         if mode_extent != right_mode_extent || left_last != 1 || right_last != 1 {
@@ -4859,7 +5044,7 @@ pub fn tt_add<T: NabledReal>(
         cores.push(core);
     }
 
-    let result = TensorTrainResult { cores, shape: left.shape.clone() };
+    let result = TensorTrainResult { cores, shape };
     validate_tt_result(&result)?;
     Ok(result)
 }
@@ -4872,12 +5057,26 @@ pub fn tt_hadamard<T: NabledReal>(
     left: &TensorTrainResult<T>,
     right: &TensorTrainResult<T>,
 ) -> Result<TensorTrainResult<T>, TensorError> {
-    validate_tt_binary_inputs(left, right)?;
+    tt_hadamard_from_cores_view(
+        &left.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        &right.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+    )
+}
 
-    let mut cores = Vec::<Array3<T>>::with_capacity(left.cores.len());
-    for mode in 0..left.cores.len() {
-        let left_core = &left.cores[mode];
-        let right_core = &right.cores[mode];
+/// Compute elementwise (Hadamard) product of two borrowed Tensor-Train tensors.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible or shapes mismatch.
+pub fn tt_hadamard_from_cores_view<T: NabledReal>(
+    left: &[ArrayView3<'_, T>],
+    right: &[ArrayView3<'_, T>],
+) -> Result<TensorTrainResult<T>, TensorError> {
+    let shape = validate_tt_binary_inputs(left, right)?;
+
+    let mut cores = Vec::<Array3<T>>::with_capacity(left.len());
+    for mode in 0..left.len() {
+        let left_core = &left[mode];
+        let right_core = &right[mode];
         let (left_prev, mode_extent, left_next) = left_core.dim();
         let (right_prev, right_mode_extent, right_next) = right_core.dim();
         if mode_extent != right_mode_extent {
@@ -4904,7 +5103,7 @@ pub fn tt_hadamard<T: NabledReal>(
         cores.push(core);
     }
 
-    let result = TensorTrainResult { cores, shape: left.shape.clone() };
+    let result = TensorTrainResult { cores, shape };
     validate_tt_result(&result)?;
     Ok(result)
 }
@@ -4918,8 +5117,27 @@ pub fn tt_hadamard_round<T: TtSvdScalar>(
     right: &TensorTrainResult<T>,
     config: &TtRoundConfig<T>,
 ) -> Result<TensorTrainResult<T>, TensorError> {
-    let product = tt_hadamard(left, right)?;
-    tt_round(&product, config)
+    tt_hadamard_round_from_cores_view(
+        &left.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        &right.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        config,
+    )
+}
+
+/// Compute Hadamard product of borrowed TT cores followed by TT rank-rounding.
+///
+/// # Errors
+/// Returns an error if TT core dimensions/configuration are invalid.
+pub fn tt_hadamard_round_from_cores_view<T: TtSvdScalar>(
+    left: &[ArrayView3<'_, T>],
+    right: &[ArrayView3<'_, T>],
+    config: &TtRoundConfig<T>,
+) -> Result<TensorTrainResult<T>, TensorError> {
+    let product = tt_hadamard_from_cores_view(left, right)?;
+    tt_round_from_cores_view(
+        &product.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        config,
+    )
 }
 
 /// Reconstruct an `N`-D real tensor from Tensor-Train cores.
@@ -6925,6 +7143,134 @@ mod tests {
 
         let viewed = tt_svd_reconstruct_from_cores_view(&core_views).unwrap();
         assert_eq!(owned, viewed);
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "this regression keeps the TT borrowed-view parity cases together"
+    )]
+    fn hosvd3_and_tt_borrowed_view_helpers_match_owned_paths() {
+        let cube =
+            Array3::<f64>::from_shape_vec((3, 4, 2), (0..24).map(f64::from).collect()).unwrap();
+        let hosvd3_owned = hosvd3(&cube, (3, 4, 2)).unwrap();
+
+        let mut cube_storage = Array3::<f64>::zeros((4, 5, 3));
+        cube_storage.slice_mut(s![1.., 1.., 1..]).assign(&cube);
+        let cube_view = cube_storage.slice(s![1.., 1.., 1..]);
+
+        let hosvd3_viewed = hosvd3_view(&cube_view, (3, 4, 2)).unwrap();
+        let assert_close3 = |left: &Array3<f64>, right: &Array3<f64>, tolerance: f64| {
+            assert_eq!(left.shape(), right.shape());
+            for (left_value, right_value) in left.iter().zip(right.iter()) {
+                assert!((left_value - right_value).abs() <= tolerance);
+            }
+        };
+        assert_close3(&hosvd3_reconstruct(&hosvd3_owned).unwrap(), &cube, 1.0e-10);
+        assert_close3(&hosvd3_reconstruct(&hosvd3_viewed).unwrap(), &cube, 1.0e-10);
+
+        let left_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
+            1.0_f64, -0.5, 0.7, 0.2, -0.1, 0.9, 0.3, 0.8, -0.6, 1.2, 0.4, -0.3,
+        ])
+        .unwrap();
+        let right_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
+            0.6_f64, 0.2, -0.4, 1.1, 0.5, -0.7, 0.9, 0.3, 0.8, -0.2, 0.4, 1.0,
+        ])
+        .unwrap();
+        let round_config = TtRoundConfig::<f64> { max_rank: Some(2), tolerance: 1.0e-8 };
+        let left_tt = tt_svd(&left_tensor, &TtSvdConfig::<f64>::default()).unwrap();
+        let right_tt = tt_svd(&right_tensor, &TtSvdConfig::<f64>::default()).unwrap();
+
+        let mut left_core_storages = Vec::new();
+        for core in &left_tt.cores {
+            let mut storage =
+                Array3::<f64>::zeros((core.dim().0 + 1, core.dim().1 + 1, core.dim().2 + 1));
+            storage.slice_mut(s![1.., 1.., 1..]).assign(core);
+            left_core_storages.push(storage);
+        }
+        let left_core_views =
+            left_core_storages.iter().map(|core| core.slice(s![1.., 1.., 1..])).collect::<Vec<_>>();
+
+        let mut right_core_storages = Vec::new();
+        for core in &right_tt.cores {
+            let mut storage =
+                Array3::<f64>::zeros((core.dim().0 + 1, core.dim().1 + 1, core.dim().2 + 1));
+            storage.slice_mut(s![1.., 1.., 1..]).assign(core);
+            right_core_storages.push(storage);
+        }
+        let right_core_views = right_core_storages
+            .iter()
+            .map(|core| core.slice(s![1.., 1.., 1..]))
+            .collect::<Vec<_>>();
+
+        let assert_close = |left: &ArrayD<f64>, right: &ArrayD<f64>, tolerance: f64| {
+            assert_eq!(left.shape(), right.shape());
+            for (left_value, right_value) in left.iter().zip(right.iter()) {
+                assert!((left_value - right_value).abs() <= tolerance);
+            }
+        };
+
+        let left_orth_owned = tt_orthogonalize_left(&left_tt).unwrap();
+        let left_orth_viewed = tt_orthogonalize_left_from_cores_view(&left_core_views).unwrap();
+        assert_close(
+            &tt_svd_reconstruct(&left_orth_owned).unwrap(),
+            &tt_svd_reconstruct(&left_orth_viewed).unwrap(),
+            1.0e-10,
+        );
+
+        let right_orth_owned = tt_orthogonalize_right(&left_tt).unwrap();
+        let right_orth_viewed = tt_orthogonalize_right_from_cores_view(&left_core_views).unwrap();
+        assert_close(
+            &tt_svd_reconstruct(&right_orth_owned).unwrap(),
+            &tt_svd_reconstruct(&right_orth_viewed).unwrap(),
+            1.0e-10,
+        );
+
+        let round_owned = tt_round(&left_tt, &round_config).unwrap();
+        let round_viewed = tt_round_from_cores_view(&left_core_views, &round_config).unwrap();
+        assert_close(
+            &tt_svd_reconstruct(&round_owned).unwrap(),
+            &tt_svd_reconstruct(&round_viewed).unwrap(),
+            1.0e-10,
+        );
+
+        assert!(
+            (tt_inner(&left_tt, &right_tt).unwrap()
+                - tt_inner_from_cores_view(&left_core_views, &right_core_views).unwrap())
+            .abs()
+                <= 1.0e-10
+        );
+        assert!(
+            (tt_norm(&left_tt).unwrap() - tt_norm_from_cores_view(&left_core_views).unwrap()).abs()
+                <= 1.0e-10
+        );
+
+        let add_owned = tt_add(&left_tt, &right_tt).unwrap();
+        let add_viewed = tt_add_from_cores_view(&left_core_views, &right_core_views).unwrap();
+        assert_close(
+            &tt_svd_reconstruct(&add_owned).unwrap(),
+            &tt_svd_reconstruct(&add_viewed).unwrap(),
+            1.0e-10,
+        );
+
+        let hadamard_owned = tt_hadamard(&left_tt, &right_tt).unwrap();
+        let hadamard_viewed =
+            tt_hadamard_from_cores_view(&left_core_views, &right_core_views).unwrap();
+        assert_close(
+            &tt_svd_reconstruct(&hadamard_owned).unwrap(),
+            &tt_svd_reconstruct(&hadamard_viewed).unwrap(),
+            1.0e-10,
+        );
+
+        let hadamard_round_owned = tt_hadamard_round(&left_tt, &right_tt, &round_config).unwrap();
+        let hadamard_round_viewed =
+            tt_hadamard_round_from_cores_view(&left_core_views, &right_core_views, &round_config)
+                .unwrap();
+        assert_close(
+            &tt_svd_reconstruct(&hadamard_round_owned).unwrap(),
+            &tt_svd_reconstruct(&hadamard_round_viewed).unwrap(),
+            1.0e-8,
+        );
     }
 
     #[test]

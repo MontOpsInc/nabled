@@ -225,6 +225,37 @@ now narrowed again to the still-missing higher-level reusable result/workspace s
 residual higher-level copy/layout traps outside the already-landed dense/helper/PCA/regression/
 tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor/sparse-factorization/tensor-result
 surfaces.
+A nineteenth `N-PY-007` tensor TT borrowed-view hardening pass is now also landed: TT
+orthogonalize/round/algebra/reconstruct helper paths no longer rebuild owned Rust
+`TensorTrainResult` structs or assume standard-layout TT core arrays when Python or Arrow callers
+hand in borrowed TT core views. The Rust tensor core now materializes only the SVD work matrices
+it already needs for TT orthogonalization/rounding sweeps, `hosvd3_view(...)` is now the explicit
+view-first decomposition path behind owned `hosvd3(...)`, the raw PyO3 NumPy TT bridge now routes
+TT orthogonalize/round/algebra/reconstruct through borrowed core arrays directly, and the Arrow TT
+bridge does the same for TT orthogonalize/round/algebra/reconstruct workflows. Validation is green
+end-to-end: targeted Rust tensor borrowed-view coverage (`1 passed`), targeted Python
+borrowed-view pytest (`1 passed`), targeted Arrow borrowed-view pytest (`1 passed, 21
+deselected`), full `just checks`, the Rust coverage gate at `90.76%` line coverage, and the
+Python package/coverage gate at `239 passed, 22 skipped` plus Arrow `22 passed` with `90%`
+Python coverage. Remaining `N-PY-007` work is now narrowed again to the still-missing higher-level
+reusable result/workspace semantics plus any residual higher-level copy/layout traps outside the
+already-landed dense/helper/PCA/regression/tensor-helper/LU/SVD/QR/polar/matrix-function/
+eigen-factor/sparse-factorization/tensor-result/tensor-TT-borrowed-view surfaces.
+A twentieth `N-PY-007` triangular/output-layout hardening pass is now also landed: direct NumPy
+triangular solve rows now accept caller-provided `out=` buffers for both vector and matrix RHS
+under the existing public names, backed by widened generic mutable-output plus borrowed
+view-into helpers in `nabled-linalg::triangular` so the Python bridge no longer clones RHS/result
+arrays just to reach the solve kernels. The same pass also removes the remaining wrapper-level
+standard-layout clone on owned tensor egress: PyO3 tensor helpers now hand owned ndarray results
+to NumPy preserving their existing strides instead of forcing `as_standard_layout().to_owned()`
+first. Validation is green end-to-end: targeted Rust triangular coverage (`14 passed`) plus
+tensor-egress coverage (`1 passed`), targeted Python triangular pytest (`10 passed`),
+`python-quality` (`243 passed, 22 skipped`, `90%` Python coverage), and full `just checks` (Rust
+coverage gate `90.20%` line coverage). Remaining `N-PY-007` work is now narrowed again to the
+still-missing higher-level reusable result/workspace semantics plus any residual higher-level
+copy/layout traps outside the already-landed dense/helper/PCA/regression/tensor-helper/LU/SVD/QR/
+polar/matrix-function/eigen-factor/sparse-factorization/tensor-result/tensor-TT-borrowed-view/
+triangular-output-reuse surfaces.
 The first
 `N-PY-003` implementation pass is also landed:
 Python now has

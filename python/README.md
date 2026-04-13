@@ -66,6 +66,11 @@ The direct NumPy vector/matrix hot kernels now follow the same pattern: pairwise
 rows and direct/batched matrix kernels accept `out=` for caller-provided result reuse under the
 same public names. Writable Fortran-order 2D/3D outputs are accepted where rank permits, and
 aliasing an input as `out` fails explicitly instead of silently materializing around the overlap.
+Direct NumPy triangular solves now follow that same contract for both vector and matrix RHS:
+`triangular_solve_lower`, `triangular_solve_upper`, `triangular_solve_lower_matrix`, and
+`triangular_solve_upper_matrix` all accept `out=` under the existing public names, including
+writable Fortran-order matrix outputs, and mismatched dtype/shape/writeability still fails
+explicitly instead of silently copying.
 The currently admitted higher-level dense helpers now follow the same explicit reuse contract where
 the Rust core already exposes `*_into`: `svd_pseudo_inverse`, `svd_reconstruct_matrix`,
 `matrix_exp`, `matrix_exp_eigen`, `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`,
@@ -102,6 +107,14 @@ the Rust core already has truthful `*_into` coverage: `tensor_hosvd_nd_reconstru
 `tensor_einsum`, `tensor_einsum_complex`, `tensor_cp_als3_reconstruct`,
 `tensor_cp_als_nd_reconstruct`, and `tensor_tt_svd_reconstruct` all accept `out=` under the same
 dtype/rank/shape contract instead of always materializing fresh tensors.
+Typed tensor result objects now also admit borrowed NumPy factor/core views directly across the TT
+helper family: `tensor_tt_orthogonalize_left`, `tensor_tt_orthogonalize_right`,
+`tensor_tt_round`, `tensor_tt_inner`, `tensor_tt_norm`, `tensor_tt_add`,
+`tensor_tt_hadamard`, `tensor_tt_hadamard_round`, and `tensor_tt_svd_reconstruct` no longer
+require rebuilding an owned Rust TT result or standard-layout TT core arrays just to reach the
+real tensor kernels.
+Owned tensor results now also preserve their existing ndarray strides on the way back out to
+NumPy instead of being normalized through an extra standard-layout clone first.
 `qr_reconstruct_matrix(...)` now follows the same Rust-backed `out=` contract for both direct and
 pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
 `cholesky_inverse(...)` for repeated factor reuse instead of re-factorizing the original matrix.

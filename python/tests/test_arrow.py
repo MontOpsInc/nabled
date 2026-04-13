@@ -22,6 +22,7 @@ try:
         MomentumConfig,
         ProjectedGradientConfig,
         RMSPropConfig,
+        TensorTrainResult,
     )
     from pynabled.arrow import (
         arrow_adam,
@@ -255,6 +256,18 @@ def _complex_matrix_array(values):
 def _complex_matrix_numpy(array):
     flat = _complex_vector_numpy(array.values)
     return flat.reshape(len(array), array.type.list_size)
+
+
+def _borrowed_tensor_view(values):
+    storage = np.empty(
+        tuple(extent + 1 for extent in values.shape),
+        dtype=values.dtype,
+        order="F",
+    )
+    storage[(slice(1, None),) * values.ndim] = values
+    view = storage[(slice(1, None),) * values.ndim]
+    assert not view.flags["OWNDATA"]
+    return view
 
 
 def test_arrow_vector_scalar_kernels():
@@ -1589,6 +1602,76 @@ def test_arrow_tensor_advanced_real_result_families():
         arrow_fixed_shape_tensor_numpy(tensor),
         rtol=1e-5,
         atol=1e-5,
+    )
+
+    borrowed_tt = TensorTrainResult(cores=[_borrowed_tensor_view(core) for core in tt.cores])
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(
+            arrow_tensor_tt_svd_reconstruct(
+                arrow_tensor_tt_orthogonalize_left(borrowed_tt),
+                field_name="tt_left_borrowed",
+            )
+        ),
+        arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(
+            arrow_tensor_tt_svd_reconstruct(
+                arrow_tensor_tt_orthogonalize_right(borrowed_tt),
+                field_name="tt_right_borrowed",
+            )
+        ),
+        arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(
+            arrow_tensor_tt_svd_reconstruct(
+                arrow_tensor_tt_round(borrowed_tt),
+                field_name="tt_round_borrowed",
+            )
+        ),
+        arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    assert abs(arrow_tensor_tt_inner(borrowed_tt, borrowed_tt) - tt_inner) < 1e-5
+    assert abs(arrow_tensor_tt_norm(borrowed_tt) - tt_norm) < 1e-5
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(
+            arrow_tensor_tt_svd_reconstruct(
+                arrow_tensor_tt_add(borrowed_tt, borrowed_tt),
+                field_name="tt_add_borrowed",
+            )
+        ),
+        2.0 * arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(
+            arrow_tensor_tt_svd_reconstruct(
+                arrow_tensor_tt_hadamard(borrowed_tt, borrowed_tt),
+                field_name="tt_hadamard_borrowed",
+            )
+        ),
+        arrow_fixed_shape_tensor_numpy(tensor) * arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        arrow_fixed_shape_tensor_numpy(
+            arrow_tensor_tt_svd_reconstruct(
+                arrow_tensor_tt_hadamard_round(borrowed_tt, borrowed_tt),
+                field_name="tt_hadamard_round_borrowed",
+            )
+        ),
+        arrow_fixed_shape_tensor_numpy(tensor) * arrow_fixed_shape_tensor_numpy(tensor),
+        rtol=5e-3,
+        atol=5e-3,
     )
 
 

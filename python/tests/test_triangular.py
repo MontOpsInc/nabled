@@ -72,3 +72,68 @@ def test_triangular_accepts_complex128_vector_rhs():
     assert upper_x.dtype == np.complex128
     np.testing.assert_allclose(lower @ lower_x, rhs, rtol=1e-10, atol=1e-12)
     np.testing.assert_allclose(upper @ upper_x, rhs, rtol=1e-10, atol=1e-12)
+
+
+def test_triangular_vector_out_reuse():
+    lower = np.array([[1.0, 0.0], [2.0, 3.0]], dtype=np.float64)
+    upper = np.array([[1.0, 2.0], [0.0, 3.0]], dtype=np.float64)
+    rhs = np.array([1.0, 2.0], dtype=np.float64)
+    lower_out = np.empty_like(rhs)
+    upper_out = np.empty_like(rhs)
+
+    lower_result = pynabled.triangular_solve_lower(lower, rhs, out=lower_out)
+    upper_result = pynabled.triangular_solve_upper(upper, rhs, out=upper_out)
+
+    assert lower_result is lower_out
+    assert upper_result is upper_out
+    np.testing.assert_allclose(lower @ lower_out, rhs, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(upper @ upper_out, rhs, rtol=1e-10, atol=1e-12)
+
+
+def test_triangular_complex_vector_out_reuse():
+    lower = np.array(
+        [[2.0 + 0.0j, 0.0 + 0.0j], [1.0 - 1.0j, 3.0 + 0.5j]],
+        dtype=np.complex128,
+    )
+    upper = np.array(
+        [[2.5 + 0.25j, -1.0 + 0.5j], [0.0 + 0.0j, 1.5 - 0.25j]],
+        dtype=np.complex128,
+    )
+    rhs = np.array([2.0 + 1.0j, 4.0 - 2.0j], dtype=np.complex128)
+    lower_out = np.empty_like(rhs)
+    upper_out = np.empty_like(rhs)
+
+    lower_result = pynabled.triangular_solve_lower(lower, rhs, out=lower_out)
+    upper_result = pynabled.triangular_solve_upper(upper, rhs, out=upper_out)
+
+    assert lower_result is lower_out
+    assert upper_result is upper_out
+    np.testing.assert_allclose(lower @ lower_out, rhs, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(upper @ upper_out, rhs, rtol=1e-10, atol=1e-12)
+
+
+def test_triangular_matrix_out_reuse_accepts_fortran_output():
+    lower = np.array([[1.0, 0.0], [2.0, 3.0]], dtype=np.float32)
+    upper = np.array([[1.0, 2.0], [0.0, 3.0]], dtype=np.float32)
+    rhs = np.eye(2, dtype=np.float32)
+    lower_out = np.empty((2, 2), dtype=np.float32, order="F")
+    upper_out = np.empty((2, 2), dtype=np.float32, order="F")
+
+    lower_result = pynabled.triangular_solve_lower_matrix(lower, rhs, out=lower_out)
+    upper_result = pynabled.triangular_solve_upper_matrix(upper, rhs, out=upper_out)
+
+    assert lower_result is lower_out
+    assert upper_result is upper_out
+    assert lower_out.flags["F_CONTIGUOUS"]
+    assert upper_out.flags["F_CONTIGUOUS"]
+    np.testing.assert_allclose(lower @ lower_out, rhs, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(upper @ upper_out, rhs, rtol=1e-4, atol=1e-5)
+
+
+def test_triangular_out_dtype_mismatch_fails():
+    lower = np.array([[1.0, 0.0], [2.0, 3.0]], dtype=np.float64)
+    rhs = np.array([1.0, 2.0], dtype=np.float64)
+    wrong = np.empty(2, dtype=np.float32)
+
+    with pytest.raises(TypeError, match="output"):
+        pynabled.triangular_solve_lower(lower, rhs, out=wrong)
