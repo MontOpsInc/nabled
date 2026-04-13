@@ -266,6 +266,54 @@ def test_sparse_reusable_factorizations_and_direct_lu():
     )
 
 
+def test_sparse_reuse_accepts_borrowed_rhs_views():
+    dense = np.array(
+        [
+            [4.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    matrix = pynabled.CsrMatrix.from_components(*_csr_from_dense(dense))
+    rhs_storage = np.array([99.0, 1.0, 2.0, 3.0, 77.0], dtype=np.float64)
+    rhs = rhs_storage[1:4]
+    rhs_multi = np.asfortranarray(np.column_stack([rhs, rhs * 2.0]))
+    expected = np.linalg.solve(dense, rhs)
+    expected_multi = np.linalg.solve(dense, rhs_multi)
+
+    ilu0 = matrix.ilu0_factor()
+    sparse_lu = matrix.lu_factor()
+
+    assert not rhs.flags.owndata
+    assert rhs_multi.flags.f_contiguous
+    np.testing.assert_allclose(
+        ilu0.gmres_solve(rhs, tolerance=1e-10, max_iterations=5000),
+        expected,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        pynabled.sparse_gmres_ilu0_solve(matrix, rhs, tolerance=1e-10, max_iterations=5000),
+        expected,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        ilu0.gmres_solve_multiple(rhs_multi, tolerance=1e-10, max_iterations=5000),
+        expected_multi,
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(sparse_lu.solve(rhs), expected, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        sparse_lu.solve_multiple(rhs_multi),
+        expected_multi,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
 def test_sparse_symmetric_reusable_factorizations_preserve_dtype():
     dense = np.array(
         [

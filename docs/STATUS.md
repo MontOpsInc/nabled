@@ -195,6 +195,36 @@ results now fail explicitly instead of pretending to provide a complete null-spa
 narrows `N-PY-007` again to the smaller set of remaining higher-level reusable result/workspace
 families plus any residual higher-level materialization/copy traps outside the already-landed
 dense/helper/PCA/regression/tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor surfaces.
+A seventeenth `N-PY-007` sparse-factorization borrow and QR factor-view hardening pass is now
+also landed: reusable sparse direct / preconditioned iterative Python paths no longer clone dense
+RHS arrays at the binding boundary just to satisfy narrower Rust helper signatures. The Rust
+sparse core now admits borrowed `ArrayBase` RHS views for sparse-LU plus ILU0 / ILUT / ILUK /
+ILDL0 `GMRES` and `BiCGSTAB` factorization-view helpers across both single-RHS and multi-RHS
+solve paths, and the Python sparse bridge now passes borrowed NumPy RHS views through directly.
+The same pass hardens QR factor reuse further: `qr_solve_least_squares(...)` now dispatches over
+borrowed `Q` / `R` / optional permutation views directly instead of rebuilding an owned Rust
+`QRResult` from Python arrays, and regression coverage now explicitly proves borrowed Fortran-order
+QR factor arrays plus borrowed sparse RHS views. Validation is green on the Python/package gate:
+`python-quality` passed at `238 passed, 22 skipped` with `90%` Python coverage. Remaining
+`N-PY-007` work is now concentrated in the smaller set of still-missing higher-level reusable
+result/workspace families plus any residual higher-level copy traps outside the already-landed
+dense/helper/PCA/regression/tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor/
+sparse-factorization surfaces. An eighteenth `N-PY-007` tensor factor-view hardening pass is now
+also landed: the remaining tensor result reconstruction/diagnostic helpers no longer rebuild owned
+Rust result structs from Python arrays just to call the real tensor kernels. The Rust tensor core
+now exposes borrowed-factor/core helpers for HOSVD3, HOSVD-N/Tucker, CP-ALS rank-3, CP-ALS N-D,
+and TT reconstruction, the Python raw tensor bridge now passes borrowed NumPy factor/core arrays
+through directly, and CP diagnostics now compute residual metrics directly instead of allocating a
+full reconstructed tensor first. Regression coverage now explicitly proves borrowed tensor
+factor/core views across HOSVD/Tucker/CP/TT reconstruction plus CP diagnostics. Validation is
+green end-to-end: `cargo +nightly fmt --all -- --config-path ./rustfmt.toml`, `cargo check -p
+pynabled`, targeted Rust tensor coverage (`cargo test -p nabled-linalg tensor -- --nocapture
+--show-output`: `61 passed`), `python-quality` (`239 passed, 22 skipped`, `90%` Python coverage),
+and full `just checks` (Rust coverage gate `90.10%` line coverage). Remaining `N-PY-007` work is
+now narrowed again to the still-missing higher-level reusable result/workspace semantics plus any
+residual higher-level copy/layout traps outside the already-landed dense/helper/PCA/regression/
+tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor/sparse-factorization/tensor-result
+surfaces.
 The first
 `N-PY-003` implementation pass is also landed:
 Python now has

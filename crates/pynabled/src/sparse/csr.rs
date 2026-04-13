@@ -1941,7 +1941,7 @@ impl PyIlu0Factorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::gmres_ilu0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -1966,7 +1966,7 @@ impl PyIlu0Factorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::gmres_ilu0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -1990,7 +1990,7 @@ impl PyIlu0Factorization {
                 )?;
                 let result = nabled_linalg::sparse::gmres_ilu0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -2014,7 +2014,7 @@ impl PyIlu0Factorization {
                 )?;
                 let result = nabled_linalg::sparse::gmres_ilu0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -2069,7 +2069,7 @@ impl PyIlu0Factorization {
                 let result =
                     nabled_linalg::sparse::gmres_ilu0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -2095,7 +2095,7 @@ impl PyIlu0Factorization {
                 let result =
                     nabled_linalg::sparse::gmres_ilu0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -2120,7 +2120,7 @@ impl PyIlu0Factorization {
                 let result =
                     nabled_linalg::sparse::gmres_ilu0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -2145,7 +2145,7 @@ impl PyIlu0Factorization {
                 let result =
                     nabled_linalg::sparse::gmres_ilu0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -2199,7 +2199,7 @@ impl PyIlu0Factorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::bicgstab_ilu0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -2224,7 +2224,7 @@ impl PyIlu0Factorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::bicgstab_ilu0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -2248,7 +2248,7 @@ impl PyIlu0Factorization {
                 )?;
                 let result = nabled_linalg::sparse::bicgstab_ilu0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -2272,7 +2272,7 @@ impl PyIlu0Factorization {
                 )?;
                 let result = nabled_linalg::sparse::bicgstab_ilu0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -2327,7 +2327,7 @@ impl PyIlu0Factorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ilu0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -2353,7 +2353,7 @@ impl PyIlu0Factorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ilu0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -2378,7 +2378,7 @@ impl PyIlu0Factorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ilu0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -2403,7 +2403,7 @@ impl PyIlu0Factorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ilu0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -2547,7 +2547,7 @@ impl PyIlutFactorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::gmres_ilut_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -2572,7 +2572,7 @@ impl PyIlutFactorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::gmres_ilut_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -2596,7 +2596,7 @@ impl PyIlutFactorization {
                 )?;
                 let result = nabled_linalg::sparse::gmres_ilut_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -2620,7 +2620,7 @@ impl PyIlutFactorization {
                 )?;
                 let result = nabled_linalg::sparse::gmres_ilut_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -2675,7 +2675,7 @@ impl PyIlutFactorization {
                 let result =
                     nabled_linalg::sparse::gmres_ilut_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -2701,7 +2701,7 @@ impl PyIlutFactorization {
                 let result =
                     nabled_linalg::sparse::gmres_ilut_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -2726,7 +2726,7 @@ impl PyIlutFactorization {
                 let result =
                     nabled_linalg::sparse::gmres_ilut_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -2751,7 +2751,7 @@ impl PyIlutFactorization {
                 let result =
                     nabled_linalg::sparse::gmres_ilut_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -2805,7 +2805,7 @@ impl PyIlutFactorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::bicgstab_ilut_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -2830,7 +2830,7 @@ impl PyIlutFactorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::bicgstab_ilut_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -2854,7 +2854,7 @@ impl PyIlutFactorization {
                 )?;
                 let result = nabled_linalg::sparse::bicgstab_ilut_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -2878,7 +2878,7 @@ impl PyIlutFactorization {
                 )?;
                 let result = nabled_linalg::sparse::bicgstab_ilut_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -2933,7 +2933,7 @@ impl PyIlutFactorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ilut_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -2959,7 +2959,7 @@ impl PyIlutFactorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ilut_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -2984,7 +2984,7 @@ impl PyIlutFactorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ilut_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -3009,7 +3009,7 @@ impl PyIlutFactorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ilut_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -3161,7 +3161,7 @@ impl PyIlukFactorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::gmres_iluk_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -3186,7 +3186,7 @@ impl PyIlukFactorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::gmres_iluk_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -3210,7 +3210,7 @@ impl PyIlukFactorization {
                 )?;
                 let result = nabled_linalg::sparse::gmres_iluk_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -3234,7 +3234,7 @@ impl PyIlukFactorization {
                 )?;
                 let result = nabled_linalg::sparse::gmres_iluk_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -3289,7 +3289,7 @@ impl PyIlukFactorization {
                 let result =
                     nabled_linalg::sparse::gmres_iluk_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -3315,7 +3315,7 @@ impl PyIlukFactorization {
                 let result =
                     nabled_linalg::sparse::gmres_iluk_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -3340,7 +3340,7 @@ impl PyIlukFactorization {
                 let result =
                     nabled_linalg::sparse::gmres_iluk_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -3365,7 +3365,7 @@ impl PyIlukFactorization {
                 let result =
                     nabled_linalg::sparse::gmres_iluk_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -3419,7 +3419,7 @@ impl PyIlukFactorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::bicgstab_iluk_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -3444,7 +3444,7 @@ impl PyIlukFactorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::bicgstab_iluk_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -3468,7 +3468,7 @@ impl PyIlukFactorization {
                 )?;
                 let result = nabled_linalg::sparse::bicgstab_iluk_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -3492,7 +3492,7 @@ impl PyIlukFactorization {
                 )?;
                 let result = nabled_linalg::sparse::bicgstab_iluk_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -3547,7 +3547,7 @@ impl PyIlukFactorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_iluk_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -3573,7 +3573,7 @@ impl PyIlukFactorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_iluk_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -3598,7 +3598,7 @@ impl PyIlukFactorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_iluk_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -3623,7 +3623,7 @@ impl PyIlukFactorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_iluk_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -3996,7 +3996,7 @@ impl PyIldl0Factorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::gmres_ildl0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -4021,7 +4021,7 @@ impl PyIldl0Factorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::gmres_ildl0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -4045,7 +4045,7 @@ impl PyIldl0Factorization {
                 )?;
                 let result = nabled_linalg::sparse::gmres_ildl0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -4069,7 +4069,7 @@ impl PyIldl0Factorization {
                 )?;
                 let result = nabled_linalg::sparse::gmres_ildl0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(32),
                     factorization,
@@ -4124,7 +4124,7 @@ impl PyIldl0Factorization {
                 let result =
                     nabled_linalg::sparse::gmres_ildl0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -4150,7 +4150,7 @@ impl PyIldl0Factorization {
                 let result =
                     nabled_linalg::sparse::gmres_ildl0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -4175,7 +4175,7 @@ impl PyIldl0Factorization {
                 let result =
                     nabled_linalg::sparse::gmres_ildl0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -4200,7 +4200,7 @@ impl PyIldl0Factorization {
                 let result =
                     nabled_linalg::sparse::gmres_ildl0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(32),
                         factorization,
@@ -4254,7 +4254,7 @@ impl PyIldl0Factorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::bicgstab_ildl0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -4279,7 +4279,7 @@ impl PyIldl0Factorization {
                 .map_err(to_py_err)?;
                 let result = nabled_linalg::sparse::bicgstab_ildl0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -4303,7 +4303,7 @@ impl PyIldl0Factorization {
                 )?;
                 let result = nabled_linalg::sparse::bicgstab_ildl0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance_f32(tolerance, 1e-6_f32),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -4327,7 +4327,7 @@ impl PyIldl0Factorization {
                 )?;
                 let result = nabled_linalg::sparse::bicgstab_ildl0_solve_with_factorization_view(
                     &matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     tolerance.unwrap_or(1e-10),
                     max_iterations.unwrap_or(5000),
                     factorization,
@@ -4382,7 +4382,7 @@ impl PyIldl0Factorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ildl0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -4408,7 +4408,7 @@ impl PyIldl0Factorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ildl0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -4433,7 +4433,7 @@ impl PyIldl0Factorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ildl0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance_f32(tolerance, 1e-6_f32),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -4458,7 +4458,7 @@ impl PyIldl0Factorization {
                 let result =
                     nabled_linalg::sparse::bicgstab_ildl0_solve_multiple_with_factorization_view(
                         &matrix,
-                        &rhs_arr.as_array().to_owned(),
+                        &rhs_arr.as_array(),
                         tolerance.unwrap_or(1e-10),
                         max_iterations.unwrap_or(5000),
                         factorization,
@@ -4566,7 +4566,7 @@ impl PySparseLuFactorization {
             ) => {
                 let result = nabled_linalg::sparse::sparse_lu_solve_with_factorization(
                     matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     factorization,
                 )
                 .map_err(to_py_err)?;
@@ -4578,7 +4578,7 @@ impl PySparseLuFactorization {
             ) => {
                 let result = nabled_linalg::sparse::sparse_lu_solve_with_factorization(
                     matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     factorization,
                 )
                 .map_err(to_py_err)?;
@@ -4596,7 +4596,7 @@ impl PySparseLuFactorization {
             ) => {
                 let result = nabled_linalg::sparse::sparse_lu_solve_multiple_with_factorization(
                     matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     factorization,
                 )
                 .map_err(to_py_err)?;
@@ -4608,7 +4608,7 @@ impl PySparseLuFactorization {
             ) => {
                 let result = nabled_linalg::sparse::sparse_lu_solve_multiple_with_factorization(
                     matrix,
-                    &rhs_arr.as_array().to_owned(),
+                    &rhs_arr.as_array(),
                     factorization,
                 )
                 .map_err(to_py_err)?;

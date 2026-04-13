@@ -470,14 +470,11 @@ pub fn solve_least_squares_from_factor<'py>(
                 None => None,
             };
             let config = qr_config_f32(rank_tolerance, None, permutation.is_some())?;
-            let qr = nabled_linalg::qr::QRResult {
-                q:    q_arr.as_array().to_owned(),
-                r:    r_arr.as_array().to_owned(),
-                p:    permutation.map(|value| value.as_array().to_owned()),
-                rank: q_arr.as_array().ncols().min(r_arr.as_array().ncols()),
-            };
-            let result = nabled_linalg::qr::solve_least_squares_from_qr_result_view(
-                &qr,
+            let permutation = permutation.as_ref().map(|value| value.as_array());
+            let result = nabled_linalg::qr::solve_least_squares_from_qr_factors_view(
+                &q_arr.as_array(),
+                &r_arr.as_array(),
+                permutation,
                 &b_arr.as_array(),
                 &config,
             )
@@ -499,14 +496,11 @@ pub fn solve_least_squares_from_factor<'py>(
                 None => None,
             };
             let config = qr_config_f64(rank_tolerance, None, permutation.is_some());
-            let qr = nabled_linalg::qr::QRResult {
-                q:    q_arr.as_array().to_owned(),
-                r:    r_arr.as_array().to_owned(),
-                p:    permutation.map(|value| value.as_array().to_owned()),
-                rank: q_arr.as_array().ncols().min(r_arr.as_array().ncols()),
-            };
-            let result = nabled_linalg::qr::solve_least_squares_from_qr_result_view(
-                &qr,
+            let permutation = permutation.as_ref().map(|value| value.as_array());
+            let result = nabled_linalg::qr::solve_least_squares_from_qr_factors_view(
+                &q_arr.as_array(),
+                &r_arr.as_array(),
+                permutation,
                 &b_arr.as_array(),
                 &config,
             )
@@ -546,15 +540,12 @@ pub fn solve_least_squares_from_factor_into(
                 None => None,
             };
             let config = qr_config_f32(rank_tolerance, None, permutation.is_some())?;
-            let qr = nabled_linalg::qr::QRResult {
-                q:    q_arr.as_array().to_owned(),
-                r:    r_arr.as_array().to_owned(),
-                p:    permutation.map(|value| value.as_array().to_owned()),
-                rank: q_arr.as_array().ncols().min(r_arr.as_array().ncols()),
-            };
             let mut out_arr = utils::output_array1::<f32>(output, "output", "float32")?;
-            nabled_linalg::qr::solve_least_squares_from_qr_result_view_into(
-                &qr,
+            let permutation = permutation.as_ref().map(|value| value.as_array());
+            nabled_linalg::qr::solve_least_squares_from_qr_factors_view_into(
+                &q_arr.as_array(),
+                &r_arr.as_array(),
+                permutation,
                 &b_arr.as_array(),
                 &config,
                 &mut out_arr.as_array_mut(),
@@ -576,15 +567,12 @@ pub fn solve_least_squares_from_factor_into(
                 None => None,
             };
             let config = qr_config_f64(rank_tolerance, None, permutation.is_some());
-            let qr = nabled_linalg::qr::QRResult {
-                q:    q_arr.as_array().to_owned(),
-                r:    r_arr.as_array().to_owned(),
-                p:    permutation.map(|value| value.as_array().to_owned()),
-                rank: q_arr.as_array().ncols().min(r_arr.as_array().ncols()),
-            };
             let mut out_arr = utils::output_array1::<f64>(output, "output", "float64")?;
-            nabled_linalg::qr::solve_least_squares_from_qr_result_view_into(
-                &qr,
+            let permutation = permutation.as_ref().map(|value| value.as_array());
+            nabled_linalg::qr::solve_least_squares_from_qr_factors_view_into(
+                &q_arr.as_array(),
+                &r_arr.as_array(),
+                permutation,
                 &b_arr.as_array(),
                 &config,
                 &mut out_arr.as_array_mut(),

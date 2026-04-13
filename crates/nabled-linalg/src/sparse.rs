@@ -1933,9 +1933,9 @@ pub fn sparse_lu_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Ele
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular factors.
-pub fn sparse_lu_solve_with_factorization<T: NabledReal>(
+pub fn sparse_lu_solve_with_factorization<T: NabledReal, S: Data<Elem = T>>(
     matrix: &CsrMatrix<T>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     factorization: &SparseLUFactorization<T>,
 ) -> Result<Array1<T>, SparseError> {
     sparse_lu_solve_with_factorization_view(&matrix.as_view(), rhs, factorization)
@@ -3860,9 +3860,14 @@ pub fn gmres_ilu0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn gmres_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gmres_ilu0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILU0Factorization<T>,
@@ -4028,9 +4033,14 @@ pub fn gmres_ilut_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn gmres_ilut_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gmres_ilut_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUTFactorization<T>,
@@ -4220,9 +4230,14 @@ pub fn gmres_iluk_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn gmres_iluk_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gmres_iluk_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUKFactorization<T>,
@@ -4416,9 +4431,14 @@ pub fn gmres_ildl0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn gmres_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gmres_ildl0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILDL0Factorization<T>,
@@ -4736,9 +4756,14 @@ pub fn bicgstab_ilu0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn bicgstab_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_ilu0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILU0Factorization<T>,
@@ -4757,7 +4782,7 @@ pub fn bicgstab_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -4871,9 +4896,10 @@ pub fn bicgstab_ilu0_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILU0Factorization<T>,
@@ -4967,9 +4993,14 @@ pub fn bicgstab_ilut_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn bicgstab_ilut_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_ilut_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUTFactorization<T>,
@@ -4988,7 +5019,7 @@ pub fn bicgstab_ilut_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -5102,9 +5133,10 @@ pub fn bicgstab_ilut_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUTFactorization<T>,
@@ -5153,9 +5185,10 @@ pub fn bicgstab_iluk_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUKFactorization<T>,
@@ -5280,9 +5313,14 @@ pub fn bicgstab_iluk_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn bicgstab_iluk_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_iluk_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUKFactorization<T>,
@@ -5301,7 +5339,7 @@ pub fn bicgstab_iluk_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -5489,9 +5527,14 @@ pub fn bicgstab_ildl0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn bicgstab_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_ildl0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILDL0Factorization<T>,
@@ -5510,7 +5553,7 @@ pub fn bicgstab_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, 
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -5624,9 +5667,10 @@ pub fn bicgstab_ildl0_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILDL0Factorization<T>,
@@ -5674,9 +5718,10 @@ pub fn gmres_ilu0_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILU0Factorization<T>,
@@ -5724,9 +5769,10 @@ pub fn gmres_ilut_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUTFactorization<T>,
@@ -5774,9 +5820,10 @@ pub fn gmres_iluk_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUKFactorization<T>,
@@ -5825,9 +5872,10 @@ pub fn gmres_ildl0_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILDL0Factorization<T>,

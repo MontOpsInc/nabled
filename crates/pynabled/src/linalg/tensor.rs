@@ -1,12 +1,12 @@
 //! Tensor bindings for Python.
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, Array3, ArrayD};
+use ndarray::{Array2, Array3, ArrayD};
 use num_complex::Complex64;
 use num_traits::{FromPrimitive, ToPrimitive};
 use numpy::{
-    Element, PyArray2, PyArray3, PyArrayDyn, PyArrayMethods, PyReadwriteArray2, PyReadwriteArray3,
-    PyReadwriteArrayDyn,
+    Element, PyArray2, PyArray3, PyArrayDyn, PyArrayMethods, PyReadonlyArray2, PyReadonlyArray3,
+    PyReadwriteArray2, PyReadwriteArray3, PyReadwriteArrayDyn,
 };
 use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -246,6 +246,7 @@ pub(crate) fn py_tt_result<T: Element + Clone + NabledReal>(
         .collect()
 }
 
+#[cfg(feature = "arrow")]
 pub(crate) fn extract_array2_sequence<T: Element + Clone>(
     arrays: &Bound<'_, PyAny>,
 ) -> PyResult<Vec<Array2<T>>> {
@@ -264,6 +265,52 @@ pub(crate) fn extract_array2_sequence<T: Element + Clone>(
     if out.is_empty() {
         return Err(PyValueError::new_err(
             "expected a non-empty sequence of 2D NumPy arrays with matching float32/float64 dtype",
+        ));
+    }
+    Ok(out)
+}
+
+pub(crate) fn extract_array2_sequence_views<'py, T: Element>(
+    arrays: &Bound<'py, PyAny>,
+) -> PyResult<Vec<PyReadonlyArray2<'py, T>>> {
+    let mut out = Vec::new();
+    for item in arrays.try_iter()? {
+        let item = item?;
+        let array = item.cast::<PyArray2<T>>().map_err(|_| {
+            PyValueError::new_err(
+                "expected a non-empty sequence of 2D NumPy arrays with matching float32/float64 \
+                 dtype",
+            )
+        })?;
+        utils::require_contiguous(array)?;
+        out.push(array.readonly());
+    }
+    if out.is_empty() {
+        return Err(PyValueError::new_err(
+            "expected a non-empty sequence of 2D NumPy arrays with matching float32/float64 dtype",
+        ));
+    }
+    Ok(out)
+}
+
+pub(crate) fn extract_array3_sequence_views<'py, T: Element>(
+    arrays: &Bound<'py, PyAny>,
+) -> PyResult<Vec<PyReadonlyArray3<'py, T>>> {
+    let mut out = Vec::new();
+    for item in arrays.try_iter()? {
+        let item = item?;
+        let array = item.cast::<PyArray3<T>>().map_err(|_| {
+            PyValueError::new_err(
+                "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 \
+                 dtype",
+            )
+        })?;
+        utils::require_contiguous(array)?;
+        out.push(array.readonly());
+    }
+    if out.is_empty() {
+        return Err(PyValueError::new_err(
+            "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
         ));
     }
     Ok(out)
@@ -326,30 +373,6 @@ pub(crate) fn real_tt_result_from_cores(
     Err(PyValueError::new_err(
         "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
     ))
-}
-
-fn cp_als3_result_from_arrays<T: Clone + NabledReal>(
-    weights: Array1<T>,
-    factor_0: Array2<T>,
-    factor_1: Array2<T>,
-    factor_2: Array2<T>,
-) -> nabled_linalg::tensor::CpAls3Result<T> {
-    nabled_linalg::tensor::CpAls3Result { weights, factor_0, factor_1, factor_2 }
-}
-
-fn cp_als_nd_result_from_arrays<T: Clone + NabledReal>(
-    weights: Array1<T>,
-    factors: Vec<Array2<T>>,
-) -> nabled_linalg::tensor::CpAlsNdResult<T> {
-    let shape = factors.iter().map(Array2::nrows).collect();
-    nabled_linalg::tensor::CpAlsNdResult { weights, factors, shape }
-}
-
-fn hosvd_nd_result_from_arrays<T: Clone + NabledReal>(
-    core: ArrayD<T>,
-    factors: Vec<Array2<T>>,
-) -> nabled_linalg::tensor::HosvdNdResult<T> {
-    nabled_linalg::tensor::HosvdNdResult { core, factors }
 }
 
 /// Batched matrix-vector product: cube `(B, m, n)` @ vectors `(B, n)` -> `(B, m)`.
@@ -1353,14 +1376,13 @@ pub fn hosvd3_reconstruct<'py>(
             utils::RealReadonlyArray2::F32(u1_arr),
             utils::RealReadonlyArray2::F32(u2_arr),
         ) => {
-            let result =
-                nabled_linalg::tensor::hosvd3_reconstruct(&nabled_linalg::tensor::Hosvd3Result {
-                    core: core_arr.as_array().to_owned(),
-                    u0:   u0_arr.as_array().to_owned(),
-                    u1:   u1_arr.as_array().to_owned(),
-                    u2:   u2_arr.as_array().to_owned(),
-                })
-                .map_err(to_py_err)?;
+            let result = nabled_linalg::tensor::hosvd3_reconstruct_from_factors_view(
+                &core_arr.as_array(),
+                &u0_arr.as_array(),
+                &u1_arr.as_array(),
+                &u2_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
             Ok(utils::pyarray3_from_owned(py, result))
         }
         (
@@ -1369,14 +1391,13 @@ pub fn hosvd3_reconstruct<'py>(
             utils::RealReadonlyArray2::F64(u1_arr),
             utils::RealReadonlyArray2::F64(u2_arr),
         ) => {
-            let result =
-                nabled_linalg::tensor::hosvd3_reconstruct(&nabled_linalg::tensor::Hosvd3Result {
-                    core: core_arr.as_array().to_owned(),
-                    u0:   u0_arr.as_array().to_owned(),
-                    u1:   u1_arr.as_array().to_owned(),
-                    u2:   u2_arr.as_array().to_owned(),
-                })
-                .map_err(to_py_err)?;
+            let result = nabled_linalg::tensor::hosvd3_reconstruct_from_factors_view(
+                &core_arr.as_array(),
+                &u0_arr.as_array(),
+                &u1_arr.as_array(),
+                &u2_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
             Ok(utils::pyarray3_from_owned(py, result))
         }
         _ => Err(utils::matching_real_dtype_error(&["core", "u0", "u1", "u2"])),
@@ -1406,13 +1427,11 @@ pub fn hosvd3_reconstruct_into(
         ) => {
             let mut output_arr = output_array3::<f32>(output, "output", "float32")?;
             let mut output_view = output_arr.as_array_mut();
-            nabled_linalg::tensor::hosvd3_reconstruct_into(
-                &nabled_linalg::tensor::Hosvd3Result {
-                    core: core_arr.as_array().to_owned(),
-                    u0:   u0_arr.as_array().to_owned(),
-                    u1:   u1_arr.as_array().to_owned(),
-                    u2:   u2_arr.as_array().to_owned(),
-                },
+            nabled_linalg::tensor::hosvd3_reconstruct_from_factors_view_into(
+                &core_arr.as_array(),
+                &u0_arr.as_array(),
+                &u1_arr.as_array(),
+                &u2_arr.as_array(),
                 &mut output_view,
             )
             .map_err(to_py_err)
@@ -1425,13 +1444,11 @@ pub fn hosvd3_reconstruct_into(
         ) => {
             let mut output_arr = output_array3::<f64>(output, "output", "float64")?;
             let mut output_view = output_arr.as_array_mut();
-            nabled_linalg::tensor::hosvd3_reconstruct_into(
-                &nabled_linalg::tensor::Hosvd3Result {
-                    core: core_arr.as_array().to_owned(),
-                    u0:   u0_arr.as_array().to_owned(),
-                    u1:   u1_arr.as_array().to_owned(),
-                    u2:   u2_arr.as_array().to_owned(),
-                },
+            nabled_linalg::tensor::hosvd3_reconstruct_from_factors_view_into(
+                &core_arr.as_array(),
+                &u0_arr.as_array(),
+                &u1_arr.as_array(),
+                &u2_arr.as_array(),
                 &mut output_view,
             )
             .map_err(to_py_err)
@@ -1497,18 +1514,24 @@ pub fn hosvd_nd_reconstruct<'py>(
 ) -> PyResult<Py<PyAny>> {
     match utils::real_arrayd(core, "core")? {
         utils::RealReadonlyArrayDyn::F32(core_arr) => {
-            let result = nabled_linalg::tensor::hosvd_nd_reconstruct(&hosvd_nd_result_from_arrays(
-                core_arr.as_array().to_owned(),
-                extract_array2_sequence::<f32>(factors)?,
-            ))
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::hosvd_nd_reconstruct_from_factors_view(
+                &core_arr.as_array(),
+                &factor_views,
+            )
             .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
         }
         utils::RealReadonlyArrayDyn::F64(core_arr) => {
-            let result = nabled_linalg::tensor::hosvd_nd_reconstruct(&hosvd_nd_result_from_arrays(
-                core_arr.as_array().to_owned(),
-                extract_array2_sequence::<f64>(factors)?,
-            ))
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::hosvd_nd_reconstruct_from_factors_view(
+                &core_arr.as_array(),
+                &factor_views,
+            )
             .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
         }
@@ -1524,24 +1547,30 @@ pub fn hosvd_nd_reconstruct_into(
 ) -> PyResult<()> {
     match utils::real_arrayd(core, "core")? {
         utils::RealReadonlyArrayDyn::F32(core_arr) => {
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
             let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
             let mut output_view = output_arr.as_array_mut();
-            let result = hosvd_nd_result_from_arrays(
-                core_arr.as_array().to_owned(),
-                extract_array2_sequence::<f32>(factors)?,
-            );
-            nabled_linalg::tensor::hosvd_nd_reconstruct_into(&result, &mut output_view)
-                .map_err(to_py_err)
+            nabled_linalg::tensor::hosvd_nd_reconstruct_from_factors_view_into(
+                &core_arr.as_array(),
+                &factor_views,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
         }
         utils::RealReadonlyArrayDyn::F64(core_arr) => {
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
             let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
             let mut output_view = output_arr.as_array_mut();
-            let result = hosvd_nd_result_from_arrays(
-                core_arr.as_array().to_owned(),
-                extract_array2_sequence::<f64>(factors)?,
-            );
-            nabled_linalg::tensor::hosvd_nd_reconstruct_into(&result, &mut output_view)
-                .map_err(to_py_err)
+            nabled_linalg::tensor::hosvd_nd_reconstruct_from_factors_view_into(
+                &core_arr.as_array(),
+                &factor_views,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
         }
     }
 }
@@ -1555,17 +1584,25 @@ pub fn tucker_project<'py>(
 ) -> PyResult<Py<PyAny>> {
     match utils::real_arrayd(tensor, "tensor")? {
         utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
-            let factors = extract_array2_sequence::<f32>(factors)?;
-            let result =
-                nabled_linalg::tensor::tucker_project_view(&tensor_arr.as_array(), &factors)
-                    .map_err(to_py_err)?;
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tucker_project_from_factors_view(
+                &tensor_arr.as_array(),
+                &factor_views,
+            )
+            .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
         }
         utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
-            let factors = extract_array2_sequence::<f64>(factors)?;
-            let result =
-                nabled_linalg::tensor::tucker_project_view(&tensor_arr.as_array(), &factors)
-                    .map_err(to_py_err)?;
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tucker_project_from_factors_view(
+                &tensor_arr.as_array(),
+                &factor_views,
+            )
+            .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
         }
     }
@@ -1580,23 +1617,27 @@ pub fn tucker_project_into(
 ) -> PyResult<()> {
     match utils::real_arrayd(tensor, "tensor")? {
         utils::RealReadonlyArrayDyn::F32(tensor_arr) => {
-            let factors = extract_array2_sequence::<f32>(factors)?;
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
             let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
             let mut output_view = output_arr.as_array_mut();
-            nabled_linalg::tensor::tucker_project_view_into(
+            nabled_linalg::tensor::tucker_project_from_factors_view_into(
                 &tensor_arr.as_array(),
-                &factors,
+                &factor_views,
                 &mut output_view,
             )
             .map_err(to_py_err)
         }
         utils::RealReadonlyArrayDyn::F64(tensor_arr) => {
-            let factors = extract_array2_sequence::<f64>(factors)?;
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
             let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
             let mut output_view = output_arr.as_array_mut();
-            nabled_linalg::tensor::tucker_project_view_into(
+            nabled_linalg::tensor::tucker_project_from_factors_view_into(
                 &tensor_arr.as_array(),
-                &factors,
+                &factor_views,
                 &mut output_view,
             )
             .map_err(to_py_err)
@@ -1613,15 +1654,25 @@ pub fn tucker_expand<'py>(
 ) -> PyResult<Py<PyAny>> {
     match utils::real_arrayd(core, "core")? {
         utils::RealReadonlyArrayDyn::F32(core_arr) => {
-            let factors = extract_array2_sequence::<f32>(factors)?;
-            let result = nabled_linalg::tensor::tucker_expand_view(&core_arr.as_array(), &factors)
-                .map_err(to_py_err)?;
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tucker_expand_from_factors_view(
+                &core_arr.as_array(),
+                &factor_views,
+            )
+            .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
         }
         utils::RealReadonlyArrayDyn::F64(core_arr) => {
-            let factors = extract_array2_sequence::<f64>(factors)?;
-            let result = nabled_linalg::tensor::tucker_expand_view(&core_arr.as_array(), &factors)
-                .map_err(to_py_err)?;
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::tucker_expand_from_factors_view(
+                &core_arr.as_array(),
+                &factor_views,
+            )
+            .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
         }
     }
@@ -1636,23 +1687,27 @@ pub fn tucker_expand_into(
 ) -> PyResult<()> {
     match utils::real_arrayd(core, "core")? {
         utils::RealReadonlyArrayDyn::F32(core_arr) => {
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
             let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
             let mut output_view = output_arr.as_array_mut();
-            let factors = extract_array2_sequence::<f32>(factors)?;
-            nabled_linalg::tensor::tucker_expand_into(
-                &core_arr.as_array().to_owned(),
-                &factors,
+            nabled_linalg::tensor::tucker_expand_from_factors_view_into(
+                &core_arr.as_array(),
+                &factor_views,
                 &mut output_view,
             )
             .map_err(to_py_err)
         }
         utils::RealReadonlyArrayDyn::F64(core_arr) => {
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
             let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
             let mut output_view = output_arr.as_array_mut();
-            let factors = extract_array2_sequence::<f64>(factors)?;
-            nabled_linalg::tensor::tucker_expand_into(
-                &core_arr.as_array().to_owned(),
-                &factors,
+            nabled_linalg::tensor::tucker_expand_from_factors_view_into(
+                &core_arr.as_array(),
+                &factor_views,
                 &mut output_view,
             )
             .map_err(to_py_err)
@@ -1742,15 +1797,14 @@ pub fn cp_als3_diagnostics(
             utils::RealReadonlyArray2::F32(factor_1_arr),
             utils::RealReadonlyArray2::F32(factor_2_arr),
         ) => {
-            let result = cp_als3_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                factor_0_arr.as_array().to_owned(),
-                factor_1_arr.as_array().to_owned(),
-                factor_2_arr.as_array().to_owned(),
-            );
-            let metrics =
-                nabled_linalg::tensor::cp_als3_diagnostics_view(&cube_arr.as_array(), &result)
-                    .map_err(to_py_err)?;
+            let metrics = nabled_linalg::tensor::cp_als3_diagnostics_from_factors_view(
+                &cube_arr.as_array(),
+                &weights_arr.as_array(),
+                &factor_0_arr.as_array(),
+                &factor_1_arr.as_array(),
+                &factor_2_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
             py_cp_metrics(metrics)
         }
         (
@@ -1760,15 +1814,14 @@ pub fn cp_als3_diagnostics(
             utils::RealReadonlyArray2::F64(factor_1_arr),
             utils::RealReadonlyArray2::F64(factor_2_arr),
         ) => {
-            let result = cp_als3_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                factor_0_arr.as_array().to_owned(),
-                factor_1_arr.as_array().to_owned(),
-                factor_2_arr.as_array().to_owned(),
-            );
-            let metrics =
-                nabled_linalg::tensor::cp_als3_diagnostics_view(&cube_arr.as_array(), &result)
-                    .map_err(to_py_err)?;
+            let metrics = nabled_linalg::tensor::cp_als3_diagnostics_from_factors_view(
+                &cube_arr.as_array(),
+                &weights_arr.as_array(),
+                &factor_0_arr.as_array(),
+                &factor_1_arr.as_array(),
+                &factor_2_arr.as_array(),
+            )
+            .map_err(to_py_err)?;
             py_cp_metrics(metrics)
         }
         _ => Err(utils::matching_real_dtype_error(&[
@@ -1798,12 +1851,12 @@ pub fn cp_als3_reconstruct<'py>(
             utils::RealReadonlyArray2::F32(factor_1_arr),
             utils::RealReadonlyArray2::F32(factor_2_arr),
         ) => {
-            let result = nabled_linalg::tensor::cp_als3_reconstruct(&cp_als3_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                factor_0_arr.as_array().to_owned(),
-                factor_1_arr.as_array().to_owned(),
-                factor_2_arr.as_array().to_owned(),
-            ))
+            let result = nabled_linalg::tensor::cp_als3_reconstruct_from_factors_view(
+                &weights_arr.as_array(),
+                &factor_0_arr.as_array(),
+                &factor_1_arr.as_array(),
+                &factor_2_arr.as_array(),
+            )
             .map_err(to_py_err)?;
             Ok(utils::pyarray3_from_owned(py, result))
         }
@@ -1813,12 +1866,12 @@ pub fn cp_als3_reconstruct<'py>(
             utils::RealReadonlyArray2::F64(factor_1_arr),
             utils::RealReadonlyArray2::F64(factor_2_arr),
         ) => {
-            let result = nabled_linalg::tensor::cp_als3_reconstruct(&cp_als3_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                factor_0_arr.as_array().to_owned(),
-                factor_1_arr.as_array().to_owned(),
-                factor_2_arr.as_array().to_owned(),
-            ))
+            let result = nabled_linalg::tensor::cp_als3_reconstruct_from_factors_view(
+                &weights_arr.as_array(),
+                &factor_0_arr.as_array(),
+                &factor_1_arr.as_array(),
+                &factor_2_arr.as_array(),
+            )
             .map_err(to_py_err)?;
             Ok(utils::pyarray3_from_owned(py, result))
         }
@@ -1851,14 +1904,14 @@ pub fn cp_als3_reconstruct_into(
         ) => {
             let mut output_arr = output_array3::<f32>(output, "output", "float32")?;
             let mut output_view = output_arr.as_array_mut();
-            let result = cp_als3_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                factor_0_arr.as_array().to_owned(),
-                factor_1_arr.as_array().to_owned(),
-                factor_2_arr.as_array().to_owned(),
-            );
-            nabled_linalg::tensor::cp_als3_reconstruct_into(&result, &mut output_view)
-                .map_err(to_py_err)
+            nabled_linalg::tensor::cp_als3_reconstruct_from_factors_view_into(
+                &weights_arr.as_array(),
+                &factor_0_arr.as_array(),
+                &factor_1_arr.as_array(),
+                &factor_2_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
         }
         (
             utils::RealReadonlyArray1::F64(weights_arr),
@@ -1868,14 +1921,14 @@ pub fn cp_als3_reconstruct_into(
         ) => {
             let mut output_arr = output_array3::<f64>(output, "output", "float64")?;
             let mut output_view = output_arr.as_array_mut();
-            let result = cp_als3_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                factor_0_arr.as_array().to_owned(),
-                factor_1_arr.as_array().to_owned(),
-                factor_2_arr.as_array().to_owned(),
-            );
-            nabled_linalg::tensor::cp_als3_reconstruct_into(&result, &mut output_view)
-                .map_err(to_py_err)
+            nabled_linalg::tensor::cp_als3_reconstruct_from_factors_view_into(
+                &weights_arr.as_array(),
+                &factor_0_arr.as_array(),
+                &factor_1_arr.as_array(),
+                &factor_2_arr.as_array(),
+                &mut output_view,
+            )
+            .map_err(to_py_err)
         }
         _ => Err(utils::matching_real_dtype_error(&[
             "weights", "factor_0", "factor_1", "factor_2", "output",
@@ -1955,26 +2008,30 @@ pub fn cp_als_nd_diagnostics(
             utils::RealReadonlyArrayDyn::F32(tensor_arr),
             utils::RealReadonlyArray1::F32(weights_arr),
         ) => {
-            let result = cp_als_nd_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                extract_array2_sequence::<f32>(factors)?,
-            );
-            let metrics =
-                nabled_linalg::tensor::cp_als_nd_diagnostics_view(&tensor_arr.as_array(), &result)
-                    .map_err(to_py_err)?;
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let metrics = nabled_linalg::tensor::cp_als_nd_diagnostics_from_factors_view(
+                &tensor_arr.as_array(),
+                &weights_arr.as_array(),
+                &factor_views,
+            )
+            .map_err(to_py_err)?;
             py_cp_metrics(metrics)
         }
         (
             utils::RealReadonlyArrayDyn::F64(tensor_arr),
             utils::RealReadonlyArray1::F64(weights_arr),
         ) => {
-            let result = cp_als_nd_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                extract_array2_sequence::<f64>(factors)?,
-            );
-            let metrics =
-                nabled_linalg::tensor::cp_als_nd_diagnostics_view(&tensor_arr.as_array(), &result)
-                    .map_err(to_py_err)?;
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let metrics = nabled_linalg::tensor::cp_als_nd_diagnostics_from_factors_view(
+                &tensor_arr.as_array(),
+                &weights_arr.as_array(),
+                &factor_views,
+            )
+            .map_err(to_py_err)?;
             py_cp_metrics(metrics)
         }
         _ => Err(utils::matching_real_dtype_error(&["tensor", "weights", "factors"])),
@@ -1990,21 +2047,25 @@ pub fn cp_als_nd_reconstruct<'py>(
 ) -> PyResult<Py<PyAny>> {
     match utils::real_array1(weights, "weights")? {
         utils::RealReadonlyArray1::F32(weights_arr) => {
-            let result =
-                nabled_linalg::tensor::cp_als_nd_reconstruct(&cp_als_nd_result_from_arrays(
-                    weights_arr.as_array().to_owned(),
-                    extract_array2_sequence::<f32>(factors)?,
-                ))
-                .map_err(to_py_err)?;
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::cp_als_nd_reconstruct_from_factors_view(
+                &weights_arr.as_array(),
+                &factor_views,
+            )
+            .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
         }
         utils::RealReadonlyArray1::F64(weights_arr) => {
-            let result =
-                nabled_linalg::tensor::cp_als_nd_reconstruct(&cp_als_nd_result_from_arrays(
-                    weights_arr.as_array().to_owned(),
-                    extract_array2_sequence::<f64>(factors)?,
-                ))
-                .map_err(to_py_err)?;
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            let result = nabled_linalg::tensor::cp_als_nd_reconstruct_from_factors_view(
+                &weights_arr.as_array(),
+                &factor_views,
+            )
+            .map_err(to_py_err)?;
             Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
         }
     }
@@ -2019,24 +2080,30 @@ pub fn cp_als_nd_reconstruct_into(
 ) -> PyResult<()> {
     match utils::real_array1(weights, "weights")? {
         utils::RealReadonlyArray1::F32(weights_arr) => {
+            let factor_arrays = extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
             let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
             let mut output_view = output_arr.as_array_mut();
-            let result = cp_als_nd_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                extract_array2_sequence::<f32>(factors)?,
-            );
-            nabled_linalg::tensor::cp_als_nd_reconstruct_into(&result, &mut output_view)
-                .map_err(to_py_err)
+            nabled_linalg::tensor::cp_als_nd_reconstruct_from_factors_view_into(
+                &weights_arr.as_array(),
+                &factor_views,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
         }
         utils::RealReadonlyArray1::F64(weights_arr) => {
+            let factor_arrays = extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
             let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
             let mut output_view = output_arr.as_array_mut();
-            let result = cp_als_nd_result_from_arrays(
-                weights_arr.as_array().to_owned(),
-                extract_array2_sequence::<f64>(factors)?,
-            );
-            nabled_linalg::tensor::cp_als_nd_reconstruct_into(&result, &mut output_view)
-                .map_err(to_py_err)
+            nabled_linalg::tensor::cp_als_nd_reconstruct_from_factors_view_into(
+                &weights_arr.as_array(),
+                &factor_views,
+                &mut output_view,
+            )
+            .map_err(to_py_err)
         }
     }
 }
@@ -2223,16 +2290,30 @@ pub fn tt_hadamard_round<'py>(
 /// Reconstruct a dense tensor from Tensor-Train cores.
 #[pyfunction(name = "tensor_tt_svd_reconstruct")]
 pub fn tt_svd_reconstruct<'py>(py: Python<'py>, cores: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
-    match real_tt_result_from_cores(cores)? {
-        RealTensorTrainResult::F32(result) => {
-            let result = nabled_linalg::tensor::tt_svd_reconstruct(&result).map_err(to_py_err)?;
-            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
-        }
-        RealTensorTrainResult::F64(result) => {
-            let result = nabled_linalg::tensor::tt_svd_reconstruct(&result).map_err(to_py_err)?;
-            Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)))
-        }
+    let mut iter = cores.try_iter()?;
+    let Some(first) = iter.next() else {
+        return Err(PyValueError::new_err(
+            "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
+        ));
+    };
+    let first = first?;
+    if first.cast::<PyArray3<f32>>().is_ok() {
+        let core_arrays = extract_array3_sequence_views::<f32>(cores)?;
+        let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+        let result = nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view(&core_views)
+            .map_err(to_py_err)?;
+        return Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)));
     }
+    if first.cast::<PyArray3<f64>>().is_ok() {
+        let core_arrays = extract_array3_sequence_views::<f64>(cores)?;
+        let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+        let result = nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view(&core_views)
+            .map_err(to_py_err)?;
+        return Ok(utils::pyarrayd_from_owned(py, standard_arrayd(result)));
+    }
+    Err(PyValueError::new_err(
+        "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
+    ))
 }
 
 /// Reconstruct a dense tensor from Tensor-Train cores into a caller-provided output array.
@@ -2241,18 +2322,36 @@ pub fn tt_svd_reconstruct_into(
     cores: &Bound<'_, PyAny>,
     output: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
-    match real_tt_result_from_cores(cores)? {
-        RealTensorTrainResult::F32(result) => {
-            let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
-            let mut output_view = output_arr.as_array_mut();
-            nabled_linalg::tensor::tt_svd_reconstruct_into(&result, &mut output_view)
-                .map_err(to_py_err)
-        }
-        RealTensorTrainResult::F64(result) => {
-            let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
-            let mut output_view = output_arr.as_array_mut();
-            nabled_linalg::tensor::tt_svd_reconstruct_into(&result, &mut output_view)
-                .map_err(to_py_err)
-        }
+    let mut iter = cores.try_iter()?;
+    let Some(first) = iter.next() else {
+        return Err(PyValueError::new_err(
+            "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
+        ));
+    };
+    let first = first?;
+    if first.cast::<PyArray3<f32>>().is_ok() {
+        let core_arrays = extract_array3_sequence_views::<f32>(cores)?;
+        let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+        let mut output_arr = output_arrayd::<f32>(output, "output", "float32")?;
+        let mut output_view = output_arr.as_array_mut();
+        return nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view_into(
+            &core_views,
+            &mut output_view,
+        )
+        .map_err(to_py_err);
     }
+    if first.cast::<PyArray3<f64>>().is_ok() {
+        let core_arrays = extract_array3_sequence_views::<f64>(cores)?;
+        let core_views = core_arrays.iter().map(PyReadonlyArray3::as_array).collect::<Vec<_>>();
+        let mut output_arr = output_arrayd::<f64>(output, "output", "float64")?;
+        let mut output_view = output_arr.as_array_mut();
+        return nabled_linalg::tensor::tt_svd_reconstruct_from_cores_view_into(
+            &core_views,
+            &mut output_view,
+        )
+        .map_err(to_py_err);
+    }
+    Err(PyValueError::new_err(
+        "expected a non-empty sequence of 3D NumPy arrays with matching float32/float64 dtype",
+    ))
 }

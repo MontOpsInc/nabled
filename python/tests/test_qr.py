@@ -43,6 +43,36 @@ def test_qr_solve_least_squares_supports_out_and_factor_reuse():
     np.testing.assert_allclose(factor_out, x_true, rtol=1e-10, atol=1e-12)
 
 
+def test_qr_solve_least_squares_reuses_borrowed_fortran_factor_arrays():
+    a = np.array(
+        [
+            [1.0, 100.0, 2.0],
+            [0.0, 1.0, 4.0],
+            [0.0, 0.0, 1.0],
+            [2.0, 1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    x_true = np.array([0.5, -1.25, 2.0], dtype=np.float64)
+    rhs = a @ x_true
+    result = pynabled.qr_decompose_pivoted(a, rank_tolerance=1.0e-12)
+    factor = pynabled.QrResult(
+        q=np.asfortranarray(result.q),
+        r=np.asfortranarray(result.r),
+        rank=result.rank,
+        p=np.asfortranarray(result.p),
+    )
+    out = np.empty_like(x_true, order="F")
+
+    returned = pynabled.qr_solve_least_squares(factor, rhs, out=out, rank_tolerance=1.0e-12)
+
+    assert factor.q.flags.f_contiguous
+    assert factor.r.flags.f_contiguous
+    assert factor.p is not None and factor.p.flags.f_contiguous
+    assert returned is out
+    np.testing.assert_allclose(out, x_true, rtol=1e-10, atol=1e-12)
+
+
 def test_qr_solve_least_squares_qr_result_rejects_underdetermined_reuse():
     a = np.array([[1.0, 0.0, 2.0], [0.0, 1.0, 3.0]], dtype=np.float64)
     b = np.array([1.0, 2.0], dtype=np.float64)

@@ -172,6 +172,34 @@ def _relative_error(lhs, rhs):
     return lhs_norm / max(rhs_norm, 1e-12)
 
 
+def _borrowed_vector_view(values):
+    storage = np.empty(values.shape[0] + 2, dtype=values.dtype)
+    storage[1:-1] = values
+    view = storage[1:-1]
+    assert not view.flags["OWNDATA"]
+    return view
+
+
+def _borrowed_matrix_view(values):
+    storage = np.empty((values.shape[0] + 1, values.shape[1] + 2), dtype=values.dtype, order="F")
+    storage[1:, 1:-1] = values
+    view = storage[1:, 1:-1]
+    assert not view.flags["OWNDATA"]
+    return view
+
+
+def _borrowed_tensor_view(values):
+    storage = np.empty(
+        tuple(extent + 1 for extent in values.shape),
+        dtype=values.dtype,
+        order="F",
+    )
+    storage[(slice(1, None),) * values.ndim] = values
+    view = storage[(slice(1, None),) * values.ndim]
+    assert not view.flags["OWNDATA"]
+    return view
+
+
 def _cp_als3_reference():
     weights = np.array([1.5, 0.8], dtype=np.float64)
     factor_0 = np.array([[1.0, 0.2], [0.7, 1.1], [0.3, 0.9], [1.2, 0.4]], dtype=np.float64)
@@ -270,6 +298,77 @@ def test_tensor_reconstruction_helpers_reuse_output_buffers():
     returned_tt = pynabled.tensor_tt_svd_reconstruct(tt, out=tt_out)
     assert returned_tt is tt_out
     np.testing.assert_allclose(tt_out, expected_tt, rtol=1e-10, atol=1e-10)
+
+
+def test_tensor_result_helpers_accept_borrowed_factor_views():
+    cube = np.arange(60, dtype=np.float64).reshape(3, 4, 5)
+    hosvd3 = pynabled.tensor_hosvd3(cube, 3, 4, 5)
+    borrowed_hosvd3 = pynabled.Hosvd3Result(
+        core=_borrowed_tensor_view(hosvd3.core),
+        u0=_borrowed_matrix_view(hosvd3.u0),
+        u1=_borrowed_matrix_view(hosvd3.u1),
+        u2=_borrowed_matrix_view(hosvd3.u2),
+    )
+    hosvd3_out = np.empty(cube.shape, dtype=np.float64, order="F")
+    returned_hosvd3 = pynabled.tensor_hosvd3_reconstruct(borrowed_hosvd3, out=hosvd3_out)
+    assert returned_hosvd3 is hosvd3_out
+    np.testing.assert_allclose(hosvd3_out, cube, rtol=1e-10, atol=1e-10)
+
+    hosvd_nd = pynabled.tensor_hosvd_nd(cube, [3, 4, 5])
+    borrowed_hosvd_nd = pynabled.HosvdNdResult(
+        core=_borrowed_tensor_view(hosvd_nd.core),
+        factors=[_borrowed_matrix_view(factor) for factor in hosvd_nd.factors],
+    )
+    hosvd_nd_out = np.empty(cube.shape, dtype=np.float64, order="F")
+    returned_hosvd_nd = pynabled.tensor_hosvd_nd_reconstruct(borrowed_hosvd_nd, out=hosvd_nd_out)
+    assert returned_hosvd_nd is hosvd_nd_out
+    np.testing.assert_allclose(hosvd_nd_out, cube, rtol=1e-10, atol=1e-10)
+
+    projected_out = np.empty(hosvd_nd.core.shape, dtype=np.float64, order="F")
+    returned_projected = pynabled.tensor_tucker_project(cube, borrowed_hosvd_nd, out=projected_out)
+    assert returned_projected is projected_out
+    np.testing.assert_allclose(projected_out, hosvd_nd.core, rtol=1e-10, atol=1e-10)
+
+    expanded_out = np.empty(cube.shape, dtype=np.float64, order="F")
+    returned_expanded = pynabled.tensor_tucker_expand(borrowed_hosvd_nd, out=expanded_out)
+    assert returned_expanded is expanded_out
+    np.testing.assert_allclose(expanded_out, cube, rtol=1e-10, atol=1e-10)
+
+    cp3_weights, cp3_factor_0, cp3_factor_1, cp3_factor_2 = _cp_als3_reference()
+    cp3 = pynabled.CpAls3Result(
+        weights=_borrowed_vector_view(cp3_weights),
+        factor_0=_borrowed_matrix_view(cp3_factor_0),
+        factor_1=_borrowed_matrix_view(cp3_factor_1),
+        factor_2=_borrowed_matrix_view(cp3_factor_2),
+    )
+    cp3_tensor = pynabled.tensor_cp_als3_reconstruct(cp3)
+    cp3_metrics = pynabled.tensor_cp_als3_diagnostics(cp3_tensor, cp3)
+    assert cp3_metrics.relative_error < 1e-12
+    cp3_out = np.empty(cp3_tensor.shape, dtype=np.float64, order="F")
+    returned_cp3 = pynabled.tensor_cp_als3_reconstruct(cp3, out=cp3_out)
+    assert returned_cp3 is cp3_out
+    np.testing.assert_allclose(cp3_out, cp3_tensor, rtol=1e-10, atol=1e-10)
+
+    cp_nd_weights, cp_nd_factors = _cp_als_nd_reference()
+    cp_nd = pynabled.CpAlsNdResult(
+        weights=_borrowed_vector_view(cp_nd_weights),
+        factors=[_borrowed_matrix_view(factor) for factor in cp_nd_factors],
+        shape=tuple(factor.shape[0] for factor in cp_nd_factors),
+    )
+    cp_nd_tensor = pynabled.tensor_cp_als_nd_reconstruct(cp_nd)
+    cp_nd_metrics = pynabled.tensor_cp_als_nd_diagnostics(cp_nd_tensor, cp_nd)
+    assert cp_nd_metrics.relative_error < 1e-12
+    cp_nd_out = np.empty(cp_nd_tensor.shape, dtype=np.float64, order="F")
+    returned_cp_nd = pynabled.tensor_cp_als_nd_reconstruct(cp_nd, out=cp_nd_out)
+    assert returned_cp_nd is cp_nd_out
+    np.testing.assert_allclose(cp_nd_out, cp_nd_tensor, rtol=1e-10, atol=1e-10)
+
+    tt = pynabled.TensorTrainResult(cores=[_borrowed_tensor_view(core) for core in _tt_reference()])
+    tt_expected = pynabled.tensor_tt_svd_reconstruct(tt)
+    tt_out = np.empty(tt_expected.shape, dtype=np.float64, order="F")
+    returned_tt = pynabled.tensor_tt_svd_reconstruct(tt, out=tt_out)
+    assert returned_tt is tt_out
+    np.testing.assert_allclose(tt_out, tt_expected, rtol=1e-10, atol=1e-10)
 
 
 def test_tensor_reconstruction_helpers_reject_wrong_output_dtype():

@@ -1109,16 +1109,43 @@ where
     T: NabledReal,
     S: DataMut<Elem = T>,
 {
-    if qr.q.ncols() != qr.r.nrows() {
+    solve_least_squares_from_qr_factors_view_into(
+        &qr.q.view(),
+        &qr.r.view(),
+        qr.p.as_ref().map(|permutation| permutation.view()),
+        rhs,
+        config,
+        output,
+    )
+}
+
+/// Solve least squares directly from borrowed QR factor views into caller-provided `output`.
+///
+/// # Errors
+/// Returns an error if the QR factors are inconsistent, correspond to an underdetermined reduced
+/// QR result, the system is rank-deficient, or `output` has the wrong length.
+pub fn solve_least_squares_from_qr_factors_view_into<T, S>(
+    q_factors: &ArrayView2<'_, T>,
+    r_factors: &ArrayView2<'_, T>,
+    permutation: Option<ArrayView2<'_, T>>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), QRError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    if q_factors.ncols() != r_factors.nrows() {
         return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
     }
-    if rhs.len() != qr.q.nrows() {
+    if rhs.len() != q_factors.nrows() {
         return Err(QRError::InvalidDimensions("RHS length must equal q rows".to_string()));
     }
-    if output.len() != qr.r.ncols() {
+    if output.len() != r_factors.ncols() {
         return Err(QRError::InvalidDimensions("output length must equal r columns".to_string()));
     }
-    if qr.q.ncols() < qr.r.ncols() {
+    if q_factors.ncols() < r_factors.ncols() {
         return Err(QRError::InvalidInput(
             "QR factors do not retain enough columns for underdetermined least-squares; pass the \
              original matrix"
@@ -1126,24 +1153,24 @@ where
         ));
     }
 
-    let n = qr.r.ncols();
-    let mut y = Array1::<T>::zeros(n);
-    for i in 0..n {
+    let column_count = r_factors.ncols();
+    let mut projected_rhs = Array1::<T>::zeros(column_count);
+    for col in 0..column_count {
         let mut dot = T::zero();
-        for row in 0..qr.q.nrows() {
-            dot += qr.q[[row, i]] * rhs[row];
+        for row in 0..q_factors.nrows() {
+            dot += q_factors[[row, col]] * rhs[row];
         }
-        y[i] = dot;
+        projected_rhs[col] = dot;
     }
 
-    let mut permuted_solution = Array1::<T>::zeros(n);
-    for i_rev in 0..n {
-        let i = n - 1 - i_rev;
-        let mut sum = y[i];
-        for j in (i + 1)..n {
-            sum -= qr.r[[i, j]] * permuted_solution[j];
+    let mut permuted_solution = Array1::<T>::zeros(column_count);
+    for reverse_col in 0..column_count {
+        let col = column_count - 1 - reverse_col;
+        let mut sum = projected_rhs[col];
+        for upper_col in (col + 1)..column_count {
+            sum -= r_factors[[col, upper_col]] * permuted_solution[upper_col];
         }
-        let diagonal = qr.r[[i, i]];
+        let diagonal = r_factors[[col, col]];
         if num_traits::Float::abs(diagonal)
             <= config
                 .rank_tolerance
@@ -1151,11 +1178,11 @@ where
         {
             return Err(QRError::SingularMatrix);
         }
-        permuted_solution[i] = sum / diagonal;
+        permuted_solution[col] = sum / diagonal;
     }
 
-    if let Some(permutation) = &qr.p {
-        if permutation.nrows() != n || permutation.ncols() != n {
+    if let Some(permutation) = permutation {
+        if permutation.nrows() != column_count || permutation.ncols() != column_count {
             return Err(QRError::InvalidDimensions(
                 "permutation shape must match r column dimensions".to_string(),
             ));
@@ -1180,6 +1207,23 @@ pub fn solve_least_squares_from_qr_result_view<T: NabledReal>(
 ) -> Result<Array1<T>, QRError> {
     let mut output = Array1::<T>::zeros(qr.r.ncols());
     solve_least_squares_from_qr_result_view_into(qr, rhs, config, &mut output)?;
+    Ok(output)
+}
+
+/// Solve least squares directly from borrowed QR factor views.
+///
+/// # Errors
+/// Returns an error if the QR factors are inconsistent, correspond to an underdetermined reduced
+/// QR result, or the system is rank-deficient.
+pub fn solve_least_squares_from_qr_factors_view<T: NabledReal>(
+    q: &ArrayView2<'_, T>,
+    r: &ArrayView2<'_, T>,
+    permutation: Option<ArrayView2<'_, T>>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<Array1<T>, QRError> {
+    let mut output = Array1::<T>::zeros(r.ncols());
+    solve_least_squares_from_qr_factors_view_into(q, r, permutation, rhs, config, &mut output)?;
     Ok(output)
 }
 
@@ -1568,6 +1612,30 @@ mod tests {
         for i in 0..direct.len() {
             assert!((direct[i] - from_factors[i]).abs() < 1.0e-10_f64);
             assert!((direct[i] - out[i]).abs() < 1.0e-10_f64);
+        }
+
+        let from_factor_views = solve_least_squares_from_qr_factors_view(
+            &qr.q.view(),
+            &qr.r.view(),
+            qr.p.as_ref().map(|permutation| permutation.view()),
+            &rhs.view(),
+            &config,
+        )
+        .unwrap();
+        let mut from_factor_views_into = Array1::<f64>::zeros(2);
+        solve_least_squares_from_qr_factors_view_into(
+            &qr.q.view(),
+            &qr.r.view(),
+            qr.p.as_ref().map(|permutation| permutation.view()),
+            &rhs.view(),
+            &config,
+            &mut from_factor_views_into.view_mut(),
+        )
+        .unwrap();
+
+        for i in 0..direct.len() {
+            assert!((direct[i] - from_factor_views[i]).abs() < 1.0e-10_f64);
+            assert!((direct[i] - from_factor_views_into[i]).abs() < 1.0e-10_f64);
         }
     }
 

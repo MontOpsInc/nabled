@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-03-06
+Last updated: 2026-04-12
 
 ## Purpose
 
@@ -25,6 +25,9 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 5. `nabled-linalg::svd::decompose_internal` and `decompose_complex_internal` now avoid temporary owned right-singular column materializations where view math suffices.
 6. Kernel-routing regression fixes restored no-hidden-allocation behavior for `*_into` paths in `vector`, `sparse`, `triangular`, and `tensor` domains.
 7. Sparse GPU phase-1 composition (`sparse_matmat_dense_gpu_*`) now reuses a per-column output buffer and writes directly into the final dense output matrix, eliminating per-column temporary result allocations in wrapper code.
+8. Sparse factorization-backed direct and iterative reuse paths now admit borrowed dense RHS `ArrayBase` views all the way through the Rust core, so the Python sparse bridge no longer has to clone dense RHS arrays before calling reusable `GMRES` / `BiCGSTAB` / sparse-LU factor workflows.
+9. `pynabled` QR least-squares factor reuse now dispatches directly over borrowed `Q` / `R` / optional permutation views instead of rebuilding an owned Rust `QRResult` from Python arrays just to reach the existing solver path.
+10. Tensor reconstruction/diagnostic helper paths now borrow result factor/core arrays directly through the Rust core: HOSVD/Tucker/CP/TT reconstruct helpers and CP diagnostics no longer rebuild owned Rust result structs from Python arrays, and CP diagnostics now compute residual metrics directly instead of allocating a full reconstructed tensor first.
 
 ### Unavoidable internal materializations
 

@@ -5,8 +5,8 @@ use std::ops::{AddAssign, Mul};
 
 use nabled_core::scalar::NabledReal;
 use ndarray::{
-    Array1, Array2, Array3, ArrayBase, ArrayD, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2,
-    ArrayViewMut3, Axis, DataMut, Ix3, IxDyn, s,
+    Array1, Array2, Array3, ArrayBase, ArrayD, ArrayView1, ArrayView2, ArrayView3, ArrayViewD,
+    ArrayViewMut2, ArrayViewMut3, Axis, Data, DataMut, Ix2, Ix3, IxDyn, s,
 };
 use num_complex::Complex64;
 
@@ -2936,22 +2936,7 @@ fn cp_nd_relative_change<T: NabledReal>(
     Ok(max_change)
 }
 
-fn cp_error_metrics_from_views<T: NabledReal>(
-    reference: &ArrayViewD<'_, T>,
-    candidate: &ArrayViewD<'_, T>,
-) -> Result<CpErrorMetrics<T>, TensorError> {
-    if reference.shape() != candidate.shape() || reference.is_empty() {
-        return Err(TensorError::DimensionMismatch);
-    }
-
-    let mut signal_sq = T::zero();
-    let mut residual_sq = T::zero();
-    for (reference_value, candidate_value) in reference.iter().zip(candidate.iter()) {
-        signal_sq += *reference_value * *reference_value;
-        let delta = *reference_value - *candidate_value;
-        residual_sq += delta * delta;
-    }
-
+fn cp_error_metrics_from_squares<T: NabledReal>(signal_sq: T, residual_sq: T) -> CpErrorMetrics<T> {
     let signal_norm = signal_sq.sqrt();
     let residual_norm = residual_sq.sqrt();
     let relative_error = if signal_norm <= T::epsilon() {
@@ -2968,7 +2953,7 @@ fn cp_error_metrics_from_views<T: NabledReal>(
         fit = T::one();
     }
 
-    Ok(CpErrorMetrics { signal_norm, residual_norm, relative_error, fit })
+    CpErrorMetrics { signal_norm, residual_norm, relative_error, fit }
 }
 
 fn cp_als3_impl_with_convergence<T: CpAlsScalar>(
@@ -3145,14 +3130,116 @@ pub fn cp_als3_diagnostics<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible.
+pub fn cp_als3_diagnostics_from_factors_view<T: NabledReal>(
+    cube: &ArrayView3<'_, T>,
+    weights: &ArrayView1<'_, T>,
+    factor_0: &ArrayView2<'_, T>,
+    factor_1: &ArrayView2<'_, T>,
+    factor_2: &ArrayView2<'_, T>,
+) -> Result<CpErrorMetrics<T>, TensorError> {
+    validate_cube_non_empty(cube)?;
+    let rank = weights.len();
+    if rank == 0
+        || factor_0.ncols() != rank
+        || factor_1.ncols() != rank
+        || factor_2.ncols() != rank
+        || cube.dim() != (factor_0.nrows(), factor_1.nrows(), factor_2.nrows())
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut signal_sq = T::zero();
+    let mut residual_sq = T::zero();
+    for i in 0..cube.dim().0 {
+        for j in 0..cube.dim().1 {
+            for k in 0..cube.dim().2 {
+                let mut candidate = T::zero();
+                for component in 0..rank {
+                    candidate += weights[component]
+                        * factor_0[[i, component]]
+                        * factor_1[[j, component]]
+                        * factor_2[[k, component]];
+                }
+                let reference_value = cube[[i, j, k]];
+                signal_sq += reference_value * reference_value;
+                let delta = reference_value - candidate;
+                residual_sq += delta * delta;
+            }
+        }
+    }
+    Ok(cp_error_metrics_from_squares(signal_sq, residual_sq))
+}
+
+/// Compute reconstruction diagnostics for a rank-3 CP decomposition against a reference tensor
+/// view.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible.
 pub fn cp_als3_diagnostics_view<T: NabledReal>(
     cube: &ArrayView3<'_, T>,
     result: &CpAls3Result<T>,
 ) -> Result<CpErrorMetrics<T>, TensorError> {
-    validate_cube_non_empty(cube)?;
-    let reconstructed = cp_als3_reconstruct(result)?;
-    let reference = (*cube).into_dyn();
-    cp_error_metrics_from_views(&reference, &reconstructed.view().into_dyn())
+    cp_als3_diagnostics_from_factors_view(
+        cube,
+        &result.weights.view(),
+        &result.factor_0.view(),
+        &result.factor_1.view(),
+        &result.factor_2.view(),
+    )
+}
+
+/// Reconstruct a rank-3 tensor from CP factors.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn cp_als3_reconstruct_from_factors_view<T: NabledReal>(
+    weights: &ArrayView1<'_, T>,
+    factor_0: &ArrayView2<'_, T>,
+    factor_1: &ArrayView2<'_, T>,
+    factor_2: &ArrayView2<'_, T>,
+) -> Result<Array3<T>, TensorError> {
+    let mut output = Array3::<T>::zeros((factor_0.nrows(), factor_1.nrows(), factor_2.nrows()));
+    cp_als3_reconstruct_from_factors_view_into(weights, factor_0, factor_1, factor_2, &mut output)?;
+    Ok(output)
+}
+
+/// Reconstruct a rank-3 tensor from CP factors into `output`.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn cp_als3_reconstruct_from_factors_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    weights: &ArrayView1<'_, T>,
+    factor_0: &ArrayView2<'_, T>,
+    factor_1: &ArrayView2<'_, T>,
+    factor_2: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix3>,
+) -> Result<(), TensorError> {
+    let rank = weights.len();
+    if rank == 0 || factor_0.ncols() != rank || factor_1.ncols() != rank || factor_2.ncols() != rank
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if output.dim() != (factor_0.nrows(), factor_1.nrows(), factor_2.nrows()) {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    output.fill(T::zero());
+    for i in 0..factor_0.nrows() {
+        for j in 0..factor_1.nrows() {
+            for k in 0..factor_2.nrows() {
+                let mut value = T::zero();
+                for component in 0..rank {
+                    value += weights[component]
+                        * factor_0[[i, component]]
+                        * factor_1[[j, component]]
+                        * factor_2[[k, component]];
+                }
+                output[[i, j, k]] = value;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Reconstruct a rank-3 tensor from CP factors.
@@ -3162,19 +3249,12 @@ pub fn cp_als3_diagnostics_view<T: NabledReal>(
 pub fn cp_als3_reconstruct<T: NabledReal>(
     result: &CpAls3Result<T>,
 ) -> Result<Array3<T>, TensorError> {
-    if result.factor_0.ncols() != result.weights.len()
-        || result.factor_1.ncols() != result.weights.len()
-        || result.factor_2.ncols() != result.weights.len()
-    {
-        return Err(TensorError::DimensionMismatch);
-    }
-    let mut output = Array3::<T>::zeros((
-        result.factor_0.nrows(),
-        result.factor_1.nrows(),
-        result.factor_2.nrows(),
-    ));
-    cp_als3_reconstruct_into(result, &mut output)?;
-    Ok(output)
+    cp_als3_reconstruct_from_factors_view(
+        &result.weights.view(),
+        &result.factor_0.view(),
+        &result.factor_1.view(),
+        &result.factor_2.view(),
+    )
 }
 
 /// Reconstruct a rank-3 tensor from CP factors into `output`.
@@ -3185,35 +3265,13 @@ pub fn cp_als3_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     result: &CpAls3Result<T>,
     output: &mut ArrayBase<S, Ix3>,
 ) -> Result<(), TensorError> {
-    let rank = result.weights.len();
-    if rank == 0
-        || result.factor_0.ncols() != rank
-        || result.factor_1.ncols() != rank
-        || result.factor_2.ncols() != rank
-    {
-        return Err(TensorError::DimensionMismatch);
-    }
-    if output.dim() != (result.factor_0.nrows(), result.factor_1.nrows(), result.factor_2.nrows()) {
-        return Err(TensorError::DimensionMismatch);
-    }
-
-    output.fill(T::zero());
-    for i in 0..result.factor_0.nrows() {
-        for j in 0..result.factor_1.nrows() {
-            for k in 0..result.factor_2.nrows() {
-                let mut value = T::zero();
-                for component in 0..rank {
-                    value += result.weights[component]
-                        * result.factor_0[[i, component]]
-                        * result.factor_1[[j, component]]
-                        * result.factor_2[[k, component]];
-                }
-                output[[i, j, k]] = value;
-            }
-        }
-    }
-
-    Ok(())
+    cp_als3_reconstruct_from_factors_view_into(
+        &result.weights.view(),
+        &result.factor_0.view(),
+        &result.factor_1.view(),
+        &result.factor_2.view(),
+        output,
+    )
 }
 
 fn validate_cp_als_nd_input<T: NabledReal>(
@@ -3309,6 +3367,32 @@ fn validate_cp_als_nd_result<T: NabledReal>(result: &CpAlsNdResult<T>) -> Result
     Ok(())
 }
 
+fn validate_cp_als_nd_factors<T, S>(
+    weights: &ArrayView1<'_, T>,
+    factors: &[ArrayBase<S, Ix2>],
+) -> Result<Vec<usize>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
+    if factors.is_empty() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    let rank = weights.len();
+    if rank == 0 {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut shape = Vec::with_capacity(factors.len());
+    for factor in factors {
+        if factor.nrows() == 0 || factor.ncols() != rank {
+            return Err(TensorError::DimensionMismatch);
+        }
+        shape.push(factor.nrows());
+    }
+    Ok(shape)
+}
+
 /// Compute rank-`R` CP decomposition for an `N`-D real tensor using ALS.
 ///
 /// # Errors
@@ -3384,9 +3468,54 @@ pub fn cp_als_nd_diagnostics_view<T: NabledReal>(
     tensor: &ArrayViewD<'_, T>,
     result: &CpAlsNdResult<T>,
 ) -> Result<CpErrorMetrics<T>, TensorError> {
+    validate_cp_als_nd_result(result)?;
+    cp_als_nd_diagnostics_from_factors_view(
+        tensor,
+        &result.weights.view(),
+        &result.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Compute reconstruction diagnostics for an `N`-D CP decomposition against a reference tensor
+/// view using borrowed factor views.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible.
+pub fn cp_als_nd_diagnostics_from_factors_view<T: NabledReal>(
+    tensor: &ArrayViewD<'_, T>,
+    weights: &ArrayView1<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+) -> Result<CpErrorMetrics<T>, TensorError> {
     validate_tensor_nd_non_empty(tensor)?;
-    let reconstructed = cp_als_nd_reconstruct(result)?;
-    cp_error_metrics_from_views(tensor, &reconstructed.view())
+    let shape = validate_cp_als_nd_factors(weights, factors)?;
+    if tensor.shape() != shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let total = shape_product(&shape);
+    let rank = weights.len();
+    let mut coordinates = vec![0_usize; shape.len()];
+    let mut signal_sq = T::zero();
+    let mut residual_sq = T::zero();
+
+    for linear in 0..total {
+        decode_row_major_index(linear, &shape, &mut coordinates);
+        let mut candidate = T::zero();
+        for component in 0..rank {
+            let mut term = weights[component];
+            for (axis, coordinate) in coordinates.iter().enumerate() {
+                term *= factors[axis][[*coordinate, component]];
+            }
+            candidate += term;
+        }
+
+        let reference_value = tensor[IxDyn(&coordinates)];
+        signal_sq += reference_value * reference_value;
+        let delta = reference_value - candidate;
+        residual_sq += delta * delta;
+    }
+
+    Ok(cp_error_metrics_from_squares(signal_sq, residual_sq))
 }
 
 /// Reconstruct an `N`-D tensor from CP factors.
@@ -3397,9 +3526,10 @@ pub fn cp_als_nd_reconstruct<T: NabledReal>(
     result: &CpAlsNdResult<T>,
 ) -> Result<ArrayD<T>, TensorError> {
     validate_cp_als_nd_result(result)?;
-    let mut output = ArrayD::<T>::zeros(IxDyn(&result.shape));
-    cp_als_nd_reconstruct_into(result, &mut output)?;
-    Ok(output)
+    cp_als_nd_reconstruct_from_factors_view(
+        &result.weights.view(),
+        &result.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
 }
 
 /// Reconstruct an `N`-D tensor from CP factors into `output`.
@@ -3411,22 +3541,53 @@ pub fn cp_als_nd_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
     validate_cp_als_nd_result(result)?;
-    if output.shape() != result.shape.as_slice() {
+    cp_als_nd_reconstruct_from_factors_view_into(
+        &result.weights.view(),
+        &result.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+        output,
+    )
+}
+
+/// Reconstruct an `N`-D tensor from borrowed CP factor views.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn cp_als_nd_reconstruct_from_factors_view<T: NabledReal>(
+    weights: &ArrayView1<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+) -> Result<ArrayD<T>, TensorError> {
+    let shape = validate_cp_als_nd_factors(weights, factors)?;
+    let mut output = ArrayD::<T>::zeros(IxDyn(&shape));
+    cp_als_nd_reconstruct_from_factors_view_into(weights, factors, &mut output)?;
+    Ok(output)
+}
+
+/// Reconstruct an `N`-D tensor from borrowed CP factor views into `output`.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn cp_als_nd_reconstruct_from_factors_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    weights: &ArrayView1<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    let shape = validate_cp_als_nd_factors(weights, factors)?;
+    if output.shape() != shape.as_slice() {
         return Err(TensorError::DimensionMismatch);
     }
 
-    let rank = result.weights.len();
-    let total = shape_product(&result.shape);
-    let mut coordinates = vec![0_usize; result.shape.len()];
+    let rank = weights.len();
+    let total = shape_product(&shape);
+    let mut coordinates = vec![0_usize; shape.len()];
     output.fill(T::zero());
 
     for linear in 0..total {
-        decode_row_major_index(linear, &result.shape, &mut coordinates);
+        decode_row_major_index(linear, &shape, &mut coordinates);
         let mut value = T::zero();
         for component in 0..rank {
-            let mut term = result.weights[component];
+            let mut term = weights[component];
             for (axis, coordinate) in coordinates.iter().enumerate() {
-                term *= result.factors[axis][[*coordinate, component]];
+                term *= factors[axis][[*coordinate, component]];
             }
             value += term;
         }
@@ -3530,12 +3691,70 @@ where
 ///
 /// # Errors
 /// Returns an error if factor dimensions are incompatible.
+pub fn hosvd3_reconstruct_from_factors_view<T: NabledReal>(
+    core: &ArrayView3<'_, T>,
+    u0: &ArrayView2<'_, T>,
+    u1: &ArrayView2<'_, T>,
+    u2: &ArrayView2<'_, T>,
+) -> Result<Array3<T>, TensorError> {
+    let mut output = Array3::<T>::zeros((u0.nrows(), u1.nrows(), u2.nrows()));
+    hosvd3_reconstruct_from_factors_view_into(core, u0, u1, u2, &mut output)?;
+    Ok(output)
+}
+
+/// Reconstruct a rank-3 tensor from HOSVD factors into `output`.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible or output shape mismatches.
+pub fn hosvd3_reconstruct_from_factors_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    core: &ArrayView3<'_, T>,
+    u0: &ArrayView2<'_, T>,
+    u1: &ArrayView2<'_, T>,
+    u2: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix3>,
+) -> Result<(), TensorError> {
+    let (r0, r1, r2) = core.dim();
+    if u0.ncols() != r0
+        || u1.ncols() != r1
+        || u2.ncols() != r2
+        || output.dim() != (u0.nrows(), u1.nrows(), u2.nrows())
+    {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    for i in 0..output.dim().0 {
+        for j in 0..output.dim().1 {
+            for k in 0..output.dim().2 {
+                let mut value = T::zero();
+                for a in 0..r0 {
+                    let u0_value = u0[[i, a]];
+                    for b in 0..r1 {
+                        let u1_value = u1[[j, b]];
+                        for c in 0..r2 {
+                            value += core[[a, b, c]] * u0_value * u1_value * u2[[k, c]];
+                        }
+                    }
+                }
+                output[[i, j, k]] = value;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Reconstruct a rank-3 tensor from HOSVD factors.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
 pub fn hosvd3_reconstruct<T: NabledReal>(
     result: &Hosvd3Result<T>,
 ) -> Result<Array3<T>, TensorError> {
-    let mode0 = mode0_product(&result.core, &result.u0)?;
-    let mode1 = mode1_product(&mode0, &result.u1)?;
-    mode2_product(&mode1, &result.u2)
+    hosvd3_reconstruct_from_factors_view(
+        &result.core.view(),
+        &result.u0.view(),
+        &result.u1.view(),
+        &result.u2.view(),
+    )
 }
 
 /// Reconstruct a rank-3 tensor from HOSVD factors into `output`.
@@ -3546,33 +3765,13 @@ pub fn hosvd3_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     result: &Hosvd3Result<T>,
     output: &mut ArrayBase<S, Ix3>,
 ) -> Result<(), TensorError> {
-    let (r0, r1, r2) = result.core.dim();
-    if result.u0.ncols() != r0
-        || result.u1.ncols() != r1
-        || result.u2.ncols() != r2
-        || output.dim() != (result.u0.nrows(), result.u1.nrows(), result.u2.nrows())
-    {
-        return Err(TensorError::DimensionMismatch);
-    }
-
-    for i in 0..output.dim().0 {
-        for j in 0..output.dim().1 {
-            for k in 0..output.dim().2 {
-                let mut value = T::zero();
-                for a in 0..r0 {
-                    let u0 = result.u0[[i, a]];
-                    for b in 0..r1 {
-                        let u1 = result.u1[[j, b]];
-                        for c in 0..r2 {
-                            value += result.core[[a, b, c]] * u0 * u1 * result.u2[[k, c]];
-                        }
-                    }
-                }
-                output[[i, j, k]] = value;
-            }
-        }
-    }
-    Ok(())
+    hosvd3_reconstruct_from_factors_view_into(
+        &result.core.view(),
+        &result.u0.view(),
+        &result.u1.view(),
+        &result.u2.view(),
+        output,
+    )
 }
 
 fn mode_axes_order(ndim: usize, mode: usize) -> Result<Vec<usize>, TensorError> {
@@ -3597,10 +3796,15 @@ fn invert_axes_order(order: &[usize]) -> Vec<usize> {
     inverse
 }
 
-fn matrix_times_unfolded<T: NabledReal>(
-    left: &Array2<T>,
-    right: &Array2<T>,
-) -> Result<Array2<T>, TensorError> {
+fn matrix_times_unfolded<T, L, R>(
+    left: &ArrayBase<L, Ix2>,
+    right: &ArrayBase<R, Ix2>,
+) -> Result<Array2<T>, TensorError>
+where
+    T: NabledReal,
+    L: Data<Elem = T>,
+    R: Data<Elem = T>,
+{
     let (rows, inner) = left.dim();
     let (right_inner, cols) = right.dim();
     if inner != right_inner {
@@ -3632,11 +3836,15 @@ fn unfold_mode_nd<T: NabledReal>(
     standard.into_shape_with_order((rows, cols)).map_err(|_| TensorError::DimensionMismatch)
 }
 
-fn mode_n_product_nd<T: NabledReal>(
+fn mode_n_product_nd<T, M>(
     tensor: &ArrayViewD<'_, T>,
-    matrix: &Array2<T>,
+    matrix: &ArrayBase<M, Ix2>,
     mode: usize,
-) -> Result<ArrayD<T>, TensorError> {
+) -> Result<ArrayD<T>, TensorError>
+where
+    T: NabledReal,
+    M: Data<Elem = T>,
+{
     let order = mode_axes_order(tensor.ndim(), mode)?;
     let other_shape = order[1..].iter().map(|axis| tensor.shape()[*axis]).collect::<Vec<_>>();
     let unfolded = unfold_mode_nd(tensor, mode)?;
@@ -3672,29 +3880,37 @@ fn frobenius_norm_sq_nd<T: NabledReal>(tensor: &ArrayViewD<'_, T>) -> T {
     tensor.iter().fold(T::zero(), |sum, value| sum + *value * *value)
 }
 
-fn core_from_factors_nd<T: NabledReal>(
+fn core_from_factors_nd<T, S>(
     tensor: &ArrayViewD<'_, T>,
-    factors: &[Array2<T>],
-) -> Result<ArrayD<T>, TensorError> {
+    factors: &[ArrayBase<S, Ix2>],
+) -> Result<ArrayD<T>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     let mut core = tensor.to_owned();
     for (mode, factor) in factors.iter().enumerate() {
-        let projection = factor.t().to_owned();
+        let projection = factor.t();
         core = mode_n_product_nd(&core.view(), &projection, mode)?;
     }
     Ok(core)
 }
 
-fn project_except_mode_nd<T: NabledReal>(
+fn project_except_mode_nd<T, S>(
     tensor: &ArrayViewD<'_, T>,
-    factors: &[Array2<T>],
+    factors: &[ArrayBase<S, Ix2>],
     mode: usize,
-) -> Result<ArrayD<T>, TensorError> {
+) -> Result<ArrayD<T>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     let mut projected = tensor.to_owned();
     for (axis, factor) in factors.iter().enumerate() {
         if axis == mode {
             continue;
         }
-        let projection = factor.t().to_owned();
+        let projection = factor.t();
         projected = mode_n_product_nd(&projected.view(), &projection, axis)?;
     }
     Ok(projected)
@@ -3783,10 +3999,14 @@ fn validate_hosvd_nd_result<T: NabledReal>(result: &HosvdNdResult<T>) -> Result<
     Ok(())
 }
 
-fn validate_tucker_factors_for_tensor<T: NabledReal>(
+fn validate_tucker_factors_for_tensor<T, S>(
     tensor: &ArrayViewD<'_, T>,
-    factors: &[Array2<T>],
-) -> Result<(), TensorError> {
+    factors: &[ArrayBase<S, Ix2>],
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     validate_tensor_nd_non_empty(tensor)?;
     if factors.is_empty() || factors.len() != tensor.ndim() {
         return Err(TensorError::DimensionMismatch);
@@ -3799,10 +4019,14 @@ fn validate_tucker_factors_for_tensor<T: NabledReal>(
     Ok(())
 }
 
-fn validate_tucker_factors_for_core<T: NabledReal>(
+fn validate_tucker_factors_for_core<T, S>(
     core: &ArrayViewD<'_, T>,
-    factors: &[Array2<T>],
-) -> Result<(), TensorError> {
+    factors: &[ArrayBase<S, Ix2>],
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     validate_tensor_nd_non_empty(core)?;
     if factors.is_empty() || factors.len() != core.ndim() {
         return Err(TensorError::DimensionMismatch);
@@ -3886,8 +4110,10 @@ pub fn tucker_project_view<T: NabledReal>(
     tensor: &ArrayViewD<'_, T>,
     factors: &[Array2<T>],
 ) -> Result<ArrayD<T>, TensorError> {
-    validate_tucker_factors_for_tensor(tensor, factors)?;
-    core_from_factors_nd(tensor, factors)
+    tucker_project_from_factors_view(
+        tensor,
+        &factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
 }
 
 /// Project an `N`-D tensor into a Tucker core using per-mode factors into `output`.
@@ -3911,8 +4137,36 @@ pub fn tucker_project_view_into<T: NabledReal, S: DataMut<Elem = T>>(
     factors: &[Array2<T>],
     output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
+    tucker_project_from_factors_view_into(
+        tensor,
+        &factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+        output,
+    )
+}
+
+/// Project an `N`-D tensor view into a Tucker core using per-mode factor views.
+///
+/// # Errors
+/// Returns an error if tensor/factor dimensions are incompatible.
+pub fn tucker_project_from_factors_view<T: NabledReal>(
+    tensor: &ArrayViewD<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+) -> Result<ArrayD<T>, TensorError> {
     validate_tucker_factors_for_tensor(tensor, factors)?;
-    let expected_shape = factors.iter().map(Array2::ncols).collect::<Vec<_>>();
+    core_from_factors_nd(tensor, factors)
+}
+
+/// Project an `N`-D tensor view into a Tucker core using per-mode factor views into `output`.
+///
+/// # Errors
+/// Returns an error if tensor/factor dimensions are incompatible or output shape mismatches.
+pub fn tucker_project_from_factors_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    tensor: &ArrayViewD<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    validate_tucker_factors_for_tensor(tensor, factors)?;
+    let expected_shape = factors.iter().map(ArrayView2::ncols).collect::<Vec<_>>();
     if output.shape() != expected_shape.as_slice() {
         return Err(TensorError::DimensionMismatch);
     }
@@ -3940,12 +4194,10 @@ pub fn tucker_expand_view<T: NabledReal>(
     core: &ArrayViewD<'_, T>,
     factors: &[Array2<T>],
 ) -> Result<ArrayD<T>, TensorError> {
-    validate_tucker_factors_for_core(core, factors)?;
-    let mut output_shape = Vec::<usize>::with_capacity(factors.len());
-    output_shape.extend(factors.iter().map(Array2::nrows));
-    let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
-    tucker_expand_view_into(core, factors, &mut output)?;
-    Ok(output)
+    tucker_expand_from_factors_view(
+        core,
+        &factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
 }
 
 /// Expand a Tucker core into `output` using per-mode factors.
@@ -3969,8 +4221,40 @@ pub fn tucker_expand_view_into<T: NabledReal, S: DataMut<Elem = T>>(
     factors: &[Array2<T>],
     output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
+    tucker_expand_from_factors_view_into(
+        core,
+        &factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+        output,
+    )
+}
+
+/// Expand a Tucker core view into the original tensor space using per-mode factor views.
+///
+/// # Errors
+/// Returns an error if core/factor dimensions are incompatible.
+pub fn tucker_expand_from_factors_view<T: NabledReal>(
+    core: &ArrayViewD<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+) -> Result<ArrayD<T>, TensorError> {
     validate_tucker_factors_for_core(core, factors)?;
-    let expected_shape = factors.iter().map(Array2::nrows).collect::<Vec<_>>();
+    let mut output_shape = Vec::<usize>::with_capacity(factors.len());
+    output_shape.extend(factors.iter().map(ArrayView2::nrows));
+    let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
+    tucker_expand_from_factors_view_into(core, factors, &mut output)?;
+    Ok(output)
+}
+
+/// Expand a Tucker core view into `output` using per-mode factor views.
+///
+/// # Errors
+/// Returns an error if core/factor dimensions or output shape are incompatible.
+pub fn tucker_expand_from_factors_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    core: &ArrayViewD<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    validate_tucker_factors_for_core(core, factors)?;
+    let expected_shape = factors.iter().map(ArrayView2::nrows).collect::<Vec<_>>();
     if output.shape() != expected_shape.as_slice() {
         return Err(TensorError::DimensionMismatch);
     }
@@ -3991,10 +4275,10 @@ pub fn hosvd_nd_reconstruct<T: NabledReal>(
     result: &HosvdNdResult<T>,
 ) -> Result<ArrayD<T>, TensorError> {
     validate_hosvd_nd_result(result)?;
-    let output_shape = result.factors.iter().map(Array2::nrows).collect::<Vec<_>>();
-    let mut output = ArrayD::<T>::zeros(IxDyn(&output_shape));
-    hosvd_nd_reconstruct_into(result, &mut output)?;
-    Ok(output)
+    hosvd_nd_reconstruct_from_factors_view(
+        &result.core.view(),
+        &result.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
 }
 
 /// Reconstruct an `N`-D tensor from HOSVD/Tucker factors into `output`.
@@ -4006,17 +4290,34 @@ pub fn hosvd_nd_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
     validate_hosvd_nd_result(result)?;
-    let expected_shape = result.factors.iter().map(Array2::nrows).collect::<Vec<_>>();
-    if output.shape() != expected_shape.as_slice() {
-        return Err(TensorError::DimensionMismatch);
-    }
+    hosvd_nd_reconstruct_from_factors_view_into(
+        &result.core.view(),
+        &result.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+        output,
+    )
+}
 
-    let mut tensor = result.core.clone();
-    for (mode, factor) in result.factors.iter().enumerate() {
-        tensor = mode_n_product_nd(&tensor.view(), factor, mode)?;
-    }
-    output.assign(&tensor);
-    Ok(())
+/// Reconstruct an `N`-D tensor from HOSVD/Tucker factor views.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn hosvd_nd_reconstruct_from_factors_view<T: NabledReal>(
+    core: &ArrayViewD<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+) -> Result<ArrayD<T>, TensorError> {
+    tucker_expand_from_factors_view(core, factors)
+}
+
+/// Reconstruct an `N`-D tensor from HOSVD/Tucker factor views into `output`.
+///
+/// # Errors
+/// Returns an error if factor dimensions are incompatible.
+pub fn hosvd_nd_reconstruct_from_factors_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    core: &ArrayViewD<'_, T>,
+    factors: &[ArrayView2<'_, T>],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    tucker_expand_from_factors_view_into(core, factors, output)
 }
 
 fn tt_svd_select_rank<T: NabledReal>(
@@ -4123,6 +4424,31 @@ fn validate_tt_result<T: NabledReal>(result: &TensorTrainResult<T>) -> Result<()
         }
     }
     Ok(())
+}
+
+fn validate_tt_cores<T, S>(cores: &[ArrayBase<S, Ix3>]) -> Result<Vec<usize>, TensorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
+    if cores.is_empty() {
+        return Err(TensorError::DimensionMismatch);
+    }
+    if cores[0].dim().0 != 1 || cores[cores.len() - 1].dim().2 != 1 {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let mut shape = Vec::with_capacity(cores.len());
+    for (mode, core) in cores.iter().enumerate() {
+        if core.is_empty() {
+            return Err(TensorError::DimensionMismatch);
+        }
+        shape.push(core.dim().1);
+        if mode + 1 < cores.len() && core.dim().2 != cores[mode + 1].dim().0 {
+            return Err(TensorError::DimensionMismatch);
+        }
+    }
+    Ok(shape)
 }
 
 fn validate_tt_binary_inputs<T: NabledReal>(
@@ -4604,9 +4930,9 @@ pub fn tt_svd_reconstruct<T: NabledReal>(
     result: &TensorTrainResult<T>,
 ) -> Result<ArrayD<T>, TensorError> {
     validate_tt_result(result)?;
-    let mut output = ArrayD::<T>::zeros(IxDyn(&result.shape));
-    tt_svd_reconstruct_into(result, &mut output)?;
-    Ok(output)
+    tt_svd_reconstruct_from_cores_view(
+        &result.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+    )
 }
 
 /// Reconstruct an `N`-D real tensor from Tensor-Train cores into `output`.
@@ -4618,23 +4944,51 @@ pub fn tt_svd_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
     output: &mut ArrayBase<S, IxDyn>,
 ) -> Result<(), TensorError> {
     validate_tt_result(result)?;
-    if output.shape() != result.shape.as_slice() {
+    tt_svd_reconstruct_from_cores_view_into(
+        &result.cores.iter().map(|core| core.view()).collect::<Vec<_>>(),
+        output,
+    )
+}
+
+/// Reconstruct an `N`-D real tensor from borrowed Tensor-Train core views.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible.
+pub fn tt_svd_reconstruct_from_cores_view<T: NabledReal>(
+    cores: &[ArrayView3<'_, T>],
+) -> Result<ArrayD<T>, TensorError> {
+    let shape = validate_tt_cores(cores)?;
+    let mut output = ArrayD::<T>::zeros(IxDyn(&shape));
+    tt_svd_reconstruct_from_cores_view_into(cores, &mut output)?;
+    Ok(output)
+}
+
+/// Reconstruct an `N`-D real tensor from borrowed Tensor-Train core views into `output`.
+///
+/// # Errors
+/// Returns an error if TT core dimensions are incompatible or output shape mismatches.
+pub fn tt_svd_reconstruct_from_cores_view_into<T: NabledReal, S: DataMut<Elem = T>>(
+    cores: &[ArrayView3<'_, T>],
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError> {
+    let shape = validate_tt_cores(cores)?;
+    if output.shape() != shape.as_slice() {
         return Err(TensorError::DimensionMismatch);
     }
 
-    let (first_left, first_extent, first_right) = result.cores[0].dim();
+    let (first_left, first_extent, first_right) = cores[0].dim();
     if first_left != 1 {
         return Err(TensorError::DimensionMismatch);
     }
     let mut accumulated = Array2::<T>::zeros((first_extent, first_right));
     for i in 0..first_extent {
         for r in 0..first_right {
-            accumulated[[i, r]] = result.cores[0][[0, i, r]];
+            accumulated[[i, r]] = cores[0][[0, i, r]];
         }
     }
     let mut rows = first_extent;
 
-    for core in result.cores.iter().skip(1) {
+    for core in cores.iter().skip(1) {
         let (left_rank, mode_extent, right_rank) = core.dim();
         if accumulated.ncols() != left_rank {
             return Err(TensorError::DimensionMismatch);
@@ -4656,12 +5010,12 @@ pub fn tt_svd_reconstruct_into<T: NabledReal, S: DataMut<Elem = T>>(
         rows *= mode_extent;
     }
 
-    if accumulated.ncols() != 1 || rows != shape_product(&result.shape) {
+    if accumulated.ncols() != 1 || rows != shape_product(&shape) {
         return Err(TensorError::DimensionMismatch);
     }
 
     let final_tensor = accumulated
-        .into_shape_with_order(IxDyn(&result.shape))
+        .into_shape_with_order(IxDyn(&shape))
         .map_err(|_| TensorError::DimensionMismatch)?;
     output.assign(&final_tensor);
     Ok(())
@@ -6377,6 +6731,200 @@ mod tests {
             cp_als_nd_diagnostics(&bad_tensor, &result_nd),
             Err(TensorError::DimensionMismatch)
         ));
+    }
+
+    #[test]
+    fn tensor_factor_view_reconstruct_helpers_match_owned_paths() {
+        let cube =
+            Array3::<f64>::from_shape_vec((3, 4, 2), (0..24).map(f64::from).collect()).unwrap();
+        let hosvd3_result = hosvd3(&cube, (3, 4, 2)).unwrap();
+
+        let mut hosvd3_core_storage = Array3::<f64>::zeros((4, 5, 3));
+        hosvd3_core_storage.slice_mut(s![1.., 1.., 1..]).assign(&hosvd3_result.core);
+        let hosvd3_core_view = hosvd3_core_storage.slice(s![1.., 1.., 1..]);
+
+        let mut hosvd3_u0_storage =
+            Array2::<f64>::zeros((hosvd3_result.u0.nrows() + 1, hosvd3_result.u0.ncols() + 1));
+        hosvd3_u0_storage.slice_mut(s![1.., 1..]).assign(&hosvd3_result.u0);
+        let hosvd3_u0_view = hosvd3_u0_storage.slice(s![1.., 1..]);
+
+        let mut hosvd3_u1_storage =
+            Array2::<f64>::zeros((hosvd3_result.u1.nrows() + 1, hosvd3_result.u1.ncols() + 1));
+        hosvd3_u1_storage.slice_mut(s![1.., 1..]).assign(&hosvd3_result.u1);
+        let hosvd3_u1_view = hosvd3_u1_storage.slice(s![1.., 1..]);
+
+        let mut hosvd3_u2_storage =
+            Array2::<f64>::zeros((hosvd3_result.u2.nrows() + 1, hosvd3_result.u2.ncols() + 1));
+        hosvd3_u2_storage.slice_mut(s![1.., 1..]).assign(&hosvd3_result.u2);
+        let hosvd3_u2_view = hosvd3_u2_storage.slice(s![1.., 1..]);
+
+        let hosvd3_owned = hosvd3_reconstruct(&hosvd3_result).unwrap();
+        let hosvd3_viewed = hosvd3_reconstruct_from_factors_view(
+            &hosvd3_core_view,
+            &hosvd3_u0_view,
+            &hosvd3_u1_view,
+            &hosvd3_u2_view,
+        )
+        .unwrap();
+        assert_eq!(hosvd3_owned, hosvd3_viewed);
+
+        let tensor = cube.into_dyn();
+        let hosvd_nd_result = hosvd_nd(&tensor, &[3, 4, 2]).unwrap();
+        let mut hosvd_nd_core_storage = ArrayD::<f64>::zeros(IxDyn(&[4, 5, 3]));
+        hosvd_nd_core_storage.slice_mut(s![1.., 1.., 1..]).assign(&hosvd_nd_result.core);
+        let hosvd_nd_core_view = hosvd_nd_core_storage.slice(s![1.., 1.., 1..]).into_dyn();
+
+        let mut factor_storages = Vec::new();
+        for factor in &hosvd_nd_result.factors {
+            let mut storage = Array2::<f64>::zeros((factor.nrows() + 1, factor.ncols() + 1));
+            storage.slice_mut(s![1.., 1..]).assign(factor);
+            factor_storages.push(storage);
+        }
+        let factor_views =
+            factor_storages.iter().map(|factor| factor.slice(s![1.., 1..])).collect::<Vec<_>>();
+
+        let hosvd_nd_owned = hosvd_nd_reconstruct(&hosvd_nd_result).unwrap();
+        let hosvd_nd_viewed =
+            hosvd_nd_reconstruct_from_factors_view(&hosvd_nd_core_view, &factor_views).unwrap();
+        assert_eq!(hosvd_nd_owned, hosvd_nd_viewed);
+
+        let projected_owned = tucker_project(&tensor, &hosvd_nd_result.factors).unwrap();
+        let projected_viewed =
+            tucker_project_from_factors_view(&tensor.view(), &factor_views).unwrap();
+        assert_eq!(projected_owned, projected_viewed);
+
+        let expanded_viewed =
+            tucker_expand_from_factors_view(&hosvd_nd_core_view, &factor_views).unwrap();
+        assert_eq!(hosvd_nd_owned, expanded_viewed);
+    }
+
+    #[test]
+    fn cp_factor_view_helpers_match_owned_paths_and_diagnostics() {
+        let cp3_result = CpAls3Result {
+            weights:  Array1::from_vec(vec![1.5_f64, 0.8_f64]),
+            factor_0: Array2::from_shape_vec((4, 2), vec![
+                1.0_f64, 0.2_f64, 0.7_f64, 1.1_f64, 0.3_f64, 0.9_f64, 1.2_f64, 0.4_f64,
+            ])
+            .unwrap(),
+            factor_1: Array2::from_shape_vec((3, 2), vec![
+                0.5_f64, 1.0_f64, 1.3_f64, 0.4_f64, 0.8_f64, 1.2_f64,
+            ])
+            .unwrap(),
+            factor_2: Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.6_f64, 0.9_f64, 1.4_f64])
+                .unwrap(),
+        };
+        let cp3_tensor = cp_als3_reconstruct(&cp3_result).unwrap();
+
+        let mut cp3_weight_storage = Array1::<f64>::zeros(4);
+        cp3_weight_storage.slice_mut(s![1..3]).assign(&cp3_result.weights);
+        let cp3_weight_view = cp3_weight_storage.slice(s![1..3]);
+
+        let mut cp3_factor_0_storage = Array2::<f64>::zeros((5, 3));
+        cp3_factor_0_storage.slice_mut(s![1.., 1..]).assign(&cp3_result.factor_0);
+        let cp3_factor_0_view = cp3_factor_0_storage.slice(s![1.., 1..]);
+
+        let mut cp3_factor_1_storage = Array2::<f64>::zeros((4, 3));
+        cp3_factor_1_storage.slice_mut(s![1.., 1..]).assign(&cp3_result.factor_1);
+        let cp3_factor_1_view = cp3_factor_1_storage.slice(s![1.., 1..]);
+
+        let mut cp3_factor_2_storage = Array2::<f64>::zeros((3, 3));
+        cp3_factor_2_storage.slice_mut(s![1.., 1..]).assign(&cp3_result.factor_2);
+        let cp3_factor_2_view = cp3_factor_2_storage.slice(s![1.., 1..]);
+
+        let cp3_reconstructed = cp_als3_reconstruct_from_factors_view(
+            &cp3_weight_view,
+            &cp3_factor_0_view,
+            &cp3_factor_1_view,
+            &cp3_factor_2_view,
+        )
+        .unwrap();
+        assert_eq!(cp3_tensor, cp3_reconstructed);
+
+        let cp3_metrics_owned = cp_als3_diagnostics(&cp3_tensor, &cp3_result).unwrap();
+        let cp3_metrics_viewed = cp_als3_diagnostics_from_factors_view(
+            &cp3_tensor.view(),
+            &cp3_weight_view,
+            &cp3_factor_0_view,
+            &cp3_factor_1_view,
+            &cp3_factor_2_view,
+        )
+        .unwrap();
+        assert!(
+            (cp3_metrics_owned.relative_error - cp3_metrics_viewed.relative_error).abs() < 1e-12
+        );
+
+        let cp_nd_result = CpAlsNdResult {
+            weights: Array1::from_vec(vec![1.5_f64, 0.8_f64]),
+            factors: vec![
+                Array2::from_shape_vec((3, 2), vec![
+                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
+                ])
+                .unwrap(),
+                Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
+                Array2::from_shape_vec((4, 2), vec![
+                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, -1.0_f64,
+                ])
+                .unwrap(),
+                Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
+            ],
+            shape:   vec![3, 2, 4, 2],
+        };
+        let cp_nd_tensor = cp_als_nd_reconstruct(&cp_nd_result).unwrap();
+        let mut cp_nd_weight_storage = Array1::<f64>::zeros(4);
+        cp_nd_weight_storage.slice_mut(s![1..3]).assign(&cp_nd_result.weights);
+        let cp_nd_weight_view = cp_nd_weight_storage.slice(s![1..3]);
+
+        let mut cp_nd_factor_storages = Vec::new();
+        for factor in &cp_nd_result.factors {
+            let mut storage = Array2::<f64>::zeros((factor.nrows() + 1, factor.ncols() + 1));
+            storage.slice_mut(s![1.., 1..]).assign(factor);
+            cp_nd_factor_storages.push(storage);
+        }
+        let cp_nd_factor_views = cp_nd_factor_storages
+            .iter()
+            .map(|factor| factor.slice(s![1.., 1..]))
+            .collect::<Vec<_>>();
+
+        let cp_nd_reconstructed =
+            cp_als_nd_reconstruct_from_factors_view(&cp_nd_weight_view, &cp_nd_factor_views)
+                .unwrap();
+        assert_eq!(cp_nd_tensor, cp_nd_reconstructed);
+
+        let cp_nd_metrics_owned = cp_als_nd_diagnostics(&cp_nd_tensor, &cp_nd_result).unwrap();
+        let cp_nd_metrics_viewed = cp_als_nd_diagnostics_from_factors_view(
+            &cp_nd_tensor.view(),
+            &cp_nd_weight_view,
+            &cp_nd_factor_views,
+        )
+        .unwrap();
+        assert!(
+            (cp_nd_metrics_owned.relative_error - cp_nd_metrics_viewed.relative_error).abs()
+                < 1e-12
+        );
+    }
+
+    #[test]
+    fn tt_reconstruct_from_core_views_matches_owned_path() {
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 4]),
+            (0..24).map(|value| 0.25_f64 * f64::from(value) - 1.0_f64).collect(),
+        )
+        .unwrap();
+        let tt = tt_svd(&tensor, &TtSvdConfig::<f64>::default()).unwrap();
+        let owned = tt_svd_reconstruct(&tt).unwrap();
+
+        let mut core_storages = Vec::new();
+        for core in &tt.cores {
+            let mut storage =
+                Array3::<f64>::zeros((core.dim().0 + 1, core.dim().1 + 1, core.dim().2 + 1));
+            storage.slice_mut(s![1.., 1.., 1..]).assign(core);
+            core_storages.push(storage);
+        }
+        let core_views =
+            core_storages.iter().map(|core| core.slice(s![1.., 1.., 1..])).collect::<Vec<_>>();
+
+        let viewed = tt_svd_reconstruct_from_cores_view(&core_views).unwrap();
+        assert_eq!(owned, viewed);
     }
 
     #[test]
