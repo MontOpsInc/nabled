@@ -66,6 +66,11 @@ The direct NumPy vector/matrix hot kernels now follow the same pattern: pairwise
 rows and direct/batched matrix kernels accept `out=` for caller-provided result reuse under the
 same public names. Writable Fortran-order 2D/3D outputs are accepted where rank permits, and
 aliasing an input as `out` fails explicitly instead of silently materializing around the overlap.
+Direct NumPy stats and orthogonalization rows now follow that same contract too: `column_means`,
+`center_columns`, `covariance_matrix`, `correlation_matrix`,
+`column_means_complex`, `center_columns_complex`, `covariance_matrix_complex`,
+`correlation_matrix_complex`, `gram_schmidt`, and `gram_schmidt_classic` all accept `out=`
+under the existing public names with the same explicit dtype/shape/writeability checks.
 Direct NumPy triangular solves now follow that same contract for both vector and matrix RHS:
 `triangular_solve_lower`, `triangular_solve_upper`, `triangular_solve_lower_matrix`, and
 `triangular_solve_upper_matrix` all accept `out=` under the existing public names, including

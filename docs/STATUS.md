@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-12
+Last updated: 2026-04-13
 
 ## Summary
 
@@ -256,6 +256,22 @@ still-missing higher-level reusable result/workspace semantics plus any residual
 copy/layout traps outside the already-landed dense/helper/PCA/regression/tensor-helper/LU/SVD/QR/
 polar/matrix-function/eigen-factor/sparse-factorization/tensor-result/tensor-TT-borrowed-view/
 triangular-output-reuse surfaces.
+A twenty-first `N-PY-007` stats/orthogonalization allocation-control pass is now also landed:
+direct NumPy stats and orthogonalization rows no longer force wrapper-side result allocation when
+the Rust core already admits borrowed-output execution. `column_means`, `center_columns`,
+`covariance_matrix`, and `correlation_matrix` now expose real and complex `out=` reuse through
+shared Rust `*_into` / `*_view_into` helpers, `gram_schmidt(...)` and
+`gram_schmidt_classic(...)` now expose the same Rust-backed output reuse contract, and the
+provider-only QR helper cleanup in the same pass keeps `openblas-system` / combined source-build
+gates free of stale dead-code noise. Validation is green end-to-end: targeted Rust stats coverage
+(`12 passed`), targeted Rust orthogonalization coverage (`9 passed`), targeted Python
+stats/orthogonalization pytest (`36 passed`), `python-quality`
+(`246 passed, 22 skipped`, `90%` Python coverage), and full `just checks` (Rust coverage gate
+`90.15%` line coverage). Remaining `N-PY-007` work is now narrowed again to the smaller
+higher-level reusable result/workspace residue plus any remaining higher-level materialization or
+copy/layout traps outside the already-landed dense/helper/PCA/regression/tensor-helper/LU/SVD/QR/
+polar/matrix-function/eigen-factor/sparse-factorization/tensor-result/tensor-TT-borrowed-view/
+triangular-output-reuse/stats/orthogonalization surfaces.
 The first
 `N-PY-003` implementation pass is also landed:
 Python now has

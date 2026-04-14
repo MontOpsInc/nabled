@@ -3,16 +3,18 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView2, Axis};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView2, Axis, DataMut, Ix1, Ix2};
 use num_complex::Complex64;
 
 /// Error type for matrix statistics.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StatsError {
     /// Matrix is empty.
     EmptyMatrix,
     /// Matrix needs at least two rows.
     InsufficientSamples,
+    /// Input or output shapes are incompatible.
+    InvalidInput(String),
     /// Numerical instability detected.
     NumericalInstability,
 }
@@ -24,6 +26,7 @@ impl fmt::Display for StatsError {
             StatsError::InsufficientSamples => {
                 write!(f, "At least two observations are required")
             }
+            StatsError::InvalidInput(message) => write!(f, "Invalid input: {message}"),
             StatsError::NumericalInstability => write!(f, "Numerical instability detected"),
         }
     }
@@ -36,6 +39,66 @@ fn usize_to_scalar<T: NabledReal>(value: usize) -> T {
 }
 
 fn complex_is_finite(value: Complex64) -> bool { value.re.is_finite() && value.im.is_finite() }
+
+fn validate_vector_output_len<T, S>(
+    output: &ArrayBase<S, Ix1>,
+    expected_len: usize,
+    name: &str,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = T>,
+{
+    if output.len() != expected_len {
+        return Err(StatsError::InvalidInput(format!(
+            "{name} output length must match expected length {expected_len}",
+        )));
+    }
+    Ok(())
+}
+
+fn validate_matrix_output_shape<T, S>(
+    output: &ArrayBase<S, Ix2>,
+    expected_rows: usize,
+    expected_cols: usize,
+    name: &str,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = T>,
+{
+    if output.nrows() != expected_rows || output.ncols() != expected_cols {
+        return Err(StatsError::InvalidInput(format!(
+            "{name} output shape must be ({expected_rows}, {expected_cols})",
+        )));
+    }
+    Ok(())
+}
+
+fn column_means_into_impl<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    validate_vector_output_len(output, matrix.ncols(), "column_means")?;
+
+    if matrix.nrows() == 0 {
+        output.fill(T::zero());
+        return Ok(());
+    }
+
+    let denom = usize_to_scalar::<T>(matrix.nrows());
+    for col in 0..matrix.ncols() {
+        let mut sum = T::zero();
+        for row in 0..matrix.nrows() {
+            sum += matrix[[row, col]];
+        }
+        output[col] = sum / denom;
+    }
+
+    Ok(())
+}
 
 fn column_means_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Array1<T> {
     matrix.mean_axis(Axis(0)).unwrap_or_else(|| Array1::zeros(matrix.ncols()))
@@ -51,6 +114,36 @@ pub fn column_means<T: NabledReal>(matrix: &Array2<T>) -> Array1<T> {
 #[must_use]
 pub fn column_means_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Array1<T> {
     column_means_impl(matrix)
+}
+
+/// Compute column means into caller-provided output.
+///
+/// # Errors
+/// Returns an error if `output` does not match the column count.
+pub fn column_means_into<T, S>(
+    matrix: &Array2<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    column_means_into_impl(&matrix.view(), output)
+}
+
+/// Compute column means from a matrix view into caller-provided output.
+///
+/// # Errors
+/// Returns an error if `output` does not match the column count.
+pub fn column_means_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    column_means_into_impl(matrix, output)
 }
 
 fn center_columns_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Array2<T> {
@@ -74,6 +167,58 @@ pub fn center_columns<T: NabledReal>(matrix: &Array2<T>) -> Array2<T> {
 #[must_use]
 pub fn center_columns_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Array2<T> {
     center_columns_impl(matrix)
+}
+
+fn center_columns_into_impl<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    validate_matrix_output_shape(output, matrix.nrows(), matrix.ncols(), "center_columns")?;
+
+    let mut means = Array1::<T>::zeros(matrix.ncols());
+    column_means_into_impl(matrix, &mut means)?;
+
+    for row in 0..matrix.nrows() {
+        for col in 0..matrix.ncols() {
+            output[[row, col]] = matrix[[row, col]] - means[col];
+        }
+    }
+
+    Ok(())
+}
+
+/// Center columns by subtracting their means into caller-provided output.
+///
+/// # Errors
+/// Returns an error if `output` does not match the input shape.
+pub fn center_columns_into<T, S>(
+    matrix: &Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    center_columns_into_impl(&matrix.view(), output)
+}
+
+/// Center columns by subtracting their means from a matrix view into caller-provided output.
+///
+/// # Errors
+/// Returns an error if `output` does not match the input shape.
+pub fn center_columns_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    center_columns_into_impl(matrix, output)
 }
 
 fn covariance_matrix_impl<T: NabledReal>(
@@ -115,6 +260,79 @@ pub fn covariance_matrix_view<T: NabledReal>(
     covariance_matrix_impl(matrix)
 }
 
+fn covariance_matrix_into_impl<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    if matrix.is_empty() {
+        return Err(StatsError::EmptyMatrix);
+    }
+    if matrix.nrows() < 2 {
+        return Err(StatsError::InsufficientSamples);
+    }
+    validate_matrix_output_shape(output, matrix.ncols(), matrix.ncols(), "covariance_matrix")?;
+
+    let mut means = Array1::<T>::zeros(matrix.ncols());
+    column_means_into_impl(matrix, &mut means)?;
+    let denom = usize_to_scalar::<T>(matrix.nrows() - 1);
+
+    for i in 0..matrix.ncols() {
+        for j in i..matrix.ncols() {
+            let mut sum = T::zero();
+            for row in 0..matrix.nrows() {
+                let left = matrix[[row, i]] - means[i];
+                let right = matrix[[row, j]] - means[j];
+                sum += left * right;
+            }
+            let value = sum / denom;
+            output[[i, j]] = value;
+            if i != j {
+                output[[j, i]] = value;
+            }
+        }
+    }
+
+    if output.iter().any(|value| !value.is_finite()) {
+        return Err(StatsError::NumericalInstability);
+    }
+
+    Ok(())
+}
+
+/// Compute sample covariance matrix into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty input, fewer than two samples, or incompatible output shape.
+pub fn covariance_matrix_into<T, S>(
+    matrix: &Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    covariance_matrix_into_impl(&matrix.view(), output)
+}
+
+/// Compute sample covariance matrix from a matrix view into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty input, fewer than two samples, or incompatible output shape.
+pub fn covariance_matrix_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    covariance_matrix_into_impl(matrix, output)
+}
+
 fn correlation_matrix_impl<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, StatsError> {
@@ -152,6 +370,66 @@ pub fn correlation_matrix_view<T: NabledReal>(
     correlation_matrix_impl(matrix)
 }
 
+fn correlation_matrix_into_impl<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    covariance_matrix_into_impl(matrix, output)?;
+    let mut sigmas = Array1::<T>::zeros(output.nrows());
+    for i in 0..output.nrows() {
+        sigmas[i] = output[[i, i]].sqrt();
+    }
+
+    for i in 0..output.nrows() {
+        let sigma_i = sigmas[i];
+        for j in 0..output.ncols() {
+            let sigma_j = sigmas[j];
+            let denom = (sigma_i * sigma_j).max(T::epsilon());
+            output[[i, j]] /= denom;
+        }
+    }
+
+    if output.iter().any(|value| !value.is_finite()) {
+        return Err(StatsError::NumericalInstability);
+    }
+
+    Ok(())
+}
+
+/// Compute correlation matrix into caller-provided output.
+///
+/// # Errors
+/// Returns an error if covariance computation fails or `output` shape is incompatible.
+pub fn correlation_matrix_into<T, S>(
+    matrix: &Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    correlation_matrix_into_impl(&matrix.view(), output)
+}
+
+/// Compute correlation matrix from a matrix view into caller-provided output.
+///
+/// # Errors
+/// Returns an error if covariance computation fails or `output` shape is incompatible.
+pub fn correlation_matrix_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    correlation_matrix_into_impl(matrix, output)
+}
+
 fn column_means_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Array1<Complex64> {
     if matrix.nrows() == 0 {
         return Array1::zeros(matrix.ncols());
@@ -180,6 +458,60 @@ pub fn column_means_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Array1<C
     column_means_complex_impl(matrix)
 }
 
+fn column_means_complex_into_impl<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    validate_vector_output_len(output, matrix.ncols(), "column_means_complex")?;
+
+    if matrix.nrows() == 0 {
+        output.fill(Complex64::new(0.0, 0.0));
+        return Ok(());
+    }
+
+    let denom = usize_to_scalar::<f64>(matrix.nrows());
+    for col in 0..matrix.ncols() {
+        let mut sum = Complex64::new(0.0, 0.0);
+        for row in 0..matrix.nrows() {
+            sum += matrix[[row, col]];
+        }
+        output[col] = sum / denom;
+    }
+
+    Ok(())
+}
+
+/// Compute complex column means into caller-provided output.
+///
+/// # Errors
+/// Returns an error if `output` does not match the column count.
+pub fn column_means_complex_into<S>(
+    matrix: &Array2<Complex64>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    column_means_complex_into_impl(&matrix.view(), output)
+}
+
+/// Compute complex column means from a matrix view into caller-provided output.
+///
+/// # Errors
+/// Returns an error if `output` does not match the column count.
+pub fn column_means_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    column_means_complex_into_impl(matrix, output)
+}
+
 fn center_columns_complex_impl(matrix: &ArrayView2<'_, Complex64>) -> Array2<Complex64> {
     let means = column_means_complex_impl(matrix);
     let mut centered = Array2::<Complex64>::zeros((matrix.nrows(), matrix.ncols()));
@@ -201,6 +533,56 @@ pub fn center_columns_complex(matrix: &Array2<Complex64>) -> Array2<Complex64> {
 #[must_use]
 pub fn center_columns_complex_view(matrix: &ArrayView2<'_, Complex64>) -> Array2<Complex64> {
     center_columns_complex_impl(matrix)
+}
+
+fn center_columns_complex_into_impl<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    validate_matrix_output_shape(output, matrix.nrows(), matrix.ncols(), "center_columns_complex")?;
+
+    let mut means = Array1::<Complex64>::zeros(matrix.ncols());
+    column_means_complex_into_impl(matrix, &mut means)?;
+
+    for row in 0..matrix.nrows() {
+        for col in 0..matrix.ncols() {
+            output[[row, col]] = matrix[[row, col]] - means[col];
+        }
+    }
+
+    Ok(())
+}
+
+/// Center complex columns by subtracting their means into caller-provided output.
+///
+/// # Errors
+/// Returns an error if `output` does not match the input shape.
+pub fn center_columns_complex_into<S>(
+    matrix: &Array2<Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    center_columns_complex_into_impl(&matrix.view(), output)
+}
+
+/// Center complex columns by subtracting their means from a matrix view into caller-provided
+/// output.
+///
+/// # Errors
+/// Returns an error if `output` does not match the input shape.
+pub fn center_columns_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    center_columns_complex_into_impl(matrix, output)
 }
 
 fn covariance_matrix_complex_impl(
@@ -245,6 +627,82 @@ pub fn covariance_matrix_complex_view(
     covariance_matrix_complex_impl(matrix)
 }
 
+fn covariance_matrix_complex_into_impl<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    if matrix.is_empty() {
+        return Err(StatsError::EmptyMatrix);
+    }
+    if matrix.nrows() < 2 {
+        return Err(StatsError::InsufficientSamples);
+    }
+    validate_matrix_output_shape(
+        output,
+        matrix.ncols(),
+        matrix.ncols(),
+        "covariance_matrix_complex",
+    )?;
+
+    let mut means = Array1::<Complex64>::zeros(matrix.ncols());
+    column_means_complex_into_impl(matrix, &mut means)?;
+    let denom = usize_to_scalar::<f64>(matrix.nrows() - 1);
+
+    for i in 0..matrix.ncols() {
+        for j in i..matrix.ncols() {
+            let mut sum = Complex64::new(0.0, 0.0);
+            for row in 0..matrix.nrows() {
+                let left = matrix[[row, i]] - means[i];
+                let right = matrix[[row, j]] - means[j];
+                sum += left.conj() * right;
+            }
+            let value = sum / denom;
+            output[[i, j]] = value;
+            if i != j {
+                output[[j, i]] = value.conj();
+            }
+        }
+    }
+
+    if output.iter().any(|value| !complex_is_finite(*value)) {
+        return Err(StatsError::NumericalInstability);
+    }
+
+    Ok(())
+}
+
+/// Compute sample covariance matrix for complex observations into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty input, fewer than two samples, or incompatible output shape.
+pub fn covariance_matrix_complex_into<S>(
+    matrix: &Array2<Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    covariance_matrix_complex_into_impl(&matrix.view(), output)
+}
+
+/// Compute sample covariance matrix for complex observations from a matrix view into
+/// caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty input, fewer than two samples, or incompatible output shape.
+pub fn covariance_matrix_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    covariance_matrix_complex_into_impl(matrix, output)
+}
+
 fn correlation_matrix_complex_impl(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, StatsError> {
@@ -286,6 +744,64 @@ pub fn correlation_matrix_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, StatsError> {
     correlation_matrix_complex_impl(matrix)
+}
+
+fn correlation_matrix_complex_into_impl<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    covariance_matrix_complex_into_impl(matrix, output)?;
+    let mut sigmas = Array1::<f64>::zeros(output.nrows());
+    for i in 0..output.nrows() {
+        sigmas[i] = output[[i, i]].re.max(0.0).sqrt();
+    }
+
+    for i in 0..output.nrows() {
+        let sigma_i = sigmas[i];
+        for j in 0..output.ncols() {
+            let sigma_j = sigmas[j];
+            let denom = (sigma_i * sigma_j).max(f64::EPSILON);
+            output[[i, j]] /= denom;
+        }
+    }
+
+    if output.iter().any(|value| !complex_is_finite(*value)) {
+        return Err(StatsError::NumericalInstability);
+    }
+
+    Ok(())
+}
+
+/// Compute correlation matrix for complex observations into caller-provided output.
+///
+/// # Errors
+/// Returns an error if covariance computation fails or `output` shape is incompatible.
+pub fn correlation_matrix_complex_into<S>(
+    matrix: &Array2<Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    correlation_matrix_complex_into_impl(&matrix.view(), output)
+}
+
+/// Compute correlation matrix for complex observations from a matrix view into caller-provided
+/// output.
+///
+/// # Errors
+/// Returns an error if covariance computation fails or `output` shape is incompatible.
+pub fn correlation_matrix_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), StatsError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    correlation_matrix_complex_into_impl(matrix, output)
 }
 
 #[cfg(test)]
@@ -435,5 +951,78 @@ mod tests {
                 assert!((correlation_owned[[i, j]] - correlation_view[[i, j]]).norm() < 1e-12);
             }
         }
+    }
+
+    #[test]
+    fn stats_view_into_reuses_outputs() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0_f64, 3.0, 2.0, 2.0, 3.0, 1.0, 4.0, 0.0])
+                .unwrap();
+
+        let mut means = Array1::<f64>::zeros(2);
+        let mut centered = Array2::<f64>::zeros((4, 2));
+        let mut covariance = Array2::<f64>::zeros((2, 2));
+        let mut correlation = Array2::<f64>::zeros((2, 2));
+
+        column_means_view_into(&matrix.view(), &mut means).unwrap();
+        center_columns_view_into(&matrix.view(), &mut centered).unwrap();
+        covariance_matrix_view_into(&matrix.view(), &mut covariance).unwrap();
+        correlation_matrix_view_into(&matrix.view(), &mut correlation).unwrap();
+
+        assert_eq!(means, column_means(&matrix));
+        assert_eq!(centered, center_columns(&matrix));
+        assert_eq!(covariance, covariance_matrix(&matrix).unwrap());
+        assert_eq!(correlation, correlation_matrix(&matrix).unwrap());
+    }
+
+    #[test]
+    fn complex_stats_view_into_reuses_outputs() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 2.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(3.0, -2.0),
+            Complex64::new(4.0, 1.0),
+        ])
+        .unwrap();
+
+        let mut means = Array1::<Complex64>::zeros(2);
+        let mut centered = Array2::<Complex64>::zeros((3, 2));
+        let mut covariance = Array2::<Complex64>::zeros((2, 2));
+        let mut correlation = Array2::<Complex64>::zeros((2, 2));
+
+        column_means_complex_view_into(&matrix.view(), &mut means).unwrap();
+        center_columns_complex_view_into(&matrix.view(), &mut centered).unwrap();
+        covariance_matrix_complex_view_into(&matrix.view(), &mut covariance).unwrap();
+        correlation_matrix_complex_view_into(&matrix.view(), &mut correlation).unwrap();
+
+        assert_eq!(means, column_means_complex(&matrix));
+        assert_eq!(centered, center_columns_complex(&matrix));
+        assert_eq!(covariance, covariance_matrix_complex(&matrix).unwrap());
+        assert_eq!(correlation, correlation_matrix_complex(&matrix).unwrap());
+    }
+
+    #[test]
+    fn stats_view_into_rejects_wrong_output_shapes() {
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0_f64, 3.0, 2.0, 2.0, 3.0, 1.0, 4.0, 0.0])
+                .unwrap();
+        let mut bad_means = Array1::<f64>::zeros(3);
+        let mut bad_centered = Array2::<f64>::zeros((4, 3));
+        let mut bad_covariance = Array2::<f64>::zeros((3, 3));
+
+        assert!(matches!(
+            column_means_view_into(&matrix.view(), &mut bad_means),
+            Err(StatsError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            center_columns_view_into(&matrix.view(), &mut bad_centered),
+            Err(StatsError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            covariance_matrix_view_into(&matrix.view(), &mut bad_covariance),
+            Err(StatsError::InvalidInput(_))
+        ));
     }
 }

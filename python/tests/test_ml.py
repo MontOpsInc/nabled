@@ -131,6 +131,32 @@ def test_center_columns():
     np.testing.assert_allclose(means, [0.0, 0.0], atol=1e-14)
 
 
+def test_stats_reuse_output_buffers():
+    x = np.asfortranarray(np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32))
+
+    means_out = np.empty(2, dtype=np.float32)
+    centered_out = np.empty_like(x, order="F")
+    covariance_out = np.empty((2, 2), dtype=np.float32, order="F")
+    correlation_out = np.empty((2, 2), dtype=np.float32, order="F")
+
+    means = pynabled.column_means(x, out=means_out)
+    centered = pynabled.center_columns(x, out=centered_out)
+    covariance = pynabled.covariance_matrix(x, out=covariance_out)
+    correlation = pynabled.correlation_matrix(x, out=correlation_out)
+
+    assert means is means_out
+    assert centered is centered_out
+    assert covariance is covariance_out
+    assert correlation is correlation_out
+    assert centered.flags["F_CONTIGUOUS"]
+    assert covariance.flags["F_CONTIGUOUS"]
+    assert correlation.flags["F_CONTIGUOUS"]
+    np.testing.assert_allclose(means, x.mean(axis=0), rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(centered.mean(axis=0), np.zeros(2, dtype=np.float32), atol=1e-6)
+    np.testing.assert_allclose(covariance, np.cov(x, rowvar=False), rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(correlation, np.corrcoef(x, rowvar=False), rtol=1e-5, atol=1e-6)
+
+
 def test_covariance_matrix():
     np.random.seed(42)
     x = np.random.randn(100, 3).astype(np.float64)
@@ -173,6 +199,37 @@ def test_complex_stats():
     assert cov.shape == (2, 2)
     assert corr.shape == (2, 2)
     np.testing.assert_allclose(pynabled.column_means_complex(centered), [0j, 0j], atol=1e-12)
+
+
+def test_complex_stats_reuse_output_buffers():
+    x = np.asfortranarray(
+        np.array(
+            [[1 + 1j, 2 - 1j], [3 + 0j, 4 + 1j], [5 - 2j, 6 + 0.5j]],
+            dtype=np.complex128,
+        )
+    )
+
+    means_out = np.empty(2, dtype=np.complex128)
+    centered_out = np.empty_like(x, order="F")
+    covariance_out = np.empty((2, 2), dtype=np.complex128, order="F")
+    correlation_out = np.empty((2, 2), dtype=np.complex128, order="F")
+
+    means = pynabled.column_means_complex(x, out=means_out)
+    centered = pynabled.center_columns_complex(x, out=centered_out)
+    covariance = pynabled.covariance_matrix_complex(x, out=covariance_out)
+    correlation = pynabled.correlation_matrix_complex(x, out=correlation_out)
+
+    assert means is means_out
+    assert centered is centered_out
+    assert covariance is covariance_out
+    assert correlation is correlation_out
+    assert centered.flags["F_CONTIGUOUS"]
+    assert covariance.flags["F_CONTIGUOUS"]
+    assert correlation.flags["F_CONTIGUOUS"]
+    np.testing.assert_allclose(means, x.mean(axis=0), atol=1e-12)
+    np.testing.assert_allclose(pynabled.column_means_complex(centered), [0j, 0j], atol=1e-12)
+    np.testing.assert_allclose(covariance, covariance.T.conj(), atol=1e-12)
+    np.testing.assert_allclose(correlation, correlation.T.conj(), atol=1e-12)
 
 
 def test_complex_ml_bindings_accept_strided_inputs_and_pca_out():

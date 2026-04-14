@@ -168,6 +168,7 @@ impl IntoNabledError for OrthogonalizationError {
     fn into_nabled_error(self) -> NabledError {
         match self {
             OrthogonalizationError::EmptyMatrix => NabledError::Shape(ShapeError::EmptyInput),
+            OrthogonalizationError::InvalidInput(message) => NabledError::InvalidInput(message),
             OrthogonalizationError::NumericalInstability => NabledError::NumericalInstability,
         }
     }

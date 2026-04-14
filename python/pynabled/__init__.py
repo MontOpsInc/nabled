@@ -1038,10 +1038,32 @@ def bfgs_complex(
     return _raw.bfgs_complex(initial, objective, gradient, **kwargs)
 
 
-center_columns = _raw.center_columns
-center_columns_complex = _raw.center_columns_complex
-column_means = _raw.column_means
-column_means_complex = _raw.column_means_complex
+def center_columns(matrix, out=None):
+    if out is None:
+        return _raw.center_columns(matrix)
+    _raw.center_columns_into(matrix, out)
+    return out
+
+
+def center_columns_complex(matrix, out=None):
+    if out is None:
+        return _raw.center_columns_complex(matrix)
+    _raw.center_columns_complex_into(matrix, out)
+    return out
+
+
+def column_means(matrix, out=None):
+    if out is None:
+        return _raw.column_means(matrix)
+    _raw.column_means_into(matrix, out)
+    return out
+
+
+def column_means_complex(matrix, out=None):
+    if out is None:
+        return _raw.column_means_complex(matrix)
+    _raw.column_means_complex_into(matrix, out)
+    return out
 
 
 def conjugate_gradient(
@@ -1086,12 +1108,37 @@ def conjugate_gradient_complex(
     return out
 
 
-correlation_matrix = _raw.correlation_matrix
+def correlation_matrix(matrix, out=None):
+    if out is None:
+        return _raw.correlation_matrix(matrix)
+    _raw.correlation_matrix_into(matrix, out)
+    return out
+
+
 correlation_matrix_complex = _raw.correlation_matrix_complex
 cosine_distance = _raw.cosine_distance
 cosine_similarity = _raw.cosine_similarity
-covariance_matrix = _raw.covariance_matrix
-covariance_matrix_complex = _raw.covariance_matrix_complex
+
+
+def correlation_matrix_complex(matrix, out=None):
+    if out is None:
+        return _raw.correlation_matrix_complex(matrix)
+    _raw.correlation_matrix_complex_into(matrix, out)
+    return out
+
+
+def covariance_matrix(matrix, out=None):
+    if out is None:
+        return _raw.covariance_matrix(matrix)
+    _raw.covariance_matrix_into(matrix, out)
+    return out
+
+
+def covariance_matrix_complex(matrix, out=None):
+    if out is None:
+        return _raw.covariance_matrix_complex(matrix)
+    _raw.covariance_matrix_complex_into(matrix, out)
+    return out
 dot = _raw.dot
 
 
@@ -1177,8 +1224,18 @@ def gradient_descent_complex(
     return _raw.gradient_descent_complex(initial, objective, gradient, **kwargs)
 
 
-gram_schmidt = _raw.gram_schmidt
-gram_schmidt_classic = _raw.gram_schmidt_classic
+def gram_schmidt(matrix, out=None):
+    if out is None:
+        return _raw.gram_schmidt(matrix)
+    _raw.gram_schmidt_into(matrix, out)
+    return out
+
+
+def gram_schmidt_classic(matrix, out=None):
+    if out is None:
+        return _raw.gram_schmidt_classic(matrix)
+    _raw.gram_schmidt_classic_into(matrix, out)
+    return out
 l2_norm = _raw.l2_norm
 
 

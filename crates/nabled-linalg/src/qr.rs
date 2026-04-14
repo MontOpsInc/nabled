@@ -8,6 +8,7 @@ use num_complex::Complex64;
 
 use crate::internal::DenseKernelPolicy;
 #[cfg(not(feature = "lapack-provider"))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 use crate::internal::qr_gram_schmidt;
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;

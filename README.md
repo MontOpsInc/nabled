@@ -86,6 +86,10 @@ vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `m
 `matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`, `matrix_sign`,
 `matrix_exp_eigen`, `sylvester_solve`, `lyapunov_solve`, `pca_transform`, and
 `pca_inverse_transform` all accept `out=` wherever the Rust core already has `*_into` coverage.
+The direct NumPy stats and orthogonalization rows now follow that same contract too:
+`column_means`, `center_columns`, `covariance_matrix`, `correlation_matrix`, their complex
+counterparts, and `gram_schmidt` / `gram_schmidt_classic` all accept `out=` under the existing
+public names.
 `compute_pca(...)`, `compute_pca_complex(...)`, `linear_regression(...)`, and
 `linear_regression_complex(...)` now also accept typed `out=` result buffers
 (`PcaResult` / `RegressionResult`) under the existing public names, so repeated ML workflows do

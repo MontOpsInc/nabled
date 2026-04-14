@@ -61,6 +61,39 @@ def test_gram_schmidt_classic():
     np.testing.assert_allclose(qtq, np.eye(2), rtol=1e-10, atol=1e-14)
 
 
+def test_gram_schmidt_reuses_output_buffers():
+    real = np.asfortranarray(np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0]], dtype=np.float32))
+    complex_matrix = np.asfortranarray(
+        np.array(
+            [[1.0 + 0.0j, 1.0 - 1.0j], [1.0 + 1.0j, 0.0 + 0.0j], [0.0 + 0.0j, 1.0 + 0.5j]],
+            dtype=np.complex128,
+        )
+    )
+
+    modified_out = np.empty_like(real, order="F")
+    classic_out = np.empty_like(real, order="F")
+    complex_out = np.empty_like(complex_matrix, order="F")
+
+    modified = pynabled.gram_schmidt(real, out=modified_out)
+    classic = pynabled.gram_schmidt_classic(real, out=classic_out)
+    complex_result = pynabled.gram_schmidt(complex_matrix, out=complex_out)
+
+    assert modified is modified_out
+    assert classic is classic_out
+    assert complex_result is complex_out
+    assert modified.flags["F_CONTIGUOUS"]
+    assert classic.flags["F_CONTIGUOUS"]
+    assert complex_result.flags["F_CONTIGUOUS"]
+    np.testing.assert_allclose(modified.T @ modified, np.eye(2, dtype=np.float32), rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(classic.T @ classic, np.eye(2, dtype=np.float32), rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(
+        complex_result.conj().T @ complex_result,
+        np.eye(2, dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+
 def test_dense_kernels_accept_non_contiguous_inputs():
     matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64).T
     vector = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)[::2]

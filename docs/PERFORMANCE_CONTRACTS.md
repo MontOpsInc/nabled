@@ -31,6 +31,7 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 11. Tensor-Train borrowed-core helper paths now materialize only the SVD work matrices they already need for TT orthogonalization/rounding sweeps, instead of first rebuilding an owned `TensorTrainResult` or requiring standard-layout TT core views at the Python/Arrow boundary.
 12. Direct Python triangular solve `out=` paths now pass borrowed RHS views into generic mutable-output `nabled-linalg::triangular` helpers, so the binding no longer clones vector or matrix RHS/result arrays just to reuse caller-provided output buffers.
 13. Owned tensor egress in `pynabled` no longer standardizes ndarray layout before NumPy handoff; owned Fortran/strided tensor results are now handed to NumPy with preserved strides instead of an extra full clone.
+14. Direct Python stats and orthogonalization `out=` paths now write through shared Rust `*_into` helpers (`nabled-ml::stats` and `nabled-linalg::orthogonalization`) instead of forcing wrapper-level owned result allocation before handing arrays back to NumPy.
 
 ### Unavoidable internal materializations
 

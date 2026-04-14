@@ -205,6 +205,7 @@ pub(crate) fn inverse_from_lu<T: NabledReal>(
     Ok(inverse)
 }
 
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 pub(crate) fn qr_gram_schmidt<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
     tolerance: T,

@@ -19,6 +19,29 @@ pub fn column_means<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyResul
     }
 }
 
+/// Compute column means into caller-provided output.
+#[pyfunction]
+pub fn column_means_into(matrix: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> PyResult<()> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let mut output_arr = utils::output_array1::<f32>(output, "output", "float32")?;
+            nabled_ml::stats::column_means_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let mut output_arr = utils::output_array1::<f64>(output, "output", "float64")?;
+            nabled_ml::stats::column_means_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+    }
+}
+
 /// Center columns (subtract mean).
 #[pyfunction]
 pub fn center_columns<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyResult<Py<PyAny>> {
@@ -31,6 +54,29 @@ pub fn center_columns<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> PyRes
             py,
             nabled_ml::stats::center_columns_view(&arr.as_array()),
         )),
+    }
+}
+
+/// Center columns into caller-provided output.
+#[pyfunction]
+pub fn center_columns_into(matrix: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> PyResult<()> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_ml::stats::center_columns_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_ml::stats::center_columns_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
     }
 }
 
@@ -47,6 +93,32 @@ pub fn covariance_matrix<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> Py
             let result =
                 nabled_ml::stats::covariance_matrix_view(&arr.as_array()).map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, result))
+        }
+    }
+}
+
+/// Compute covariance matrix into caller-provided output.
+#[pyfunction]
+pub fn covariance_matrix_into(
+    matrix: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_ml::stats::covariance_matrix_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_ml::stats::covariance_matrix_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
         }
     }
 }
@@ -68,6 +140,32 @@ pub fn correlation_matrix<'py>(py: Python<'py>, matrix: &Bound<'py, PyAny>) -> P
     }
 }
 
+/// Compute correlation matrix into caller-provided output.
+#[pyfunction]
+pub fn correlation_matrix_into(
+    matrix: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            nabled_ml::stats::correlation_matrix_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            nabled_ml::stats::correlation_matrix_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+    }
+}
+
 /// Compute column means for a complex matrix.
 #[pyfunction]
 pub fn column_means_complex<'py>(
@@ -83,6 +181,26 @@ pub fn column_means_complex<'py>(
     }
 }
 
+/// Compute complex column means into caller-provided output.
+#[pyfunction]
+pub fn column_means_complex_into(
+    matrix: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::numeric_array2(matrix, "matrix")? {
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let mut output_arr =
+                utils::output_array1::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_ml::stats::column_means_complex_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_complex_dtype_error(&["matrix", "output"])),
+    }
+}
+
 /// Center complex columns (subtract mean).
 #[pyfunction]
 pub fn center_columns_complex<'py>(
@@ -95,6 +213,26 @@ pub fn center_columns_complex<'py>(
             nabled_ml::stats::center_columns_complex_view(&arr.as_array()),
         )),
         _ => Err(utils::matching_complex_dtype_error(&["matrix"])),
+    }
+}
+
+/// Center complex columns into caller-provided output.
+#[pyfunction]
+pub fn center_columns_complex_into(
+    matrix: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::numeric_array2(matrix, "matrix")? {
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let mut output_arr =
+                utils::output_array2::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_ml::stats::center_columns_complex_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_complex_dtype_error(&["matrix", "output"])),
     }
 }
 
@@ -114,6 +252,26 @@ pub fn covariance_matrix_complex<'py>(
     }
 }
 
+/// Compute covariance matrix for a complex matrix into caller-provided output.
+#[pyfunction]
+pub fn covariance_matrix_complex_into(
+    matrix: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::numeric_array2(matrix, "matrix")? {
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let mut output_arr =
+                utils::output_array2::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_ml::stats::covariance_matrix_complex_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_complex_dtype_error(&["matrix", "output"])),
+    }
+}
+
 /// Compute correlation matrix for a complex matrix.
 #[pyfunction]
 pub fn correlation_matrix_complex<'py>(
@@ -127,5 +285,25 @@ pub fn correlation_matrix_complex<'py>(
             Ok(utils::pyarray2_from_owned(py, result))
         }
         _ => Err(utils::matching_complex_dtype_error(&["matrix"])),
+    }
+}
+
+/// Compute correlation matrix for a complex matrix into caller-provided output.
+#[pyfunction]
+pub fn correlation_matrix_complex_into(
+    matrix: &Bound<'_, PyAny>,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::numeric_array2(matrix, "matrix")? {
+        utils::NumericReadonlyArray2::C64(arr) => {
+            let mut output_arr =
+                utils::output_array2::<num_complex::Complex64>(output, "output", "complex128")?;
+            nabled_ml::stats::correlation_matrix_complex_view_into(
+                &arr.as_array(),
+                &mut output_arr.as_array_mut(),
+            )
+            .map_err(to_py_err)
+        }
+        _ => Err(utils::matching_complex_dtype_error(&["matrix", "output"])),
     }
 }

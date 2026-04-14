@@ -202,7 +202,12 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Orthogonalization
     m.add_function(pyo3::wrap_pyfunction!(linalg::orthogonalization::gram_schmidt, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(linalg::orthogonalization::gram_schmidt_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(linalg::orthogonalization::gram_schmidt_classic, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        linalg::orthogonalization::gram_schmidt_classic_into,
+        m
+    )?)?;
 
     // Tensor
     m.add_function(pyo3::wrap_pyfunction!(linalg::tensor::cube_matvec, m)?)?;
@@ -345,13 +350,21 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_inverse_transform_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::pca::pca_inverse_transform_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::column_means, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::column_means_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::center_columns, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::center_columns_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::covariance_matrix, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::covariance_matrix_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::correlation_matrix, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::correlation_matrix_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::column_means_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::column_means_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::center_columns_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::center_columns_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::covariance_matrix_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::covariance_matrix_complex_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::correlation_matrix_complex, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::correlation_matrix_complex_into, m)?)?;
 
     // Iterative (dense CG, GMRES)
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient, m)?)?;

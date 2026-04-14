@@ -127,6 +127,7 @@ impl IntoNabledError for StatsError {
             StatsError::InsufficientSamples => {
                 NabledError::InvalidInput("at least two observations are required".to_string())
             }
+            StatsError::InvalidInput(message) => NabledError::InvalidInput(message),
             StatsError::NumericalInstability => NabledError::NumericalInstability,
         }
     }
