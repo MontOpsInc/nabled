@@ -56,6 +56,20 @@ def test_polar_reuses_svd_result_and_output_buffers():
     np.testing.assert_allclose(out.u @ out.p, a, rtol=1e-10, atol=1e-12)
 
 
+def test_polar_reuses_direct_matrix_output_buffers():
+    a = np.array([[1.0, 2.0], [3.0, 5.0]], dtype=np.float64)
+    out = pynabled.PolarResult(
+        u=np.empty((2, 2), dtype=np.float64, order="F"),
+        p=np.empty((2, 2), dtype=np.float64, order="F"),
+    )
+
+    returned = pynabled.polar_compute(a, out=out)
+
+    assert returned is out
+    np.testing.assert_allclose(out.u @ out.p, a, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(out.u.T @ out.u, np.eye(2), rtol=1e-10, atol=1e-12)
+
+
 def test_polar_reuses_complex_svd_result():
     a = np.array([[1.0 + 1.0j, 2.0 - 0.5j], [3.0 + 0.25j, 4.0 - 1.0j]], dtype=np.complex128)
     svd = pynabled.svd_decompose(a)
@@ -68,3 +82,22 @@ def test_polar_reuses_complex_svd_result():
 
     assert returned is out
     np.testing.assert_allclose(out.u @ out.p, a, rtol=1e-10, atol=1e-12)
+
+
+def test_polar_reuses_direct_complex_matrix_output_buffers():
+    a = np.array([[1.0 + 1.0j, 2.0 - 0.5j], [3.0 + 0.25j, 4.0 - 1.0j]], dtype=np.complex128)
+    out = pynabled.PolarResult(
+        u=np.empty((2, 2), dtype=np.complex128, order="F"),
+        p=np.empty((2, 2), dtype=np.complex128, order="F"),
+    )
+
+    returned = pynabled.polar_compute(a, out=out)
+
+    assert returned is out
+    np.testing.assert_allclose(out.u @ out.p, a, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        out.u.conj().T @ out.u,
+        np.eye(2, dtype=np.complex128),
+        rtol=1e-10,
+        atol=1e-12,
+    )

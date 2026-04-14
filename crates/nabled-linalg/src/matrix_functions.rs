@@ -3,6 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
+use ndarray::linalg::general_mat_mul;
 use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, DataMut, Ix2};
 use num_complex::Complex64;
 
@@ -258,6 +259,155 @@ fn diagonal_from_real_complex(values: &Array1<f64>) -> Array2<Complex64> {
         diagonal[[i, i]] = Complex64::new(values[i], 0.0);
     }
     diagonal
+}
+
+fn compose_real_symmetric_factors_into<T, S, F>(
+    eigenvalues: &ArrayView1<'_, T>,
+    eigenvectors: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+    scratch: &mut Array2<T>,
+    mut transform: F,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+    F: FnMut(T) -> Result<T, MatrixFunctionError>,
+{
+    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
+    validate_output_shape(eigenvectors, output)?;
+
+    let n = eigenvalues.len();
+    if scratch.dim() != (n, n) {
+        *scratch = Array2::<T>::zeros((n, n));
+    }
+
+    for row in 0..n {
+        let scale = transform(eigenvalues[row])?;
+        for col in 0..n {
+            scratch[[row, col]] = eigenvectors[[col, row]] * scale;
+        }
+    }
+
+    general_mat_mul(T::one(), eigenvectors, &scratch.view(), T::zero(), output);
+    Ok(())
+}
+
+fn compose_complex_hermitian_factors_into<S, F>(
+    eigenvalues: &ArrayView1<'_, f64>,
+    eigenvectors: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+    scratch: &mut Array2<Complex64>,
+    mut transform: F,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+    F: FnMut(f64) -> Result<f64, MatrixFunctionError>,
+{
+    if eigenvalues.is_empty() || eigenvectors.is_empty() {
+        return Err(MatrixFunctionError::EmptyMatrix);
+    }
+    validate_output_shape_complex(eigenvectors, output)?;
+
+    let n = eigenvalues.len();
+    if eigenvectors.nrows() != eigenvectors.ncols() || eigenvectors.nrows() != n {
+        return Err(MatrixFunctionError::InvalidInput(
+            "eigen factor shapes are inconsistent".to_string(),
+        ));
+    }
+    if eigenvalues.iter().any(|value| !value.is_finite())
+        || eigenvectors.iter().any(|value| !value.re.is_finite() || !value.im.is_finite())
+    {
+        return Err(MatrixFunctionError::InvalidInput("eigen factors must be finite".to_string()));
+    }
+
+    if scratch.dim() != (n, n) {
+        *scratch = Array2::<Complex64>::zeros((n, n));
+    }
+
+    for row in 0..n {
+        let scale = Complex64::new(transform(eigenvalues[row])?, 0.0);
+        for col in 0..n {
+            scratch[[row, col]] = eigenvectors[[col, row]].conj() * scale;
+        }
+    }
+
+    general_mat_mul(
+        Complex64::new(1.0, 0.0),
+        eigenvectors,
+        &scratch.view(),
+        Complex64::new(0.0, 0.0),
+        output,
+    );
+    Ok(())
+}
+
+fn compose_real_svd_factors_into<T, S, F>(
+    u: &ArrayView2<'_, T>,
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+    scratch: &mut Array2<T>,
+    mut transform: F,
+) -> Result<(), MatrixFunctionError>
+where
+    T: MatrixFunctionScalar,
+    S: DataMut<Elem = T>,
+    F: FnMut(T) -> Result<T, MatrixFunctionError>,
+{
+    validate_real_svd_factor_dimensions(u, singular_values, vt)?;
+    if output.dim() != (u.nrows(), vt.ncols()) {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match the square matrix implied by the SVD factors".to_string(),
+        ));
+    }
+
+    if scratch.dim() != vt.dim() {
+        *scratch = Array2::<T>::zeros(vt.dim());
+    }
+
+    for row in 0..singular_values.len() {
+        let scale = transform(singular_values[row])?;
+        for col in 0..vt.ncols() {
+            scratch[[row, col]] = vt[[row, col]] * scale;
+        }
+    }
+
+    general_mat_mul(T::one(), u, &scratch.view(), T::zero(), output);
+    Ok(())
+}
+
+fn compose_complex_svd_factors_into<S, F>(
+    u: &ArrayView2<'_, Complex64>,
+    singular_values: &ArrayView1<'_, f64>,
+    vt: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+    scratch: &mut Array2<Complex64>,
+    mut transform: F,
+) -> Result<(), MatrixFunctionError>
+where
+    S: DataMut<Elem = Complex64>,
+    F: FnMut(f64) -> Result<f64, MatrixFunctionError>,
+{
+    validate_complex_svd_factor_dimensions(u, singular_values, vt)?;
+    if output.dim() != (u.nrows(), vt.ncols()) {
+        return Err(MatrixFunctionError::InvalidInput(
+            "output shape must match the square matrix implied by the SVD factors".to_string(),
+        ));
+    }
+
+    if scratch.dim() != vt.dim() {
+        *scratch = Array2::<Complex64>::zeros(vt.dim());
+    }
+
+    for row in 0..singular_values.len() {
+        let scale = Complex64::new(transform(singular_values[row])?, 0.0);
+        for col in 0..vt.ncols() {
+            scratch[[row, col]] = vt[[row, col]] * scale;
+        }
+    }
+
+    general_mat_mul(Complex64::new(1.0, 0.0), u, &scratch.view(), Complex64::new(0.0, 0.0), output);
+    Ok(())
 }
 
 fn taylor_matrix_exp<T: NabledReal>(
@@ -690,11 +840,10 @@ where
     T: MatrixFunctionScalar,
     S: DataMut<Elem = T>,
 {
-    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
-    validate_output_shape(eigenvectors, output)?;
-    let result = matrix_exp_eigen_from_factors_view(eigenvalues, eigenvectors)?;
-    output.assign(&result);
-    Ok(())
+    let mut scratch = Array2::<T>::zeros((0, 0));
+    compose_real_symmetric_factors_into(eigenvalues, eigenvectors, output, &mut scratch, |value| {
+        Ok(num_traits::Float::exp(value))
+    })
 }
 
 /// Compute matrix exponential via eigen decomposition from a matrix view.
@@ -781,11 +930,24 @@ where
     S: Data<Elem = T>,
 {
     validate_output_shape(&matrix.view(), output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_exp_eigen_impl(&matrix.view())?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    if !is_symmetric(&matrix.view(), base_tolerance::<T>()) {
+        return matrix_exp_view_with_workspace_into(
+            &matrix.view(),
+            DenseKernelPolicy::MATRIX_FUNCTION_SERIES_TERMS,
+            base_tolerance::<T>(),
+            output,
+            workspace,
+        );
+    }
+    let decomposition = eigen::symmetric_view(&matrix.view())
+        .map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    compose_real_symmetric_factors_into(
+        &decomposition.eigenvalues.view(),
+        &decomposition.eigenvectors.view(),
+        output,
+        &mut workspace.scratch,
+        |value| Ok(num_traits::Float::exp(value)),
+    )
 }
 
 /// Compute complex matrix exponential via Hermitian eigen decomposition.
@@ -893,11 +1055,23 @@ where
     S: Data<Elem = Complex64>,
 {
     validate_output_shape_complex(&matrix.view(), output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_exp_eigen_complex_impl(&matrix.view())?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    if !is_hermitian(&matrix.view(), DenseKernelPolicy::BASE_TOLERANCE) {
+        return matrix_exp_complex_view_with_workspace_into(
+            &matrix.view(),
+            DenseKernelPolicy::MATRIX_FUNCTION_SERIES_TERMS,
+            DenseKernelPolicy::BASE_TOLERANCE,
+            output,
+            workspace,
+        );
+    }
+    let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(&matrix.view())?;
+    compose_complex_hermitian_factors_into(
+        &eigenvalues.view(),
+        &eigenvectors.view(),
+        output,
+        &mut workspace.scratch,
+        |value| Ok(num_traits::Float::exp(value)),
+    )
 }
 
 /// Compute matrix logarithm via Taylor expansion around identity.
@@ -1113,11 +1287,15 @@ where
     T: MatrixFunctionScalar,
     S: DataMut<Elem = T>,
 {
-    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
-    validate_output_shape(eigenvectors, output)?;
-    let result = matrix_log_eigen_from_factors_view(eigenvalues, eigenvectors)?;
-    output.assign(&result);
-    Ok(())
+    let tolerance = base_tolerance::<T>();
+    let mut scratch = Array2::<T>::zeros((0, 0));
+    compose_real_symmetric_factors_into(eigenvalues, eigenvectors, output, &mut scratch, |value| {
+        if value <= tolerance {
+            Err(MatrixFunctionError::NotPositiveDefinite)
+        } else {
+            Ok(num_traits::Float::ln(value))
+        }
+    })
 }
 
 /// Compute matrix logarithm via eigen decomposition from a matrix view.
@@ -1176,12 +1354,7 @@ pub fn matrix_log_eigen_with_workspace_into<T>(
 where
     T: MatrixFunctionScalar,
 {
-    validate_output_shape(matrix, output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_eigen_impl(&matrix.view())?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    matrix_log_eigen_view_with_workspace_into(&matrix.view(), output, workspace)
 }
 
 /// Compute matrix logarithm via eigen decomposition from a view into `output` with reusable
@@ -1203,11 +1376,25 @@ where
             "output shape must match input matrix shape".to_string(),
         ));
     }
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_eigen_impl(matrix)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    let tolerance = base_tolerance::<T>();
+    if !is_symmetric(matrix, tolerance) {
+        return Err(MatrixFunctionError::NotSymmetric);
+    }
+    let decomposition =
+        eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    compose_real_symmetric_factors_into(
+        &decomposition.eigenvalues.view(),
+        &decomposition.eigenvectors.view(),
+        output,
+        &mut workspace.scratch,
+        |value| {
+            if value <= tolerance {
+                Err(MatrixFunctionError::NotPositiveDefinite)
+            } else {
+                Ok(num_traits::Float::ln(value))
+            }
+        },
+    )
 }
 
 /// Compute complex matrix logarithm via Hermitian eigen decomposition.
@@ -1287,12 +1474,7 @@ pub fn matrix_log_eigen_complex_with_workspace_into(
     output: &mut Array2<Complex64>,
     workspace: &mut MatrixFunctionComplexWorkspace,
 ) -> Result<(), MatrixFunctionError> {
-    validate_output_shape_complex(matrix, output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_eigen_complex_impl(&matrix.view())?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    matrix_log_eigen_complex_view_with_workspace_into(&matrix.view(), output, workspace)
 }
 
 /// Compute complex matrix logarithm via Hermitian eigen decomposition from a view into `output`
@@ -1314,11 +1496,23 @@ where
             "output shape must match input matrix shape".to_string(),
         ));
     }
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_eigen_complex_impl(matrix)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
+        return Err(MatrixFunctionError::NotSymmetric);
+    }
+    let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
+    compose_complex_hermitian_factors_into(
+        &eigenvalues.view(),
+        &eigenvectors.view(),
+        output,
+        &mut workspace.scratch,
+        |value| {
+            if value <= DenseKernelPolicy::BASE_TOLERANCE {
+                Err(MatrixFunctionError::NotPositiveDefinite)
+            } else {
+                Ok(num_traits::Float::ln(value))
+            }
+        },
+    )
 }
 
 /// Compute matrix logarithm via SVD.
@@ -1481,14 +1675,15 @@ where
     T: MatrixFunctionScalar,
     S: DataMut<Elem = T>,
 {
-    if output.dim() != (u.nrows(), vt.ncols()) {
-        return Err(MatrixFunctionError::InvalidInput(
-            "output shape must match the square matrix implied by the SVD factors".to_string(),
-        ));
-    }
-    let result = matrix_log_svd_from_svd_view(u, singular_values, vt)?;
-    output.assign(&result);
-    Ok(())
+    let tolerance = base_tolerance::<T>();
+    let mut scratch = Array2::<T>::zeros((0, 0));
+    compose_real_svd_factors_into(u, singular_values, vt, output, &mut scratch, |value| {
+        if value <= tolerance {
+            Err(MatrixFunctionError::NotPositiveDefinite)
+        } else {
+            Ok(num_traits::Float::ln(value))
+        }
+    })
 }
 
 /// Compute matrix logarithm via SVD from a view into `output`.
@@ -1533,14 +1728,14 @@ pub fn matrix_log_svd_complex_from_svd_into<S>(
 where
     S: DataMut<Elem = Complex64>,
 {
-    if output.dim() != (u.nrows(), vt.ncols()) {
-        return Err(MatrixFunctionError::InvalidInput(
-            "output shape must match the square matrix implied by the SVD factors".to_string(),
-        ));
-    }
-    let result = matrix_log_svd_complex_from_svd_view(u, singular_values, vt)?;
-    output.assign(&result);
-    Ok(())
+    let mut scratch = Array2::<Complex64>::zeros((0, 0));
+    compose_complex_svd_factors_into(u, singular_values, vt, output, &mut scratch, |value| {
+        if value <= DenseKernelPolicy::BASE_TOLERANCE {
+            Err(MatrixFunctionError::NotPositiveDefinite)
+        } else {
+            Ok(value.ln())
+        }
+    })
 }
 
 /// Compute complex matrix logarithm via SVD from a view into `output`.
@@ -1571,12 +1766,7 @@ pub fn matrix_log_svd_with_workspace_into<T>(
 where
     T: MatrixFunctionScalar,
 {
-    validate_output_shape(matrix, output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_svd_impl(&matrix.view())?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    matrix_log_svd_view_with_workspace_into(&matrix.view(), output, workspace)
 }
 
 /// Compute matrix logarithm via SVD from a view into `output` with reusable `workspace`.
@@ -1597,11 +1787,22 @@ where
             "output shape must match input matrix shape".to_string(),
         ));
     }
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_svd_impl(matrix)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    let svd = svd::decompose_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    let tolerance = base_tolerance::<T>();
+    compose_real_svd_factors_into(
+        &svd.u.view(),
+        &svd.singular_values.view(),
+        &svd.vt.view(),
+        output,
+        &mut workspace.scratch,
+        |value| {
+            if value <= tolerance {
+                Err(MatrixFunctionError::NotPositiveDefinite)
+            } else {
+                Ok(num_traits::Float::ln(value))
+            }
+        },
+    )
 }
 
 /// Compute complex matrix logarithm via SVD into `output` with reusable `workspace`.
@@ -1614,12 +1815,7 @@ pub fn matrix_log_svd_complex_with_workspace_into(
     output: &mut Array2<Complex64>,
     workspace: &mut MatrixFunctionComplexWorkspace,
 ) -> Result<(), MatrixFunctionError> {
-    validate_output_shape_complex(matrix, output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_svd_complex_impl(&matrix.view())?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    matrix_log_svd_complex_view_with_workspace_into(&matrix.view(), output, workspace)
 }
 
 /// Compute complex matrix logarithm via SVD from a view into `output` with reusable `workspace`.
@@ -1640,11 +1836,26 @@ where
             "output shape must match input matrix shape".to_string(),
         ));
     }
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_log_svd_complex_impl(matrix)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    let svd = svd::decompose_complex_view(matrix).map_err(|error| match error {
+        svd::SVDError::EmptyMatrix => MatrixFunctionError::EmptyMatrix,
+        svd::SVDError::NotSquare => MatrixFunctionError::NotSquare,
+        svd::SVDError::ConvergenceFailed => MatrixFunctionError::ConvergenceFailed,
+        svd::SVDError::InvalidInput(message) => MatrixFunctionError::InvalidInput(message),
+    })?;
+    compose_complex_svd_factors_into(
+        &svd.u.view(),
+        &svd.singular_values.view(),
+        &svd.vt.view(),
+        output,
+        &mut workspace.scratch,
+        |value| {
+            if value <= DenseKernelPolicy::BASE_TOLERANCE {
+                Err(MatrixFunctionError::NotPositiveDefinite)
+            } else {
+                Ok(value.ln())
+            }
+        },
+    )
 }
 
 /// Compute matrix power via eigen decomposition (symmetric matrices).
@@ -1709,11 +1920,10 @@ where
     T: MatrixFunctionScalar,
     S: DataMut<Elem = T>,
 {
-    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
-    validate_output_shape(eigenvectors, output)?;
-    let result = matrix_power_from_factors_view(eigenvalues, eigenvectors, power)?;
-    output.assign(&result);
-    Ok(())
+    let mut scratch = Array2::<T>::zeros((0, 0));
+    compose_real_symmetric_factors_into(eigenvalues, eigenvectors, output, &mut scratch, |value| {
+        Ok(num_traits::Float::powf(value, power))
+    })
 }
 
 /// Compute matrix power via eigen decomposition from a matrix view.
@@ -1776,12 +1986,7 @@ pub fn matrix_power_with_workspace_into<T>(
 where
     T: MatrixFunctionScalar,
 {
-    validate_output_shape(matrix, output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_power_impl(&matrix.view(), power)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    matrix_power_view_with_workspace_into(&matrix.view(), power, output, workspace)
 }
 
 /// Compute matrix power from a view into `output` using reusable `workspace`.
@@ -1803,11 +2008,19 @@ where
             "output shape must match input matrix shape".to_string(),
         ));
     }
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_power_impl(matrix, power)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    let tolerance = base_tolerance::<T>();
+    if !is_symmetric(matrix, tolerance) {
+        return Err(MatrixFunctionError::NotSymmetric);
+    }
+    let decomposition =
+        eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    compose_real_symmetric_factors_into(
+        &decomposition.eigenvalues.view(),
+        &decomposition.eigenvectors.view(),
+        output,
+        &mut workspace.scratch,
+        |value| Ok(num_traits::Float::powf(value, power)),
+    )
 }
 
 /// Compute complex matrix power via Hermitian eigen decomposition.
@@ -1890,12 +2103,7 @@ pub fn matrix_power_complex_with_workspace_into(
     output: &mut Array2<Complex64>,
     workspace: &mut MatrixFunctionComplexWorkspace,
 ) -> Result<(), MatrixFunctionError> {
-    validate_output_shape_complex(matrix, output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_power_complex_impl(&matrix.view(), power)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    matrix_power_complex_view_with_workspace_into(&matrix.view(), power, output, workspace)
 }
 
 /// Compute complex matrix power from a view into `output` using reusable `workspace`.
@@ -1917,11 +2125,17 @@ where
             "output shape must match input matrix shape".to_string(),
         ));
     }
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_power_complex_impl(matrix, power)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
+        return Err(MatrixFunctionError::NotSymmetric);
+    }
+    let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
+    compose_complex_hermitian_factors_into(
+        &eigenvalues.view(),
+        &eigenvectors.view(),
+        output,
+        &mut workspace.scratch,
+        |value| Ok(num_traits::Float::powf(value, power)),
+    )
 }
 
 /// Compute matrix sign via eigen decomposition (symmetric matrices).
@@ -1990,11 +2204,17 @@ where
     T: MatrixFunctionScalar,
     S: DataMut<Elem = T>,
 {
-    validate_real_eigen_factor_dimensions(eigenvalues, eigenvectors)?;
-    validate_output_shape(eigenvectors, output)?;
-    let result = matrix_sign_from_factors_view(eigenvalues, eigenvectors)?;
-    output.assign(&result);
-    Ok(())
+    let tolerance = base_tolerance::<T>();
+    let mut scratch = Array2::<T>::zeros((0, 0));
+    compose_real_symmetric_factors_into(eigenvalues, eigenvectors, output, &mut scratch, |value| {
+        Ok(if value > tolerance {
+            T::one()
+        } else if value < -tolerance {
+            -T::one()
+        } else {
+            T::zero()
+        })
+    })
 }
 
 /// Compute matrix sign via eigen decomposition from a matrix view.
@@ -2051,12 +2271,7 @@ pub fn matrix_sign_with_workspace_into<T>(
 where
     T: MatrixFunctionScalar,
 {
-    validate_output_shape(matrix, output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_sign_impl(&matrix.view())?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    matrix_sign_view_with_workspace_into(&matrix.view(), output, workspace)
 }
 
 /// Compute matrix sign from a view into `output` using reusable `workspace`.
@@ -2077,11 +2292,27 @@ where
             "output shape must match input matrix shape".to_string(),
         ));
     }
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_sign_impl(matrix)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    let tolerance = base_tolerance::<T>();
+    if !is_symmetric(matrix, tolerance) {
+        return Err(MatrixFunctionError::NotSymmetric);
+    }
+    let decomposition =
+        eigen::symmetric_view(matrix).map_err(|_| MatrixFunctionError::ConvergenceFailed)?;
+    compose_real_symmetric_factors_into(
+        &decomposition.eigenvalues.view(),
+        &decomposition.eigenvectors.view(),
+        output,
+        &mut workspace.scratch,
+        |value| {
+            Ok(if value > tolerance {
+                T::one()
+            } else if value < -tolerance {
+                -T::one()
+            } else {
+                T::zero()
+            })
+        },
+    )
 }
 
 /// Compute complex matrix sign via Hermitian eigen decomposition.
@@ -2166,12 +2397,7 @@ pub fn matrix_sign_complex_with_workspace_into(
     output: &mut Array2<Complex64>,
     workspace: &mut MatrixFunctionComplexWorkspace,
 ) -> Result<(), MatrixFunctionError> {
-    validate_output_shape_complex(matrix, output)?;
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_sign_complex_impl(&matrix.view())?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    matrix_sign_complex_view_with_workspace_into(&matrix.view(), output, workspace)
 }
 
 /// Compute complex matrix sign from a view into `output` using reusable `workspace`.
@@ -2192,11 +2418,25 @@ where
             "output shape must match input matrix shape".to_string(),
         ));
     }
-    workspace.ensure_square(matrix.nrows());
-    let result = matrix_sign_complex_impl(matrix)?;
-    workspace.scratch.assign(&result);
-    output.assign(&workspace.scratch);
-    Ok(())
+    if !is_hermitian(matrix, DenseKernelPolicy::BASE_TOLERANCE) {
+        return Err(MatrixFunctionError::NotSymmetric);
+    }
+    let (eigenvalues, eigenvectors) = hermitian_eigen_dispatch(matrix)?;
+    compose_complex_hermitian_factors_into(
+        &eigenvalues.view(),
+        &eigenvectors.view(),
+        output,
+        &mut workspace.scratch,
+        |value| {
+            Ok(if value > DenseKernelPolicy::BASE_TOLERANCE {
+                1.0
+            } else if value < -DenseKernelPolicy::BASE_TOLERANCE {
+                -1.0
+            } else {
+                0.0
+            })
+        },
+    )
 }
 
 #[cfg(test)]
@@ -3115,12 +3355,27 @@ mod tests {
             &eigen.eigenvectors.view(),
         )
         .unwrap();
+        let mut log_out = Array2::<f64>::zeros((2, 2));
+        matrix_log_eigen_from_factors_view_into(
+            &eigen.eigenvalues.view(),
+            &eigen.eigenvectors.view(),
+            &mut log_out.view_mut(),
+        )
+        .unwrap();
 
         let power_direct = matrix_power(&spd, 2.0_f64).unwrap();
         let power_from_factors = matrix_power_from_factors_view(
             &eigen.eigenvalues.view(),
             &eigen.eigenvectors.view(),
             2.0_f64,
+        )
+        .unwrap();
+        let mut power_out = Array2::<f64>::zeros((2, 2));
+        matrix_power_from_factors_view_into(
+            &eigen.eigenvalues.view(),
+            &eigen.eigenvectors.view(),
+            2.0_f64,
+            &mut power_out.view_mut(),
         )
         .unwrap();
 
@@ -3130,14 +3385,24 @@ mod tests {
             &signed_eigen.eigenvectors.view(),
         )
         .unwrap();
+        let mut sign_out = Array2::<f64>::zeros((2, 2));
+        matrix_sign_from_factors_view_into(
+            &signed_eigen.eigenvalues.view(),
+            &signed_eigen.eigenvectors.view(),
+            &mut sign_out.view_mut(),
+        )
+        .unwrap();
 
         for i in 0..2 {
             for j in 0..2 {
                 assert!((exp_direct[[i, j]] - exp_from_factors[[i, j]]).abs() < 1e-12_f64);
                 assert!((exp_direct[[i, j]] - exp_out[[i, j]]).abs() < 1e-12_f64);
                 assert!((log_direct[[i, j]] - log_from_factors[[i, j]]).abs() < 1e-12_f64);
+                assert!((log_direct[[i, j]] - log_out[[i, j]]).abs() < 1e-12_f64);
                 assert!((power_direct[[i, j]] - power_from_factors[[i, j]]).abs() < 1e-12_f64);
+                assert!((power_direct[[i, j]] - power_out[[i, j]]).abs() < 1e-12_f64);
                 assert!((sign_direct[[i, j]] - sign_from_factors[[i, j]]).abs() < 1e-12_f64);
+                assert!((sign_direct[[i, j]] - sign_out[[i, j]]).abs() < 1e-12_f64);
             }
         }
     }

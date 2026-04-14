@@ -287,18 +287,24 @@ def test_matrix_functions_reuse_real_eigen_result():
     eigen_spd = pynabled.eigen_symmetric(spd)
     eigen_signed = pynabled.eigen_symmetric(signed)
 
-    exp_from_result = pynabled.matrix_exp_eigen(eigen_spd)
+    exp_out = np.empty_like(spd, order="F")
+    returned_exp = pynabled.matrix_exp_eigen(eigen_spd, out=exp_out)
     log_out = np.empty_like(spd, order="F")
     returned_log = pynabled.matrix_log_eigen(eigen_spd, out=log_out)
-    power_from_result = pynabled.matrix_power(eigen_spd, 2.0)
-    sign_from_result = pynabled.matrix_sign(eigen_signed)
+    power_out = np.empty_like(spd, order="F")
+    returned_power = pynabled.matrix_power(eigen_spd, 2.0, out=power_out)
+    sign_out = np.empty_like(signed, order="F")
+    returned_sign = pynabled.matrix_sign(eigen_signed, out=sign_out)
 
+    assert returned_exp is exp_out
     assert returned_log is log_out
-    np.testing.assert_allclose(exp_from_result, pynabled.matrix_exp_eigen(spd), rtol=1e-10, atol=1e-12)
+    assert returned_power is power_out
+    assert returned_sign is sign_out
+    np.testing.assert_allclose(exp_out, pynabled.matrix_exp_eigen(spd), rtol=1e-10, atol=1e-12)
     np.testing.assert_allclose(log_out, pynabled.matrix_log_eigen(spd), rtol=1e-10, atol=1e-12)
-    np.testing.assert_allclose(power_from_result, spd @ spd, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(power_out, spd @ spd, rtol=1e-10, atol=1e-12)
     np.testing.assert_allclose(
-        sign_from_result,
+        sign_out,
         np.array([[1.0, 0.0], [0.0, -1.0]], dtype=np.float64),
         rtol=1e-10,
         atol=1e-12,

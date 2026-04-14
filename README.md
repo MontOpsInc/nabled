@@ -100,11 +100,15 @@ original matrix.
 `polar_compute(...)` and `matrix_log_svd(...)` now follow that same SVD-derived reuse story:
 `polar_compute(...)` can consume a typed `SvdResult` with optional typed `out=PolarResult(...)`
 reuse, and `matrix_log_svd(...)` can consume `SvdResult` directly instead of recomputing the
-decomposition.
+decomposition. Those factor-backed and direct-matrix `out=` paths now write through direct Rust
+output composition instead of allocating an intermediate full result before filling the caller's
+buffers.
 The real symmetric eigen-backed matrix-function helpers now follow the same pattern too:
 `matrix_exp_eigen(...)`, `matrix_log_eigen(...)`, `matrix_power(...)`, and `matrix_sign(...)` can
 consume a typed `EigenResult` directly with optional `out=` reuse, while `workspace=` remains a
-matrix-input-only contract on those factor-backed calls. `qr_solve_least_squares(...)` now also
+matrix-input-only contract on those factor-backed calls. Those factor-backed matrix-function
+`out=` paths now also compose directly into the caller buffer instead of allocate-then-assign
+behavior. `qr_solve_least_squares(...)` now also
 accepts both direct matrix `out=` reuse and typed `QrResult` reuse for square/tall factorizations,
 and `svd_null_space(...)` can reuse `SvdResult` when it retains a full right-singular basis
 (`vt` square).

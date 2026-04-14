@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 ## Purpose
 
@@ -32,6 +32,8 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 12. Direct Python triangular solve `out=` paths now pass borrowed RHS views into generic mutable-output `nabled-linalg::triangular` helpers, so the binding no longer clones vector or matrix RHS/result arrays just to reuse caller-provided output buffers.
 13. Owned tensor egress in `pynabled` no longer standardizes ndarray layout before NumPy handoff; owned Fortran/strided tensor results are now handed to NumPy with preserved strides instead of an extra full clone.
 14. Direct Python stats and orthogonalization `out=` paths now write through shared Rust `*_into` helpers (`nabled-ml::stats` and `nabled-linalg::orthogonalization`) instead of forcing wrapper-level owned result allocation before handing arrays back to NumPy.
+15. Factor-derived matrix-function `*_into` and workspace-backed direct-matrix paths now compose the current symmetric-eigen and SVD-backed outputs directly into caller-provided buffers through reusable scratch-backed matmul instead of allocating a full intermediate result and then copying it into `out`.
+16. Python `polar_compute(..., out=...)` now decomposes once and writes `u` / `p` directly into caller-provided `PolarResult` buffers for both direct matrix inputs and typed `SvdResult` factor inputs instead of materializing an intermediate full polar result before copying.
 
 ### Unavoidable internal materializations
 

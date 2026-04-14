@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 ## Summary
 
@@ -272,6 +272,25 @@ higher-level reusable result/workspace residue plus any remaining higher-level m
 copy/layout traps outside the already-landed dense/helper/PCA/regression/tensor-helper/LU/SVD/QR/
 polar/matrix-function/eigen-factor/sparse-factorization/tensor-result/tensor-TT-borrowed-view/
 triangular-output-reuse/stats/orthogonalization surfaces.
+A twenty-second `N-PY-007` factor-output materialization pass is now also landed: factor-derived
+matrix-function reuse paths and Python polar `out=` reuse no longer allocate a full temporary
+result and then copy it into caller buffers. `nabled-linalg::matrix_functions` now composes the
+current symmetric-eigen and SVD-backed `matrix_exp_eigen`, `matrix_log_eigen`,
+`matrix_log_svd`, `matrix_power`, and `matrix_sign` `*_into` / workspace-backed outputs directly
+into caller buffers through reusable scratch-backed matmul, and the Python
+`polar_compute(..., out=...)` bridge now decomposes once and writes `u` / `p` directly into
+caller-provided `PolarResult` buffers for both direct matrix inputs and typed `SvdResult` factor
+inputs instead of materializing an intermediate full polar result first. Validation is green
+end-to-end: `cargo +nightly fmt --all -- --config-path ./rustfmt.toml`, `cargo check -p
+pynabled`, `cargo check -p pynabled --no-default-features --features openblas-system`, targeted
+Rust matrix-functions coverage (`27 passed`), `python-quality`
+(`248 passed, 22 skipped`, `91%` Python coverage), and full `just checks`
+(Rust coverage gate `90.68%` line coverage). Remaining `N-PY-007` work is now narrowed again to
+the smaller higher-level reusable result/workspace residue plus any remaining higher-level
+materialization or copy/layout traps outside the already-landed dense/helper/PCA/regression/
+tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor/sparse-factorization/tensor-result/
+tensor-TT-borrowed-view/triangular-output-reuse/stats/orthogonalization/direct-output-factor
+surfaces.
 The first
 `N-PY-003` implementation pass is also landed:
 Python now has
