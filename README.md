@@ -79,7 +79,8 @@ config objects (`IterativeConfig`, `JacobianConfig`, `LineSearchConfig`, `Gradie
 `AdamConfig`, `MomentumConfig`, `RMSPropConfig`, `ProjectedGradientConfig`, `BFGSConfig`) instead
 of treating raw tuning-parameter shims as the long-term contract. The callback-driven Jacobian and
 optimizer helpers remain convenience APIs rather than no-compromise hot-path equivalents, because
-their objective/gradient evaluations still cross back into Python.
+their objective/gradient evaluations still cross back into Python and materialize transient
+carrier objects per callback evaluation.
 
 The Python NumPy-facing API now also exposes explicit output-buffer reuse beyond the primitive
 vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `matrix_exp`,

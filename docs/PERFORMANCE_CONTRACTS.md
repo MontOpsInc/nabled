@@ -46,6 +46,7 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 4. Current `wgpu` kernels stage host input buffers to device and read output buffers back to host memory per invocation; this host↔device transfer is expected for the current ndarray-owned public API contract.
 5. Opt-in MAGMA sparse APIs (`matvec_magma_*`, `matmat_dense_magma_*`) stage CSR/vector/dense host buffers and allocate provider/device workspace per invocation; this is required by MAGMA sparse C API contracts and is explicit to these MAGMA-only entrypoints.
 6. Opt-in MAGMA mixed LU APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) allocate provider work buffers and stage matrix/RHS/solution host↔device transfers per invocation; behavior is explicit and confined to mixed-precision APIs.
+7. Python-callable Jacobian/optimization callback helpers, plus their Arrow-admitted callback variants, materialize transient NumPy/PyArrow carrier objects on each callback invocation and re-own the returned arrays before re-entering the Rust loop. That copy boundary is explicit convenience-path behavior, not hidden hot-path degradation in the array-in/array-out kernels.
 
 ## V1 No-Surprises Audit Status
 

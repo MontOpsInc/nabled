@@ -100,15 +100,13 @@ Use code, not memory:
 
 These are the gaps that directly drive `N-PY-003..N-PY-008`:
 
-1. Remaining `N-PY-007` work is now concentrated in the likely callback-driven convenience-copy pockets plus a much smaller set of residual higher-level reuse/materialization traps that remain outside the already-landed dense/helper/tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor/direct-output-factor-reuse/sparse-normalization/sparse-factorization-reuse/tensor-result/tensor-TT-borrowed-view/triangular-output-reuse/tensor-egress/stats/orthogonalization/Arrow-factor-view/Arrow-carrier-buffer/batched-LU-metadata surfaces.
-2. Allocation-control semantics are still incomplete outside the landed direct NumPy vector/matrix/tensor/triangular/stats/orthogonalization primitive slices plus the currently landed higher-level SVD helper / QR reconstruction and least-squares factor reuse / Cholesky solve-inverse / matrix-function / Sylvester-Lyapunov / Schur / polar / tensor reconstruction/helper rows, direct-output factor-backed matrix-function/polar paths, reusable pairwise/matrix-function/Sylvester/Schur workspaces, and the now-buffer-based Arrow carrier pack/unpack paths, especially where Rust already exposes additional reusable workspaces or reusable result objects or where the Rust core still lacks a fully workspace-backed reuse path.
-3. Performance/copy-contract hardening and PyPI release hardening remain open merge-gate work after the current parity/feature milestones.
+1. Callback-driven Jacobian/optimization convenience APIs now have an explicit signed-off contract: per-evaluation NumPy/PyArrow carrier materialization is acceptable and documented at that Python callback boundary, so it is no longer an open hidden-copy blocker for the current release target.
+2. PyPI release hardening remains the final open merge-gate work after the current parity/feature and performance/copy-contract milestones.
 
 ## Implementation Order Derived From This Matrix
 
-1. `N-PY-003`, `N-PY-004`, `N-PY-005`, and `N-PY-006` are complete for the current merge-gate scope.
-2. `N-PY-007`: add allocation-control semantics and eliminate avoidable copy/layout regressions.
-3. `N-PY-008`: lock the release with docs/release hardening and supply-chain controls.
+1. `N-PY-003`, `N-PY-004`, `N-PY-005`, `N-PY-006`, and `N-PY-007` are complete for the current merge-gate scope.
+2. `N-PY-008`: lock the release with docs/release hardening and supply-chain controls.
 
 ## Definition Of Done For This Document
 

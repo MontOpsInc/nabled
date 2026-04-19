@@ -1,4 +1,10 @@
 //! Helpers for calling Python callbacks from ML bindings.
+//!
+//! These helpers intentionally materialize transient NumPy/PyArrow carrier objects per callback
+//! invocation. The Rust-side iterative/Jacobian/optimization loops hand us borrowed `Array1`
+//! state, but Python callback invocation requires Python-owned carrier lifetimes, and the result
+//! must be re-owned on the Rust side before the numerical loop can continue. This makes the
+//! callback-driven APIs convenience-oriented rather than no-compromise hot paths.
 
 #[cfg(feature = "arrow")]
 use arrow_array::types::{Float32Type, Float64Type};

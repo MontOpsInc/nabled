@@ -200,6 +200,9 @@ Contract:
 3. Docs must distinguish them from performance-preserving APIs.
 4. Python should expose typed config objects for these workflows instead of treating raw positional
    tuning parameters as the production-facing contract.
+5. Per-invocation carrier materialization at the Python callback boundary is acceptable here when
+   required for Python-owned object lifetimes; it must be documented explicitly rather than
+   described as zero-copy or hot-path-preserving behavior.
 
 ## Result Fidelity Contract
 

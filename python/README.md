@@ -171,6 +171,9 @@ reconstruct.
 Callback-driven Jacobian and optimizer helpers remain convenience-oriented APIs. They are
 production-supported, but each objective/gradient evaluation crosses back into Python, so they are
 not the same performance contract as the array-in/array-out kernels whose hot loops stay in Rust.
+That callback boundary also materializes transient NumPy/PyArrow carriers per evaluation so the
+Python callable sees normal Python-owned objects and Rust can re-own the returned arrays before
+continuing the loop.
 
 Current dense primitive breadth is also wider: vector APIs now include cosine distance,
 pairwise cosine distance, and row-wise batched dot/norm/cosine/distance/normalize helpers, while
