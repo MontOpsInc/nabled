@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-04-16
+Last updated: 2026-04-19
 
 ## Purpose
 
@@ -35,6 +35,7 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 15. Factor-derived matrix-function `*_into` and workspace-backed direct-matrix paths now compose the current symmetric-eigen and SVD-backed outputs directly into caller-provided buffers through reusable scratch-backed matmul instead of allocating a full intermediate result and then copying it into `out`.
 16. Python `polar_compute(..., out=...)` now decomposes once and writes `u` / `p` directly into caller-provided `PolarResult` buffers for both direct matrix inputs and typed `SvdResult` factor inputs instead of materializing an intermediate full polar result before copying.
 17. Arrow-side PCA transform/inverse plus CP/HOSVD/Tucker helper paths now borrow factor/core arrays directly through `nabled::arrow`; the PyO3 Arrow bridge no longer rebuilds owned PCA or tensor result structs from Python factor/core arrays just to reach the underlying kernels.
+18. N-D Tucker/HOSVD projection and expansion helpers no longer start from blanket `tensor.to_owned()` clones or allocate a full final temporary before `out=` assignment; the Rust tensor core now composes the final mode product directly into caller-provided buffers for the current `tensor_tucker_project(...)`, `tensor_tucker_expand(...)`, and `hosvd_nd`-derived helper reuse paths.
 
 ### Unavoidable internal materializations
 

@@ -3913,7 +3913,32 @@ where
         .into_shape_with_order(IxDyn(&permuted_shape))
         .map_err(|_| TensorError::DimensionMismatch)?;
     let inverse = invert_axes_order(&order);
-    Ok(permuted.permuted_axes(inverse).to_owned())
+    Ok(permuted.permuted_axes(inverse))
+}
+
+fn mode_n_product_nd_into<T, M, S>(
+    tensor: &ArrayViewD<'_, T>,
+    matrix: &ArrayBase<M, Ix2>,
+    mode: usize,
+    output: &mut ArrayBase<S, IxDyn>,
+) -> Result<(), TensorError>
+where
+    T: NabledReal,
+    M: Data<Elem = T>,
+    S: DataMut<Elem = T>,
+{
+    let mut expected_shape = tensor.shape().to_vec();
+    let Some(extent) = expected_shape.get_mut(mode) else {
+        return Err(TensorError::DimensionMismatch);
+    };
+    *extent = matrix.nrows();
+    if output.shape() != expected_shape.as_slice() {
+        return Err(TensorError::DimensionMismatch);
+    }
+
+    let result = mode_n_product_nd(tensor, matrix, mode)?;
+    output.assign(&result);
+    Ok(())
 }
 
 fn validate_hosvd_nd_ranks(shape: &[usize], ranks: &[usize]) -> Result<(), TensorError> {
@@ -3940,10 +3965,13 @@ where
     T: NabledReal,
     S: Data<Elem = T>,
 {
-    let mut core = tensor.to_owned();
-    for (mode, factor) in factors.iter().enumerate() {
-        let projection = factor.t();
-        core = mode_n_product_nd(&core.view(), &projection, mode)?;
+    let Some((first_mode, first_factor)) = factors.iter().enumerate().next() else {
+        return Ok(tensor.to_owned());
+    };
+
+    let mut core = mode_n_product_nd(tensor, &first_factor.t(), first_mode)?;
+    for (mode, factor) in factors.iter().enumerate().skip(1) {
+        core = mode_n_product_nd(&core.view(), &factor.t(), mode)?;
     }
     Ok(core)
 }
@@ -3957,13 +3985,14 @@ where
     T: NabledReal,
     S: Data<Elem = T>,
 {
-    let mut projected = tensor.to_owned();
-    for (axis, factor) in factors.iter().enumerate() {
-        if axis == mode {
-            continue;
-        }
-        let projection = factor.t();
-        projected = mode_n_product_nd(&projected.view(), &projection, axis)?;
+    let mut projections = factors.iter().enumerate().filter(|(axis, _)| *axis != mode);
+    let Some((first_axis, first_factor)) = projections.next() else {
+        return Ok(tensor.to_owned());
+    };
+
+    let mut projected = mode_n_product_nd(tensor, &first_factor.t(), first_axis)?;
+    for (axis, factor) in projections {
+        projected = mode_n_product_nd(&projected.view(), &factor.t(), axis)?;
     }
     Ok(projected)
 }
@@ -4222,8 +4251,24 @@ pub fn tucker_project_from_factors_view_into<T: NabledReal, S: DataMut<Elem = T>
     if output.shape() != expected_shape.as_slice() {
         return Err(TensorError::DimensionMismatch);
     }
-    let projected = core_from_factors_nd(tensor, factors)?;
-    output.assign(&projected);
+
+    let Some((first_mode, first_factor)) = factors.iter().enumerate().next() else {
+        output.assign(tensor);
+        return Ok(());
+    };
+
+    if factors.len() == 1 {
+        return mode_n_product_nd_into(tensor, &first_factor.t(), first_mode, output);
+    }
+
+    let mut projected = mode_n_product_nd(tensor, &first_factor.t(), first_mode)?;
+    for (mode, factor) in factors.iter().enumerate().skip(1) {
+        if mode == factors.len() - 1 {
+            return mode_n_product_nd_into(&projected.view(), &factor.t(), mode, output);
+        }
+        projected = mode_n_product_nd(&projected.view(), &factor.t(), mode)?;
+    }
+
     Ok(())
 }
 
@@ -4311,11 +4356,23 @@ pub fn tucker_expand_from_factors_view_into<T: NabledReal, S: DataMut<Elem = T>>
         return Err(TensorError::DimensionMismatch);
     }
 
-    let mut tensor = core.to_owned();
-    for (mode, factor) in factors.iter().enumerate() {
+    let Some((first_mode, first_factor)) = factors.iter().enumerate().next() else {
+        output.assign(core);
+        return Ok(());
+    };
+
+    if factors.len() == 1 {
+        return mode_n_product_nd_into(core, first_factor, first_mode, output);
+    }
+
+    let mut tensor = mode_n_product_nd(core, first_factor, first_mode)?;
+    for (mode, factor) in factors.iter().enumerate().skip(1) {
+        if mode == factors.len() - 1 {
+            return mode_n_product_nd_into(&tensor.view(), factor, mode, output);
+        }
         tensor = mode_n_product_nd(&tensor.view(), factor, mode)?;
     }
-    output.assign(&tensor);
+
     Ok(())
 }
 
@@ -7010,10 +7067,22 @@ mod tests {
         let projected_viewed =
             tucker_project_from_factors_view(&tensor.view(), &factor_views).unwrap();
         assert_eq!(projected_owned, projected_viewed);
+        let mut projected_into = ArrayD::<f64>::zeros(projected_owned.raw_dim());
+        tucker_project_from_factors_view_into(&tensor.view(), &factor_views, &mut projected_into)
+            .unwrap();
+        assert_eq!(projected_owned, projected_into);
 
         let expanded_viewed =
             tucker_expand_from_factors_view(&hosvd_nd_core_view, &factor_views).unwrap();
         assert_eq!(hosvd_nd_owned, expanded_viewed);
+        let mut expanded_into = ArrayD::<f64>::zeros(hosvd_nd_owned.raw_dim());
+        tucker_expand_from_factors_view_into(
+            &hosvd_nd_core_view,
+            &factor_views,
+            &mut expanded_into,
+        )
+        .unwrap();
+        assert_eq!(hosvd_nd_owned, expanded_into);
     }
 
     #[test]

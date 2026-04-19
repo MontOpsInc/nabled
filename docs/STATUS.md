@@ -130,10 +130,9 @@ allocation-control pass is now also landed: `tensor_hosvd3_reconstruct(...)`,
 caller-provided `out=` buffers under the existing public Python names, and the Rust tensor core
 now exposes the matching real/complex `einsum` `*_into` / view-into rows plus
 `hosvd3_reconstruct_into(...)`. This closes the last obvious tensor-helper “always allocate a new
-output” pocket in the public Python surface without introducing a Python-side fallback path,
-although `tensor_tucker_project(..., out=...)` still flows through the current owned
-core-projection path internally because the Rust tensor core does not yet expose a fully
-workspace-backed Tucker projection variant. Validation is green end-to-end: `cargo check -p
+output” pocket in the public Python surface without introducing a Python-side fallback path. A
+later `N-PY-007` follow-on has since removed the remaining internal owned Tucker/HOSVD
+core-projection path as well. Validation is green end-to-end: `cargo check -p
 pynabled`, targeted Rust tensor coverage (`58 passed`), targeted Python tensor pytest (`28
 passed`), `python-quality` (`220 passed, 22 skipped`, `91%` Python coverage), and full
 `just checks` (Rust coverage gate `90.83%`). Remaining `N-PY-007` work is now narrowed again to
@@ -640,6 +639,7 @@ Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for
 155. MAGMA/OpenBLAS hard-fact evidence export is now scripted for release-lto decomposition scope: `magma_proof_pack_job.sh` runs LTO provider decomposition comparisons and writes a publication-ready summary (`coverage/gpu-v2/magma/bench/decomposition/proof-pack-latest.md`) with strongest wins/losses and persistent-slowdown rows.
 156. K-005 monitor/proof-pack hardening is now landed and validated on RTX 4090: canonical decomposition compare uses `openblas-system` baseline vs `openblas-system+magma-system` overlay, stale benchmark summaries are rejected, run order is alternated per repeat, and persistent regressions require both ratio and effect-size gating (`ratio > 1.03` and `delta_ns > 5000`); latest LTO stability rerun reports `persistent_regression_count = 0` (`stability-20260309T130811Z.json`).
 157. K-005 lock-confirmation reruns on current `main` are now complete and green: monitor run (`stability-20260309T135201Z.json`, `REPEATS=5`) and LTO proof-pack run (`stability-20260309T140157Z.json`, `proof-pack-20260309T140157Z.md`) both report `persistent_regression_count = 0`, so K-005 remains monitor-only with no new optimization patch opened in this pass.
+158. Another `N-PY-007` tensor copy-elision pass is now landed: Tucker/HOSVD projection and expansion helpers no longer start from blanket whole-tensor clones or allocate a final temporary before writing into caller-provided outputs. `nabled-linalg::tensor` now composes the final mode product for `tucker_project_from_factors_view_into(...)` and `tucker_expand_from_factors_view_into(...)` directly into the provided output buffer, `mode_n_product_nd(...)` no longer forces a trailing owned clone after axis restoration, and the internal HOSVD/Tucker projection helpers now start from the first real projection instead of `tensor.to_owned()`. Validation is green end-to-end: `cargo +nightly fmt --all -- --config-path ./rustfmt.toml`, targeted Rust tensor coverage (`cargo test -p nabled-linalg tensor --lib -- --nocapture --show-output`: `62 passed`), targeted Arrow interop coverage (`cargo test -p nabled --test arrow_interop --features arrow arrow_tensor_advanced_decomposition_and_network_workflows_work -- --exact --nocapture --show-output`: `1 passed`), `cargo check -p pynabled`, full `python-quality` (`91%` Python coverage), and full `just checks`.
 
 ## Current Code Ownership
 
