@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-16
+Last updated: 2026-04-19
 
 ## Summary
 
@@ -308,6 +308,25 @@ materialization or copy/layout traps outside the already-landed dense/helper/PCA
 tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor/sparse-factorization/tensor-result/
 tensor-TT-borrowed-view/triangular-output-reuse/stats/orthogonalization/direct-output-factor/
 Arrow-factor-view surfaces.
+A twenty-fourth `N-PY-007` tensor internal copy-elision pass is now also landed: the remaining
+internal Tucker/HOSVD projection and expansion materialization pocket is gone. `mode_n_product_nd(...)`
+no longer forces a trailing owned clone after axis restoration, the current core-projection helpers
+now start from the first real projection instead of blanket `tensor.to_owned()` clones, and the
+landed `tensor_tucker_project(..., out=...)` / `tensor_tucker_expand(..., out=...)` flows now
+compose the final mode product directly into caller-provided buffers all the way through the Rust
+core. Validation remained green end-to-end on the targeted tensor and Arrow workflow gates plus
+full `python-quality` and `just checks`.
+A twenty-fifth `N-PY-007` Arrow carrier buffer/offset hardening pass is now also landed: the
+remaining Python-side list materialization pockets in canonical Arrow carrier packing/unpacking
+are gone. `python/pynabled/arrow.py` now builds and reads canonical `ndarrow.complex64`,
+`ndarrow.csr_matrix`, `ndarrow.csr_matrix_batch`, and variable-shape tensor carriers through flat
+NumPy buffers plus Arrow offsets instead of Python `tolist()` / `to_pylist()` rebuilding, while
+keeping explicit int32/uint32 bounds checks on the sparse carriers. Validation is green on the
+Arrow/package/repo gates: targeted Python Arrow pytest (`22 passed`), `python-quality`
+(`248 passed, 22 skipped`, `90%` Python coverage), and full `just checks` (Rust coverage gate
+`90.25%` line coverage). Remaining `N-PY-007` work is now narrowed again to the smaller
+higher-level reusable result/workspace residue plus the likely-final convenience-path callback
+copies and any other explicitly signed-off higher-level copy/layout traps.
 The first
 `N-PY-003` implementation pass is also landed:
 Python now has
@@ -640,6 +659,7 @@ Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for
 156. K-005 monitor/proof-pack hardening is now landed and validated on RTX 4090: canonical decomposition compare uses `openblas-system` baseline vs `openblas-system+magma-system` overlay, stale benchmark summaries are rejected, run order is alternated per repeat, and persistent regressions require both ratio and effect-size gating (`ratio > 1.03` and `delta_ns > 5000`); latest LTO stability rerun reports `persistent_regression_count = 0` (`stability-20260309T130811Z.json`).
 157. K-005 lock-confirmation reruns on current `main` are now complete and green: monitor run (`stability-20260309T135201Z.json`, `REPEATS=5`) and LTO proof-pack run (`stability-20260309T140157Z.json`, `proof-pack-20260309T140157Z.md`) both report `persistent_regression_count = 0`, so K-005 remains monitor-only with no new optimization patch opened in this pass.
 158. Another `N-PY-007` tensor copy-elision pass is now landed: Tucker/HOSVD projection and expansion helpers no longer start from blanket whole-tensor clones or allocate a final temporary before writing into caller-provided outputs. `nabled-linalg::tensor` now composes the final mode product for `tucker_project_from_factors_view_into(...)` and `tucker_expand_from_factors_view_into(...)` directly into the provided output buffer, `mode_n_product_nd(...)` no longer forces a trailing owned clone after axis restoration, and the internal HOSVD/Tucker projection helpers now start from the first real projection instead of `tensor.to_owned()`. Validation is green end-to-end: `cargo +nightly fmt --all -- --config-path ./rustfmt.toml`, targeted Rust tensor coverage (`cargo test -p nabled-linalg tensor --lib -- --nocapture --show-output`: `62 passed`), targeted Arrow interop coverage (`cargo test -p nabled --test arrow_interop --features arrow arrow_tensor_advanced_decomposition_and_network_workflows_work -- --exact --nocapture --show-output`: `1 passed`), `cargo check -p pynabled`, full `python-quality` (`91%` Python coverage), and full `just checks`.
+159. Another `N-PY-007` Arrow carrier copy-elision pass is now landed: canonical Arrow carrier packing/unpacking for `ndarrow.complex64`, `ndarrow.csr_matrix`, `ndarrow.csr_matrix_batch`, and variable-shape tensor rows no longer materializes Python nested lists at the PyO3 boundary. `python/pynabled/arrow.py` now builds and reads those carriers through flat NumPy buffers plus Arrow offsets with explicit sparse int32/uint32 bounds checks, keeping the canonical carrier contract while removing avoidable Python-side rebuilds. Validation is green on the Arrow/package/repo gates: targeted Python Arrow pytest (`22 passed`), `python-quality` (`248 passed, 22 skipped`, `90%` Python coverage), and full `just checks` (Rust coverage gate `90.25%` line coverage).
 
 ## Current Code Ownership
 

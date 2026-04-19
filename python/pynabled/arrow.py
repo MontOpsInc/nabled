@@ -374,12 +374,14 @@ def _complex_vector_field(name):
     )
 
 
-def _complex_vector_array(values):
+def _complex_storage_array(values):
     np_values = np.asarray(values, dtype=np.complex128)
-    storage = pa.array(
-        [[float(value.real), float(value.imag)] for value in np_values],
-        type=_COMPLEX_STORAGE_TYPE,
-    )
+    primitive = pa.array(np_values.reshape(-1).view(np.float64), type=pa.float64())
+    return pa.FixedSizeListArray.from_arrays(primitive, type=_COMPLEX_STORAGE_TYPE)
+
+
+def _complex_vector_array(values):
+    storage = _complex_storage_array(values)
     return pa.ExtensionArray.from_storage(NdarrowComplex64Type(), storage)
 
 
@@ -387,7 +389,7 @@ def _complex_vector_numpy(array):
     storage = array.storage if isinstance(array, pa.ExtensionArray) else array
     if isinstance(storage, pa.FixedSizeListArray) and storage.type.list_size == 2:
         values = np.asarray(storage.values, dtype=np.float64).reshape(len(storage), 2)
-        return values[:, 0] + (1j * values[:, 1])
+        return values.view(np.complex128).reshape(-1)
     return np.array([complex(real, imag) for real, imag in storage.to_pylist()], dtype=np.complex128)
 
 
@@ -573,17 +575,29 @@ def _require_complex_tensor(name, **arrays):
         raise TypeError(f"{name} requires ndarrow.complex64 tensor carriers for: {joined}")
 
 
-def _flatten_csr_lists(csr: CsrMatrix):
-    if np.any(csr.indices > _UINT32_MAX):
-        raise ValueError("csr column indices exceed uint32 limits required by ndarrow.csr_matrix")
-    index_rows = []
-    value_rows = []
-    for row in range(csr.nrows):
-        start = int(csr.indptr[row])
-        stop = int(csr.indptr[row + 1])
-        index_rows.append(csr.indices[start:stop].astype(np.uint32, copy=False).tolist())
-        value_rows.append(csr.data[start:stop].tolist())
-    return index_rows, value_rows
+def _int32_offsets_from_lengths(lengths, *, label: str):
+    resolved = np.asarray(lengths, dtype=np.int64)
+    if np.any(resolved < 0):
+        raise ValueError(f"{label} lengths must be non-negative")
+    offsets = np.empty(len(resolved) + 1, dtype=np.int32)
+    offsets[0] = 0
+    total = 0
+    for index, length in enumerate(resolved, start=1):
+        total += int(length)
+        if total > _INT32_MAX:
+            raise ValueError(f"{label} exceeds int32 offset limits required by Arrow list storage")
+        offsets[index] = total
+    return offsets
+
+
+def _shape_array_from_numpy(shape_rows, dimensions: int):
+    shapes = np.asarray(shape_rows, dtype=np.int32)
+    if shapes.ndim != 2 or shapes.shape[1] != dimensions:
+        raise ValueError("shape rows must be a 2D array with the declared tensor rank")
+    return pa.FixedSizeListArray.from_arrays(
+        pa.array(shapes.reshape(-1), type=pa.int32()),
+        type=pa.list_(pa.field("item", pa.int32(), nullable=False), dimensions),
+    )
 
 
 def arrow_csr_matrix_array(
@@ -598,13 +612,24 @@ def arrow_csr_matrix_array(
             return matrix
         matrix = arrow_csr_matrix_from_array(matrix)
     csr = CsrMatrix.from_scipy(matrix, copy=copy, dtype=dtype, index_dtype=index_dtype)
-    index_rows, value_rows = _flatten_csr_lists(csr)
+    if np.any(csr.indptr > _INT32_MAX):
+        raise ValueError("csr row pointers exceed int32 limits required by ndarrow.csr_matrix")
+    if np.any(csr.indices > _UINT32_MAX):
+        raise ValueError("csr column indices exceed uint32 limits required by ndarrow.csr_matrix")
     value_type = _arrow_real_type_for_dtype(csr.dtype)
+    offsets = pa.array(csr.indptr.astype(np.int32, copy=False), type=pa.int32())
+    indices = pa.ListArray.from_arrays(
+        offsets,
+        pa.array(csr.indices.astype(np.uint32, copy=False), type=pa.uint32()),
+        type=pa.list_(pa.field("item", pa.uint32(), nullable=False)),
+    )
+    values = pa.ListArray.from_arrays(
+        offsets,
+        pa.array(np.asarray(csr.data), type=value_type),
+        type=pa.list_(pa.field("item", value_type, nullable=False)),
+    )
     storage = pa.StructArray.from_arrays(
-        [
-            pa.array(index_rows, type=pa.list_(pa.field("item", pa.uint32(), nullable=False))),
-            pa.array(value_rows, type=pa.list_(pa.field("item", value_type, nullable=False))),
-        ],
+        [indices, values],
         fields=[
             pa.field(
                 "indices",
@@ -624,24 +649,22 @@ def arrow_csr_matrix_array(
 def arrow_csr_matrix_from_array(matrix) -> CsrMatrix:
     _require_csr_matrix_array("arrow_csr_matrix_from_array", matrix)
     storage = matrix.storage
-    index_rows = storage.field("indices").to_pylist()
-    value_rows = storage.field("values").to_pylist()
+    indices_array = storage.field("indices")
+    values_array = storage.field("values")
     dtype = _numpy_real_dtype_for_arrow(_list_value_type(storage.field("values").type))
     ncols = int(matrix.type._ncols if hasattr(matrix.type, "_ncols") else json.loads(matrix.type.__arrow_ext_serialize__().decode())["ncols"])
-    indptr = [0]
-    flat_indices = []
-    flat_values = []
-    for row_indices, row_values in zip(index_rows, value_rows, strict=True):
-        if len(row_indices) != len(row_values):
-            raise ValueError("ndarrow.csr_matrix storage has mismatched row lengths")
-        flat_indices.extend(row_indices)
-        flat_values.extend(row_values)
-        indptr.append(len(flat_indices))
+    indptr = np.asarray(indices_array.offsets, dtype=np.int32)
+    if not np.array_equal(indptr, np.asarray(values_array.offsets, dtype=np.int32)):
+        raise ValueError("ndarrow.csr_matrix storage has mismatched row lengths")
+    flat_indices = np.asarray(indices_array.values, dtype=np.uint32)
+    if np.any(flat_indices > _INT32_MAX):
+        raise ValueError("ndarrow.csr_matrix indices exceed int32 limits required by pynabled")
+    flat_values = np.asarray(values_array.values, dtype=dtype)
     return CsrMatrix.from_components(
-        (len(index_rows), ncols),
-        np.asarray(indptr, dtype=np.int32),
-        np.asarray(flat_indices, dtype=np.int32),
-        np.asarray(flat_values, dtype=dtype),
+        (len(indices_array), ncols),
+        indptr,
+        flat_indices.astype(np.int32, copy=False),
+        flat_values,
     )
 
 
@@ -653,38 +676,44 @@ def arrow_csr_matrix_batch_array(matrices, *, copy: bool = False, dtype=None, in
     if any(row.dtype != resolved_dtype for row in rows[1:]):
         raise TypeError("all matrices in a csr_matrix_batch must share dtype float32 or float64")
     shapes = []
-    row_ptrs = []
-    col_indices = []
-    values = []
+    row_ptr_lengths = np.empty(len(rows), dtype=np.int64)
+    col_index_lengths = np.empty(len(rows), dtype=np.int64)
+    value_lengths = np.empty(len(rows), dtype=np.int64)
     for row in rows:
         if np.any(row.indptr > _INT32_MAX):
             raise ValueError("csr row pointers exceed int32 limits required by ndarrow.csr_matrix_batch")
         if np.any(row.indices > _UINT32_MAX):
             raise ValueError("csr column indices exceed uint32 limits required by ndarrow.csr_matrix_batch")
         shapes.append([row.nrows, row.ncols])
-        row_ptrs.append(row.indptr.astype(np.int32, copy=False).tolist())
-        col_indices.append(row.indices.astype(np.uint32, copy=False).tolist())
-        values.append(row.data.tolist())
+    for index, row in enumerate(rows):
+        row_ptr_lengths[index] = row.indptr.size
+        col_index_lengths[index] = row.indices.size
+        value_lengths[index] = row.data.size
     value_type = _arrow_real_type_for_dtype(resolved_dtype)
+    shape_array = _shape_array_from_numpy(np.asarray(shapes, dtype=np.int32), 2)
+    row_ptrs = pa.ListArray.from_arrays(
+        pa.array(_int32_offsets_from_lengths(row_ptr_lengths, label="csr_matrix_batch row_ptrs"), type=pa.int32()),
+        pa.array(
+            np.concatenate([row.indptr.astype(np.int32, copy=False) for row in rows]),
+            type=pa.int32(),
+        ),
+        type=pa.list_(pa.field("item", pa.int32(), nullable=False)),
+    )
+    col_indices = pa.ListArray.from_arrays(
+        pa.array(_int32_offsets_from_lengths(col_index_lengths, label="csr_matrix_batch col_indices"), type=pa.int32()),
+        pa.array(
+            np.concatenate([row.indices.astype(np.uint32, copy=False) for row in rows]),
+            type=pa.uint32(),
+        ),
+        type=pa.list_(pa.field("item", pa.uint32(), nullable=False)),
+    )
+    values = pa.ListArray.from_arrays(
+        pa.array(_int32_offsets_from_lengths(value_lengths, label="csr_matrix_batch values"), type=pa.int32()),
+        pa.array(np.concatenate([np.asarray(row.data) for row in rows]), type=value_type),
+        type=pa.list_(pa.field("item", value_type, nullable=False)),
+    )
     storage = pa.StructArray.from_arrays(
-        [
-            pa.array(
-                shapes,
-                type=pa.list_(pa.field("item", pa.int32(), nullable=False), 2),
-            ),
-            pa.array(
-                row_ptrs,
-                type=pa.list_(pa.field("item", pa.int32(), nullable=False)),
-            ),
-            pa.array(
-                col_indices,
-                type=pa.list_(pa.field("item", pa.uint32(), nullable=False)),
-            ),
-            pa.array(
-                values,
-                type=pa.list_(pa.field("item", value_type, nullable=False)),
-            ),
-        ],
+        [shape_array, row_ptrs, col_indices, values],
         fields=[
             pa.field(
                 "shape",
@@ -714,19 +743,35 @@ def arrow_csr_matrix_batch_array(matrices, *, copy: bool = False, dtype=None, in
 def arrow_csr_matrix_batch_rows(matrices) -> list[CsrMatrix]:
     _require_csr_matrix_batch_array("arrow_csr_matrix_batch_rows", matrices)
     storage = matrices.storage
-    shapes = storage.field("shape").to_pylist()
-    row_ptrs = storage.field("row_ptrs").to_pylist()
-    col_indices = storage.field("col_indices").to_pylist()
-    values = storage.field("values").to_pylist()
-    dtype = _numpy_real_dtype_for_arrow(_list_value_type(storage.field("values").type))
+    shape_array = storage.field("shape")
+    row_ptrs = storage.field("row_ptrs")
+    col_indices = storage.field("col_indices")
+    values = storage.field("values")
+    dtype = _numpy_real_dtype_for_arrow(_list_value_type(values.type))
+    shapes = np.asarray(shape_array.values, dtype=np.int32).reshape(len(shape_array), 2)
+    row_ptr_offsets = np.asarray(row_ptrs.offsets, dtype=np.int32)
+    row_ptr_values = np.asarray(row_ptrs.values, dtype=np.int32)
+    col_offsets = np.asarray(col_indices.offsets, dtype=np.int32)
+    col_values = np.asarray(col_indices.values, dtype=np.uint32)
+    value_offsets = np.asarray(values.offsets, dtype=np.int32)
+    flat_values = np.asarray(values.values, dtype=dtype)
     rows = []
-    for shape, indptr, indices, data in zip(shapes, row_ptrs, col_indices, values, strict=True):
+    for index, shape in enumerate(shapes):
+        indptr = row_ptr_values[row_ptr_offsets[index] : row_ptr_offsets[index + 1]]
+        indices = col_values[col_offsets[index] : col_offsets[index + 1]]
+        data = flat_values[value_offsets[index] : value_offsets[index + 1]]
+        if indptr.size == 0:
+            raise ValueError("ndarrow.csr_matrix_batch storage has empty row_ptrs entry")
+        if indptr[-1] != indices.size or indptr[-1] != data.size:
+            raise ValueError("ndarrow.csr_matrix_batch storage has mismatched row lengths")
+        if np.any(indices > _INT32_MAX):
+            raise ValueError("ndarrow.csr_matrix_batch indices exceed int32 limits required by pynabled")
         rows.append(
             CsrMatrix.from_components(
-                tuple(shape),
-                np.asarray(indptr, dtype=np.int32),
-                np.asarray(indices, dtype=np.int32),
-                np.asarray(data, dtype=dtype),
+                tuple(int(dimension) for dimension in shape),
+                indptr,
+                indices.astype(np.int32, copy=False),
+                data,
             )
         )
     return rows
@@ -758,7 +803,7 @@ def arrow_fixed_shape_tensor_array(value, *, dtype=None):
         tensor = np.asarray(tensor, dtype=np.complex128)
         flat = tensor.reshape(-1)
         storage = pa.FixedSizeListArray.from_arrays(
-            _complex_vector_array(flat).storage,
+            _complex_storage_array(flat),
             type=pa.list_(_complex_vector_field("item"), element_count),
         )
         return pa.ExtensionArray.from_storage(
@@ -804,33 +849,36 @@ def arrow_variable_shape_tensor_array(rows, *, uniform_shape=None, dtype=None):
     normalized_uniform = None if uniform_shape is None else [None if item is None else int(item) for item in uniform_shape]
     if normalized_uniform is not None and len(normalized_uniform) != rank:
         raise ValueError("uniform_shape length must match tensor rank")
-    packed_shapes = [list(map(int, row.shape)) for row in numpy_rows]
+    packed_shapes = np.asarray([list(map(int, row.shape)) for row in numpy_rows], dtype=np.int32)
+    packed_lengths = np.asarray([row.size for row in numpy_rows], dtype=np.int64)
+    offsets = pa.array(_int32_offsets_from_lengths(packed_lengths, label="variable_shape_tensor data"), type=pa.int32())
     if np.issubdtype(resolved_dtype, np.floating):
-        packed_data = [row.reshape(-1).tolist() for row in numpy_rows]
         value_type = _arrow_real_type_for_dtype(resolved_dtype)
-        data_type = pa.list_(pa.field("item", value_type, nullable=False))
+        flat = np.concatenate([row.reshape(-1) for row in numpy_rows])
+        values = pa.array(flat, type=value_type)
+        data = pa.ListArray.from_arrays(
+            offsets,
+            values,
+            type=pa.list_(pa.field("item", value_type, nullable=False)),
+        )
     else:
-        packed_data = [
-            [[float(value.real), float(value.imag)] for value in row.reshape(-1)]
-            for row in numpy_rows
-        ]
         value_type = _arrow_complex_value_type_for_dtype(resolved_dtype)
-        data_type = pa.list_(_complex_vector_field("item"))
+        flat = np.concatenate([row.reshape(-1).astype(np.complex128, copy=False) for row in numpy_rows])
+        values = _complex_storage_array(flat)
+        data = pa.ListArray.from_arrays(
+            offsets,
+            values,
+            type=pa.list_(_complex_vector_field("item")),
+        )
     storage = pa.StructArray.from_arrays(
         [
-            pa.array(
-                packed_data,
-                type=data_type,
-            ),
-            pa.array(
-                packed_shapes,
-                type=pa.list_(pa.field("item", pa.int32(), nullable=False), rank),
-            ),
+            data,
+            _shape_array_from_numpy(packed_shapes, rank),
         ],
         fields=[
             pa.field(
                 "data",
-                data_type,
+                data.type,
                 nullable=False,
             ),
             pa.field(
@@ -849,20 +897,23 @@ def arrow_variable_shape_tensor_array(rows, *, uniform_shape=None, dtype=None):
 def arrow_variable_shape_tensor_rows(value) -> list[np.ndarray]:
     _require_variable_shape_tensor_array("arrow_variable_shape_tensor_rows", value, "value")
     storage = value.storage
-    value_type = _list_value_type(storage.field("data").type)
+    data = storage.field("data")
+    shapes = storage.field("shape")
+    value_type = _list_value_type(data.type)
     if value_type == _COMPLEX_STORAGE_TYPE or (
         _is_extension_type(value_type) and _extension_name(value_type) in _COMPLEX_EXTENSION_NAMES
     ):
         dtype = np.dtype(np.complex128)
+        flat = _complex_vector_numpy(data.values)
     else:
         dtype = _numpy_real_dtype_for_arrow(value_type)
+        flat = np.asarray(data.values, dtype=dtype)
+    offsets = np.asarray(data.offsets, dtype=np.int32)
+    shape_rows = np.asarray(shapes.values, dtype=np.int32).reshape(len(shapes), value.type._dimensions)
     rows = []
-    for packed, shape in zip(storage.field("data").to_pylist(), storage.field("shape").to_pylist(), strict=True):
-        if dtype == np.dtype(np.complex128):
-            flat = np.asarray([complex(real, imag) for real, imag in packed], dtype=dtype)
-        else:
-            flat = np.asarray(packed, dtype=dtype)
-        rows.append(flat.reshape(tuple(int(dimension) for dimension in shape)))
+    for index, shape in enumerate(shape_rows):
+        row = flat[offsets[index] : offsets[index + 1]]
+        rows.append(row.reshape(tuple(int(dimension) for dimension in shape)))
     return rows
 
 

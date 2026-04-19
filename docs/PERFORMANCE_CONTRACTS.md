@@ -36,6 +36,7 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 16. Python `polar_compute(..., out=...)` now decomposes once and writes `u` / `p` directly into caller-provided `PolarResult` buffers for both direct matrix inputs and typed `SvdResult` factor inputs instead of materializing an intermediate full polar result before copying.
 17. Arrow-side PCA transform/inverse plus CP/HOSVD/Tucker helper paths now borrow factor/core arrays directly through `nabled::arrow`; the PyO3 Arrow bridge no longer rebuilds owned PCA or tensor result structs from Python factor/core arrays just to reach the underlying kernels.
 18. N-D Tucker/HOSVD projection and expansion helpers no longer start from blanket `tensor.to_owned()` clones or allocate a full final temporary before `out=` assignment; the Rust tensor core now composes the final mode product directly into caller-provided buffers for the current `tensor_tucker_project(...)`, `tensor_tucker_expand(...)`, and `hosvd_nd`-derived helper reuse paths.
+19. Canonical Arrow carrier packing/unpacking in `python/pynabled/arrow.py` now uses flat NumPy buffers plus Arrow offsets for `ndarrow.complex64`, `ndarrow.csr_matrix`, `ndarrow.csr_matrix_batch`, and variable-shape tensor rows instead of Python `tolist()` / `to_pylist()` rebuilding at the PyO3 boundary.
 
 ### Unavoidable internal materializations
 
