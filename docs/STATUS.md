@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-14
+Last updated: 2026-04-16
 
 ## Summary
 
@@ -291,6 +291,24 @@ materialization or copy/layout traps outside the already-landed dense/helper/PCA
 tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor/sparse-factorization/tensor-result/
 tensor-TT-borrowed-view/triangular-output-reuse/stats/orthogonalization/direct-output-factor
 surfaces.
+A twenty-third `N-PY-007` Arrow factor-view materialization pass is now also landed: Arrow-side
+PCA transform/inverse and tensor helper reuse paths no longer rebuild owned temporary Rust result
+structs from Python factor/core arrays just to reach the real kernels. `nabled::arrow::pca` now
+exposes borrowed-factor transform/inverse helpers over components and mean views,
+`nabled::arrow::tensor` now exposes borrowed CP/HOSVD/Tucker helper variants over factor/core
+views, and the PyO3 Arrow bridge now passes borrowed NumPy factor/core arrays straight through
+for Arrow PCA transform/inverse plus CP diagnostics/reconstruct, HOSVD reconstruct, and Tucker
+project/expand workflows. Validation is green end-to-end: `cargo +nightly fmt --all -- --config-path ./rustfmt.toml`,
+`cargo check -p nabled --features arrow`, `cargo check -p pynabled --features arrow`, targeted
+Rust Arrow interop coverage (the PCA/regression/stats and advanced tensor workflow tests),
+targeted Python Arrow pytest (`22 passed`), `python-quality`
+(`248 passed, 22 skipped`, `91%` Python coverage), and full `just checks`
+(Rust coverage gate `90.93%` line coverage). Remaining `N-PY-007` work is now narrowed again to
+the smaller higher-level reusable result/workspace residue plus any remaining higher-level
+materialization or copy/layout traps outside the already-landed dense/helper/PCA/regression/
+tensor-helper/LU/SVD/QR/polar/matrix-function/eigen-factor/sparse-factorization/tensor-result/
+tensor-TT-borrowed-view/triangular-output-reuse/stats/orthogonalization/direct-output-factor/
+Arrow-factor-view surfaces.
 The first
 `N-PY-003` implementation pass is also landed:
 Python now has

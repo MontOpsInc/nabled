@@ -48,7 +48,9 @@ result wrappers, and canonical fixed-shape / variable-shape tensor workflows acr
 permutation/contraction, batched matmul, cube kernels, einsum, CP-ALS, HOSVD/HOOI/Tucker, and TT
 helpers over PyArrow/`ndarrow`. Arrow-native outputs stay Arrow-native where the Rust Arrow facade
 already does so, while ndarray-native decomposition/PCA/regression/tensor rows reuse the same
-typed Python result objects as the NumPy-facing API. Mixed real dtypes are rejected explicitly
+typed Python result objects as the NumPy-facing API. Arrow PCA transform/inverse plus the current
+Arrow tensor helper reuse paths now also pass borrowed factor/core views through directly instead
+of rebuilding temporary Rust result state at the binding boundary. Mixed real dtypes are rejected explicitly
 instead of being silently cast, complex Arrow ingress follows canonical `ndarrow.complex64`
 storage/field contracts rather than silently materializing NumPy buffers, and sparse/tensor Arrow
 ingress now matches `ndarrow`'s field/storage metadata contract explicitly instead of depending on

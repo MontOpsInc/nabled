@@ -240,30 +240,6 @@ pub(crate) fn py_tt_result<T: Element + Clone + NabledReal>(
         .collect()
 }
 
-#[cfg(feature = "arrow")]
-pub(crate) fn extract_array2_sequence<T: Element + Clone>(
-    arrays: &Bound<'_, PyAny>,
-) -> PyResult<Vec<Array2<T>>> {
-    let mut out = Vec::new();
-    for item in arrays.try_iter()? {
-        let item = item?;
-        let array = item.cast::<PyArray2<T>>().map_err(|_| {
-            PyValueError::new_err(
-                "expected a non-empty sequence of 2D NumPy arrays with matching float32/float64 \
-                 dtype",
-            )
-        })?;
-        utils::require_contiguous(array)?;
-        out.push(array.readonly().as_array().to_owned());
-    }
-    if out.is_empty() {
-        return Err(PyValueError::new_err(
-            "expected a non-empty sequence of 2D NumPy arrays with matching float32/float64 dtype",
-        ));
-    }
-    Ok(out)
-}
-
 pub(crate) fn extract_array2_sequence_views<'py, T: Element>(
     arrays: &Bound<'py, PyAny>,
 ) -> PyResult<Vec<PyReadonlyArray2<'py, T>>> {

@@ -15,10 +15,8 @@ use arrow_array::{Array, FixedSizeListArray, ListArray, PrimitiveArray, StructAr
 use arrow_data::ArrayData;
 use arrow_pyarrow::PyArrowType;
 use arrow_schema::{DataType, Field};
-use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayD};
 use num_complex::Complex64;
-use numpy::{PyArray1, PyArrayDyn, PyArrayMethods};
+use numpy::PyReadonlyArray2;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -348,45 +346,6 @@ fn nonsymmetric_config_f64(
         config.balance_tolerance = balance_tolerance;
     }
     config
-}
-
-fn real_pca_result_f32(
-    components: Array2<f32>,
-    mean: Array1<f32>,
-) -> nabled_ml::pca::NdarrayPCAResult<f32> {
-    nabled_ml::pca::NdarrayPCAResult {
-        components,
-        explained_variance: Array1::<f32>::zeros(0),
-        explained_variance_ratio: Array1::<f32>::zeros(0),
-        mean,
-        scores: Array2::<f32>::zeros((0, 0)),
-    }
-}
-
-fn real_pca_result_f64(
-    components: Array2<f64>,
-    mean: Array1<f64>,
-) -> nabled_ml::pca::NdarrayPCAResult<f64> {
-    nabled_ml::pca::NdarrayPCAResult {
-        components,
-        explained_variance: Array1::<f64>::zeros(0),
-        explained_variance_ratio: Array1::<f64>::zeros(0),
-        mean,
-        scores: Array2::<f64>::zeros((0, 0)),
-    }
-}
-
-fn complex_pca_result(
-    components: Array2<Complex64>,
-    mean: Array1<Complex64>,
-) -> nabled_ml::pca::NdarrayComplexPCAResult {
-    nabled_ml::pca::NdarrayComplexPCAResult {
-        components,
-        explained_variance: Array1::zeros(0),
-        explained_variance_ratio: Array1::zeros(0),
-        mean,
-        scores: Array2::zeros((0, 0)),
-    }
 }
 
 fn iterative_config_f32(
@@ -769,74 +728,17 @@ fn map_callback_error<T, E: std::fmt::Display>(
     result.map_err(to_py_err)
 }
 
-fn extract_array1<T>(array: &Bound<'_, PyAny>, label: &str) -> PyResult<Array1<T>>
-where
-    T: numpy::Element + Copy,
-{
-    let array = array.cast::<PyArray1<T>>().map_err(|_| {
-        pyo3::exceptions::PyTypeError::new_err(format!(
-            "{label} must be a contiguous 1D NumPy array with the matching dtype",
-        ))
-    })?;
-    utils::require_contiguous(array)?;
-    Ok(array.readonly().as_array().to_owned())
-}
-
-fn extract_arrayd<T>(array: &Bound<'_, PyAny>, label: &str) -> PyResult<ArrayD<T>>
-where
-    T: numpy::Element + Clone,
-{
-    let array = array.cast::<PyArrayDyn<T>>().map_err(|_| {
-        pyo3::exceptions::PyTypeError::new_err(format!(
-            "{label} must be a contiguous NumPy array with the matching dtype",
-        ))
-    })?;
-    utils::require_contiguous(array)?;
-    Ok(array.readonly().as_array().to_owned())
-}
-
-fn cp_als3_result_from_parts<T>(
-    weights: &Bound<'_, PyAny>,
-    factors: &Bound<'_, PyAny>,
-) -> PyResult<nabled_linalg::tensor::CpAls3Result<T>>
-where
-    T: NabledReal + numpy::Element + Clone + Copy,
-{
-    let weights = extract_array1::<T>(weights, "weights")?;
-    let factors = py_tensor::extract_array2_sequence::<T>(factors)?;
-    let [factor_0, factor_1, factor_2] =
-        factors.try_into().map_err(|factors: Vec<Array2<T>>| {
+fn cp_als3_factor_arrays<'py, T: numpy::Element>(
+    factors: &Bound<'py, PyAny>,
+) -> PyResult<[PyReadonlyArray2<'py, T>; 3]> {
+    py_tensor::extract_array2_sequence_views::<T>(factors)?.try_into().map_err(
+        |factors: Vec<PyReadonlyArray2<'py, T>>| {
             pyo3::exceptions::PyTypeError::new_err(format!(
                 "factors must contain exactly 3 contiguous 2D NumPy arrays, got {}",
                 factors.len()
             ))
-        })?;
-    Ok(nabled_linalg::tensor::CpAls3Result { weights, factor_0, factor_1, factor_2 })
-}
-
-fn cp_als_nd_result_from_parts<T>(
-    weights: &Bound<'_, PyAny>,
-    factors: &Bound<'_, PyAny>,
-) -> PyResult<nabled_linalg::tensor::CpAlsNdResult<T>>
-where
-    T: NabledReal + numpy::Element + Clone + Copy,
-{
-    let weights = extract_array1::<T>(weights, "weights")?;
-    let factors = py_tensor::extract_array2_sequence::<T>(factors)?;
-    let shape = factors.iter().map(ndarray::ArrayBase::nrows).collect();
-    Ok(nabled_linalg::tensor::CpAlsNdResult { weights, factors, shape })
-}
-
-fn hosvd_nd_result_from_parts<T>(
-    core: &Bound<'_, PyAny>,
-    factors: &Bound<'_, PyAny>,
-) -> PyResult<nabled_linalg::tensor::HosvdNdResult<T>>
-where
-    T: NabledReal + numpy::Element + Clone,
-{
-    let core = extract_arrayd::<T>(core, "core")?;
-    let factors = py_tensor::extract_array2_sequence::<T>(factors)?;
-    Ok(nabled_linalg::tensor::HosvdNdResult { core, factors })
+        },
+    )
 }
 
 fn variable_shape_real_dtype(field: &Field) -> Option<&'static str> {
@@ -2082,12 +1984,10 @@ pub fn pca_transform(
             utils::RealReadonlyArray2::F32(components_arr),
             utils::RealReadonlyArray1::F32(mean_arr),
         ) => Ok(fixed_size_list_into_pyarrow(
-            nabled::arrow::pca::transform_f32(
+            nabled::arrow::pca::transform_f32_from_components_view(
                 &matrix_arr,
-                &real_pca_result_f32(
-                    components_arr.as_array().to_owned(),
-                    mean_arr.as_array().to_owned(),
-                ),
+                &components_arr.as_array(),
+                &mean_arr.as_array(),
             )
             .map_err(to_py_err)?,
         )),
@@ -2096,12 +1996,10 @@ pub fn pca_transform(
             utils::RealReadonlyArray2::F64(components_arr),
             utils::RealReadonlyArray1::F64(mean_arr),
         ) => Ok(fixed_size_list_into_pyarrow(
-            nabled::arrow::pca::transform_f64(
+            nabled::arrow::pca::transform_f64_from_components_view(
                 &matrix_arr,
-                &real_pca_result_f64(
-                    components_arr.as_array().to_owned(),
-                    mean_arr.as_array().to_owned(),
-                ),
+                &components_arr.as_array(),
+                &mean_arr.as_array(),
             )
             .map_err(to_py_err)?,
         )),
@@ -2126,12 +2024,10 @@ pub fn pca_inverse_transform(
             utils::RealReadonlyArray2::F32(components_arr),
             utils::RealReadonlyArray1::F32(mean_arr),
         ) => Ok(fixed_size_list_into_pyarrow(
-            nabled::arrow::pca::inverse_transform_f32(
+            nabled::arrow::pca::inverse_transform_f32_from_components_view(
                 &scores_arr,
-                &real_pca_result_f32(
-                    components_arr.as_array().to_owned(),
-                    mean_arr.as_array().to_owned(),
-                ),
+                &components_arr.as_array(),
+                &mean_arr.as_array(),
             )
             .map_err(to_py_err)?,
         )),
@@ -2140,12 +2036,10 @@ pub fn pca_inverse_transform(
             utils::RealReadonlyArray2::F64(components_arr),
             utils::RealReadonlyArray1::F64(mean_arr),
         ) => Ok(fixed_size_list_into_pyarrow(
-            nabled::arrow::pca::inverse_transform_f64(
+            nabled::arrow::pca::inverse_transform_f64_from_components_view(
                 &scores_arr,
-                &real_pca_result_f64(
-                    components_arr.as_array().to_owned(),
-                    mean_arr.as_array().to_owned(),
-                ),
+                &components_arr.as_array(),
+                &mean_arr.as_array(),
             )
             .map_err(to_py_err)?,
         )),
@@ -3909,12 +3803,10 @@ pub fn pca_transform_complex(
             utils::NumericReadonlyArray2::C64(components_arr),
             utils::NumericReadonlyArray1::C64(mean_arr),
         ) => Ok(fixed_size_list_into_pyarrow(
-            nabled::arrow::pca::transform_complex(
+            nabled::arrow::pca::transform_complex_from_components_view(
                 &matrix_arr,
-                &complex_pca_result(
-                    components_arr.as_array().to_owned(),
-                    mean_arr.as_array().to_owned(),
-                ),
+                &components_arr.as_array(),
+                &mean_arr.as_array(),
             )
             .map_err(to_py_err)?,
         )),
@@ -3937,12 +3829,10 @@ pub fn pca_inverse_transform_complex(
             utils::NumericReadonlyArray2::C64(components_arr),
             utils::NumericReadonlyArray1::C64(mean_arr),
         ) => Ok(fixed_size_list_into_pyarrow(
-            nabled::arrow::pca::inverse_transform_complex(
+            nabled::arrow::pca::inverse_transform_complex_from_components_view(
                 &scores_arr,
-                &complex_pca_result(
-                    components_arr.as_array().to_owned(),
-                    mean_arr.as_array().to_owned(),
-                ),
+                &components_arr.as_array(),
+                &mean_arr.as_array(),
             )
             .map_err(to_py_err)?,
         )),
@@ -6003,23 +5893,36 @@ pub fn tensor_cp_als3_diagnostics(
     weights: &Bound<'_, PyAny>,
     factors: &Bound<'_, PyAny>,
 ) -> PyResult<py_tensor::PyCpMetrics> {
-    match array_data_to_real_fixed_size_list(array.0)? {
-        RealFixedSizeListArray::F32(array) => py_tensor::py_cp_metrics(
-            nabled::arrow::tensor::cp_als3_diagnostics::<Float32Type>(
-                &field.0,
-                &array,
-                &cp_als3_result_from_parts::<f32>(weights, factors)?,
+    match (array_data_to_real_fixed_size_list(array.0)?, utils::real_array1(weights, "weights")?) {
+        (RealFixedSizeListArray::F32(array), utils::RealReadonlyArray1::F32(weights_arr)) => {
+            let [factor_0, factor_1, factor_2] = cp_als3_factor_arrays::<f32>(factors)?;
+            py_tensor::py_cp_metrics(
+                nabled::arrow::tensor::cp_als3_diagnostics_from_factors_view::<Float32Type>(
+                    &field.0,
+                    &array,
+                    &weights_arr.as_array(),
+                    &factor_0.as_array(),
+                    &factor_1.as_array(),
+                    &factor_2.as_array(),
+                )
+                .map_err(to_py_err)?,
             )
-            .map_err(to_py_err)?,
-        ),
-        RealFixedSizeListArray::F64(array) => py_tensor::py_cp_metrics(
-            nabled::arrow::tensor::cp_als3_diagnostics::<Float64Type>(
-                &field.0,
-                &array,
-                &cp_als3_result_from_parts::<f64>(weights, factors)?,
+        }
+        (RealFixedSizeListArray::F64(array), utils::RealReadonlyArray1::F64(weights_arr)) => {
+            let [factor_0, factor_1, factor_2] = cp_als3_factor_arrays::<f64>(factors)?;
+            py_tensor::py_cp_metrics(
+                nabled::arrow::tensor::cp_als3_diagnostics_from_factors_view::<Float64Type>(
+                    &field.0,
+                    &array,
+                    &weights_arr.as_array(),
+                    &factor_0.as_array(),
+                    &factor_1.as_array(),
+                    &factor_2.as_array(),
+                )
+                .map_err(to_py_err)?,
             )
-            .map_err(to_py_err)?,
-        ),
+        }
+        _ => Err(utils::matching_real_dtype_error(&["tensor", "weights", "factors"])),
     }
 }
 
@@ -6030,22 +5933,33 @@ pub fn tensor_cp_als3_reconstruct(
     weights: &Bound<'_, PyAny>,
     factors: &Bound<'_, PyAny>,
 ) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
-    if weights.cast::<PyArray1<f32>>().is_ok() {
-        Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::cp_als3_reconstruct::<Float32Type>(
-                field_name,
-                &cp_als3_result_from_parts::<f32>(weights, factors)?,
-            )
-            .map_err(to_py_err)?,
-        ))
-    } else {
-        Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::cp_als3_reconstruct::<Float64Type>(
-                field_name,
-                &cp_als3_result_from_parts::<f64>(weights, factors)?,
-            )
-            .map_err(to_py_err)?,
-        ))
+    match utils::real_array1(weights, "weights")? {
+        utils::RealReadonlyArray1::F32(weights_arr) => {
+            let [factor_0, factor_1, factor_2] = cp_als3_factor_arrays::<f32>(factors)?;
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::cp_als3_reconstruct_from_factors_view::<Float32Type>(
+                    field_name,
+                    &weights_arr.as_array(),
+                    &factor_0.as_array(),
+                    &factor_1.as_array(),
+                    &factor_2.as_array(),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        utils::RealReadonlyArray1::F64(weights_arr) => {
+            let [factor_0, factor_1, factor_2] = cp_als3_factor_arrays::<f64>(factors)?;
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::cp_als3_reconstruct_from_factors_view::<Float64Type>(
+                    field_name,
+                    &weights_arr.as_array(),
+                    &factor_0.as_array(),
+                    &factor_1.as_array(),
+                    &factor_2.as_array(),
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
     }
 }
 
@@ -6125,23 +6039,36 @@ pub fn tensor_cp_als_nd_diagnostics(
     weights: &Bound<'_, PyAny>,
     factors: &Bound<'_, PyAny>,
 ) -> PyResult<py_tensor::PyCpMetrics> {
-    match array_data_to_real_fixed_size_list(array.0)? {
-        RealFixedSizeListArray::F32(array) => py_tensor::py_cp_metrics(
-            nabled::arrow::tensor::cp_als_nd_diagnostics::<Float32Type>(
-                &field.0,
-                &array,
-                &cp_als_nd_result_from_parts::<f32>(weights, factors)?,
+    match (array_data_to_real_fixed_size_list(array.0)?, utils::real_array1(weights, "weights")?) {
+        (RealFixedSizeListArray::F32(array), utils::RealReadonlyArray1::F32(weights_arr)) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            py_tensor::py_cp_metrics(
+                nabled::arrow::tensor::cp_als_nd_diagnostics_from_factors_view::<Float32Type>(
+                    &field.0,
+                    &array,
+                    &weights_arr.as_array(),
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
             )
-            .map_err(to_py_err)?,
-        ),
-        RealFixedSizeListArray::F64(array) => py_tensor::py_cp_metrics(
-            nabled::arrow::tensor::cp_als_nd_diagnostics::<Float64Type>(
-                &field.0,
-                &array,
-                &cp_als_nd_result_from_parts::<f64>(weights, factors)?,
+        }
+        (RealFixedSizeListArray::F64(array), utils::RealReadonlyArray1::F64(weights_arr)) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            py_tensor::py_cp_metrics(
+                nabled::arrow::tensor::cp_als_nd_diagnostics_from_factors_view::<Float64Type>(
+                    &field.0,
+                    &array,
+                    &weights_arr.as_array(),
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
             )
-            .map_err(to_py_err)?,
-        ),
+        }
+        _ => Err(utils::matching_real_dtype_error(&["tensor", "weights", "factors"])),
     }
 }
 
@@ -6152,22 +6079,33 @@ pub fn tensor_cp_als_nd_reconstruct(
     weights: &Bound<'_, PyAny>,
     factors: &Bound<'_, PyAny>,
 ) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
-    if weights.cast::<PyArray1<f32>>().is_ok() {
-        Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::cp_als_nd_reconstruct::<Float32Type>(
-                field_name,
-                &cp_als_nd_result_from_parts::<f32>(weights, factors)?,
-            )
-            .map_err(to_py_err)?,
-        ))
-    } else {
-        Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::cp_als_nd_reconstruct::<Float64Type>(
-                field_name,
-                &cp_als_nd_result_from_parts::<f64>(weights, factors)?,
-            )
-            .map_err(to_py_err)?,
-        ))
+    match utils::real_array1(weights, "weights")? {
+        utils::RealReadonlyArray1::F32(weights_arr) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::cp_als_nd_reconstruct_from_factors_view::<Float32Type>(
+                    field_name,
+                    &weights_arr.as_array(),
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        utils::RealReadonlyArray1::F64(weights_arr) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::cp_als_nd_reconstruct_from_factors_view::<Float64Type>(
+                    field_name,
+                    &weights_arr.as_array(),
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
     }
 }
 
@@ -6234,22 +6172,33 @@ pub fn tensor_hosvd_nd_reconstruct(
     core: &Bound<'_, PyAny>,
     factors: &Bound<'_, PyAny>,
 ) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
-    if core.cast::<PyArrayDyn<f32>>().is_ok() {
-        Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::hosvd_nd_reconstruct::<Float32Type>(
-                field_name,
-                &hosvd_nd_result_from_parts::<f32>(core, factors)?,
-            )
-            .map_err(to_py_err)?,
-        ))
-    } else {
-        Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::hosvd_nd_reconstruct::<Float64Type>(
-                field_name,
-                &hosvd_nd_result_from_parts::<f64>(core, factors)?,
-            )
-            .map_err(to_py_err)?,
-        ))
+    match utils::real_arrayd(core, "core")? {
+        utils::RealReadonlyArrayDyn::F32(core_arr) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::hosvd_nd_reconstruct_from_factors_view::<Float32Type>(
+                    field_name,
+                    &core_arr.as_array(),
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        utils::RealReadonlyArrayDyn::F64(core_arr) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::hosvd_nd_reconstruct_from_factors_view::<Float64Type>(
+                    field_name,
+                    &core_arr.as_array(),
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
     }
 }
 
@@ -6261,22 +6210,32 @@ pub fn tensor_tucker_project(
     factors: &Bound<'_, PyAny>,
 ) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
     match array_data_to_real_fixed_size_list(array.0)? {
-        RealFixedSizeListArray::F32(array) => Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::tucker_project::<Float32Type>(
-                &field.0,
-                &array,
-                &py_tensor::extract_array2_sequence::<f32>(factors)?,
-            )
-            .map_err(to_py_err)?,
-        )),
-        RealFixedSizeListArray::F64(array) => Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::tucker_project::<Float64Type>(
-                &field.0,
-                &array,
-                &py_tensor::extract_array2_sequence::<f64>(factors)?,
-            )
-            .map_err(to_py_err)?,
-        )),
+        RealFixedSizeListArray::F32(array) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::tucker_project_from_factors_view::<Float32Type>(
+                    &field.0,
+                    &array,
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        RealFixedSizeListArray::F64(array) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::tucker_project_from_factors_view::<Float64Type>(
+                    &field.0,
+                    &array,
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
     }
 }
 
@@ -6288,22 +6247,32 @@ pub fn tensor_tucker_expand(
     factors: &Bound<'_, PyAny>,
 ) -> PyResult<(PyArrowType<Field>, PyArrowType<ArrayData>)> {
     match array_data_to_real_fixed_size_list(array.0)? {
-        RealFixedSizeListArray::F32(array) => Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::tucker_expand::<Float32Type>(
-                &field.0,
-                &array,
-                &py_tensor::extract_array2_sequence::<f32>(factors)?,
-            )
-            .map_err(to_py_err)?,
-        )),
-        RealFixedSizeListArray::F64(array) => Ok(extension_result_into_pyarrow(
-            nabled::arrow::tensor::tucker_expand::<Float64Type>(
-                &field.0,
-                &array,
-                &py_tensor::extract_array2_sequence::<f64>(factors)?,
-            )
-            .map_err(to_py_err)?,
-        )),
+        RealFixedSizeListArray::F32(array) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f32>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::tucker_expand_from_factors_view::<Float32Type>(
+                    &field.0,
+                    &array,
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
+        RealFixedSizeListArray::F64(array) => {
+            let factor_arrays = py_tensor::extract_array2_sequence_views::<f64>(factors)?;
+            let factor_views =
+                factor_arrays.iter().map(PyReadonlyArray2::as_array).collect::<Vec<_>>();
+            Ok(extension_result_into_pyarrow(
+                nabled::arrow::tensor::tucker_expand_from_factors_view::<Float64Type>(
+                    &field.0,
+                    &array,
+                    &factor_views,
+                )
+                .map_err(to_py_err)?,
+            ))
+        }
     }
 }
 

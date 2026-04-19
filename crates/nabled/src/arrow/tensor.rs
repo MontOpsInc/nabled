@@ -4,7 +4,7 @@ use arrow_array::types::{ArrowPrimitiveType, Float64Type};
 use arrow_array::{Array, FixedSizeListArray, StructArray};
 use arrow_schema::Field;
 use nabled_core::scalar::NabledReal;
-use ndarray::{ArrayD, ArrayView3, Ix3};
+use ndarray::{ArrayD, ArrayView1, ArrayView2, ArrayView3, ArrayViewD, Ix3};
 use ndarrow::NdarrowElement;
 use num_complex::Complex64;
 use serde::Deserialize;
@@ -76,7 +76,7 @@ fn collect_variable_shape_real_rows<T, F>(
 where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
-    F: FnMut(&ndarray::ArrayViewD<'_, T::Native>) -> Result<ArrayD<T::Native>, ArrowInteropError>,
+    F: FnMut(&ArrayViewD<'_, T::Native>) -> Result<ArrayD<T::Native>, ArrowInteropError>,
 {
     let batch = variable_shape_tensor_batch_view::<T>(field, array)?;
     let mut outputs = Vec::with_capacity(batch.len());
@@ -94,7 +94,7 @@ fn collect_variable_shape_complex_rows<F>(
     mut op: F,
 ) -> Result<(Field, StructArray), ArrowInteropError>
 where
-    F: FnMut(&ndarray::ArrayViewD<'_, Complex64>) -> Result<ArrayD<Complex64>, ArrowInteropError>,
+    F: FnMut(&ArrayViewD<'_, Complex64>) -> Result<ArrayD<Complex64>, ArrowInteropError>,
 {
     let mut outputs = Vec::with_capacity(array.len());
     for row in ndarrow::complex64_variable_shape_tensor_iter(field, array)? {
@@ -111,7 +111,7 @@ fn collect_variable_shape_complex_norm_rows<F>(
     mut op: F,
 ) -> Result<(Field, StructArray), ArrowInteropError>
 where
-    F: FnMut(&ndarray::ArrayViewD<'_, Complex64>) -> Result<ArrayD<f64>, ArrowInteropError>,
+    F: FnMut(&ArrayViewD<'_, Complex64>) -> Result<ArrayD<f64>, ArrowInteropError>,
 {
     let mut outputs = Vec::with_capacity(array.len());
     for row in ndarrow::complex64_variable_shape_tensor_iter(field, array)? {
@@ -731,8 +731,36 @@ where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
 {
+    cp_als3_diagnostics_from_factors_view::<T>(
+        field,
+        array,
+        &result.weights.view(),
+        &result.factor_0.view(),
+        &result.factor_1.view(),
+        &result.factor_2.view(),
+    )
+}
+
+/// Compute reconstruction diagnostics for a rank-3 CP decomposition from borrowed factors.
+///
+/// # Errors
+/// Returns an error when the tensor is not rank-3, contains nulls, or dimensions mismatch.
+pub fn cp_als3_diagnostics_from_factors_view<T>(
+    field: &Field,
+    array: &FixedSizeListArray,
+    weights: &ArrayView1<'_, T::Native>,
+    factor_0: &ArrayView2<'_, T::Native>,
+    factor_1: &ArrayView2<'_, T::Native>,
+    factor_2: &ArrayView2<'_, T::Native>,
+) -> Result<crate::linalg::tensor::CpErrorMetrics<T::Native>, ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
     let cube_view = fixed_shape_tensor_view3::<T>(field, array)?;
-    Ok(crate::linalg::tensor::cp_als3_diagnostics_view(&cube_view, result)?)
+    Ok(crate::linalg::tensor::cp_als3_diagnostics_from_factors_view(
+        &cube_view, weights, factor_0, factor_1, factor_2,
+    )?)
 }
 
 /// Reconstruct a rank-3 tensor from CP factors into Arrow fixed-shape tensor form.
@@ -747,7 +775,33 @@ where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
 {
-    let output = crate::linalg::tensor::cp_als3_reconstruct(result)?;
+    cp_als3_reconstruct_from_factors_view::<T>(
+        field_name,
+        &result.weights.view(),
+        &result.factor_0.view(),
+        &result.factor_1.view(),
+        &result.factor_2.view(),
+    )
+}
+
+/// Reconstruct a rank-3 tensor from borrowed CP factors into Arrow fixed-shape tensor form.
+///
+/// # Errors
+/// Returns an error when factor dimensions are incompatible.
+pub fn cp_als3_reconstruct_from_factors_view<T>(
+    field_name: &str,
+    weights: &ArrayView1<'_, T::Native>,
+    factor_0: &ArrayView2<'_, T::Native>,
+    factor_1: &ArrayView2<'_, T::Native>,
+    factor_2: &ArrayView2<'_, T::Native>,
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    let output = crate::linalg::tensor::cp_als3_reconstruct_from_factors_view(
+        weights, factor_0, factor_1, factor_2,
+    )?;
     fixed_shape_tensor_from_owned::<T>(field_name, output.into_dyn())
 }
 
@@ -800,8 +854,34 @@ where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
 {
+    cp_als_nd_diagnostics_from_factors_view::<T>(
+        field,
+        array,
+        &result.weights.view(),
+        &result.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Compute reconstruction diagnostics for an `N`-D CP decomposition from borrowed factors.
+///
+/// # Errors
+/// Returns an error when the tensor is invalid, contains nulls, or dimensions mismatch.
+pub fn cp_als_nd_diagnostics_from_factors_view<T>(
+    field: &Field,
+    array: &FixedSizeListArray,
+    weights: &ArrayView1<'_, T::Native>,
+    factors: &[ArrayView2<'_, T::Native>],
+) -> Result<crate::linalg::tensor::CpErrorMetrics<T::Native>, ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
     let tensor_view = fixed_shape_tensor_viewd::<T>(field, array)?;
-    Ok(crate::linalg::tensor::cp_als_nd_diagnostics_view(&tensor_view, result)?)
+    Ok(crate::linalg::tensor::cp_als_nd_diagnostics_from_factors_view(
+        &tensor_view,
+        weights,
+        factors,
+    )?)
 }
 
 /// Reconstruct an `N`-D tensor from CP factors into Arrow fixed-shape tensor form.
@@ -816,7 +896,27 @@ where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
 {
-    let output = crate::linalg::tensor::cp_als_nd_reconstruct(result)?;
+    cp_als_nd_reconstruct_from_factors_view::<T>(
+        field_name,
+        &result.weights.view(),
+        &result.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Reconstruct an `N`-D tensor from borrowed CP factors into Arrow fixed-shape tensor form.
+///
+/// # Errors
+/// Returns an error when factor dimensions are incompatible.
+pub fn cp_als_nd_reconstruct_from_factors_view<T>(
+    field_name: &str,
+    weights: &ArrayView1<'_, T::Native>,
+    factors: &[ArrayView2<'_, T::Native>],
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    let output = crate::linalg::tensor::cp_als_nd_reconstruct_from_factors_view(weights, factors)?;
     fixed_shape_tensor_from_owned::<T>(field_name, output)
 }
 
@@ -868,8 +968,28 @@ where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
 {
+    tucker_project_from_factors_view::<T>(
+        field,
+        array,
+        &factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Project an Arrow tensor into a Tucker core using borrowed per-mode factor views.
+///
+/// # Errors
+/// Returns an error when tensor/factor dimensions are incompatible.
+pub fn tucker_project_from_factors_view<T>(
+    field: &Field,
+    array: &FixedSizeListArray,
+    factors: &[ArrayView2<'_, T::Native>],
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
     let tensor_view = fixed_shape_tensor_viewd::<T>(field, array)?;
-    let output = crate::linalg::tensor::tucker_project_view(&tensor_view, factors)?;
+    let output = crate::linalg::tensor::tucker_project_from_factors_view(&tensor_view, factors)?;
     fixed_shape_tensor_from_owned::<T>(field.name(), output)
 }
 
@@ -886,8 +1006,28 @@ where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
 {
+    tucker_expand_from_factors_view::<T>(
+        field,
+        array,
+        &factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Expand a Tucker core from Arrow into the original tensor space using borrowed factors.
+///
+/// # Errors
+/// Returns an error when core/factor dimensions are incompatible.
+pub fn tucker_expand_from_factors_view<T>(
+    field: &Field,
+    array: &FixedSizeListArray,
+    factors: &[ArrayView2<'_, T::Native>],
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
     let tensor_view = fixed_shape_tensor_viewd::<T>(field, array)?;
-    let output = crate::linalg::tensor::tucker_expand_view(&tensor_view, factors)?;
+    let output = crate::linalg::tensor::tucker_expand_from_factors_view(&tensor_view, factors)?;
     fixed_shape_tensor_from_owned::<T>(field.name(), output)
 }
 
@@ -903,7 +1043,27 @@ where
     T: ArrowPrimitiveType,
     T::Native: NabledReal + NdarrowElement,
 {
-    let output = crate::linalg::tensor::hosvd_nd_reconstruct(result)?;
+    hosvd_nd_reconstruct_from_factors_view::<T>(
+        field_name,
+        &result.core.view(),
+        &result.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>(),
+    )
+}
+
+/// Reconstruct an `N`-D tensor from borrowed HOSVD/Tucker factors.
+///
+/// # Errors
+/// Returns an error when factor dimensions are incompatible.
+pub fn hosvd_nd_reconstruct_from_factors_view<T>(
+    field_name: &str,
+    core: &ArrayViewD<'_, T::Native>,
+    factors: &[ArrayView2<'_, T::Native>],
+) -> Result<(Field, FixedSizeListArray), ArrowInteropError>
+where
+    T: ArrowPrimitiveType,
+    T::Native: NabledReal + NdarrowElement,
+{
+    let output = crate::linalg::tensor::hosvd_nd_reconstruct_from_factors_view(core, factors)?;
     fixed_shape_tensor_from_owned::<T>(field_name, output)
 }
 
