@@ -534,7 +534,10 @@ def batched_svd(matrices) -> list[SvdResult]:
 
 
 def batched_lu(matrices) -> list[LuResult]:
-    return [LuResult(l=l, u=u) for l, u in _raw.batched_lu(matrices)]
+    return [
+        LuResult(l=l, u=u, pivots=pivots, permutation_sign=permutation_sign)
+        for l, u, pivots, permutation_sign in _raw.batched_lu(matrices)
+    ]
 
 
 def batched_cholesky(matrices) -> list[CholeskyResult]:

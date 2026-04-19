@@ -82,25 +82,49 @@ pub fn svd<'py>(
     }
 }
 
-/// Batched LU decomposition. Returns list of (L, U) tuples.
+/// Batched LU decomposition. Returns list of `(L, U, pivots, permutation_sign)` tuples.
 #[pyfunction(name = "batched_lu")]
 pub fn lu<'py>(
     py: Python<'py>,
     matrices: &Bound<'py, PyAny>,
-) -> PyResult<Vec<(Py<PyAny>, Py<PyAny>)>> {
+) -> PyResult<Vec<(Py<PyAny>, Py<PyAny>, Py<PyAny>, i8)>> {
     match utils::real_array3(matrices, "matrices")? {
         utils::RealReadonlyArray3::F32(arr) => {
-            let results = nabled_linalg::batched::lu_view(&arr.as_array()).map_err(to_py_err)?;
+            let results = nabled_linalg::batched::lu_view_with_metadata(&arr.as_array())
+                .map_err(to_py_err)?;
             Ok(results
                 .into_iter()
-                .map(|r| (utils::pyarray2_from_owned(py, r.l), utils::pyarray2_from_owned(py, r.u)))
+                .map(|(result, pivots, permutation_sign)| {
+                    (
+                        utils::pyarray2_from_owned(py, result.l),
+                        utils::pyarray2_from_owned(py, result.u),
+                        utils::pyarray1_from_owned(
+                            py,
+                            utils::usize_array1_to_i64(pivots, "pivots")
+                                .expect("usize pivot indices should fit in Python int64 arrays"),
+                        ),
+                        permutation_sign,
+                    )
+                })
                 .collect())
         }
         utils::RealReadonlyArray3::F64(arr) => {
-            let results = nabled_linalg::batched::lu_view(&arr.as_array()).map_err(to_py_err)?;
+            let results = nabled_linalg::batched::lu_view_with_metadata(&arr.as_array())
+                .map_err(to_py_err)?;
             Ok(results
                 .into_iter()
-                .map(|r| (utils::pyarray2_from_owned(py, r.l), utils::pyarray2_from_owned(py, r.u)))
+                .map(|(result, pivots, permutation_sign)| {
+                    (
+                        utils::pyarray2_from_owned(py, result.l),
+                        utils::pyarray2_from_owned(py, result.u),
+                        utils::pyarray1_from_owned(
+                            py,
+                            utils::usize_array1_to_i64(pivots, "pivots")
+                                .expect("usize pivot indices should fit in Python int64 arrays"),
+                        ),
+                        permutation_sign,
+                    )
+                })
                 .collect())
         }
     }

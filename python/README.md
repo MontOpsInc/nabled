@@ -132,7 +132,9 @@ pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_s
 `LuResult` now follows that same typed factor-reuse contract for real LU workflows:
 `lu_solve(...)`, `lu_inverse(...)`, `lu_determinant(...)`, and `lu_log_determinant(...)` all
 accept the factor result directly, and the solve/inverse rows also accept `out=` under the
-existing public names.
+existing public names. Batched LU and Arrow LU decomposition wrappers now preserve the same
+`pivots` plus `permutation_sign` metadata on their returned `LuResult` objects instead of
+truncating those rows to `(L, U)` only.
 
 Where the Rust core already exposes reusable scratch/workspace objects, the Python API now keeps
 that contract visible too. `PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`, and

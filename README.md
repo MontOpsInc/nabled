@@ -135,7 +135,9 @@ pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_s
 `LuResult` now follows that same pattern for real LU workflows: `lu_solve(...)`,
 `lu_inverse(...)`, `lu_determinant(...)`, and `lu_log_determinant(...)` all accept the typed
 factor result directly, and the solve/inverse rows now also accept `out=` under the existing
-public names.
+public names. Batched LU and Arrow LU decomposition wrappers now preserve the same `pivots` plus
+`permutation_sign` metadata on their returned `LuResult` objects instead of truncating those rows
+to `(L, U)` only.
 Provider-bound mixed-precision refinement helpers are now surfaced explicitly too:
 `lu_solve_mixed(...)`, `sylvester_solve_mixed(...)`, and `lyapunov_solve_mixed(...)` return typed
 Python result objects carrying both the solved array and `refinement_iterations`. Those rows

@@ -945,8 +945,11 @@ def _qr_result(raw_result) -> QrResult:
 
 
 def _lu_result(raw_result) -> LuResult:
-    l, u = raw_result
-    return LuResult(l=l, u=u)
+    if len(raw_result) == 2:
+        l, u = raw_result
+        return LuResult(l=l, u=u)
+    l, u, pivots, permutation_sign = raw_result
+    return LuResult(l=l, u=u, pivots=pivots, permutation_sign=permutation_sign)
 
 
 def _cholesky_result(raw_result) -> CholeskyResult:

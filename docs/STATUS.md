@@ -38,7 +38,13 @@ accept caller-provided `out=` arrays where the Rust core already exposes `*_into
 the SVD helper rank/condition paths now operate directly on singular values instead of rebuilding
 owned intermediary decomposition structs. The repo gate is green again (`just checks`), the Rust
 coverage gate is back above threshold (`90.71%` line coverage), and the Python package gate
-remains green (`194 passed, 22 skipped`, `92%` Python coverage). A fourth
+remains green (`194 passed, 22 skipped`, `92%` Python coverage). The latest `N-PY-007`
+result-fidelity pass is now also landed: batched NumPy LU and Arrow LU no longer discard pivot
+metadata at the Python boundary. `LuResult` coming back from `batched_lu(...)`,
+`pynabled.arrow.arrow_lu_decompose(...)`, and `pynabled.arrow.arrow_batched_lu(...)` now
+preserves `pivots` plus `permutation_sign`, matching the direct LU factor contract and making
+reusable LU solve workflows truthful across the batched and Arrow decomposition surfaces as well.
+A fourth
 `N-PY-007` reusable-workspace pass is now also landed: repeated pairwise cosine, matrix-function,
 and Sylvester/Lyapunov workloads now expose first-class `PairwiseCosineWorkspace`,
 `MatrixFunctionWorkspace`, and `SylvesterWorkspace` objects, and the existing public Python APIs
@@ -90,9 +96,9 @@ reconstruction `*_into` rows accept generic mutable ndarray outputs instead of f
 outputs at the boundary. This closes another real higher-level materialization pocket without
 introducing a Python-side copy fallback. Validation is green on the targeted gates:
 `cargo check -p pynabled` and `python-quality` (`212 passed, 22 skipped`, `91%` Python
-coverage). Remaining `N-PY-007` work is now narrowed again to the smaller iterative
-complex/layout copy-contract gap plus any still-missing reusable result/workspace families and
-residual higher-level copy traps. A ninth `N-PY-007` iterative allocation-control and
+coverage). Remaining `N-PY-007` work is now narrowed again to the likely callback-driven
+convenience-copy pockets plus any last higher-level reusable result/workspace or materialization
+gaps. A ninth `N-PY-007` iterative allocation-control and
 complex-layout pass is now also landed: dense iterative `conjugate_gradient` / `gmres` now expose
 Rust-backed `out=` reuse under the existing public Python names for both real and complex rows,
 and the complex iterative bindings now borrow NumPy inputs through the same helper-based

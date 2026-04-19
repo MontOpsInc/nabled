@@ -122,6 +122,17 @@ pub fn f64_to_real<T: FromPrimitive>(value: f64, name: &str) -> PyResult<T> {
     })
 }
 
+pub fn usize_array1_to_i64(values: Vec<usize>, name: &str) -> PyResult<Array1<i64>> {
+    values
+        .into_iter()
+        .map(|value| {
+            i64::try_from(value).map_err(|_| {
+                PyOverflowError::new_err(format!("{name} must be representable as int64"))
+            })
+        })
+        .collect()
+}
+
 pub fn real_array1<'py>(
     array: &Bound<'py, PyAny>,
     name: &str,

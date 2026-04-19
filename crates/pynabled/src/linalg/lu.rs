@@ -1,6 +1,5 @@
 //! LU decomposition bindings for Python.
 
-use ndarray::Array1;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
@@ -8,11 +7,8 @@ use crate::error::to_py_err;
 use crate::utils;
 
 fn pivots_to_pyarray(py: Python<'_>, pivots: Vec<usize>) -> Py<PyAny> {
-    let pivots = Array1::from_iter(
-        pivots
-            .into_iter()
-            .map(|pivot| i64::try_from(pivot).expect("usize pivot should fit in int64")),
-    );
+    let pivots = utils::usize_array1_to_i64(pivots, "pivots")
+        .expect("usize pivot indices should fit in Python int64 arrays");
     utils::pyarray1_from_owned(py, pivots)
 }
 

@@ -1525,20 +1525,41 @@ pub fn qr_solve_least_squares(
     }
 }
 
-/// Compute LU decomposition of a real PyArrow dense matrix. Returns `(L, U)`.
+/// Compute LU decomposition of a real PyArrow dense matrix. Returns `(L, U, pivots,
+/// permutation_sign)`.
 #[pyfunction(name = "arrow_lu_decompose")]
 pub fn lu_decompose(
     py: Python<'_>,
     matrix: PyArrowType<ArrayData>,
-) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>, i8)> {
     match array_data_to_real_fixed_size_list(matrix.0)? {
         RealFixedSizeListArray::F32(fsl) => {
-            let result = nabled::arrow::lu::decompose_f32(&fsl).map_err(to_py_err)?;
-            Ok((utils::pyarray2_from_owned(py, result.l), utils::pyarray2_from_owned(py, result.u)))
+            let (result, pivots, permutation_sign) =
+                nabled::arrow::lu::decompose_f32_with_metadata(&fsl).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.l),
+                utils::pyarray2_from_owned(py, result.u),
+                utils::pyarray1_from_owned(
+                    py,
+                    utils::usize_array1_to_i64(pivots, "pivots")
+                        .expect("usize pivot indices should fit in Python int64 arrays"),
+                ),
+                permutation_sign,
+            ))
         }
         RealFixedSizeListArray::F64(fsl) => {
-            let result = nabled::arrow::lu::decompose_f64(&fsl).map_err(to_py_err)?;
-            Ok((utils::pyarray2_from_owned(py, result.l), utils::pyarray2_from_owned(py, result.u)))
+            let (result, pivots, permutation_sign) =
+                nabled::arrow::lu::decompose_f64_with_metadata(&fsl).map_err(to_py_err)?;
+            Ok((
+                utils::pyarray2_from_owned(py, result.l),
+                utils::pyarray2_from_owned(py, result.u),
+                utils::pyarray1_from_owned(
+                    py,
+                    utils::usize_array1_to_i64(pivots, "pivots")
+                        .expect("usize pivot indices should fit in Python int64 arrays"),
+                ),
+                permutation_sign,
+            ))
         }
     }
 }
@@ -3454,31 +3475,43 @@ pub fn batched_lu(
     py: Python<'_>,
     field: PyArrowType<Field>,
     matrices: PyArrowType<ArrayData>,
-) -> PyResult<Vec<(Py<PyAny>, Py<PyAny>)>> {
+) -> PyResult<Vec<(Py<PyAny>, Py<PyAny>, Py<PyAny>, i8)>> {
     let matrices_arr =
         fixed_size_list_with_non_null_item(&array_data_to_fixed_size_list(matrices.0)?);
     let field = field_with_array_storage(&field.0, &matrices_arr);
     match matrices_arr.value_type() {
         arrow_schema::DataType::Float32 => {
-            Ok(nabled::arrow::batched::lu_f32(&field, &matrices_arr)
+            Ok(nabled::arrow::batched::lu_f32_with_metadata(&field, &matrices_arr)
                 .map_err(to_py_err)?
                 .into_iter()
-                .map(|result| {
+                .map(|(result, pivots, permutation_sign)| {
                     (
                         utils::pyarray2_from_owned(py, result.l),
                         utils::pyarray2_from_owned(py, result.u),
+                        utils::pyarray1_from_owned(
+                            py,
+                            utils::usize_array1_to_i64(pivots, "pivots")
+                                .expect("usize pivot indices should fit in Python int64 arrays"),
+                        ),
+                        permutation_sign,
                     )
                 })
                 .collect())
         }
         arrow_schema::DataType::Float64 => {
-            Ok(nabled::arrow::batched::lu_f64(&field, &matrices_arr)
+            Ok(nabled::arrow::batched::lu_f64_with_metadata(&field, &matrices_arr)
                 .map_err(to_py_err)?
                 .into_iter()
-                .map(|result| {
+                .map(|(result, pivots, permutation_sign)| {
                     (
                         utils::pyarray2_from_owned(py, result.l),
                         utils::pyarray2_from_owned(py, result.u),
+                        utils::pyarray1_from_owned(
+                            py,
+                            utils::usize_array1_to_i64(pivots, "pivots")
+                                .expect("usize pivot indices should fit in Python int64 arrays"),
+                        ),
+                        permutation_sign,
                     )
                 })
                 .collect())

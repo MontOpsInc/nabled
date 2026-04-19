@@ -1075,12 +1075,12 @@ pub(crate) fn qr_decompose_batched<T: MagmaRealBatched>(
 #[expect(clippy::type_complexity)]
 pub(crate) fn lu_decompose_batched<T: MagmaRealBatched>(
     matrices: &ArrayView3<'_, T>,
-) -> Result<Vec<(Array2<T>, Array2<T>)>, &'static str> {
+) -> Result<Vec<(Array2<T>, Array2<T>, Vec<usize>, i8)>, &'static str> {
     let (batch_count, _n) = validate_batched_square_finite(matrices)?;
     let mut output = Vec::with_capacity(batch_count);
     for matrix in matrices.axis_iter(Axis(0)) {
-        let (l, u, _pivots, _sign) = lu_decompose(&matrix)?;
-        output.push((l, u));
+        let (l, u, pivots, sign) = lu_decompose(&matrix)?;
+        output.push((l, u, pivots, sign));
     }
 
     Ok(output)

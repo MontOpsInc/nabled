@@ -572,6 +572,9 @@ def test_arrow_real_decomposition_wrappers():
 
     lu = arrow_lu_decompose(spd_arrow)
     np.testing.assert_allclose(np.asarray(lu.l) @ np.asarray(lu.u), spd, rtol=1e-10)
+    assert lu.pivots is not None
+    assert lu.permutation_sign in (-1, 1)
+    assert np.asarray(lu.pivots).dtype == np.int64
     np.testing.assert_allclose(
         np.array(arrow_lu_solve(spd_arrow, rhs).to_pylist(), dtype=np.float64),
         np.linalg.solve(spd, np.array([1.0, 2.0], dtype=np.float64)),
@@ -966,6 +969,9 @@ def test_arrow_batched_result_wrappers_return_typed_objects():
         matrices.to_numpy_ndarray()[0],
         rtol=1e-10,
     )
+    assert lu_results[0].pivots is not None
+    assert lu_results[0].permutation_sign in (-1, 1)
+    assert np.asarray(lu_results[0].pivots).dtype == np.int64
 
     cholesky_results = arrow_batched_cholesky(matrices)
     np.testing.assert_allclose(

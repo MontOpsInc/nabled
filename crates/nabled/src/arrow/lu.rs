@@ -25,6 +25,19 @@ pub fn decompose_f32(
     Ok(crate::linalg::lu::decompose_view(&matrix_view)?)
 }
 
+/// Compute `f32` LU decomposition directly from an Arrow dense matrix and preserve factor metadata.
+///
+/// The returned tuple is `(result, pivots, permutation_sign)`.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or decomposition fails.
+pub fn decompose_f32_with_metadata(
+    matrix: &FixedSizeListArray,
+) -> Result<(crate::linalg::lu::NdarrayLUResult<f32>, Vec<usize>, i8), ArrowInteropError> {
+    let matrix_view = fixed_size_list_view::<Float32Type>(matrix)?;
+    Ok(crate::linalg::lu::decompose_view_with_metadata(&matrix_view)?)
+}
+
 /// Compute `f64` LU decomposition directly from an Arrow dense matrix.
 ///
 /// The inbound Arrow -> ndarray bridge is zero-copy. The decomposition result remains in
@@ -37,6 +50,19 @@ pub fn decompose_f64(
 ) -> Result<crate::linalg::lu::NdarrayLUResult<f64>, ArrowInteropError> {
     let matrix_view = fixed_size_list_view::<Float64Type>(matrix)?;
     Ok(crate::linalg::lu::decompose_view(&matrix_view)?)
+}
+
+/// Compute `f64` LU decomposition directly from an Arrow dense matrix and preserve factor metadata.
+///
+/// The returned tuple is `(result, pivots, permutation_sign)`.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls, is empty, or decomposition fails.
+pub fn decompose_f64_with_metadata(
+    matrix: &FixedSizeListArray,
+) -> Result<(crate::linalg::lu::NdarrayLUResult<f64>, Vec<usize>, i8), ArrowInteropError> {
+    let matrix_view = fixed_size_list_view::<Float64Type>(matrix)?;
+    Ok(crate::linalg::lu::decompose_view_with_metadata(&matrix_view)?)
 }
 
 /// Solve `Ax=b` directly from `f32` Arrow dense inputs.

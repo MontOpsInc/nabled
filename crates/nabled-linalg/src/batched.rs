@@ -488,7 +488,10 @@ pub fn lu<T>(matrices: &Array3<T>) -> Result<Vec<lu::NdarrayLUResult<T>>, lu::LU
 where
     T: lu::LuProviderScalar + magma::MagmaRealBatched,
 {
-    lu_view(&matrices.view())
+    Ok(lu_view_with_metadata(&matrices.view())?
+        .into_iter()
+        .map(|(result, _, _)| result)
+        .collect())
 }
 
 /// Compute LU decomposition for each matrix in a batch.
@@ -502,7 +505,10 @@ pub fn lu<T>(matrices: &Array3<T>) -> Result<Vec<lu::NdarrayLUResult<T>>, lu::LU
 where
     T: NabledReal + ndarray_linalg::Lapack,
 {
-    lu_view(&matrices.view())
+    Ok(lu_view_with_metadata(&matrices.view())?
+        .into_iter()
+        .map(|(result, _, _)| result)
+        .collect())
 }
 
 /// Compute LU decomposition for each matrix in a batch.
@@ -513,7 +519,58 @@ where
 /// Returns an error if the batch is empty or any per-matrix decomposition fails.
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn lu<T: NabledReal>(matrices: &Array3<T>) -> Result<Vec<lu::NdarrayLUResult<T>>, lu::LUError> {
-    lu_view(&matrices.view())
+    Ok(lu_view_with_metadata(&matrices.view())?
+        .into_iter()
+        .map(|(result, _, _)| result)
+        .collect())
+}
+
+/// Compute LU decomposition with metadata for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(feature = "magma-system")]
+#[expect(clippy::type_complexity)]
+pub fn lu_with_metadata<T>(
+    matrices: &Array3<T>,
+) -> Result<Vec<(lu::NdarrayLUResult<T>, Vec<usize>, i8)>, lu::LUError>
+where
+    T: lu::LuProviderScalar + magma::MagmaRealBatched,
+{
+    lu_view_with_metadata(&matrices.view())
+}
+
+/// Compute LU decomposition with metadata for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+#[expect(clippy::type_complexity)]
+pub fn lu_with_metadata<T>(
+    matrices: &Array3<T>,
+) -> Result<Vec<(lu::NdarrayLUResult<T>, Vec<usize>, i8)>, lu::LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
+    lu_view_with_metadata(&matrices.view())
+}
+
+/// Compute LU decomposition with metadata for each matrix in a batch.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[expect(clippy::type_complexity)]
+pub fn lu_with_metadata<T: NabledReal>(
+    matrices: &Array3<T>,
+) -> Result<Vec<(lu::NdarrayLUResult<T>, Vec<usize>, i8)>, lu::LUError> {
+    lu_view_with_metadata(&matrices.view())
 }
 
 /// Compute LU decomposition for each matrix in a batch view.
@@ -527,6 +584,23 @@ pub fn lu_view<T>(matrices: &ArrayView3<'_, T>) -> Result<Vec<lu::NdarrayLUResul
 where
     T: lu::LuProviderScalar + magma::MagmaRealBatched,
 {
+    Ok(lu_view_with_metadata(matrices)?.into_iter().map(|(result, _, _)| result).collect())
+}
+
+/// Compute LU decomposition with metadata for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(feature = "magma-system")]
+#[expect(clippy::type_complexity)]
+pub fn lu_view_with_metadata<T>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<(lu::NdarrayLUResult<T>, Vec<usize>, i8)>, lu::LUError>
+where
+    T: lu::LuProviderScalar + magma::MagmaRealBatched,
+{
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(lu::LUError::EmptyMatrix);
     }
@@ -534,7 +608,7 @@ where
     if !MagmaProviderPolicy::prefer_batched_decomposition(batch_count, rows, cols) {
         let mut output = Vec::with_capacity(batch_count);
         for matrix in matrices.axis_iter(Axis(0)) {
-            output.push(lu::decompose_view(&matrix)?);
+            output.push(lu::decompose_view_with_metadata(&matrix)?);
         }
         return Ok(output);
     }
@@ -542,8 +616,8 @@ where
     match magma::lu_decompose_batched(matrices) {
         Ok(factors) => {
             let mut output = Vec::with_capacity(factors.len());
-            for (l, u) in factors {
-                output.push(lu::NdarrayLUResult { l, u });
+            for (l, u, pivots, sign) in factors {
+                output.push((lu::NdarrayLUResult { l, u }, pivots, sign));
             }
             Ok(output)
         }
@@ -554,7 +628,7 @@ where
             // Runtime MAGMA init/provider failures fall back to per-slice decomposition.
             let mut fallback = Vec::with_capacity(batch_count);
             for matrix in matrices.axis_iter(Axis(0)) {
-                fallback.push(lu::decompose_view(&matrix)?);
+                fallback.push(lu::decompose_view_with_metadata(&matrix)?);
             }
             Ok(fallback)
         }
@@ -572,12 +646,29 @@ pub fn lu_view<T>(matrices: &ArrayView3<'_, T>) -> Result<Vec<lu::NdarrayLUResul
 where
     T: NabledReal + ndarray_linalg::Lapack,
 {
+    Ok(lu_view_with_metadata(matrices)?.into_iter().map(|(result, _, _)| result).collect())
+}
+
+/// Compute LU decomposition with metadata for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+#[expect(clippy::type_complexity)]
+pub fn lu_view_with_metadata<T>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<(lu::NdarrayLUResult<T>, Vec<usize>, i8)>, lu::LUError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(lu::LUError::EmptyMatrix);
     }
     let mut output = Vec::with_capacity(matrices.dim().0);
     for matrix in matrices.axis_iter(Axis(0)) {
-        output.push(lu::decompose_view(&matrix)?);
+        output.push(lu::decompose_view_with_metadata(&matrix)?);
     }
     Ok(output)
 }
@@ -592,12 +683,26 @@ where
 pub fn lu_view<T: NabledReal>(
     matrices: &ArrayView3<'_, T>,
 ) -> Result<Vec<lu::NdarrayLUResult<T>>, lu::LUError> {
+    Ok(lu_view_with_metadata(matrices)?.into_iter().map(|(result, _, _)| result).collect())
+}
+
+/// Compute LU decomposition with metadata for each matrix in a batch view.
+///
+/// Input shape is `(batch, rows, cols)`.
+///
+/// # Errors
+/// Returns an error if the batch is empty or any per-matrix decomposition fails.
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+#[expect(clippy::type_complexity)]
+pub fn lu_view_with_metadata<T: NabledReal>(
+    matrices: &ArrayView3<'_, T>,
+) -> Result<Vec<(lu::NdarrayLUResult<T>, Vec<usize>, i8)>, lu::LUError> {
     if matrices.is_empty() || matrices.dim().0 == 0 {
         return Err(lu::LUError::EmptyMatrix);
     }
     let mut output = Vec::with_capacity(matrices.dim().0);
     for matrix in matrices.axis_iter(Axis(0)) {
-        output.push(lu::decompose_view(&matrix)?);
+        output.push(lu::decompose_view_with_metadata(&matrix)?);
     }
     Ok(output)
 }
@@ -988,7 +1093,17 @@ mod tests {
         ])
         .expect("valid shape");
         let lu_results = lu(&lu_matrices).expect("batched lu");
+        let lu_results_with_metadata = lu_with_metadata(&lu_matrices).expect("batched lu metadata");
         assert_eq!(lu_results.len(), 2);
+        assert_eq!(lu_results_with_metadata.len(), 2);
+        for (batch_idx, (result, pivots, permutation_sign)) in
+            lu_results_with_metadata.iter().enumerate()
+        {
+            assert_eq!(result.l, lu_results[batch_idx].l);
+            assert_eq!(result.u, lu_results[batch_idx].u);
+            assert_eq!(pivots.len(), 2);
+            assert!(matches!(*permutation_sign, -1 | 1));
+        }
 
         let spd = Array3::from_shape_vec((2, 2, 2), vec![
             4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //

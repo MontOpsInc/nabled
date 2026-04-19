@@ -60,9 +60,19 @@ def test_batched_lu():
     matrices = np.random.randn(2, 3, 3).astype(np.float64)
     results = pynabled.batched_lu(matrices)
     assert len(results) == 2
-    for result in results:
+    rhs = np.array([1.0, -2.0, 0.5], dtype=np.float64)
+    for i, result in enumerate(results):
         assert result.l.shape == (3, 3)
         assert result.u.shape == (3, 3)
+        assert result.pivots is not None
+        assert result.permutation_sign in (-1, 1)
+        assert result.pivots.dtype == np.int64
+        assert result.pivots.shape == (3,)
+        np.testing.assert_allclose(
+            pynabled.lu_solve(result, rhs),
+            np.linalg.solve(matrices[i], rhs),
+            rtol=1e-10,
+        )
 
 
 def test_batched_cholesky():
@@ -133,6 +143,9 @@ def test_batched_decompositions_accept_float32():
     for result in lu_results:
         assert result.l.dtype == np.float32
         assert result.u.dtype == np.float32
+        assert result.pivots is not None
+        assert result.permutation_sign in (-1, 1)
+        assert result.pivots.dtype == np.int64
 
     for i, result in enumerate(cholesky_results):
         assert result.l.dtype == np.float32

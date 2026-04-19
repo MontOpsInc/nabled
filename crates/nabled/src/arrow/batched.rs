@@ -7,6 +7,9 @@ use ndarray::Ix3;
 
 use super::{ArrowInteropError, fixed_shape_tensor_viewd};
 
+type BatchedLUWithMetadataF32 = Vec<(crate::linalg::lu::NdarrayLUResult<f32>, Vec<usize>, i8)>;
+type BatchedLUWithMetadataF64 = Vec<(crate::linalg::lu::NdarrayLUResult<f64>, Vec<usize>, i8)>;
+
 fn fixed_shape_tensor_view3_f32<'a>(
     field: &'a Field,
     array: &'a FixedSizeListArray,
@@ -87,6 +90,19 @@ pub fn lu_f32(
     Ok(crate::linalg::batched::lu_view(&view)?)
 }
 
+/// Compute batched `f32` LU decomposition directly from Arrow fixed-shape tensor input and
+/// preserve factor metadata.
+///
+/// # Errors
+/// Returns an error when the tensor is invalid, not rank-3, or decomposition fails.
+pub fn lu_f32_with_metadata(
+    field: &Field,
+    array: &FixedSizeListArray,
+) -> Result<BatchedLUWithMetadataF32, ArrowInteropError> {
+    let view = fixed_shape_tensor_view3_f32(field, array)?;
+    Ok(crate::linalg::batched::lu_view_with_metadata(&view)?)
+}
+
 /// Compute batched `f64` LU decomposition directly from Arrow fixed-shape tensor input.
 ///
 /// # Errors
@@ -97,6 +113,19 @@ pub fn lu_f64(
 ) -> Result<Vec<crate::linalg::lu::NdarrayLUResult<f64>>, ArrowInteropError> {
     let view = fixed_shape_tensor_view3_f64(field, array)?;
     Ok(crate::linalg::batched::lu_view(&view)?)
+}
+
+/// Compute batched `f64` LU decomposition directly from Arrow fixed-shape tensor input and
+/// preserve factor metadata.
+///
+/// # Errors
+/// Returns an error when the tensor is invalid, not rank-3, or decomposition fails.
+pub fn lu_f64_with_metadata(
+    field: &Field,
+    array: &FixedSizeListArray,
+) -> Result<BatchedLUWithMetadataF64, ArrowInteropError> {
+    let view = fixed_shape_tensor_view3_f64(field, array)?;
+    Ok(crate::linalg::batched::lu_view_with_metadata(&view)?)
 }
 
 /// Compute batched `f32` Cholesky decomposition directly from Arrow fixed-shape tensor input.
