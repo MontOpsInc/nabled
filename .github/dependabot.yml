@@ -20,3 +20,14 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+
+  # Keep Python package metadata and audit tooling current
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"

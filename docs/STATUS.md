@@ -1,6 +1,6 @@
 # Status Snapshot
 
-Last updated: 2026-04-19
+Last updated: 2026-04-25
 
 ## Summary
 
@@ -11,18 +11,33 @@ Workspace migration for library domains is complete.
 3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.
 4. Facade crate `nabled` exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; domain entrypoints exist broadly across dense, sparse, decomposition, tensor, batched, and ML/stat workflows, and checkpoint 2 is now complete under the concept-first standalone / `rows-of-X` contract.
 Branch note:
-`feat/pynabled-bindings` is not yet merge-ready or PyPI-release-ready, but baseline sync `N-PY-001`
-and parity-target definition `N-PY-002` are now complete: the branch is merged to current `main`,
-`pyproject.toml` version truth is aligned to `0.0.8`, tracked native `dSYM` artifacts were removed
-from the Python sdist path, and `docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative
-release target. Remaining blocking work is now documentation/release polish and PyPI
-supply-chain hardening. `N-PY-005` is now also complete:
+`feat/pynabled-bindings` has closed the `N-PY-001..N-PY-008` merge/release gate for the
+current PyPI release target. Baseline sync `N-PY-001` and parity-target definition `N-PY-002`
+are complete: the branch is merged to current `main`, `pyproject.toml` version truth is aligned
+to `0.0.8`, tracked native `dSYM` artifacts were removed from the Python sdist path, and
+`docs/PYNABLED_PARITY_MATRIX.md` now defines the authoritative release target. `N-PY-008` is now
+also complete: PyPI publishing uses Trusted Publishing / GitHub OIDC instead of long-lived tokens,
+release build/upload automation is pinned (`PyO3/maturin-action@v1.51.0`, `maturin v1.13.1`,
+`pypa/gh-action-pypi-publish@v1.14.0`), Dependabot now tracks Python package metadata, and the
+security workflow audits the resolved Python package/tooling requirement set with `pip-audit==2.10.0`.
+Final local release validation is green: the PyArrow 24 carrier regression (`2 passed`),
+workflow YAML parsing, version alignment, sdist hygiene, Python dependency audit requirements
+(`No known vulnerabilities found`), `cargo check -p pynabled --features arrow`, `python-quality`
+(`248 passed, 22 skipped`, Arrow `22 passed`, `90%` Python coverage, plus package smoke), and
+full `just checks` with Rust coverage at `90.63%`.
+`N-PY-005` is now also complete:
 `pynabled` exposes the same provider/backend feature names as the Rust facade for source builds,
 packaging metadata no longer advertises extras that cannot enable Cargo features, installed builds
 can report compiled features via `pynabled.build_features()`, and the Python package gate now
 keeps publish-artifact smoke on the default wheel/sdist while validating optional
-provider/backend/Arrow permutations as isolated source-build installs, including
-`openblas-system`, `accelerator-rayon`, `accelerator-wgpu`, and combined feature builds. The first
+provider/backend permutations as isolated source-build installs, including
+`openblas-system`, `accelerator-rayon`, `accelerator-wgpu`, and combined feature builds. A
+follow-on source-build UX pass is now also landed: default `pynabled` builds include the Rust
+`arrow` feature, and build frontends no longer need to speak raw `MATURIN_PEP517_ARGS` just to
+select common provider/backend features. `pyproject.toml` now routes through a thin local PEP 517
+shim that accepts `pynabled-provider`, `pynabled-accelerators`, and `pynabled-features` settings
+plus `PYNABLED_*` env aliases, translates them into validated `maturin` feature arguments, and
+leaves non-default provider/backend builds truthfully source-build-only. The first
 `N-PY-007` performance pass is now also landed: direct NumPy tensor primitive kernels now accept
 caller-provided `out=` arrays for output reuse across cube kernels, last-axis reductions/
 normalization, permutation, contraction, and batched matmul, including Fortran-order output
@@ -72,7 +87,7 @@ pivoted QR reconstruction now support Rust-backed `out=` reuse under the existin
 name, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
 `cholesky_inverse(...)` for repeated factor reuse while the matrix-input forms also expose `out=`.
 The Python package gate contract was corrected in the same pass so default publish-artifact smoke
-remains `wheel` + `sdist` while optional provider/backend/Arrow permutations now run as isolated
+remains `wheel` + `sdist` while optional provider/backend permutations now run as isolated
 source-build smoke instead of non-portable system-provider wheel repair attempts. Validation is
 green end-to-end: `cargo check -p pynabled`, targeted Rust factor/reconstruct coverage (`4
 passed`), `python-quality` (`206 passed, 22 skipped`, `91%` Python coverage), and full
@@ -702,13 +717,12 @@ Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for
 
 ## Next Required Milestone
 
-On `feat/pynabled-bindings`, `pynabled` merge-gate closure supersedes the repository's monitor-only posture:
+On `feat/pynabled-bindings`, `pynabled` merge-gate closure is complete for the current release
+target. The remaining release-day work is operational: run the final quality gates, configure the
+PyPI/TestPyPI Trusted Publishers if they are not already configured, and push the `pypi-v0.0.8`
+tag when maintainers are ready to publish.
 
-1. Complete `N-PY-001..N-PY-008` in `docs/EXECUTION_TRACKER.md`.
-2. Follow `docs/PYNABLED_ARCHITECTURE.md` for canonical Python carrier, copy/allocation, callback, and result-fidelity decisions while closing those items.
-3. Do not merge the branch or declare `pynabled` production-ready until the blockers captured in `docs/PYNABLED_GAPS_AUDIT.md` are closed.
-
-After the Python merge gate closes, the core repository returns to the existing monitor-mode milestone:
+The core repository returns to the existing monitor-mode milestone:
 
 1. Keep `K-005` in monitor mode with repeated same-host decomposition sweeps; reopen optimization only for persistent regressions.
 2. Tensor algebra post-v1 rubric (`D-179..D-182`) is complete; tensor expansion is now monitor-only unless explicit new tracker items are approved.

@@ -20,13 +20,13 @@ End-to-end examples using pynabled.
 - **sparse/** – Sparse linear solvers
   - `sparse_solve.py` – PCG solve for sparse SPD system (diagonal example)
 
-- **arrow/** – PyArrow bridge (requires `maturin develop --features arrow`)
+- **arrow/** – PyArrow bridge (requires a default build and `pyarrow`)
   - `arrow_svd.py` – SVD on PyArrow FixedSizeListArray matrix, round-trip verification
 
 ## Requirements
 
 - numpy, pynabled, scikit-learn, scipy, matplotlib
-- For arrow examples: pyarrow, pynabled built with `--features arrow`
+- For arrow examples: pyarrow and a default pynabled build
 
 ## Run
 
@@ -41,7 +41,7 @@ python python/examples/similarity/similarity_search.py
 python python/examples/sparse/sparse_solve.py
 ```
 
-Arrow examples (build first: `maturin develop --features arrow`):
+Arrow examples (install `pyarrow` first):
 
 ```bash
 python python/examples/arrow/arrow_svd.py

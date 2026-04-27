@@ -18,7 +18,7 @@ name = "_pynabled"
 crate-type = ["cdylib"]
 
 [features]
-default = []
+default = ["arrow"]
 openblas-system = ["nabled/openblas-system"]
 openblas-static = ["nabled/openblas-static"]
 netlib-system = ["nabled/netlib-system"]

@@ -3,11 +3,14 @@
 use arrow_array::types::{ArrowPrimitiveType, Float64Type};
 use arrow_array::{Array, FixedSizeListArray, StructArray};
 use arrow_schema::Field;
+use arrow_schema::extension::{
+    EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY, ExtensionType, VariableShapeTensor,
+};
 use nabled_core::scalar::NabledReal;
 use ndarray::{ArrayD, ArrayView1, ArrayView2, ArrayView3, ArrayViewD, Ix3};
 use ndarrow::NdarrowElement;
 use num_complex::Complex64;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{
     ArrowInteropError, complex64_fixed_shape_tensor_from_owned, complex64_fixed_shape_tensor_viewd,
@@ -16,9 +19,13 @@ use super::{
     variable_shape_tensor_batch_view,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct VariableShapeTensorWireMetadata {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dim_names:     Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    permutations:  Option<Vec<usize>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     uniform_shape: Option<Vec<Option<i32>>>,
 }
 
@@ -67,6 +74,25 @@ fn reduced_uniform_shape(mut uniform_shape: Option<Vec<Option<i32>>>) -> Option<
     uniform_shape
 }
 
+fn variable_shape_field_with_metadata(
+    field: &Field,
+    uniform_shape: Option<Vec<Option<i32>>>,
+) -> Result<Field, ArrowInteropError> {
+    let metadata_json = serde_json::to_string(&VariableShapeTensorWireMetadata {
+        dim_names: None,
+        permutations: None,
+        uniform_shape,
+    })
+    .map_err(|error| ndarrow::NdarrowError::InvalidMetadata {
+        message: format!("arrow.variable_shape_tensor metadata serialization failed: {error}"),
+    })?;
+    let mut metadata = field.metadata().clone();
+    drop(metadata.insert(EXTENSION_TYPE_NAME_KEY.to_owned(), VariableShapeTensor::NAME.to_owned()));
+    drop(metadata.insert(EXTENSION_TYPE_METADATA_KEY.to_owned(), metadata_json));
+    Ok(Field::new(field.name(), field.data_type().clone(), field.is_nullable())
+        .with_metadata(metadata))
+}
+
 fn collect_variable_shape_real_rows<T, F>(
     field: &Field,
     array: &StructArray,
@@ -101,7 +127,12 @@ where
         let (_, tensor_view) = row?;
         outputs.push(op(&tensor_view)?);
     }
-    Ok(ndarrow::arrays_complex64_to_variable_shape_tensor(field.name(), outputs, uniform_shape)?)
+    let (field, array) = ndarrow::arrays_complex64_to_variable_shape_tensor(
+        field.name(),
+        outputs,
+        uniform_shape.clone(),
+    )?;
+    Ok((variable_shape_field_with_metadata(&field, uniform_shape)?, array))
 }
 
 fn collect_variable_shape_complex_norm_rows<F>(

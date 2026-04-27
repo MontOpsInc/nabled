@@ -4,9 +4,9 @@
 Demonstrates the PyArrow bridge: create a matrix as a PyArrow FixedSizeListArray
 (rows as lists), run SVD via pynabled.arrow, and verify round-trip.
 
-Requires: numpy, pyarrow, pynabled built with --features arrow
+Requires: numpy, pyarrow, pynabled built with Arrow support
 
-Build: maturin develop --features arrow
+Build: maturin develop
 Run from repo root:
     python python/examples/arrow/arrow_svd.py
 """

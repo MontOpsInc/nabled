@@ -5411,6 +5411,20 @@ pub fn tensor_sum_last_axis_variable_complex(
     ))
 }
 
+/// Reduce the last axis of a complex variable-shape Arrow tensor batch, returning storage only.
+#[pyfunction(name = "arrow_tensor_sum_last_axis_variable_complex_storage")]
+pub fn tensor_sum_last_axis_variable_complex_storage(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let (_, array) = nabled::arrow::tensor::sum_last_axis_variable_complex(
+        &field.0,
+        &array_data_to_struct(array.0)?,
+    )
+    .map_err(to_py_err)?;
+    Ok(struct_array_into_pyarrow(array))
+}
+
 /// Compute last-axis norms for a complex fixed-shape Arrow tensor batch.
 #[pyfunction(name = "arrow_tensor_l2_norm_last_axis_fixed_complex")]
 pub fn tensor_l2_norm_last_axis_fixed_complex(
@@ -5439,6 +5453,20 @@ pub fn tensor_l2_norm_last_axis_variable_complex(
         )
         .map_err(to_py_err)?,
     ))
+}
+
+/// Compute last-axis norms for a complex variable-shape Arrow tensor batch, returning storage only.
+#[pyfunction(name = "arrow_tensor_l2_norm_last_axis_variable_complex_storage")]
+pub fn tensor_l2_norm_last_axis_variable_complex_storage(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let (_, array) = nabled::arrow::tensor::l2_norm_last_axis_variable_complex(
+        &field.0,
+        &array_data_to_struct(array.0)?,
+    )
+    .map_err(to_py_err)?;
+    Ok(struct_array_into_pyarrow(array))
 }
 
 /// Normalize a complex fixed-shape Arrow tensor batch over its last axis.
@@ -5471,6 +5499,21 @@ pub fn tensor_normalize_last_axis_variable_complex(
     ))
 }
 
+/// Normalize a complex variable-shape Arrow tensor batch over its last axis, returning storage
+/// only.
+#[pyfunction(name = "arrow_tensor_normalize_last_axis_variable_complex_storage")]
+pub fn tensor_normalize_last_axis_variable_complex_storage(
+    field: PyArrowType<Field>,
+    array: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let (_, array) = nabled::arrow::tensor::normalize_last_axis_variable_complex(
+        &field.0,
+        &array_data_to_struct(array.0)?,
+    )
+    .map_err(to_py_err)?;
+    Ok(struct_array_into_pyarrow(array))
+}
+
 /// Compute last-axis batched dot products for complex fixed-shape Arrow tensor batches.
 #[pyfunction(name = "arrow_tensor_batched_dot_last_axis_fixed_complex")]
 pub fn tensor_batched_dot_last_axis_fixed_complex(
@@ -5488,6 +5531,25 @@ pub fn tensor_batched_dot_last_axis_fixed_complex(
         )
         .map_err(to_py_err)?,
     ))
+}
+
+/// Compute last-axis batched dot products for complex variable-shape tensors, returning storage
+/// only.
+#[pyfunction(name = "arrow_tensor_batched_dot_last_axis_variable_complex_storage")]
+pub fn tensor_batched_dot_last_axis_variable_complex_storage(
+    left_field: PyArrowType<Field>,
+    left: PyArrowType<ArrayData>,
+    right_field: PyArrowType<Field>,
+    right: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let (_, array) = nabled::arrow::tensor::batched_dot_last_axis_variable_complex(
+        &left_field.0,
+        &array_data_to_struct(left.0)?,
+        &right_field.0,
+        &array_data_to_struct(right.0)?,
+    )
+    .map_err(to_py_err)?;
+    Ok(struct_array_into_pyarrow(array))
 }
 
 /// Compute last-axis batched dot products for complex variable-shape Arrow tensor batches.

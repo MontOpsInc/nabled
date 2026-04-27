@@ -4,9 +4,22 @@ This document describes how to release the **pynabled** Python package to PyPI. 
 
 ## Prerequisites
 
-1. **PyPI project**: Register the `pynabled` name on [PyPI](https://pypi.org) if this is the first upload.
-2. **GitHub secret**: Add `PYPI_API_TOKEN` in the repository **Settings → Secrets and variables → Actions**. Use a [PyPI API token](https://pypi.org/manage/account/token/) scoped to the project (or the whole account for the first upload).
-3. **Optional — TestPyPI**: For a full upload rehearsal, create a token on [TestPyPI](https://test.pypi.org) and add `TEST_PYPI_API_TOKEN`. Use **Actions → Publish pynabled to PyPI → Run workflow** with **use_testpypi** enabled (this still runs the full multi-platform build matrix).
+1. **PyPI Trusted Publisher**: Configure a PyPI Trusted Publisher for
+   `MontOpsInc/nabled`, workflow `.github/workflows/publish-pypi.yml`, environment
+   `pypi`, and project name `pynabled`.
+   - If `pynabled` does not exist on PyPI yet, create a pending publisher from the
+     account publishing settings. The pending publisher creates the project on first
+     successful upload.
+   - If the project already exists, add the publisher from the project's publishing
+     settings.
+2. **Optional TestPyPI Trusted Publisher**: Configure the same repository/workflow with
+   environment `testpypi` on [TestPyPI](https://test.pypi.org) for rehearsals.
+3. **GitHub environments**: Create repository environments named `pypi` and
+   `testpypi`. Environment protection is optional but recommended for the real PyPI
+   environment.
+
+No long-lived `PYPI_API_TOKEN` or `TEST_PYPI_API_TOKEN` secret is required for the
+normal release path.
 
 ## Version policy
 
@@ -26,7 +39,8 @@ Running `pytest` after `maturin develop` does **not** prove that release **wheel
 From the repository root:
 
 ```bash
-maturin build --release --out dist
+python -m pip install "maturin==1.13.1"
+maturin build --release --locked --out dist
 ```
 
 Using `--out dist` matches CI and keeps wheels in one place (the default without `--out` is often `target/wheels/`). Fix any compile or packaging errors before tagging.
@@ -54,21 +68,23 @@ just wheel-smoke-pytest
 
 Installs the built wheel into a temporary venv and runs `python/tests/`.
 
-### 5. Optional: `maturin publish --dry-run`
+### 5. Optional: local metadata check
 
-If your maturin version supports it, use `--dry-run` to exercise the publish path without uploading (behavior may vary by version; check `maturin publish --help`).
+The publish workflow runs PyPA's upload action, which verifies package metadata before upload.
+For a local approximation, inspect the wheel and sdist built above and run `just wheel-smoke` /
+`just wheel-smoke-pytest` before tagging.
 
 ### 6. Optional: TestPyPI
 
-Upload to TestPyPI and install from the test index:
+Use the **workflow_dispatch** path on **Publish pynabled to PyPI** with
+**use_testpypi** enabled. This runs the same multi-platform build matrix and publishes
+the downloaded artifacts with OIDC Trusted Publishing to TestPyPI.
+
+After the workflow succeeds:
 
 ```bash
-# After building wheels locally or in CI artifacts
-maturin publish --repository testpypi dist/*
 pip install -i https://test.pypi.org/simple/ pynabled==<version>
 ```
-
-Or use the **workflow_dispatch** path on **Publish pynabled to PyPI** with **use_testpypi** (requires `TEST_PYPI_API_TOKEN`).
 
 ## CI
 
@@ -76,6 +92,9 @@ The main **CI** workflow includes:
 
 - **Python package version alignment** — `pyproject.toml` vs `Cargo.toml` workspace version.
 - **Python wheel smoke** — `maturin build --release`, install wheel in a clean venv, import `pynabled` and `pynabled._pynabled`.
+- **Python dependency audit** — the security workflow installs pinned audit tooling
+  (`pip-audit==2.10.0`) and audits the resolved Python package/tooling requirement set when
+  Python packaging inputs change.
 
 These run on code-changing PRs/pushes (wheel smoke is skipped for documentation-only changes).
 
@@ -99,7 +118,13 @@ This will:
 2. Commit and push that change when the file was updated.
 3. Create and push annotated tag `pypi-vX.Y.Z`.
 
-That push triggers [`.github/workflows/publish-pypi.yml`](../.github/workflows/publish-pypi.yml), which builds **manylinux** (x86_64, aarch64), **Windows** (x64), **macOS** (x86_64 on `macos-13`, aarch64 on `macos-latest`), plus an **sdist**, then publishes to PyPI with `maturin publish` (using `PYPI_API_TOKEN`).
+That push triggers [`.github/workflows/publish-pypi.yml`](../.github/workflows/publish-pypi.yml), which builds **manylinux 2_28** (x86_64, aarch64), **Windows** (x64), **macOS** (x86_64 on `macos-13`, aarch64 on `macos-latest`), plus an **sdist**, then publishes the assembled artifacts to PyPI with PyPA Trusted Publishing.
+
+Release automation is intentionally pinned:
+
+1. `PyO3/maturin-action@v1.51.0`
+2. `maturin v1.13.1`
+3. `pypa/gh-action-pypi-publish@v1.14.0`
 
 ### Manual tagging
 
@@ -120,16 +145,20 @@ git push origin "pypi-v${VERSION}"
 ## Default wheel features
 
 Wheels on PyPI use **default** Cargo features for `pynabled` unless you change the publish
-workflow. That means no optional provider/backend/Arrow features are compiled into the published
-wheel by default (`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`,
-`magma-system`, `accelerator-rayon`, `accelerator-wgpu`, and `arrow` are all source-build
-workflows). Local/CI package gates therefore smoke publish-style `wheel` / `sdist` artifacts only
-for the default feature set, while optional provider/backend/Arrow permutations are validated as
-isolated source-build installs. There are no Python extras that enable these Rust features; use
-the explicit Cargo feature names described in [BUILD.md](../BUILD.md).
+workflow. The default wheel now includes the Rust `arrow` feature. Provider/backend features
+(`openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`, `magma-system`,
+`accelerator-rayon`, and `accelerator-wgpu`) remain source-build workflows. Local/CI package gates
+therefore smoke publish-style `wheel` / `sdist` artifacts for the default feature set, while
+optional provider/backend permutations are validated as isolated source-build installs. There are
+no Python extras that enable these Rust features; use the explicit feature names through the
+`pynabled-provider`, `pynabled-accelerators`, and `pynabled-features` build settings (or raw
+`maturin` build args for uncommon cases) as described in [BUILD.md](../BUILD.md).
 
 ## Troubleshooting
 
-- **Authentication failed**: `PYPI_API_TOKEN` missing, expired, or wrong scope.
+- **Invalid publisher / OIDC failure**: PyPI or TestPyPI publisher configuration must
+  exactly match repository owner `MontOpsInc`, repository `nabled`, workflow
+  `.github/workflows/publish-pypi.yml`, and the GitHub environment (`pypi` or
+  `testpypi`).
 - **Tag / version mismatch**: Tag must be exactly `pypi-v` + semver matching `Cargo.toml` and `pyproject.toml`.
 - **File already exists**: PyPI does not allow re-uploading the same file version; bump the version and release again.

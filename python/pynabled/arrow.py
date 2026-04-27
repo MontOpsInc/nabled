@@ -1,6 +1,7 @@
 """PyArrow bridge for nabled/ndarrow workflows.
 
-Requires ``pyarrow`` plus a `pynabled` build compiled with the `arrow` feature.
+Requires ``pyarrow`` plus a `pynabled` build compiled with Arrow support. Published default
+wheels include that Rust feature.
 """
 
 from __future__ import annotations
@@ -62,14 +63,14 @@ try:
 except ImportError as e:
     raise ImportError(
         "pynabled arrow support not available. "
-        "Install pyarrow and build pynabled with --features arrow"
+        "Install a default pynabled wheel or rebuild without --no-default-features"
     ) from e
 
 
 if not hasattr(_raw, "arrow_dot"):
     raise ImportError(
         "pynabled arrow support not available. "
-        "Install pyarrow and build pynabled with --features arrow"
+        "Install a default pynabled wheel or rebuild without --no-default-features"
     )
 
 
@@ -327,6 +328,45 @@ def _fixed_shape_tensor_type_shape(type_) -> tuple[int, ...]:
     return tuple(int(dimension) for dimension in metadata["shape"])
 
 
+def _variable_shape_tensor_storage_dimensions(storage_type) -> int:
+    shape_type = storage_type.field("shape").type
+    return int(shape_type.list_size) if hasattr(shape_type, "list_size") else len(shape_type)
+
+
+def _variable_shape_tensor_type_uniform_shape(type_):
+    if hasattr(type_, "_uniform_shape"):
+        return type_._uniform_shape
+    marker = "uniform_shape=["
+    text = str(type_)
+    if marker not in text:
+        return None
+    start = text.index(marker) + len(marker)
+    end = text.index("]", start)
+    raw_items = text[start:end].strip()
+    if not raw_items:
+        return []
+    return [
+        None if item.strip() in {"null", "None"} else int(item.strip())
+        for item in raw_items.split(",")
+    ]
+
+
+def _reduced_variable_shape_tensor_uniform_shape(type_):
+    uniform_shape = _variable_shape_tensor_type_uniform_shape(type_)
+    if uniform_shape is None:
+        return None
+    return list(uniform_shape[:-1])
+
+
+def _variable_shape_tensor_field_from_storage(name, storage, uniform_shape):
+    tensor_type = ArrowVariableShapeTensorType(
+        _list_value_type(storage.type.field("data").type),
+        _variable_shape_tensor_storage_dimensions(storage.type),
+        uniform_shape,
+    )
+    return pa.field(name, tensor_type, nullable=False)
+
+
 def _arrow_field(array, name):
     if isinstance(array, pa.ExtensionArray) and _extension_name(array.type) in _COMPLEX_EXTENSION_NAMES:
         return _complex_vector_field(name)
@@ -341,6 +381,16 @@ def _extension_array(field, storage):
             return pa.ExtensionArray.from_storage(field.type, storage)
         except TypeError:
             tensor_type = ArrowFixedShapeTensorType(storage.type.value_field.type, _fixed_shape_tensor_type_shape(field.type))
+            return pa.ExtensionArray.from_storage(tensor_type, storage)
+    if _extension_name(field.type) == _VARIABLE_SHAPE_TENSOR_EXTENSION_NAME:
+        try:
+            return pa.ExtensionArray.from_storage(field.type, storage)
+        except TypeError:
+            tensor_type = ArrowVariableShapeTensorType(
+                _list_value_type(storage.type.field("data").type),
+                _variable_shape_tensor_storage_dimensions(storage.type),
+                _variable_shape_tensor_type_uniform_shape(field.type),
+            )
             return pa.ExtensionArray.from_storage(tensor_type, storage)
     return pa.ExtensionArray.from_storage(field.type, storage)
 
@@ -899,6 +949,7 @@ def arrow_variable_shape_tensor_rows(value) -> list[np.ndarray]:
     storage = value.storage
     data = storage.field("data")
     shapes = storage.field("shape")
+    rank = _variable_shape_tensor_storage_dimensions(storage.type)
     value_type = _list_value_type(data.type)
     if value_type == _COMPLEX_STORAGE_TYPE or (
         _is_extension_type(value_type) and _extension_name(value_type) in _COMPLEX_EXTENSION_NAMES
@@ -909,7 +960,7 @@ def arrow_variable_shape_tensor_rows(value) -> list[np.ndarray]:
         dtype = _numpy_real_dtype_for_arrow(value_type)
         flat = np.asarray(data.values, dtype=dtype)
     offsets = np.asarray(data.offsets, dtype=np.int32)
-    shape_rows = np.asarray(shapes.values, dtype=np.int32).reshape(len(shapes), value.type._dimensions)
+    shape_rows = np.asarray(shapes.values, dtype=np.int32).reshape(len(shapes), rank)
     rows = []
     for index, shape in enumerate(shape_rows):
         row = flat[offsets[index] : offsets[index + 1]]
@@ -1069,9 +1120,14 @@ def arrow_tensor_sum_last_axis(tensor):
         return _extension_array(out_field, out_storage)
     _require_variable_shape_tensor_array("arrow_tensor_sum_last_axis", tensor, "tensor")
     if _is_complex_variable_shape_tensor(tensor):
-        out_field, out_storage = _raw.arrow_tensor_sum_last_axis_variable_complex(
+        out_storage = _raw.arrow_tensor_sum_last_axis_variable_complex_storage(
             _arrow_field(tensor, "tensor"),
             tensor.storage,
+        )
+        out_field = _variable_shape_tensor_field_from_storage(
+            "tensor",
+            out_storage,
+            _reduced_variable_shape_tensor_uniform_shape(tensor.type),
         )
     else:
         out_field, out_storage = _raw.arrow_tensor_sum_last_axis_variable(
@@ -1094,9 +1150,14 @@ def arrow_tensor_l2_norm_last_axis(tensor):
         return _extension_array(out_field, out_storage)
     _require_variable_shape_tensor_array("arrow_tensor_l2_norm_last_axis", tensor, "tensor")
     if _is_complex_variable_shape_tensor(tensor):
-        out_field, out_storage = _raw.arrow_tensor_l2_norm_last_axis_variable_complex(
+        out_storage = _raw.arrow_tensor_l2_norm_last_axis_variable_complex_storage(
             _arrow_field(tensor, "tensor"),
             tensor.storage,
+        )
+        out_field = _variable_shape_tensor_field_from_storage(
+            "tensor",
+            out_storage,
+            _reduced_variable_shape_tensor_uniform_shape(tensor.type),
         )
     else:
         out_field, out_storage = _raw.arrow_tensor_l2_norm_last_axis_variable(
@@ -1119,9 +1180,14 @@ def arrow_tensor_normalize_last_axis(tensor):
         return _extension_array(out_field, out_storage)
     _require_variable_shape_tensor_array("arrow_tensor_normalize_last_axis", tensor, "tensor")
     if _is_complex_variable_shape_tensor(tensor):
-        out_field, out_storage = _raw.arrow_tensor_normalize_last_axis_variable_complex(
+        out_storage = _raw.arrow_tensor_normalize_last_axis_variable_complex_storage(
             _arrow_field(tensor, "tensor"),
             tensor.storage,
+        )
+        out_field = _variable_shape_tensor_field_from_storage(
+            "tensor",
+            out_storage,
+            _variable_shape_tensor_type_uniform_shape(tensor.type),
         )
     else:
         out_field, out_storage = _raw.arrow_tensor_normalize_last_axis_variable(
@@ -1151,11 +1217,16 @@ def arrow_tensor_batched_dot_last_axis(left, right):
     _require_variable_shape_tensor_array("arrow_tensor_batched_dot_last_axis", left, "left")
     _require_variable_shape_tensor_array("arrow_tensor_batched_dot_last_axis", right, "right")
     if _tensor_mode("arrow_tensor_batched_dot_last_axis", left=left, right=right):
-        out_field, out_storage = _raw.arrow_tensor_batched_dot_last_axis_variable_complex(
+        out_storage = _raw.arrow_tensor_batched_dot_last_axis_variable_complex_storage(
             _arrow_field(left, "left"),
             left.storage,
             _arrow_field(right, "right"),
             right.storage,
+        )
+        out_field = _variable_shape_tensor_field_from_storage(
+            "left",
+            out_storage,
+            _reduced_variable_shape_tensor_uniform_shape(left.type),
         )
     else:
         out_field, out_storage = _raw.arrow_tensor_batched_dot_last_axis_variable(

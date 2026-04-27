@@ -1,4 +1,4 @@
-"""Tests for the PyArrow bridge (requires pynabled built with --features arrow)."""
+"""Tests for the PyArrow bridge (requires pynabled built with Arrow support)."""
 
 import numpy as np
 import pytest

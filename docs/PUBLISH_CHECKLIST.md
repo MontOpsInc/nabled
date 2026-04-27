@@ -13,7 +13,7 @@ Publish order is fixed:
 3. `nabled-ml`
 4. `nabled` (facade)
 
-**Python package (pynabled on PyPI):** independent of the crates.io order above. See [PYPI_PUBLISH.md](PYPI_PUBLISH.md) for tags (`pypi-v*`), secrets, wheel smoke tests, and `just tag-pypi-release`.
+**Python package (pynabled on PyPI):** independent of the crates.io order above. See [PYPI_PUBLISH.md](PYPI_PUBLISH.md) for tags (`pypi-v*`), Trusted Publishing setup, wheel smoke tests, and `just tag-pypi-release`.
 
 ## Feature Contract (Release-Relevant)
 

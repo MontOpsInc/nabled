@@ -94,19 +94,19 @@ Use code, not memory:
 | PyArrow egress | Rust Arrow facade can stay Arrow-native where natural | Python now keeps Arrow-native egress for the landed dense/vector/matrix/stats rows, fixed-shape/variable-shape tensor rows, LU/Cholesky/QR solve outputs, SVD pseudo-inverse/null-space, real matrix-function outputs, PCA transform/inverse-transform outputs, and Arrow-native callback-driven Jacobian/optimization outputs where the Rust Arrow facade already does so; decomposition/PCA/regression/tensor result wrappers still return typed ndarray-native objects where the Rust Arrow facade does the same | Full | Keep Arrow-native egress wherever the Rust facade already defines an Arrow-native contract, and preserve typed ndarray-native egress where Rust does the same |
 | Provider feature exposure | Rust facade admits `openblas-system`, `openblas-static`, `netlib-system`, `netlib-static`, `magma-system` | `pynabled` now exposes the same provider feature names for source builds, docs call out host/toolchain requirements explicitly, and installed builds can report their compiled feature set via `pynabled.build_features()` | Full | Keep the Python source-build feature names aligned one-to-one with the Rust facade and preserve truthful host/toolchain docs |
 | Backend feature exposure | Rust facade admits `accelerator-rayon` and `accelerator-wgpu` | `pynabled` now exposes both backend feature names for source builds, package smoke validates the installed build actually reports the requested backend features, and docs classify them as compile-time feature paths rather than runtime toggles | Full | Keep backend feature names and installed-build reporting aligned with the Rust facade |
-| Feature UX truthfulness | Rust feature names and behavior are explicit | Python packaging no longer advertises extras that cannot enable Cargo features; source-build docs use explicit Cargo feature names, default PyPI wheels are documented as default-feature-only, and installed builds can report compiled features at runtime | Full | Keep packaging metadata/docs free of pseudo-extras and preserve explicit feature reporting on installed builds |
+| Feature UX truthfulness | Rust feature names and behavior are explicit | Python packaging no longer advertises extras that cannot enable Cargo features; source-build docs use explicit Cargo feature names plus friendly `pynabled-provider` / `pynabled-accelerators` / `pynabled-features` build settings, default PyPI wheels are documented as default-feature builds with Arrow support compiled in, and installed builds can report compiled features at runtime | Full | Keep packaging metadata/docs free of pseudo-extras, keep the thin build shim aligned one-to-one with the admitted Cargo feature set, and preserve explicit feature reporting on installed builds |
 
 ## Release-Blocking Gaps Locked By This Matrix
 
 These are the gaps that directly drive `N-PY-003..N-PY-008`:
 
 1. Callback-driven Jacobian/optimization convenience APIs now have an explicit signed-off contract: per-evaluation NumPy/PyArrow carrier materialization is acceptable and documented at that Python callback boundary, so it is no longer an open hidden-copy blocker for the current release target.
-2. PyPI release hardening remains the final open merge-gate work after the current parity/feature and performance/copy-contract milestones.
+2. PyPI release hardening is closed for the current release target: publishing now uses OIDC Trusted Publishing, pinned maturin/publish automation, Python dependency automation/scanning, and default wheel/sdist plus optional source-build feature smoke gates.
 
 ## Implementation Order Derived From This Matrix
 
-1. `N-PY-003`, `N-PY-004`, `N-PY-005`, `N-PY-006`, and `N-PY-007` are complete for the current merge-gate scope.
-2. `N-PY-008`: lock the release with docs/release hardening and supply-chain controls.
+1. `N-PY-003`, `N-PY-004`, `N-PY-005`, `N-PY-006`, `N-PY-007`, and `N-PY-008` are complete for the current merge-gate scope.
+2. Final release execution is now a quality-gated tag/publish step, not an open parity or supply-chain blocker.
 
 ## Definition Of Done For This Document
 

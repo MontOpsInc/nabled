@@ -16,6 +16,7 @@ DIST_DIR="${PYNABLED_PYTHON_DIST_DIR:-${ROOT_DIR}/dist/python-quality}"
 CARGO_HOME="${PYNABLED_CARGO_HOME:-/tmp/pynabled-quality-cargo-home}"
 CARGO_TARGET_DIR="${PYNABLED_CARGO_TARGET_DIR:-/tmp/pynabled-quality-target}"
 SMOKE_SCRIPT="${ROOT_DIR}/scripts/pynabled_smoke.py"
+MATURIN_VERSION="1.13.1"
 
 create_venv() {
     local venv_dir="$1"
@@ -27,7 +28,7 @@ create_venv() {
 install_dev_tools() {
     local venv_dir="$1"
     "${venv_dir}/bin/pip" install \
-        "maturin>=1.12" \
+        "maturin==${MATURIN_VERSION}" \
         "pytest>=7" \
         "pytest-cov>=7" \
         "pyarrow>=14" >/dev/null
@@ -36,7 +37,7 @@ install_dev_tools() {
 install_packaging_tools() {
     local venv_dir="$1"
     local require_arrow="${2:-0}"
-    "${venv_dir}/bin/pip" install "maturin>=1.12" >/dev/null
+    "${venv_dir}/bin/pip" install "maturin==${MATURIN_VERSION}" >/dev/null
     if [[ "${require_arrow}" == "1" ]]; then
         "${venv_dir}/bin/pip" install "pyarrow>=14" >/dev/null
     fi

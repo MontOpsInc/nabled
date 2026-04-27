@@ -1,6 +1,6 @@
 # Execution Tracker
 
-Last updated: 2026-04-19
+Last updated: 2026-04-25
 
 ## Purpose
 
@@ -29,7 +29,8 @@ Use this file to resume work quickly after context compaction without re-auditin
 8. `feat/pynabled-bindings` baseline sync is now complete (`N-PY-001`): the branch is merged to current `main`, Python package version truth is aligned to `0.0.8`, and tracked native `dSYM` artifacts are removed from the sdist path.
 9. `feat/pynabled-bindings` now has an explicit parity target in `docs/PYNABLED_PARITY_MATRIX.md`, covering domain, dtype, Arrow, allocation-control, and feature/build expectations for release.
 10. `feat/pynabled-bindings` now has an explicit boundary-architecture contract in `docs/PYNABLED_ARCHITECTURE.md`, locking canonical Python carriers by domain plus copy/allocation, callback, and result-fidelity rules.
-11. `feat/pynabled-bindings` remains under an active merge gate for parity, docs, performance, feature/build UX, and PyPI hardening; `N-PY-006` is now complete, so coverage/CI enforcement is no longer an open blocker category.
+11. `feat/pynabled-bindings` has closed the active `N-PY-001..N-PY-008` merge/release gate for the current PyPI target; remaining release-day work is final validation plus maintainer-controlled tag/publish execution.
+12. Python source-build feature UX is now friendlier without changing release artifact truth: default PyPI wheels include the Rust `arrow` feature, while the local PEP 517 backend accepts `pynabled-provider`, `pynabled-accelerators`, and `pynabled-features` settings plus `PYNABLED_*` env aliases for provider/backend source builds.
 
 ## V1 Stability Gate (Ordered, Required)
 
@@ -313,10 +314,12 @@ Audit reference: `docs/PYNABLED_GAPS_AUDIT.md` (2026-04-03).
 250. `D-250`: Twenty-fifth `N-PY-007` Arrow carrier buffer/offset hardening slice is landed on `feat/pynabled-bindings`: the remaining Python-side list materialization pockets in canonical Arrow carrier packing/unpacking are gone. `python/pynabled/arrow.py` now builds and reads canonical `ndarrow.complex64`, `ndarrow.csr_matrix`, `ndarrow.csr_matrix_batch`, and variable-shape tensor carriers through flat NumPy buffers plus Arrow offsets instead of Python `tolist()` / `to_pylist()` row rebuilding. Complex carrier packing now uses direct `complex128 <-> float64[2]` views, CSR/CSR-batch carriers now round-trip through Arrow list offsets and flat index/value buffers with explicit int32/uint32 bounds checks, and variable-shape tensor rows now pack/unpack through flat buffers and stored shape rows instead of nested Python lists. Validation is green end-to-end: `cargo check -p pynabled --features arrow`, targeted Python Arrow pytest (`22 passed`), full `python-quality` (`248 passed, 22 skipped`, `90%` Python coverage), and full `just checks` (Rust coverage gate `90.25%` line coverage).
 251. `D-251`: Twenty-sixth `N-PY-007` LU result-fidelity slice is landed on `feat/pynabled-bindings`: batched and Arrow LU no longer throw away metadata that the Rust LU results already contain. `nabled-linalg::batched::lu_view_with_metadata(...)` is now the shared preservation path across internal, provider, and MAGMA batched LU execution, `nabled::arrow::{lu,batched}` now expose metadata-preserving LU adapters, and the PyO3 batched/Arrow LU bindings now return `LuResult` objects carrying `pivots` plus `permutation_sign` instead of only `(L, U)`. Python regression coverage now asserts that both the direct batched NumPy path and the Arrow LU wrappers preserve that metadata and remain reusable through `lu_solve(...)` rather than relying on the old unpermuted `L @ U` shortcut. Validation is green across the full required set: `cargo +nightly fmt --all -- --config-path ./rustfmt.toml`, `cargo check -p nabled --features arrow`, `cargo check -p pynabled --features arrow`, `just -f .justfile test-accelerator`, `just -f .justfile coverage-check` (Rust coverage gate `90.23%` line coverage), `just -f .justfile python-quality` (`248 passed, 22 skipped`, `90%` Python coverage), direct provider compile verification (`cargo +stable check --workspace --features openblas-system --all-targets`), and `just -f .justfile backend-capability-report`. The long-lived top-level `just checks` wrapper was interrupted by process-level `SIGTERM` in the late `check-accelerator` / `check-provider` tail, so those remaining recipe legs were rerun individually and passed.
 252. `D-252`: `N-PY-007` closeout is complete on `feat/pynabled-bindings`: the remaining callback-driven convenience crossings are now explicitly classified and documented as unavoidable convenience-path carrier materializations rather than open hidden-copy regressions. `crates/pynabled/src/ml/callbacks.rs` now documents the Python-owned lifetime reason those transient NumPy/PyArrow callback carriers exist, `docs/PERFORMANCE_CONTRACTS.md` lists them under unavoidable internal materializations, and the public architecture/readme docs now state that callback-driven Jacobian/optimization helpers trade per-evaluation carrier materialization for Python callable ergonomics. With that explicit boundary truth in place, no remaining hidden hot-path copy/layout regressions are open for the current `pynabled` release target, and the merge gate advances to `N-PY-008`. No new validation was required beyond the full `D-251` gate set because this closeout only updates source comments and documentation.
+253. `D-253`: `N-PY-008` release hardening is complete on `feat/pynabled-bindings`: PyPI publishing now uses Trusted Publishing / GitHub OIDC through `pypa/gh-action-pypi-publish@v1.14.0` instead of long-lived tokens, the release build path pins `PyO3/maturin-action@v1.51.0` plus `maturin v1.13.1`, wheel builds use `--locked`, Dependabot now tracks Python package metadata from `pyproject.toml`, and the security workflow has a Python dependency audit leg using `pip-audit==2.10.0` over the resolved package/tooling requirement set. The PyPI release docs now document pending/existing Trusted Publisher setup, TestPyPI rehearsal, pinned release automation, and the tag-driven `pypi-v*` path. Validation is green end-to-end: the PyArrow 24 carrier regression (`2 passed`), workflow YAML parsing, version alignment, sdist hygiene, Python dependency audit requirements (`No known vulnerabilities found`), `cargo check -p pynabled --features arrow`, full `python-quality` (`248 passed, 22 skipped`, Arrow `22 passed`, `90%` Python coverage, plus wheel/sdist/source-feature smoke), and full `just checks` with Rust coverage at `90.63%`.
+254. `D-254`: Python source-build feature UX is now mediated by a thin local PEP 517 backend shim instead of only raw `MATURIN_PEP517_ARGS`: `pyproject.toml` now routes build frontends through `build_backend.pynabled_backend`, default `pynabled` builds include the Rust `arrow` feature, the shim accepts validated `pynabled-provider` / `pynabled-accelerators` / `pynabled-features` config settings plus `PYNABLED_*` env aliases, translates them into `maturin` feature arguments, rejects conflicting raw feature selectors, and `BUILD.md` / Python-facing docs now include `pip` and `uv` source-build flows built around that contract.
 
 ## Next
 
-1. `N-PY-008`: Harden the PyPI release path with clean sdists, pinned actions/tooling, Python dependency automation/scanning, and trusted publishing or equivalent supply-chain controls.
+1. Release-day execution for `pynabled`: run the final local quality gates, configure PyPI/TestPyPI Trusted Publishers if needed, and push the `pypi-v0.0.8` tag when maintainers are ready to publish.
 2. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
 3. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
 4. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.
@@ -328,7 +331,7 @@ Tensor-depth stop rubric (post-v1 finite target):
 4. After `D-182`, tensor-depth expansion returns to monitor mode; new tensor items require explicit new tracker IDs.
 
 Round scope lock:
-1. Core `nabled` remains in ongoing benchmark monitor mode, but `feat/pynabled-bindings` is in merge-gate remediation until `N-PY-001..N-PY-008` are closed.
+1. Core `nabled` remains in ongoing benchmark monitor mode; `feat/pynabled-bindings` has closed `N-PY-001..N-PY-008` and is in release-day validation/tag execution.
 2. Metal-specific work is deferred.
 3. SIMD optimization pass is deferred.
 
@@ -346,14 +349,14 @@ It means:
 ## Needed
 
 1. Tensor-depth expansion is monitor-only after `D-182`; additional tensor breadth requires explicit new tracker IDs.
-2. Python production signoff rubric once `N-PY-*` closure work is complete and the branch is ready for final merge/release assessment.
+2. Maintainer-controlled `pynabled` release execution (`pypi-v0.0.8` tag and publish workflow observation).
 3. AMD/HIP provider path once hardware is available.
 4. Metal-specific backend exploration beyond `wgpu`.
 5. SIMD opportunity pass for hand-rolled CPU kernels.
 
 ## Backlog (From Capability Matrix)
 
-1. `N-PY-*`: close the ordered `pynabled` merge gate on `feat/pynabled-bindings`.
+1. `pynabled`: monitor the first PyPI release and downstream adoption after `N-PY-*` closure.
 2. `K-005`: Outlier-ranked benchmark optimization plan + execution log.
 3. Tensor-depth post-v1 expansion (monitor-only; explicit new IDs required for additional breadth).
 4. AMD/HIP provider path once hardware is available.

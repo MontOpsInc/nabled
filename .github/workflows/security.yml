@@ -16,37 +16,70 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ steps.changes.outputs.deps }}
+      rust: ${{ steps.changes.outputs.rust }}
+      python: ${{ steps.changes.outputs.python }}
     steps:
     - uses: actions/checkout@v6
-    - uses: dorny/paths-filter@master
+    - uses: dorny/paths-filter@v3
       id: changes
       with:
         filters: |
-          deps:
+          rust:
             - '.github/workflows/security.yml'
             - '**/Cargo.toml'
             - '**/Cargo.lock'
+          python:
+            - '.github/workflows/security.yml'
+            - 'pyproject.toml'
+            - 'scripts/python_quality_gate.sh'
+            - 'python/**'
 
   audit:
-    name: Audit Dependencies
+    name: Audit Rust Dependencies
     runs-on: ubuntu-latest
     needs: changes
     permissions:
       contents: read
       issues: write
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v6
-        if: needs.changes.outputs.deps == 'true'
       - name: Install cargo-audit
-        if: needs.changes.outputs.deps == 'true'
         run: cargo install cargo-audit
       - name: Run audit check
-        if: needs.changes.outputs.deps == 'true'
         # Ignored until https://github.com/apache/datafusion/issues/15571
         # ignored py03 warning until arrow 55 upgrade
         run: cargo audit --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2025-0020
 
-      - name: Nothing to check
-        if: needs.changes.outputs.deps == 'false'
-        run: echo "No changes detected"
+  python-audit:
+    name: Audit Python Dependencies
+    runs-on: ubuntu-latest
+    needs: changes
+    permissions:
+      contents: read
+    if: needs.changes.outputs.python == 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install Python audit environment
+        run: |
+          python -m pip install "pip-audit==2.10.0"
+          cat > /tmp/pynabled-audit-requirements.txt <<'REQ'
+          maturin==1.13.1
+          numpy>=1.16
+          pytest>=7.0
+          pytest-cov>=7.0
+          pyarrow>=14
+          REQ
+      - name: Run Python dependency audit
+        run: python -m pip_audit --requirement /tmp/pynabled-audit-requirements.txt --cache-dir .cache/pip-audit
+
+  no-dependency-changes:
+    name: No Dependency Changes
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'false' && needs.changes.outputs.python == 'false'
+    steps:
+      - run: echo "No dependency changes detected"

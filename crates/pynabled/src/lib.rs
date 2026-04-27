@@ -473,9 +473,17 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_batched_dot_last_axis_variable, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_sum_last_axis_fixed_complex, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_sum_last_axis_variable_complex, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_sum_last_axis_variable_complex_storage,
+            m
+        )?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_l2_norm_last_axis_fixed_complex, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(
             arrow::tensor_l2_norm_last_axis_variable_complex,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_l2_norm_last_axis_variable_complex_storage,
             m
         )?)?;
         m.add_function(pyo3::wrap_pyfunction!(
@@ -487,11 +495,19 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m
         )?)?;
         m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_normalize_last_axis_variable_complex_storage,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
             arrow::tensor_batched_dot_last_axis_fixed_complex,
             m
         )?)?;
         m.add_function(pyo3::wrap_pyfunction!(
             arrow::tensor_batched_dot_last_axis_variable_complex,
+            m
+        )?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            arrow::tensor_batched_dot_last_axis_variable_complex_storage,
             m
         )?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::tensor_permute_axes, m)?)?;

@@ -1,6 +1,7 @@
 [build-system]
-requires = ["maturin>=1.12"]
-build-backend = "maturin"
+requires = ["maturin==1.13.1"]
+backend-path = ["."]
+build-backend = "build_backend.pynabled_backend"
 
 [project]
 name = "pynabled"
@@ -42,16 +43,19 @@ dependencies = ["numpy>=1.16"]
 [project.urls]
 Homepage = "https://github.com/MontOpsInc/nabled"
 Repository = "https://github.com/MontOpsInc/nabled"
-Documentation = "https://docs.rs/nabled"
+Documentation = "https://github.com/MontOpsInc/nabled/blob/main/python/README.md"
+"Build Guide" = "https://github.com/MontOpsInc/nabled/blob/main/BUILD.md"
 Changelog = "https://github.com/MontOpsInc/nabled/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov>=7.0", "pyarrow>=14"]
+security = ["pip-audit==2.10.0"]
 
 [tool.maturin]
 manifest-path = "crates/pynabled/Cargo.toml"
 python-source = "python"
 module-name = "pynabled._pynabled"
+include = [{ path = "build_backend/**/*.py", format = "sdist" }]
 
 [tool.coverage.run]
 branch = true
