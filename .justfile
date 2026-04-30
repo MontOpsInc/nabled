@@ -587,7 +587,7 @@ tag-pypi-release:
     git tag -a "$TAG" -m "PyPI publish pynabled ${CARGO_VERSION}"
     git push origin "$TAG"
     echo ""
-    echo "Pushed $TAG — GitHub Actions will publish wheels to PyPI (if PYPI_API_TOKEN is set)."
+    echo "Pushed $TAG - GitHub Actions will publish wheels to PyPI via Trusted Publishing."
     echo ""
 
 # Local wheel smoke: maturin build --release, venv install, import (mirrors CI python-wheel-smoke).
