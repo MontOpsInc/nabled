@@ -398,7 +398,7 @@ fn validate_sparse_structure(
 /// # Errors
 /// Returns an error for invalid sparse structure, shape mismatch, non-finite inputs, or provider
 /// failures.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub(crate) fn spmv_f64(
     nrows: usize,
     ncols: usize,
@@ -567,7 +567,7 @@ pub(crate) fn spmv_f64(
 /// # Errors
 /// Returns an error for invalid sparse structure, shape mismatch, non-finite inputs, or provider
 /// failures.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub(crate) fn spmv_f32(
     nrows: usize,
     ncols: usize,

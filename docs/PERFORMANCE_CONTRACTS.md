@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-03-06
+Last updated: 2026-04-19
 
 ## Purpose
 
@@ -25,6 +25,18 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 5. `nabled-linalg::svd::decompose_internal` and `decompose_complex_internal` now avoid temporary owned right-singular column materializations where view math suffices.
 6. Kernel-routing regression fixes restored no-hidden-allocation behavior for `*_into` paths in `vector`, `sparse`, `triangular`, and `tensor` domains.
 7. Sparse GPU phase-1 composition (`sparse_matmat_dense_gpu_*`) now reuses a per-column output buffer and writes directly into the final dense output matrix, eliminating per-column temporary result allocations in wrapper code.
+8. Sparse factorization-backed direct and iterative reuse paths now admit borrowed dense RHS `ArrayBase` views all the way through the Rust core, so the Python sparse bridge no longer has to clone dense RHS arrays before calling reusable `GMRES` / `BiCGSTAB` / sparse-LU factor workflows.
+9. `pynabled` QR least-squares factor reuse now dispatches directly over borrowed `Q` / `R` / optional permutation views instead of rebuilding an owned Rust `QRResult` from Python arrays just to reach the existing solver path.
+10. Tensor reconstruction/diagnostic helper paths now borrow result factor/core arrays directly through the Rust core: HOSVD/Tucker/CP/TT reconstruct helpers and CP diagnostics no longer rebuild owned Rust result structs from Python arrays, and CP diagnostics now compute residual metrics directly instead of allocating a full reconstructed tensor first.
+11. Tensor-Train borrowed-core helper paths now materialize only the SVD work matrices they already need for TT orthogonalization/rounding sweeps, instead of first rebuilding an owned `TensorTrainResult` or requiring standard-layout TT core views at the Python/Arrow boundary.
+12. Direct Python triangular solve `out=` paths now pass borrowed RHS views into generic mutable-output `nabled-linalg::triangular` helpers, so the binding no longer clones vector or matrix RHS/result arrays just to reuse caller-provided output buffers.
+13. Owned tensor egress in `pynabled` no longer standardizes ndarray layout before NumPy handoff; owned Fortran/strided tensor results are now handed to NumPy with preserved strides instead of an extra full clone.
+14. Direct Python stats and orthogonalization `out=` paths now write through shared Rust `*_into` helpers (`nabled-ml::stats` and `nabled-linalg::orthogonalization`) instead of forcing wrapper-level owned result allocation before handing arrays back to NumPy.
+15. Factor-derived matrix-function `*_into` and workspace-backed direct-matrix paths now compose the current symmetric-eigen and SVD-backed outputs directly into caller-provided buffers through reusable scratch-backed matmul instead of allocating a full intermediate result and then copying it into `out`.
+16. Python `polar_compute(..., out=...)` now decomposes once and writes `u` / `p` directly into caller-provided `PolarResult` buffers for both direct matrix inputs and typed `SvdResult` factor inputs instead of materializing an intermediate full polar result before copying.
+17. Arrow-side PCA transform/inverse plus CP/HOSVD/Tucker helper paths now borrow factor/core arrays directly through `nabled::arrow`; the PyO3 Arrow bridge no longer rebuilds owned PCA or tensor result structs from Python factor/core arrays just to reach the underlying kernels.
+18. N-D Tucker/HOSVD projection and expansion helpers no longer start from blanket `tensor.to_owned()` clones or allocate a full final temporary before `out=` assignment; the Rust tensor core now composes the final mode product directly into caller-provided buffers for the current `tensor_tucker_project(...)`, `tensor_tucker_expand(...)`, and `hosvd_nd`-derived helper reuse paths.
+19. Canonical Arrow carrier packing/unpacking in `python/pynabled/arrow.py` now uses flat NumPy buffers plus Arrow offsets for `ndarrow.complex64`, `ndarrow.csr_matrix`, `ndarrow.csr_matrix_batch`, and variable-shape tensor rows instead of Python `tolist()` / `to_pylist()` rebuilding at the PyO3 boundary.
 
 ### Unavoidable internal materializations
 
@@ -34,6 +46,7 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 4. Current `wgpu` kernels stage host input buffers to device and read output buffers back to host memory per invocation; this host↔device transfer is expected for the current ndarray-owned public API contract.
 5. Opt-in MAGMA sparse APIs (`matvec_magma_*`, `matmat_dense_magma_*`) stage CSR/vector/dense host buffers and allocate provider/device workspace per invocation; this is required by MAGMA sparse C API contracts and is explicit to these MAGMA-only entrypoints.
 6. Opt-in MAGMA mixed LU APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) allocate provider work buffers and stage matrix/RHS/solution host↔device transfers per invocation; behavior is explicit and confined to mixed-precision APIs.
+7. Python-callable Jacobian/optimization callback helpers, plus their Arrow-admitted callback variants, materialize transient NumPy/PyArrow carrier objects on each callback invocation and re-own the returned arrays before re-entering the Rust loop. That copy boundary is explicit convenience-path behavior, not hidden hot-path degradation in the array-in/array-out kernels.
 
 ## V1 No-Surprises Audit Status
 

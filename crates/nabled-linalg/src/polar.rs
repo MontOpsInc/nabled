@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array2, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use num_complex::Complex64;
 
 #[cfg(not(feature = "lapack-provider"))]
@@ -73,6 +73,40 @@ fn validate_finite_view<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<(),
     Ok(())
 }
 
+fn validate_svd_factor_dimensions<T>(
+    u: &ArrayView2<'_, T>,
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+) -> Result<(), PolarError> {
+    if u.is_empty() || singular_values.is_empty() || vt.is_empty() {
+        return Err(PolarError::EmptyMatrix);
+    }
+    if u.nrows() != vt.ncols() {
+        return Err(PolarError::NotSquare);
+    }
+    if u.ncols() != singular_values.len() || vt.nrows() != singular_values.len() {
+        return Err(PolarError::DecompositionFailed);
+    }
+    Ok(())
+}
+
+fn validate_complex_svd_factor_dimensions(
+    u: &ArrayView2<'_, Complex64>,
+    singular_values: &ArrayView1<'_, f64>,
+    vt: &ArrayView2<'_, Complex64>,
+) -> Result<(), PolarError> {
+    if u.is_empty() || singular_values.is_empty() || vt.is_empty() {
+        return Err(PolarError::EmptyMatrix);
+    }
+    if u.nrows() != vt.ncols() {
+        return Err(PolarError::NotSquare);
+    }
+    if u.ncols() != singular_values.len() || vt.nrows() != singular_values.len() {
+        return Err(PolarError::DecompositionFailed);
+    }
+    Ok(())
+}
+
 fn validate_complex_square_non_empty(matrix: &ArrayView2<'_, Complex64>) -> Result<(), PolarError> {
     if matrix.is_empty() {
         return Err(PolarError::EmptyMatrix);
@@ -85,6 +119,20 @@ fn validate_complex_square_non_empty(matrix: &ArrayView2<'_, Complex64>) -> Resu
 
 fn validate_complex_finite(matrix: &ArrayView2<'_, Complex64>) -> Result<(), PolarError> {
     if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
+        return Err(PolarError::NumericalInstability);
+    }
+    Ok(())
+}
+
+fn validate_finite_vector<T: NabledReal>(values: &ArrayView1<'_, T>) -> Result<(), PolarError> {
+    if values.iter().any(|value| !value.is_finite()) {
+        return Err(PolarError::NumericalInstability);
+    }
+    Ok(())
+}
+
+fn validate_complex_real_vector(values: &ArrayView1<'_, f64>) -> Result<(), PolarError> {
+    if values.iter().any(|value| !value.is_finite()) {
         return Err(PolarError::NumericalInstability);
     }
     Ok(())
@@ -178,20 +226,7 @@ where
     validate_finite_view(matrix)?;
 
     let svd = svd::decompose_view(matrix).map_err(|_| PolarError::DecompositionFailed)?;
-
-    let orthogonal_factor = svd.u.dot(&svd.vt);
-
-    let column_count = matrix.ncols();
-    let retained_rank = svd.singular_values.len();
-    let mut sigma = Array2::<T>::zeros((retained_rank, retained_rank));
-    for i in 0..retained_rank {
-        sigma[[i, i]] = svd.singular_values[i];
-    }
-
-    let psd_factor = svd.vt.t().dot(&sigma).dot(&svd.vt);
-    debug_assert_eq!(psd_factor.nrows(), column_count);
-
-    Ok(NdarrayPolarResult { u: orthogonal_factor, p: psd_factor })
+    compute_polar_from_svd_view(&svd.u.view(), &svd.singular_values.view(), &svd.vt.view())
 }
 
 #[cfg(not(feature = "lapack-provider"))]
@@ -202,17 +237,50 @@ fn compute_polar_impl<T: svd::SvdInternalScalar>(
     validate_finite_view(matrix)?;
 
     let svd = svd::decompose_view(matrix).map_err(|_| PolarError::DecompositionFailed)?;
+    compute_polar_from_svd_view(&svd.u.view(), &svd.singular_values.view(), &svd.vt.view())
+}
 
-    let orthogonal_factor = svd.u.dot(&svd.vt);
+/// Compute polar decomposition from precomputed SVD factors.
+///
+/// # Errors
+/// Returns an error if factor dimensions are inconsistent or contain non-finite values.
+pub fn compute_polar_from_svd<T>(
+    u: &Array2<T>,
+    singular_values: &Array1<T>,
+    vt: &Array2<T>,
+) -> Result<NdarrayPolarResult<T>, PolarError>
+where
+    T: NabledReal,
+{
+    compute_polar_from_svd_view(&u.view(), &singular_values.view(), &vt.view())
+}
 
-    let column_count = matrix.ncols();
-    let retained_rank = svd.singular_values.len();
+/// Compute polar decomposition from borrowed SVD factor views.
+///
+/// # Errors
+/// Returns an error if factor dimensions are inconsistent or contain non-finite values.
+pub fn compute_polar_from_svd_view<T>(
+    u: &ArrayView2<'_, T>,
+    singular_values: &ArrayView1<'_, T>,
+    vt: &ArrayView2<'_, T>,
+) -> Result<NdarrayPolarResult<T>, PolarError>
+where
+    T: NabledReal,
+{
+    validate_svd_factor_dimensions(u, singular_values, vt)?;
+    validate_finite_view(u)?;
+    validate_finite_vector(singular_values)?;
+    validate_finite_view(vt)?;
+
+    let column_count = vt.ncols();
+    let retained_rank = singular_values.len();
     let mut sigma = Array2::<T>::zeros((retained_rank, retained_rank));
     for i in 0..retained_rank {
-        sigma[[i, i]] = svd.singular_values[i];
+        sigma[[i, i]] = singular_values[i];
     }
 
-    let psd_factor = svd.vt.t().dot(&sigma).dot(&svd.vt);
+    let orthogonal_factor = u.dot(vt);
+    let psd_factor = vt.t().dot(&sigma).dot(vt);
     debug_assert_eq!(psd_factor.nrows(), column_count);
 
     Ok(NdarrayPolarResult { u: orthogonal_factor, p: psd_factor })
@@ -262,19 +330,11 @@ fn compute_polar_complex_impl(
     {
         let svd =
             svd::decompose_complex_view(matrix).map_err(|_| PolarError::DecompositionFailed)?;
-        let unitary_factor = svd.u.dot(&svd.vt);
-
-        let retained_rank = svd.singular_values.len();
-        let mut sigma = Array2::<Complex64>::zeros((retained_rank, retained_rank));
-        for i in 0..retained_rank {
-            sigma[[i, i]] = Complex64::new(svd.singular_values[i], 0.0);
-        }
-
-        let right_vectors = svd.vt.t().mapv(|value| value.conj());
-        let psd_factor = right_vectors.dot(&sigma).dot(&svd.vt);
-        debug_assert_eq!(psd_factor.nrows(), matrix.nrows());
-
-        Ok(NdarrayComplexPolarResult { u: unitary_factor, p: psd_factor })
+        compute_polar_complex_from_svd_view(
+            &svd.u.view(),
+            &svd.singular_values.view(),
+            &svd.vt.view(),
+        )
     }
     #[cfg(not(feature = "lapack-provider"))]
     {
@@ -290,6 +350,46 @@ pub fn compute_polar_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<NdarrayComplexPolarResult, PolarError> {
     compute_polar_complex_impl(matrix)
+}
+
+/// Compute complex polar decomposition from precomputed complex SVD factors.
+///
+/// # Errors
+/// Returns an error if factor dimensions are inconsistent or contain non-finite values.
+pub fn compute_polar_complex_from_svd(
+    u: &Array2<Complex64>,
+    singular_values: &Array1<f64>,
+    vt: &Array2<Complex64>,
+) -> Result<NdarrayComplexPolarResult, PolarError> {
+    compute_polar_complex_from_svd_view(&u.view(), &singular_values.view(), &vt.view())
+}
+
+/// Compute complex polar decomposition from borrowed complex SVD factor views.
+///
+/// # Errors
+/// Returns an error if factor dimensions are inconsistent or contain non-finite values.
+pub fn compute_polar_complex_from_svd_view(
+    u: &ArrayView2<'_, Complex64>,
+    singular_values: &ArrayView1<'_, f64>,
+    vt: &ArrayView2<'_, Complex64>,
+) -> Result<NdarrayComplexPolarResult, PolarError> {
+    validate_complex_svd_factor_dimensions(u, singular_values, vt)?;
+    validate_complex_finite(u)?;
+    validate_complex_real_vector(singular_values)?;
+    validate_complex_finite(vt)?;
+
+    let unitary_factor = u.dot(vt);
+    let retained_rank = singular_values.len();
+    let mut sigma = Array2::<Complex64>::zeros((retained_rank, retained_rank));
+    for i in 0..retained_rank {
+        sigma[[i, i]] = Complex64::new(singular_values[i], 0.0);
+    }
+
+    let right_vectors = vt.t().mapv(|value| value.conj());
+    let psd_factor = right_vectors.dot(&sigma).dot(vt);
+    debug_assert_eq!(psd_factor.nrows(), u.nrows());
+
+    Ok(NdarrayComplexPolarResult { u: unitary_factor, p: psd_factor })
 }
 
 #[cfg(test)]
@@ -347,6 +447,22 @@ mod tests {
     }
 
     #[test]
+    fn polar_from_svd_factors_matches_direct() {
+        let matrix =
+            Array2::from_shape_vec((2, 2), vec![3.0_f64, 1.0_f64, 1.0_f64, 3.0_f64]).unwrap();
+        let direct = compute_polar(&matrix).unwrap();
+        let svd = svd::decompose(&matrix).unwrap();
+        let from_factors = compute_polar_from_svd(&svd.u, &svd.singular_values, &svd.vt).unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((direct.u[[i, j]] - from_factors.u[[i, j]]).abs() < 1e-12_f64);
+                assert!((direct.p[[i, j]] - from_factors.p[[i, j]]).abs() < 1e-12_f64);
+            }
+        }
+    }
+
+    #[test]
     fn complex_polar_reconstructs_input_and_view_matches_owned() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
             Complex64::new(2.0_f64, 0.5_f64),
@@ -384,6 +500,28 @@ mod tests {
             compute_polar_complex(&non_finite),
             Err(PolarError::NumericalInstability)
         ));
+    }
+
+    #[test]
+    fn complex_polar_from_svd_factors_matches_direct() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(2.0_f64, 0.5_f64),
+            Complex64::new(0.5_f64, -0.25_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
+            Complex64::new(1.5_f64, -0.75_f64),
+        ])
+        .unwrap();
+        let direct = compute_polar_complex(&matrix).unwrap();
+        let svd = svd::decompose_complex(&matrix).unwrap();
+        let from_factors =
+            compute_polar_complex_from_svd(&svd.u, &svd.singular_values, &svd.vt).unwrap();
+
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((direct.u[[i, j]] - from_factors.u[[i, j]]).norm() < 1e-12_f64);
+                assert!((direct.p[[i, j]] - from_factors.p[[i, j]]).norm() < 1e-12_f64);
+            }
+        }
     }
 
     #[test]

@@ -1133,7 +1133,7 @@ fn nonsymmetric_bi_view_impl<T: qr::QrInternalScalar>(
 }
 
 #[cfg(feature = "lapack-provider")]
-#[allow(clippy::assign_op_pattern)]
+#[expect(clippy::assign_op_pattern)]
 fn nonsymmetric_bi_view_impl<T>(
     matrix: &ArrayView2<'_, T>,
     config: &NonsymmetricEigenConfig<T>,

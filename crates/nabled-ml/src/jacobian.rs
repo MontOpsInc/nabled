@@ -53,7 +53,7 @@ impl Default for JacobianConfig<f64> {
 }
 
 impl Default for JacobianConfig<f32> {
-    fn default() -> Self { Self { step_size: 1e-4, tolerance: 1e-5, max_iterations: 100 } }
+    fn default() -> Self { Self { step_size: 1e-3, tolerance: 1e-5, max_iterations: 100 } }
 }
 
 impl<T: NabledReal> JacobianConfig<T> {
@@ -208,7 +208,7 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid input/config or function failures.
-#[allow(clippy::similar_names)]
+#[expect(clippy::similar_names)]
 pub fn numerical_hessian<T, F, S>(
     function: &F,
     x: &ArrayBase<S, Ix1>,

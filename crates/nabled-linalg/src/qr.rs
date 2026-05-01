@@ -3,11 +3,12 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2, s};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, DataMut, Ix1, s};
 use num_complex::Complex64;
 
 use crate::internal::DenseKernelPolicy;
 #[cfg(not(feature = "lapack-provider"))]
+#[cfg(any(feature = "magma-system", not(feature = "lapack-provider")))]
 use crate::internal::qr_gram_schmidt;
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
@@ -438,7 +439,7 @@ where
 }
 
 #[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 fn solve_least_squares_provider<T>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
@@ -914,8 +915,11 @@ where
     }
 
     if matrix.nrows() < matrix.ncols() {
-        let matrix_owned = matrix.to_owned();
-        let svd = svd::decompose(&matrix_owned).map_err(|_| QRError::ConvergenceFailed)?;
+        // Some LAPACK/OpenBLAS builds fail to converge on small underdetermined SVDs.
+        // Use the internal SVD fallback here so least-squares keeps a stable
+        // minimum-norm contract across provider builds.
+        let svd =
+            svd::decompose_internal_fallback(matrix).map_err(|_| QRError::ConvergenceFailed)?;
         let required_rank = matrix.nrows();
         let computed_rank = svd::rank(
             &svd,
@@ -930,8 +934,10 @@ where
         }
 
         let mut pseudo_inverse = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
-        svd::pseudo_inverse_into(
-            &matrix_owned,
+        svd::pseudo_inverse_from_svd_view_into(
+            &svd.u.view(),
+            &svd.singular_values.view(),
+            &svd.vt.view(),
             &PseudoInverseConfig {
                 tolerance: Some(
                     config.rank_tolerance.max(
@@ -1009,8 +1015,7 @@ fn solve_least_squares_impl<T: QrInternalScalar>(
     }
 
     if matrix.nrows() < matrix.ncols() {
-        let matrix_owned = matrix.to_owned();
-        let svd = svd::decompose(&matrix_owned).map_err(|_| QRError::ConvergenceFailed)?;
+        let svd = svd::decompose_view(matrix).map_err(|_| QRError::ConvergenceFailed)?;
         let required_rank = matrix.nrows();
         let computed_rank = svd::rank(
             &svd,
@@ -1025,8 +1030,10 @@ fn solve_least_squares_impl<T: QrInternalScalar>(
         }
 
         let mut pseudo_inverse = Array2::<T>::zeros((matrix.ncols(), matrix.nrows()));
-        svd::pseudo_inverse_into(
-            &matrix_owned,
+        svd::pseudo_inverse_from_svd_view_into(
+            &svd.u.view(),
+            &svd.singular_values.view(),
+            &svd.vt.view(),
             &PseudoInverseConfig {
                 tolerance: Some(
                     config.rank_tolerance.max(
@@ -1088,6 +1095,139 @@ fn solve_least_squares_impl<T: QrInternalScalar>(
     }
 }
 
+/// Solve least squares directly from precomputed QR factors into caller-provided `output`.
+///
+/// # Errors
+/// Returns an error if the QR factors are inconsistent, correspond to an underdetermined reduced
+/// QR result, the system is rank-deficient, or `output` has the wrong length.
+pub fn solve_least_squares_from_qr_result_view_into<T, S>(
+    qr: &QRResult<T>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), QRError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    solve_least_squares_from_qr_factors_view_into(
+        &qr.q.view(),
+        &qr.r.view(),
+        qr.p.as_ref().map(|permutation| permutation.view()),
+        rhs,
+        config,
+        output,
+    )
+}
+
+/// Solve least squares directly from borrowed QR factor views into caller-provided `output`.
+///
+/// # Errors
+/// Returns an error if the QR factors are inconsistent, correspond to an underdetermined reduced
+/// QR result, the system is rank-deficient, or `output` has the wrong length.
+pub fn solve_least_squares_from_qr_factors_view_into<T, S>(
+    q_factors: &ArrayView2<'_, T>,
+    r_factors: &ArrayView2<'_, T>,
+    permutation: Option<ArrayView2<'_, T>>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), QRError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    if q_factors.ncols() != r_factors.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if rhs.len() != q_factors.nrows() {
+        return Err(QRError::InvalidDimensions("RHS length must equal q rows".to_string()));
+    }
+    if output.len() != r_factors.ncols() {
+        return Err(QRError::InvalidDimensions("output length must equal r columns".to_string()));
+    }
+    if q_factors.ncols() < r_factors.ncols() {
+        return Err(QRError::InvalidInput(
+            "QR factors do not retain enough columns for underdetermined least-squares; pass the \
+             original matrix"
+                .to_string(),
+        ));
+    }
+
+    let column_count = r_factors.ncols();
+    let mut projected_rhs = Array1::<T>::zeros(column_count);
+    for col in 0..column_count {
+        let mut dot = T::zero();
+        for row in 0..q_factors.nrows() {
+            dot += q_factors[[row, col]] * rhs[row];
+        }
+        projected_rhs[col] = dot;
+    }
+
+    let mut permuted_solution = Array1::<T>::zeros(column_count);
+    for reverse_col in 0..column_count {
+        let col = column_count - 1 - reverse_col;
+        let mut sum = projected_rhs[col];
+        for upper_col in (col + 1)..column_count {
+            sum -= r_factors[[col, upper_col]] * permuted_solution[upper_col];
+        }
+        let diagonal = r_factors[[col, col]];
+        if num_traits::Float::abs(diagonal)
+            <= config
+                .rank_tolerance
+                .max(T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()))
+        {
+            return Err(QRError::SingularMatrix);
+        }
+        permuted_solution[col] = sum / diagonal;
+    }
+
+    if let Some(permutation) = permutation {
+        if permutation.nrows() != column_count || permutation.ncols() != column_count {
+            return Err(QRError::InvalidDimensions(
+                "permutation shape must match r column dimensions".to_string(),
+            ));
+        }
+        let solution = permutation.dot(&permuted_solution);
+        output.assign(&solution);
+    } else {
+        output.assign(&permuted_solution);
+    }
+    Ok(())
+}
+
+/// Solve least squares directly from precomputed QR factors.
+///
+/// # Errors
+/// Returns an error if the QR factors are inconsistent, correspond to an underdetermined reduced
+/// QR result, or the system is rank-deficient.
+pub fn solve_least_squares_from_qr_result_view<T: NabledReal>(
+    qr: &QRResult<T>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<Array1<T>, QRError> {
+    let mut output = Array1::<T>::zeros(qr.r.ncols());
+    solve_least_squares_from_qr_result_view_into(qr, rhs, config, &mut output)?;
+    Ok(output)
+}
+
+/// Solve least squares directly from borrowed QR factor views.
+///
+/// # Errors
+/// Returns an error if the QR factors are inconsistent, correspond to an underdetermined reduced
+/// QR result, or the system is rank-deficient.
+pub fn solve_least_squares_from_qr_factors_view<T: NabledReal>(
+    q: &ArrayView2<'_, T>,
+    r: &ArrayView2<'_, T>,
+    permutation: Option<ArrayView2<'_, T>>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+) -> Result<Array1<T>, QRError> {
+    let mut output = Array1::<T>::zeros(r.ncols());
+    solve_least_squares_from_qr_factors_view_into(q, r, permutation, rhs, config, &mut output)?;
+    Ok(output)
+}
+
 /// Solve least squares from matrix/vector views.
 ///
 /// # Errors
@@ -1117,6 +1257,80 @@ pub fn solve_least_squares_view<T: QrInternalScalar>(
     solve_least_squares_impl(matrix, rhs, config)
 }
 
+/// Solve least squares from matrix/vector views into caller-provided `output`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or rank-deficient systems.
+#[cfg(feature = "lapack-provider")]
+pub fn solve_least_squares_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), QRError>
+where
+    T: QrProviderScalar,
+    S: DataMut<Elem = T>,
+{
+    if matrix.nrows() < matrix.ncols() {
+        let result = solve_least_squares_impl(matrix, rhs, config)?;
+        if output.len() != result.len() {
+            return Err(QRError::InvalidDimensions(
+                "output length must equal matrix columns".to_string(),
+            ));
+        }
+        output.assign(&result);
+        return Ok(());
+    }
+
+    let full = decompose_view(matrix, config)?;
+    let keep = matrix.nrows().min(matrix.ncols());
+    let qr = QRResult {
+        q:    full.q.slice(s![.., ..keep]).to_owned(),
+        r:    full.r.slice(s![..keep, ..]).to_owned(),
+        p:    full.p,
+        rank: full.rank.min(keep),
+    };
+    solve_least_squares_from_qr_result_view_into(&qr, rhs, config, output)
+}
+
+/// Solve least squares from matrix/vector views into caller-provided `output`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or rank-deficient systems.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn solve_least_squares_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    config: &QRConfig<T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), QRError>
+where
+    T: QrInternalScalar,
+    S: DataMut<Elem = T>,
+{
+    if matrix.nrows() < matrix.ncols() {
+        let result = solve_least_squares_impl(matrix, rhs, config)?;
+        if output.len() != result.len() {
+            return Err(QRError::InvalidDimensions(
+                "output length must equal matrix columns".to_string(),
+            ));
+        }
+        output.assign(&result);
+        return Ok(());
+    }
+
+    let full = decompose_view(matrix, config)?;
+    let keep = matrix.nrows().min(matrix.ncols());
+    let qr = QRResult {
+        q:    full.q.slice(s![.., ..keep]).to_owned(),
+        r:    full.r.slice(s![..keep, ..]).to_owned(),
+        p:    full.p,
+        rank: full.rank.min(keep),
+    };
+    solve_least_squares_from_qr_result_view_into(&qr, rhs, config, output)
+}
+
 /// Reconstruct matrix `Q * R`.
 #[must_use]
 pub fn reconstruct_matrix<T: NabledReal>(qr: &QRResult<T>) -> Array2<T> { qr.q.dot(&qr.r) }
@@ -1124,6 +1338,51 @@ pub fn reconstruct_matrix<T: NabledReal>(qr: &QRResult<T>) -> Array2<T> { qr.q.d
 /// Reconstruct complex matrix `Q * R`.
 #[must_use]
 pub fn reconstruct_matrix_complex(qr: &QRResult<Complex64>) -> Array2<Complex64> { qr.q.dot(&qr.r) }
+
+fn permutation_order<T: NabledReal>(permutation: &Array2<T>) -> Result<Vec<usize>, QRError> {
+    if permutation.nrows() != permutation.ncols() {
+        return Err(QRError::InvalidDimensions("permutation matrix must be square".to_string()));
+    }
+
+    let tolerance = T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon());
+    let mut order = vec![usize::MAX; permutation.ncols()];
+    for col in 0..permutation.ncols() {
+        for row in 0..permutation.nrows() {
+            if permutation[[row, col]].abs() > tolerance {
+                order[col] = row;
+                break;
+            }
+        }
+        if order[col] == usize::MAX {
+            return Err(QRError::InvalidInput(
+                "permutation matrix must contain one non-zero entry per column".to_string(),
+            ));
+        }
+    }
+    Ok(order)
+}
+
+fn complex_permutation_order(permutation: &Array2<Complex64>) -> Result<Vec<usize>, QRError> {
+    if permutation.nrows() != permutation.ncols() {
+        return Err(QRError::InvalidDimensions("permutation matrix must be square".to_string()));
+    }
+
+    let mut order = vec![usize::MAX; permutation.ncols()];
+    for col in 0..permutation.ncols() {
+        for row in 0..permutation.nrows() {
+            if permutation[[row, col]].norm() > DenseKernelPolicy::BASE_TOLERANCE {
+                order[col] = row;
+                break;
+            }
+        }
+        if order[col] == usize::MAX {
+            return Err(QRError::InvalidInput(
+                "permutation matrix must contain one non-zero entry per column".to_string(),
+            ));
+        }
+    }
+    Ok(order)
+}
 
 /// Reconstruct matrix `Q * R` into `output`.
 ///
@@ -1153,6 +1412,115 @@ pub fn reconstruct_matrix_into<T: NabledReal>(
         }
     }
 
+    Ok(())
+}
+
+/// Reconstruct complex matrix `Q * R` into `output`.
+///
+/// # Errors
+/// Returns an error if output dimensions do not match `Q * R`.
+pub fn reconstruct_matrix_complex_into(
+    qr: &QRResult<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), QRError> {
+    if qr.q.ncols() != qr.r.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
+        return Err(QRError::InvalidDimensions(
+            "output shape must match q.rows x r.cols".to_string(),
+        ));
+    }
+
+    output.fill(Complex64::new(0.0, 0.0));
+    for i in 0..qr.q.nrows() {
+        for j in 0..qr.r.ncols() {
+            let mut sum = Complex64::new(0.0, 0.0);
+            for p in 0..qr.q.ncols() {
+                sum += qr.q[[i, p]] * qr.r[[p, j]];
+            }
+            output[[i, j]] = sum;
+        }
+    }
+
+    Ok(())
+}
+
+/// Reconstruct the original matrix from a pivoted QR result into `output`.
+///
+/// # Errors
+/// Returns an error if the QR result is missing a permutation or dimensions are incompatible.
+pub fn reconstruct_original_matrix_into<T: NabledReal>(
+    qr: &QRResult<T>,
+    output: &mut Array2<T>,
+) -> Result<(), QRError> {
+    let permutation = qr.p.as_ref().ok_or_else(|| {
+        QRError::InvalidInput("pivoted QR result missing permutation".to_string())
+    })?;
+    if qr.q.ncols() != qr.r.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if permutation.nrows() != qr.r.ncols() || permutation.ncols() != qr.r.ncols() {
+        return Err(QRError::InvalidDimensions(
+            "permutation shape must match r column dimensions".to_string(),
+        ));
+    }
+    if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
+        return Err(QRError::InvalidDimensions(
+            "output shape must match q.rows x r.cols".to_string(),
+        ));
+    }
+
+    let order = permutation_order(permutation)?;
+    output.fill(T::zero());
+    for (pivoted_col, &output_col) in order.iter().enumerate().take(qr.r.ncols()) {
+        for row in 0..qr.q.nrows() {
+            let mut sum = T::zero();
+            for inner in 0..qr.q.ncols() {
+                sum += qr.q[[row, inner]] * qr.r[[inner, pivoted_col]];
+            }
+            output[[row, output_col]] = sum;
+        }
+    }
+    Ok(())
+}
+
+/// Reconstruct the original matrix from a complex pivoted QR result into `output`.
+///
+/// # Errors
+/// Returns an error if the QR result is missing a permutation or dimensions are incompatible.
+pub fn reconstruct_original_matrix_complex_into(
+    qr: &QRResult<Complex64>,
+    output: &mut Array2<Complex64>,
+) -> Result<(), QRError> {
+    let permutation = qr.p.as_ref().ok_or_else(|| {
+        QRError::InvalidInput("pivoted QR result missing permutation".to_string())
+    })?;
+    if qr.q.ncols() != qr.r.nrows() {
+        return Err(QRError::InvalidDimensions("q.ncols() must equal r.nrows()".to_string()));
+    }
+    if permutation.nrows() != qr.r.ncols() || permutation.ncols() != qr.r.ncols() {
+        return Err(QRError::InvalidDimensions(
+            "permutation shape must match r column dimensions".to_string(),
+        ));
+    }
+    if output.dim() != (qr.q.nrows(), qr.r.ncols()) {
+        return Err(QRError::InvalidDimensions(
+            "output shape must match q.rows x r.cols".to_string(),
+        ));
+    }
+
+    let order = complex_permutation_order(permutation)?;
+    output.fill(Complex64::new(0.0, 0.0));
+    for (pivoted_col, &output_col) in order.iter().enumerate().take(qr.r.ncols()) {
+        for row in 0..qr.q.nrows() {
+            let mut sum = Complex64::new(0.0, 0.0);
+            for inner in 0..qr.q.ncols() {
+                sum += qr.q[[row, inner]] * qr.r[[inner, pivoted_col]];
+            }
+            output[[row, output_col]] = sum;
+        }
+    }
     Ok(())
 }
 
@@ -1218,6 +1586,238 @@ mod tests {
         let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64, 3.0_f64]);
         let result = solve_least_squares(&matrix, &rhs, &QRConfig::default());
         assert!(matches!(result, Err(QRError::InvalidDimensions(_))));
+    }
+
+    #[test]
+    fn least_squares_from_qr_result_matches_matrix_path() {
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            1.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 4.0_f64,
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64]);
+        let config = QRConfig::default();
+
+        let direct = solve_least_squares(&matrix, &rhs, &config).unwrap();
+        let qr = decompose_reduced(&matrix, &config).unwrap();
+        let from_factors =
+            solve_least_squares_from_qr_result_view(&qr, &rhs.view(), &config).unwrap();
+        let mut out = Array1::<f64>::zeros(2);
+        solve_least_squares_from_qr_result_view_into(
+            &qr,
+            &rhs.view(),
+            &config,
+            &mut out.view_mut(),
+        )
+        .unwrap();
+
+        for i in 0..direct.len() {
+            assert!((direct[i] - from_factors[i]).abs() < 1.0e-10_f64);
+            assert!((direct[i] - out[i]).abs() < 1.0e-10_f64);
+        }
+
+        let from_factor_views = solve_least_squares_from_qr_factors_view(
+            &qr.q.view(),
+            &qr.r.view(),
+            qr.p.as_ref().map(|permutation| permutation.view()),
+            &rhs.view(),
+            &config,
+        )
+        .unwrap();
+        let mut from_factor_views_into = Array1::<f64>::zeros(2);
+        solve_least_squares_from_qr_factors_view_into(
+            &qr.q.view(),
+            &qr.r.view(),
+            qr.p.as_ref().map(|permutation| permutation.view()),
+            &rhs.view(),
+            &config,
+            &mut from_factor_views_into.view_mut(),
+        )
+        .unwrap();
+
+        for i in 0..direct.len() {
+            assert!((direct[i] - from_factor_views[i]).abs() < 1.0e-10_f64);
+            assert!((direct[i] - from_factor_views_into[i]).abs() < 1.0e-10_f64);
+        }
+    }
+
+    #[test]
+    fn least_squares_from_wide_qr_result_is_rejected() {
+        let matrix = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 0.0_f64, 2.0_f64, 0.0_f64, 1.0_f64, 3.0_f64,
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64]);
+        let config = QRConfig::default();
+        let qr = decompose_reduced(&matrix, &config).unwrap();
+
+        let result = solve_least_squares_from_qr_result_view(&qr, &rhs.view(), &config);
+
+        assert!(matches!(result, Err(QRError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn least_squares_from_factor_views_reject_inconsistent_inputs() {
+        let q = Array2::<f64>::eye(2);
+        let r = Array2::<f64>::eye(2);
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64]);
+        let config = QRConfig::default();
+
+        let bad_r_rows = Array2::<f64>::zeros((3, 2));
+        let mut output = Array1::<f64>::zeros(2);
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &bad_r_rows.view(),
+                None,
+                &rhs.view(),
+                &config,
+                &mut output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+
+        let bad_rhs = Array1::from_vec(vec![1.0_f64]);
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &r.view(),
+                None,
+                &bad_rhs.view(),
+                &config,
+                &mut output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+
+        let mut short_output = Array1::<f64>::zeros(1);
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &r.view(),
+                None,
+                &rhs.view(),
+                &config,
+                &mut short_output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+
+        let singular_r = Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0, 0.0, 0.0]).unwrap();
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &singular_r.view(),
+                None,
+                &rhs.view(),
+                &config,
+                &mut output.view_mut(),
+            ),
+            Err(QRError::SingularMatrix)
+        ));
+
+        let bad_permutation = Array2::<f64>::eye(3);
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &r.view(),
+                Some(bad_permutation.view()),
+                &rhs.view(),
+                &config,
+                &mut output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+    }
+
+    #[test]
+    fn least_squares_from_factor_views_applies_permutation() {
+        let q = Array2::<f64>::eye(2);
+        let r = Array2::<f64>::eye(2);
+        let permutation =
+            Array2::from_shape_vec((2, 2), vec![0.0_f64, 1.0_f64, 1.0_f64, 0.0_f64]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64]);
+        let mut output = Array1::<f64>::zeros(2);
+
+        solve_least_squares_from_qr_factors_view_into(
+            &q.view(),
+            &r.view(),
+            Some(permutation.view()),
+            &rhs.view(),
+            &QRConfig::default(),
+            &mut output.view_mut(),
+        )
+        .unwrap();
+
+        assert!((output[0] - 2.0_f64).abs() < 1e-12_f64);
+        assert!((output[1] - 1.0_f64).abs() < 1e-12_f64);
+    }
+
+    #[test]
+    fn least_squares_view_into_handles_tall_and_wide_systems() {
+        let tall_matrix = Array2::from_shape_vec((4, 2), vec![
+            1.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 4.0_f64,
+        ])
+        .unwrap();
+        let tall_rhs = Array1::from_vec(vec![2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64]);
+        let mut tall_output = Array1::<f64>::zeros(2);
+        solve_least_squares_view_into(
+            &tall_matrix.view(),
+            &tall_rhs.view(),
+            &QRConfig::default(),
+            &mut tall_output.view_mut(),
+        )
+        .unwrap();
+        assert!((tall_output[0] - 1.0_f64).abs() < 1e-8_f64);
+        assert!((tall_output[1] - 1.0_f64).abs() < 1e-8_f64);
+
+        let wide_matrix = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 0.0_f64,
+        ])
+        .unwrap();
+        let wide_rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64]);
+        let mut wide_output = Array1::<f64>::zeros(3);
+        solve_least_squares_view_into(
+            &wide_matrix.view(),
+            &wide_rhs.view(),
+            &QRConfig::default(),
+            &mut wide_output.view_mut(),
+        )
+        .unwrap();
+        assert!((wide_output[0] - 1.0_f64).abs() < 1e-10_f64);
+        assert!((wide_output[1] - 2.0_f64).abs() < 1e-10_f64);
+        assert!(wide_output[2].abs() < 1e-10_f64);
+
+        let mut short_output = Array1::<f64>::zeros(2);
+        assert!(matches!(
+            solve_least_squares_view_into(
+                &wide_matrix.view(),
+                &wide_rhs.view(),
+                &QRConfig::default(),
+                &mut short_output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+    }
+
+    #[test]
+    fn permutation_order_rejects_invalid_permutations() {
+        let rectangular = Array2::<f64>::zeros((2, 3));
+        assert!(matches!(permutation_order(&rectangular), Err(QRError::InvalidDimensions(_))));
+
+        let empty_column = Array2::<f64>::zeros((2, 2));
+        assert!(matches!(permutation_order(&empty_column), Err(QRError::InvalidInput(_))));
+
+        let rectangular_complex = Array2::<Complex64>::zeros((2, 3));
+        assert!(matches!(
+            complex_permutation_order(&rectangular_complex),
+            Err(QRError::InvalidDimensions(_))
+        ));
+
+        let empty_complex_column = Array2::<Complex64>::zeros((2, 2));
+        assert!(matches!(
+            complex_permutation_order(&empty_complex_column),
+            Err(QRError::InvalidInput(_))
+        ));
     }
 
     #[test]
@@ -1322,6 +1922,49 @@ mod tests {
             }
         }
         assert!(condition_number(&qr).is_finite());
+    }
+
+    #[test]
+    fn pivoted_reconstruct_original_into_restores_input() {
+        let matrix = Array2::from_shape_vec((3, 3), vec![
+            1.0_f64, 10.0_f64, 0.0_f64, //
+            0.0_f64, 11.0_f64, 1.0_f64, //
+            0.0_f64, 12.0_f64, 0.0_f64, //
+        ])
+        .unwrap();
+        let qr = decompose_with_pivoting(&matrix, &QRConfig::default()).unwrap();
+        let mut out = Array2::<f64>::zeros(matrix.dim());
+
+        reconstruct_original_matrix_into(&qr, &mut out).unwrap();
+
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((out[[i, j]] - matrix[[i, j]]).abs() < 1e-8_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn complex_reconstruct_into_variants_work() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(3.0, 0.5),
+            Complex64::new(4.0, 0.25),
+            Complex64::new(5.0, -0.5),
+            Complex64::new(6.0, 1.0),
+        ])
+        .unwrap();
+        let qr = decompose_complex_view(&matrix.view(), &QRConfig::default()).unwrap();
+        let mut out = Array2::<Complex64>::zeros(matrix.dim());
+
+        reconstruct_matrix_complex_into(&qr, &mut out).unwrap();
+
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                assert!((out[[i, j]] - matrix[[i, j]]).norm() < 1e-8_f64);
+            }
+        }
     }
 
     #[test]

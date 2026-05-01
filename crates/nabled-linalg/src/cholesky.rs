@@ -3,10 +3,9 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, ArrayViewMut1, ArrayViewMut2};
 use num_complex::Complex64;
 
-#[cfg(not(feature = "lapack-provider"))]
 use crate::internal::DenseKernelPolicy;
 #[cfg(feature = "magma-system")]
 use crate::provider::magma;
@@ -146,7 +145,6 @@ fn should_fallback_magma_runtime(error: &CholeskyError) -> bool {
 }
 
 #[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
 fn decompose_complex_internal(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
@@ -331,7 +329,7 @@ where
         {
             let lower = decompose_internal(matrix)?;
             let mut output = Array1::<T>::zeros(rhs.len());
-            solve_from_factor(&lower, rhs, &mut output)?;
+            solve_from_factor_into_view(&lower.view(), rhs, &mut output.view_mut())?;
             return Ok(output);
         }
     }
@@ -348,7 +346,7 @@ where
                 {
                     let lower = decompose_internal(matrix)?;
                     let mut output = Array1::<T>::zeros(rhs.len());
-                    solve_from_factor(&lower, rhs, &mut output)?;
+                    solve_from_factor_into_view(&lower.view(), rhs, &mut output.view_mut())?;
                     return Ok(output);
                 }
             }
@@ -371,7 +369,7 @@ where
         #[cfg(not(feature = "lapack-provider"))]
         {
             let lower = decompose_internal(matrix)?;
-            return inverse_from_factor(&lower);
+            return inverse_from_factor_view(&lower.view());
         }
     }
     match magma::cholesky_inverse(matrix) {
@@ -386,7 +384,7 @@ where
                 #[cfg(not(feature = "lapack-provider"))]
                 {
                     let lower = decompose_internal(matrix)?;
-                    return inverse_from_factor(&lower);
+                    return inverse_from_factor_view(&lower.view());
                 }
             }
             Err(mapped)
@@ -484,7 +482,7 @@ fn solve_complex_provider(
         #[cfg(not(feature = "lapack-provider"))]
         {
             let lower = decompose_complex_internal(matrix)?;
-            return solve_complex_from_factor(&lower, rhs);
+            return solve_complex_from_factor_view(&lower.view(), rhs);
         }
     }
     match magma::cholesky_solve_complex(matrix, rhs) {
@@ -499,7 +497,7 @@ fn solve_complex_provider(
                 #[cfg(not(feature = "lapack-provider"))]
                 {
                     let lower = decompose_complex_internal(matrix)?;
-                    return solve_complex_from_factor(&lower, rhs);
+                    return solve_complex_from_factor_view(&lower.view(), rhs);
                 }
             }
             Err(mapped)
@@ -525,7 +523,7 @@ fn inverse_complex_provider(
             for col in 0..n {
                 let mut basis = Array1::<Complex64>::zeros(n);
                 basis[col] = Complex64::new(1.0, 0.0);
-                let solution = solve_complex_from_factor(&lower, &basis.view())?;
+                let solution = solve_complex_from_factor_view(&lower.view(), &basis.view())?;
                 for row in 0..n {
                     inverse[[row, col]] = solution[row];
                 }
@@ -550,7 +548,8 @@ fn inverse_complex_provider(
                     for col in 0..n {
                         let mut basis = Array1::<Complex64>::zeros(n);
                         basis[col] = Complex64::new(1.0, 0.0);
-                        let solution = solve_complex_from_factor(&lower, &basis.view())?;
+                        let solution =
+                            solve_complex_from_factor_view(&lower.view(), &basis.view())?;
                         for row in 0..n {
                             inverse[[row, col]] = solution[row];
                         }
@@ -599,16 +598,18 @@ fn inverse_complex_provider(
     matrix.invc().map_err(|_| CholeskyError::NotPositiveDefinite)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
-fn solve_complex_from_factor(
-    lower_factor: &Array2<Complex64>,
+fn solve_complex_from_factor_into_impl(
+    lower_factor: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
-) -> Result<Array1<Complex64>, CholeskyError> {
+    output: &mut ArrayViewMut1<'_, Complex64>,
+) -> Result<(), CholeskyError> {
     let size = lower_factor.nrows();
-    if rhs.len() != size {
+    if lower_factor.ncols() != size {
+        return Err(CholeskyError::NotSquare);
+    }
+    if rhs.len() != size || output.len() != size {
         return Err(CholeskyError::InvalidInput(
-            "RHS length must match matrix dimensions".to_string(),
+            "RHS/output length must match matrix dimensions".to_string(),
         ));
     }
 
@@ -639,7 +640,8 @@ fn solve_complex_from_factor(
         x[i] = sum / diagonal;
     }
 
-    Ok(x)
+    output.assign(&x.view());
+    Ok(())
 }
 
 #[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
@@ -657,14 +659,15 @@ fn decompose_dispatch<T: NabledReal>(
     decompose_internal(matrix)
 }
 
-#[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
-fn solve_from_factor<T: NabledReal>(
-    lower_factor: &Array2<T>,
+fn solve_from_factor_into_impl<T: NabledReal>(
+    lower_factor: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
-    output: &mut Array1<T>,
+    output: &mut ArrayViewMut1<'_, T>,
 ) -> Result<(), CholeskyError> {
     let size = lower_factor.nrows();
+    if lower_factor.ncols() != size {
+        return Err(CholeskyError::NotSquare);
+    }
     if rhs.len() != size || output.len() != size {
         return Err(CholeskyError::InvalidInput(
             "RHS/output length must match matrix dimensions".to_string(),
@@ -701,23 +704,134 @@ fn solve_from_factor<T: NabledReal>(
     Ok(())
 }
 
-#[cfg(not(feature = "lapack-provider"))]
-#[allow(clippy::many_single_char_names)]
-fn inverse_from_factor<T: NabledReal>(
-    lower_factor: &Array2<T>,
+/// Solve `LL^T x = b` from a precomputed lower-triangular Cholesky factor.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or the factor is invalid.
+pub fn solve_from_factor_view<T: NabledReal>(
+    lower_factor: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, CholeskyError> {
+    let mut output = Array1::<T>::zeros(rhs.len());
+    solve_from_factor_into_view(lower_factor, rhs, &mut output.view_mut())?;
+    Ok(output)
+}
+
+/// Solve `LL^T x = b` from a precomputed lower-triangular Cholesky factor into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or the factor is invalid.
+pub fn solve_from_factor_into_view<T: NabledReal>(
+    lower_factor: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut ArrayViewMut1<'_, T>,
+) -> Result<(), CholeskyError> {
+    solve_from_factor_into_impl(lower_factor, rhs, output)
+}
+
+/// Solve `LL^H x = b` from a precomputed complex Cholesky factor.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or the factor is invalid.
+pub fn solve_complex_from_factor_view(
+    lower_factor: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+) -> Result<Array1<Complex64>, CholeskyError> {
+    let mut output = Array1::<Complex64>::zeros(rhs.len());
+    solve_complex_from_factor_into_view(lower_factor, rhs, &mut output.view_mut())?;
+    Ok(output)
+}
+
+/// Solve `LL^H x = b` from a precomputed complex Cholesky factor into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or the factor is invalid.
+pub fn solve_complex_from_factor_into_view(
+    lower_factor: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+    output: &mut ArrayViewMut1<'_, Complex64>,
+) -> Result<(), CholeskyError> {
+    solve_complex_from_factor_into_impl(lower_factor, rhs, output)
+}
+
+/// Compute inverse from a precomputed lower-triangular Cholesky factor.
+///
+/// # Errors
+/// Returns an error if the factor is invalid.
+pub fn inverse_from_factor_view<T: NabledReal>(
+    lower_factor: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, CholeskyError> {
     let n = lower_factor.nrows();
-    let mut inverse = Array2::<T>::zeros((n, n));
+    let mut output = Array2::<T>::zeros((n, n));
+    inverse_from_factor_into_view(lower_factor, &mut output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute inverse from a precomputed lower-triangular Cholesky factor into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or the factor is invalid.
+pub fn inverse_from_factor_into_view<T: NabledReal>(
+    lower_factor: &ArrayView2<'_, T>,
+    output: &mut ArrayViewMut2<'_, T>,
+) -> Result<(), CholeskyError> {
+    let n = lower_factor.nrows();
+    if lower_factor.ncols() != n {
+        return Err(CholeskyError::NotSquare);
+    }
+    if output.dim() != (n, n) {
+        return Err(CholeskyError::InvalidInput(
+            "output shape must match lower_factor dimensions".to_string(),
+        ));
+    }
+
     for col in 0..n {
         let mut basis = Array1::<T>::zeros(n);
         basis[col] = T::one();
-        let mut solution = Array1::<T>::zeros(n);
-        solve_from_factor(lower_factor, &basis.view(), &mut solution)?;
-        for row in 0..n {
-            inverse[[row, col]] = solution[row];
-        }
+        let mut column = output.column_mut(col);
+        solve_from_factor_into_view(lower_factor, &basis.view(), &mut column)?;
     }
-    Ok(inverse)
+    Ok(())
+}
+
+/// Compute inverse from a precomputed complex lower-triangular Cholesky factor.
+///
+/// # Errors
+/// Returns an error if the factor is invalid.
+pub fn inverse_complex_from_factor_view(
+    lower_factor: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, CholeskyError> {
+    let n = lower_factor.nrows();
+    let mut output = Array2::<Complex64>::zeros((n, n));
+    inverse_complex_from_factor_into_view(lower_factor, &mut output.view_mut())?;
+    Ok(output)
+}
+
+/// Compute inverse from a precomputed complex lower-triangular Cholesky factor into `output`.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or the factor is invalid.
+pub fn inverse_complex_from_factor_into_view(
+    lower_factor: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayViewMut2<'_, Complex64>,
+) -> Result<(), CholeskyError> {
+    let n = lower_factor.nrows();
+    if lower_factor.ncols() != n {
+        return Err(CholeskyError::NotSquare);
+    }
+    if output.dim() != (n, n) {
+        return Err(CholeskyError::InvalidInput(
+            "output shape must match lower_factor dimensions".to_string(),
+        ));
+    }
+
+    for col in 0..n {
+        let mut basis = Array1::<Complex64>::zeros(n);
+        basis[col] = Complex64::new(1.0, 0.0);
+        let mut column = output.column_mut(col);
+        solve_complex_from_factor_into_view(lower_factor, &basis.view(), &mut column)?;
+    }
+    Ok(())
 }
 
 /// Compute Cholesky decomposition.
@@ -884,7 +998,7 @@ fn solve_complex_impl(
     #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
     {
         let lower_factor = decompose_complex_internal(matrix)?;
-        solve_complex_from_factor(&lower_factor, rhs)
+        solve_complex_from_factor_view(&lower_factor.view(), rhs)
     }
 }
 
@@ -926,11 +1040,83 @@ pub fn solve_complex_view(
     solve_complex_impl(matrix, rhs)
 }
 
+/// Solve `Ax=b` into `output` from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-SPD matrix.
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn solve_into_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut ArrayViewMut1<'_, T>,
+) -> Result<(), CholeskyError>
+where
+    T: CholeskyProviderScalar,
+{
+    if rhs.len() != matrix.nrows() {
+        return Err(CholeskyError::InvalidInput(
+            "RHS length must match matrix dimensions".to_string(),
+        ));
+    }
+    if output.len() != rhs.len() {
+        return Err(CholeskyError::InvalidInput("output length must match rhs length".to_string()));
+    }
+
+    let solution = solve_provider(matrix, rhs)?;
+    output.assign(&solution.view());
+    Ok(())
+}
+
+/// Solve `Ax=b` into `output` from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-SPD matrix.
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+pub fn solve_into_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut ArrayViewMut1<'_, T>,
+) -> Result<(), CholeskyError> {
+    if rhs.len() != matrix.nrows() {
+        return Err(CholeskyError::InvalidInput(
+            "RHS length must match matrix dimensions".to_string(),
+        ));
+    }
+    if output.len() != rhs.len() {
+        return Err(CholeskyError::InvalidInput("output length must match rhs length".to_string()));
+    }
+
+    let lower_factor = decompose_dispatch(matrix)?;
+    solve_from_factor_into_view(&lower_factor.view(), rhs, output)
+}
+
+/// Solve complex-valued `Ax=b` into `output` from matrix/vector views.
+///
+/// # Errors
+/// Returns an error for invalid dimensions or non-HPD matrix.
+pub fn solve_complex_into_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+    output: &mut ArrayViewMut1<'_, Complex64>,
+) -> Result<(), CholeskyError> {
+    if rhs.len() != matrix.nrows() {
+        return Err(CholeskyError::InvalidInput(
+            "RHS length must match matrix dimensions".to_string(),
+        ));
+    }
+    if output.len() != rhs.len() {
+        return Err(CholeskyError::InvalidInput("output length must match rhs length".to_string()));
+    }
+
+    let solution = solve_complex_impl(matrix, rhs)?;
+    output.assign(&solution.view());
+    Ok(())
+}
+
 /// Solve `Ax=b` into `output` using Cholesky decomposition.
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-#[allow(clippy::many_single_char_names)]
 #[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 pub fn solve_into<T>(
     matrix: &Array2<T>,
@@ -947,7 +1133,6 @@ where
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or non-SPD matrix.
-#[allow(clippy::many_single_char_names)]
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 pub fn solve_into<T: NabledReal>(
     matrix: &Array2<T>,
@@ -957,7 +1142,6 @@ pub fn solve_into<T: NabledReal>(
     solve_into_impl(&matrix.view(), &rhs.view(), output)
 }
 
-#[allow(clippy::many_single_char_names)]
 #[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
 fn solve_into_impl<T>(
     matrix: &ArrayView2<'_, T>,
@@ -981,7 +1165,6 @@ where
     Ok(())
 }
 
-#[allow(clippy::many_single_char_names)]
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn solve_into_impl<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
@@ -998,7 +1181,7 @@ fn solve_into_impl<T: NabledReal>(
     }
 
     let lower_factor = decompose_dispatch(matrix)?;
-    solve_from_factor(&lower_factor, rhs, output)
+    solve_from_factor_into_view(&lower_factor.view(), rhs, &mut output.view_mut())
 }
 
 /// Compute inverse via Cholesky decomposition.
@@ -1033,7 +1216,7 @@ where
 #[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
 fn inverse_impl<T: NabledReal>(matrix: &ArrayView2<'_, T>) -> Result<Array2<T>, CholeskyError> {
     let lower_factor = decompose_dispatch(matrix)?;
-    inverse_from_factor(&lower_factor)
+    inverse_from_factor_view(&lower_factor.view())
 }
 
 /// Compute complex inverse via Cholesky decomposition.
@@ -1064,7 +1247,7 @@ fn inverse_complex_impl(
         for col in 0..size {
             let mut basis = Array1::<Complex64>::zeros(size);
             basis[col] = Complex64::new(1.0, 0.0);
-            let solution = solve_complex_from_factor(&lower_factor, &basis.view())?;
+            let solution = solve_complex_from_factor_view(&lower_factor.view(), &basis.view())?;
             for row in 0..size {
                 inverse[[row, col]] = solution[row];
             }
@@ -1103,6 +1286,61 @@ pub fn inverse_complex_view(
     matrix: &ArrayView2<'_, Complex64>,
 ) -> Result<Array2<Complex64>, CholeskyError> {
     inverse_complex_impl(matrix)
+}
+
+/// Compute inverse via Cholesky decomposition into `output` from a matrix view.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or matrix is not SPD.
+#[cfg(any(feature = "lapack-provider", feature = "magma-system"))]
+pub fn inverse_into_view<T>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayViewMut2<'_, T>,
+) -> Result<(), CholeskyError>
+where
+    T: CholeskyProviderScalar,
+{
+    if output.dim() != matrix.dim() {
+        return Err(CholeskyError::InvalidInput(
+            "output shape must match matrix dimensions".to_string(),
+        ));
+    }
+
+    let inverse = inverse_provider(matrix)?;
+    output.assign(&inverse.view());
+    Ok(())
+}
+
+/// Compute inverse via Cholesky decomposition into `output` from a matrix view.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or matrix is not SPD.
+#[cfg(not(any(feature = "lapack-provider", feature = "magma-system")))]
+pub fn inverse_into_view<T: NabledReal>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayViewMut2<'_, T>,
+) -> Result<(), CholeskyError> {
+    let lower_factor = decompose_dispatch(matrix)?;
+    inverse_from_factor_into_view(&lower_factor.view(), output)
+}
+
+/// Compute complex inverse into `output` from a matrix view.
+///
+/// # Errors
+/// Returns an error if dimensions are incompatible or matrix is not HPD.
+pub fn inverse_complex_into_view(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayViewMut2<'_, Complex64>,
+) -> Result<(), CholeskyError> {
+    if output.dim() != matrix.dim() {
+        return Err(CholeskyError::InvalidInput(
+            "output shape must match matrix dimensions".to_string(),
+        ));
+    }
+
+    let inverse = inverse_complex_impl(matrix)?;
+    output.assign(&inverse.view());
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1211,6 +1449,84 @@ mod tests {
     }
 
     #[test]
+    fn factor_view_helpers_match_matrix_paths() {
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![5.0_f64, 1.0_f64, 1.0_f64, 2.0_f64])
+                .unwrap();
+        let rhs = Array1::from_vec(vec![3.0_f64, 4.0_f64]);
+        let factor = decompose(&matrix).unwrap();
+
+        let expected_solution = solve(&matrix, &rhs).unwrap();
+        let actual_solution = solve_from_factor_view(&factor.l.view(), &rhs.view()).unwrap();
+        let mut output = Array1::<f64>::zeros(rhs.len());
+        solve_from_factor_into_view(&factor.l.view(), &rhs.view(), &mut output.view_mut()).unwrap();
+        let actual_inverse = inverse_from_factor_view(&factor.l.view()).unwrap();
+        let mut inverse_out = Array2::<f64>::zeros(matrix.dim());
+        inverse_from_factor_into_view(&factor.l.view(), &mut inverse_out.view_mut()).unwrap();
+
+        assert!((expected_solution[0] - actual_solution[0]).abs() < 1e-10_f64);
+        assert!((expected_solution[1] - actual_solution[1]).abs() < 1e-10_f64);
+        assert!((actual_solution[0] - output[0]).abs() < 1e-10_f64);
+        assert!((actual_solution[1] - output[1]).abs() < 1e-10_f64);
+
+        let matrix_inverse = inverse(&matrix).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((matrix_inverse[[i, j]] - actual_inverse[[i, j]]).abs() < 1e-10_f64);
+                assert!((actual_inverse[[i, j]] - inverse_out[[i, j]]).abs() < 1e-10_f64);
+            }
+        }
+    }
+
+    #[test]
+    fn solve_into_view_matches_owned_and_rejects_bad_lengths() {
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![5.0_f64, 1.0_f64, 1.0_f64, 2.0_f64])
+                .unwrap();
+        let rhs = Array1::from_vec(vec![3.0_f64, 4.0_f64]);
+        let expected = solve(&matrix, &rhs).unwrap();
+        let mut output = Array1::<f64>::zeros(2);
+
+        solve_into_view(&matrix.view(), &rhs.view(), &mut output.view_mut()).unwrap();
+        assert!((output[0] - expected[0]).abs() < 1e-10_f64);
+        assert!((output[1] - expected[1]).abs() < 1e-10_f64);
+
+        let bad_rhs = Array1::from_vec(vec![1.0_f64]);
+        assert!(matches!(
+            solve_into_view(&matrix.view(), &bad_rhs.view(), &mut output.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+
+        let mut bad_output = Array1::<f64>::zeros(1);
+        assert!(matches!(
+            solve_into_view(&matrix.view(), &rhs.view(), &mut bad_output.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn inverse_into_view_matches_allocating_path_and_rejects_bad_shape() {
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![5.0_f64, 1.0_f64, 1.0_f64, 2.0_f64])
+                .unwrap();
+        let expected = inverse(&matrix).unwrap();
+        let mut output = Array2::<f64>::zeros(matrix.dim());
+
+        inverse_into_view(&matrix.view(), &mut output.view_mut()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-10_f64);
+            }
+        }
+
+        let mut bad_output = Array2::<f64>::zeros((1, 1));
+        assert!(matches!(
+            inverse_into_view(&matrix.view(), &mut bad_output.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
     fn solve_rejects_bad_rhs_length() {
         let matrix = Array2::<f64>::eye(2);
         let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64, 3.0_f64]);
@@ -1295,6 +1611,76 @@ mod tests {
                 assert!((inverse[[i, j]] - view_inverse[[i, j]]).norm() < 1e-10);
             }
         }
+
+        let factor_solution =
+            solve_complex_from_factor_view(&factor.l.view(), &rhs.view()).unwrap();
+        let mut factor_solution_out = Array1::<Complex64>::zeros(rhs.len());
+        solve_complex_from_factor_into_view(
+            &factor.l.view(),
+            &rhs.view(),
+            &mut factor_solution_out.view_mut(),
+        )
+        .unwrap();
+        let factor_inverse = inverse_complex_from_factor_view(&factor.l.view()).unwrap();
+        let mut factor_inverse_out = Array2::<Complex64>::zeros(matrix.dim());
+        inverse_complex_from_factor_into_view(&factor.l.view(), &mut factor_inverse_out.view_mut())
+            .unwrap();
+        for i in 0..rhs.len() {
+            assert!((solution[i] - factor_solution[i]).norm() < 1e-10);
+            assert!((factor_solution[i] - factor_solution_out[i]).norm() < 1e-10);
+        }
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((inverse[[i, j]] - factor_inverse[[i, j]]).norm() < 1e-10);
+                assert!((factor_inverse[[i, j]] - factor_inverse_out[[i, j]]).norm() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn complex_solve_and_inverse_into_views_match_allocating_paths() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(5.0, 0.0),
+            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0, 1.0),
+            Complex64::new(4.0, 0.0),
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
+        let expected_solution = solve_complex(&matrix, &rhs).unwrap();
+        let expected_inverse = inverse_complex(&matrix).unwrap();
+
+        let mut solution = Array1::<Complex64>::zeros(rhs.len());
+        solve_complex_into_view(&matrix.view(), &rhs.view(), &mut solution.view_mut()).unwrap();
+        for i in 0..rhs.len() {
+            assert!((solution[i] - expected_solution[i]).norm() < 1e-10);
+        }
+
+        let mut inverse = Array2::<Complex64>::zeros(matrix.dim());
+        inverse_complex_into_view(&matrix.view(), &mut inverse.view_mut()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((inverse[[i, j]] - expected_inverse[[i, j]]).norm() < 1e-10);
+            }
+        }
+
+        let bad_rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0)]);
+        assert!(matches!(
+            solve_complex_into_view(&matrix.view(), &bad_rhs.view(), &mut solution.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+
+        let mut bad_solution = Array1::<Complex64>::zeros(1);
+        assert!(matches!(
+            solve_complex_into_view(&matrix.view(), &rhs.view(), &mut bad_solution.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+
+        let mut bad_inverse = Array2::<Complex64>::zeros((1, 1));
+        assert!(matches!(
+            inverse_complex_into_view(&matrix.view(), &mut bad_inverse.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
     }
 
     #[cfg(feature = "magma-system")]

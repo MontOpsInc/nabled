@@ -162,8 +162,8 @@ fn make_positive_diagonal(n: usize) -> Array2<f64> {
 
 #[test]
 #[ignore = "requires MAGMA-capable CUDA host"]
-#[allow(clippy::too_many_lines)]
-#[allow(clippy::similar_names)]
+#[expect(clippy::too_many_lines)]
+#[expect(clippy::similar_names)]
 fn magma_dense_provider_execution_matrix() {
     let _guard = VerifyForceGuard::new();
 

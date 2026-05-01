@@ -4,7 +4,7 @@ use std::fmt;
 
 use nabled_core::scalar::NabledReal;
 use nabled_linalg::lu::{self as lu, LUError};
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, ArrayViewMut1};
 use num_complex::Complex64;
 
 /// Regression result for ndarray inputs.
@@ -72,6 +72,33 @@ fn map_lu_error(error: LUError) -> RegressionError {
             RegressionError::Singular
         }
     }
+}
+
+fn validate_regression_output_shapes<T>(
+    x: &ArrayView2<'_, T>,
+    y: &ArrayView1<'_, T>,
+    add_intercept: bool,
+    coefficients: &ArrayViewMut1<'_, T>,
+    fitted_values: &ArrayViewMut1<'_, T>,
+    residuals: &ArrayViewMut1<'_, T>,
+) -> Result<(), RegressionError> {
+    let expected_coefficients = x.ncols() + usize::from(add_intercept);
+    if coefficients.len() != expected_coefficients {
+        return Err(RegressionError::InvalidInput(
+            "coefficients output length must match feature count plus intercept".into(),
+        ));
+    }
+    if fitted_values.len() != y.len() {
+        return Err(RegressionError::InvalidInput(
+            "fitted_values output length must match target length".into(),
+        ));
+    }
+    if residuals.len() != y.len() {
+        return Err(RegressionError::InvalidInput(
+            "residuals output length must match target length".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
@@ -251,6 +278,99 @@ where
     linear_regression_impl(x, y, add_intercept)
 }
 
+/// Solve linear regression with optional intercept into caller-provided output buffers.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular design matrix, or output-shape mismatch.
+#[cfg(all(feature = "lapack-provider", feature = "magma-system"))]
+pub fn linear_regression_view_into<T>(
+    x: &ArrayView2<'_, T>,
+    y: &ArrayView1<'_, T>,
+    add_intercept: bool,
+    mut coefficients: ArrayViewMut1<'_, T>,
+    mut fitted_values: ArrayViewMut1<'_, T>,
+    mut residuals: ArrayViewMut1<'_, T>,
+) -> Result<T, RegressionError>
+where
+    T: NabledReal + ndarray_linalg::Lapack + lu::LuProviderScalar,
+{
+    validate_regression_output_shapes(
+        x,
+        y,
+        add_intercept,
+        &coefficients,
+        &fitted_values,
+        &residuals,
+    )?;
+    let result = linear_regression_impl(x, y, add_intercept)?;
+    coefficients.assign(&result.coefficients);
+    fitted_values.assign(&result.fitted_values);
+    residuals.assign(&result.residuals);
+    Ok(result.r_squared)
+}
+
+/// Solve linear regression with optional intercept into caller-provided output buffers.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular design matrix, or output-shape mismatch.
+#[cfg(all(feature = "lapack-provider", not(feature = "magma-system")))]
+pub fn linear_regression_view_into<T>(
+    x: &ArrayView2<'_, T>,
+    y: &ArrayView1<'_, T>,
+    add_intercept: bool,
+    mut coefficients: ArrayViewMut1<'_, T>,
+    mut fitted_values: ArrayViewMut1<'_, T>,
+    mut residuals: ArrayViewMut1<'_, T>,
+) -> Result<T, RegressionError>
+where
+    T: NabledReal + ndarray_linalg::Lapack,
+{
+    validate_regression_output_shapes(
+        x,
+        y,
+        add_intercept,
+        &coefficients,
+        &fitted_values,
+        &residuals,
+    )?;
+    let result = linear_regression_impl(x, y, add_intercept)?;
+    coefficients.assign(&result.coefficients);
+    fitted_values.assign(&result.fitted_values);
+    residuals.assign(&result.residuals);
+    Ok(result.r_squared)
+}
+
+/// Solve linear regression with optional intercept into caller-provided output buffers.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular design matrix, or output-shape mismatch.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn linear_regression_view_into<T>(
+    x: &ArrayView2<'_, T>,
+    y: &ArrayView1<'_, T>,
+    add_intercept: bool,
+    mut coefficients: ArrayViewMut1<'_, T>,
+    mut fitted_values: ArrayViewMut1<'_, T>,
+    mut residuals: ArrayViewMut1<'_, T>,
+) -> Result<T, RegressionError>
+where
+    T: lu::LuProviderScalar,
+{
+    validate_regression_output_shapes(
+        x,
+        y,
+        add_intercept,
+        &coefficients,
+        &fitted_values,
+        &residuals,
+    )?;
+    let result = linear_regression_impl(x, y, add_intercept)?;
+    coefficients.assign(&result.coefficients);
+    fitted_values.assign(&result.fitted_values);
+    residuals.assign(&result.residuals);
+    Ok(result.r_squared)
+}
+
 fn linear_regression_complex_impl(
     x: &ArrayView2<'_, Complex64>,
     y: &ArrayView1<'_, Complex64>,
@@ -315,6 +435,33 @@ pub fn linear_regression_complex_view(
     add_intercept: bool,
 ) -> Result<NdarrayComplexRegressionResult, RegressionError> {
     linear_regression_complex_impl(x, y, add_intercept)
+}
+
+/// Solve complex linear regression with optional intercept into caller-provided output buffers.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, singular design matrix, or output-shape mismatch.
+pub fn linear_regression_complex_view_into(
+    x: &ArrayView2<'_, Complex64>,
+    y: &ArrayView1<'_, Complex64>,
+    add_intercept: bool,
+    mut coefficients: ArrayViewMut1<'_, Complex64>,
+    mut fitted_values: ArrayViewMut1<'_, Complex64>,
+    mut residuals: ArrayViewMut1<'_, Complex64>,
+) -> Result<f64, RegressionError> {
+    validate_regression_output_shapes(
+        x,
+        y,
+        add_intercept,
+        &coefficients,
+        &fitted_values,
+        &residuals,
+    )?;
+    let result = linear_regression_complex_impl(x, y, add_intercept)?;
+    coefficients.assign(&result.coefficients);
+    fitted_values.assign(&result.fitted_values);
+    residuals.assign(&result.residuals);
+    Ok(result.r_squared)
 }
 
 #[cfg(test)]
@@ -437,5 +584,87 @@ mod tests {
             assert!((owned.coefficients[i] - viewed.coefficients[i]).norm() < 1e-12);
         }
         assert!((owned.r_squared - viewed.r_squared).abs() < 1e-12);
+    }
+
+    #[test]
+    fn regression_view_into_reuses_outputs() {
+        let x = Array2::from_shape_vec((4, 1), vec![1.0_f64, 2.0, 3.0, 4.0]).unwrap();
+        let y = Array1::from_vec(vec![3.0_f64, 5.0, 7.0, 9.0]);
+        let mut coefficients = Array1::<f64>::zeros(2);
+        let mut fitted_values = Array1::<f64>::zeros(y.len());
+        let mut residuals = Array1::<f64>::zeros(y.len());
+
+        let r_squared = linear_regression_view_into(
+            &x.view(),
+            &y.view(),
+            true,
+            coefficients.view_mut(),
+            fitted_values.view_mut(),
+            residuals.view_mut(),
+        )
+        .unwrap();
+
+        assert!((coefficients[0] - 1.0).abs() < 1e-8);
+        assert!((coefficients[1] - 2.0).abs() < 1e-8);
+        assert!(r_squared > 0.999_999);
+        assert_eq!(fitted_values.len(), y.len());
+        assert_eq!(residuals.len(), y.len());
+    }
+
+    #[test]
+    fn regression_view_into_rejects_wrong_shapes() {
+        let x = Array2::from_shape_vec((4, 1), vec![1.0_f64, 2.0, 3.0, 4.0]).unwrap();
+        let y = Array1::from_vec(vec![3.0_f64, 5.0, 7.0, 9.0]);
+        let mut coefficients = Array1::<f64>::zeros(1);
+        let mut fitted_values = Array1::<f64>::zeros(y.len());
+        let mut residuals = Array1::<f64>::zeros(y.len());
+
+        let error = linear_regression_view_into(
+            &x.view(),
+            &y.view(),
+            true,
+            coefficients.view_mut(),
+            fitted_values.view_mut(),
+            residuals.view_mut(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, RegressionError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn complex_regression_view_into_reuses_outputs() {
+        let x = Array2::from_shape_vec((4, 1), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(4.0, 0.0),
+        ])
+        .unwrap();
+        let y = Array1::from_vec(vec![
+            Complex64::new(3.0, 1.0),
+            Complex64::new(5.0, 1.0),
+            Complex64::new(7.0, 1.0),
+            Complex64::new(9.0, 1.0),
+        ]);
+        let mut coefficients = Array1::<Complex64>::zeros(2);
+        let mut fitted_values = Array1::<Complex64>::zeros(y.len());
+        let mut residuals = Array1::<Complex64>::zeros(y.len());
+
+        let r_squared = linear_regression_complex_view_into(
+            &x.view(),
+            &y.view(),
+            true,
+            coefficients.view_mut(),
+            fitted_values.view_mut(),
+            residuals.view_mut(),
+        )
+        .unwrap();
+
+        assert!((coefficients[0] - Complex64::new(1.0, 1.0)).norm() < 1e-8);
+        assert!((coefficients[1] - Complex64::new(2.0, 0.0)).norm() < 1e-8);
+        assert!(r_squared > 0.999_999);
+        assert_eq!(fitted_values.len(), y.len());
+        assert_eq!(residuals.len(), y.len());
     }
 }

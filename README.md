@@ -52,6 +52,113 @@ fn main() -> Result<(), nabled::linalg::svd::SVDError> {
 
 Review more examples in `crates/nabled/examples`.
 
+## Python
+
+Python bindings are available via the `pynabled` package. Install with [maturin](https://github.com/PyO3/maturin):
+
+```bash
+pip install maturin numpy
+maturin develop
+```
+
+Then use nabled from Python with NumPy arrays:
+
+```python
+import numpy as np
+import pynabled
+
+a = np.array([[1., 2.], [3., 4.]], dtype=np.float64)
+result = pynabled.svd_decompose(a)
+print("singular values:", result.singular_values)
+```
+
+The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, dense vector/matrix primitives (including batched vector helpers and broadcasted batched matmat), batched decompositions, tensor ops, regression, PCA, statistics, and a widened sparse surface with first-class CSR/CSC/COO carriers, direct sparse iterative solvers, reusable sparse factorization/preconditioner workflows, and direct ILU(0)/ILUT/ILUK/ILDL0 GMRES / `BiCGSTAB` convenience rows. The NumPy-facing hot paths now keep explicit allocation-control semantics across direct vector/matrix/tensor/triangular kernels via `out=`, and owned tensor results preserve their existing ndarray strides on NumPy egress instead of being normalized through an extra standard-layout clone. The Arrow-facing `pynabled.arrow` module now also covers the admitted real dense/decomposition slice plus canonical complex dense/vector/matrix/statistics/orthogonalization/triangular/decomposition/matrix-function/PCA/regression rows, typed batched QR/SVD/LU/Cholesky/symmetric-eigen results over PyArrow fixed-shape tensors, callback-driven iterative/Jacobian/optimization rows, canonical sparse CSR object/batch carriers with direct sparse solve/product/reuse workflows, and canonical fixed-shape / variable-shape tensor workflows across last-axis ops, permutation/contraction, batched matmul, cube kernels, einsum, CP-ALS, HOSVD/HOOI/Tucker, and TT helpers over PyArrow/`ndarrow`. Arrow-native outputs stay Arrow-native where the Rust Arrow facade already defines them, while ndarray-native decomposition/PCA/regression/tensor results are exposed through the same typed Python result objects used by the NumPy-facing API, and the Arrow-side PCA/tensor helper reuse paths now borrow factor/core views directly instead of rebuilding temporary Rust result structs at the Python boundary. See `python/pynabled/__init__.py` and `python/pynabled/arrow.py` for the full API surface.
+
+Dense iterative plus callable-driven Jacobian/optimization rows now also expose typed Python
+config objects (`IterativeConfig`, `JacobianConfig`, `LineSearchConfig`, `GradientDescentConfig`,
+`AdamConfig`, `MomentumConfig`, `RMSPropConfig`, `ProjectedGradientConfig`, `BFGSConfig`) instead
+of treating raw tuning-parameter shims as the long-term contract. The callback-driven Jacobian and
+optimizer helpers remain convenience APIs rather than no-compromise hot-path equivalents, because
+their objective/gradient evaluations still cross back into Python and materialize transient
+carrier objects per callback evaluation.
+
+The Python NumPy-facing API now also exposes explicit output-buffer reuse beyond the primitive
+vector/matrix/tensor kernels: `svd_pseudo_inverse`, `svd_reconstruct_matrix`, `matrix_exp`,
+`matrix_log_taylor`, `matrix_log_eigen`, `matrix_log_svd`, `matrix_power`, `matrix_sign`,
+`matrix_exp_eigen`, `sylvester_solve`, `lyapunov_solve`, `pca_transform`, and
+`pca_inverse_transform` all accept `out=` wherever the Rust core already has `*_into` coverage.
+The direct NumPy stats and orthogonalization rows now follow that same contract too:
+`column_means`, `center_columns`, `covariance_matrix`, `correlation_matrix`, their complex
+counterparts, and `gram_schmidt` / `gram_schmidt_classic` all accept `out=` under the existing
+public names.
+`compute_pca(...)`, `compute_pca_complex(...)`, `linear_regression(...)`, and
+`linear_regression_complex(...)` now also accept typed `out=` result buffers
+(`PcaResult` / `RegressionResult`) under the existing public names, so repeated ML workflows do
+not have to allocate fresh Python result arrays on every call.
+`svd_pseudo_inverse(...)` can also consume a previously computed `SvdResult` directly, so repeated
+pseudo-inverse workflows can reuse decomposition factors instead of recomputing SVD from the
+original matrix.
+`polar_compute(...)` and `matrix_log_svd(...)` now follow that same SVD-derived reuse story:
+`polar_compute(...)` can consume a typed `SvdResult` with optional typed `out=PolarResult(...)`
+reuse, and `matrix_log_svd(...)` can consume `SvdResult` directly instead of recomputing the
+decomposition. Those factor-backed and direct-matrix `out=` paths now write through direct Rust
+output composition instead of allocating an intermediate full result before filling the caller's
+buffers.
+The real symmetric eigen-backed matrix-function helpers now follow the same pattern too:
+`matrix_exp_eigen(...)`, `matrix_log_eigen(...)`, `matrix_power(...)`, and `matrix_sign(...)` can
+consume a typed `EigenResult` directly with optional `out=` reuse, while `workspace=` remains a
+matrix-input-only contract on those factor-backed calls. Those factor-backed matrix-function
+`out=` paths now also compose directly into the caller buffer instead of allocate-then-assign
+behavior. `qr_solve_least_squares(...)` now also
+accepts both direct matrix `out=` reuse and typed `QrResult` reuse for square/tall factorizations,
+and `svd_null_space(...)` can reuse `SvdResult` when it retains a full right-singular basis
+(`vt` square).
+Tensor reconstruction/projection/contraction helpers now follow that same contract where the Rust
+core already exposes a truthful `*_into` path: `tensor_hosvd_nd_reconstruct`,
+`tensor_hosvd3_reconstruct`, `tensor_tucker_project`, `tensor_tucker_expand`, `tensor_einsum`,
+`tensor_einsum_complex`, `tensor_cp_als3_reconstruct`, `tensor_cp_als_nd_reconstruct`, and
+`tensor_tt_svd_reconstruct` all accept caller-provided `out=` arrays instead of forcing fresh
+tensor materialization on every call.
+Typed tensor result objects now also admit borrowed NumPy or PyArrow TT core views directly across
+the TT helper family, so TT orthogonalize/round/algebra/reconstruct rows no longer require
+rebuilding an owned Rust TT result or standard-layout TT core arrays just to reach the real tensor
+kernels.
+Dense iterative solves now follow the same pattern: `conjugate_gradient(...)`, `gmres(...)`,
+`conjugate_gradient_complex(...)`, and `gmres_complex(...)` all accept `out=` under the existing
+public names, and the complex iterative bindings now use the same view-first NumPy ingress
+contract as the real rows instead of a separate special-case path.
+Complex PCA/regression/stats rows are now also explicitly covered on Fortran-order / strided
+NumPy inputs, and the remaining complex regression/statistics raw bindings now follow the same
+shared helper-based view-first boundary instead of bespoke typed-array paths.
+`qr_reconstruct_matrix(...)` now follows the same Rust-backed `out=` contract for both direct and
+pivoted QR results, and `CholeskyResult` can now be passed back into `cholesky_solve(...)` /
+`cholesky_inverse(...)` for repeated factor reuse instead of re-factorizing the original matrix.
+`LuResult` now follows that same pattern for real LU workflows: `lu_solve(...)`,
+`lu_inverse(...)`, `lu_determinant(...)`, and `lu_log_determinant(...)` all accept the typed
+factor result directly, and the solve/inverse rows now also accept `out=` under the existing
+public names. Batched LU and Arrow LU decomposition wrappers now preserve the same `pivots` plus
+`permutation_sign` metadata on their returned `LuResult` objects instead of truncating those rows
+to `(L, U)` only.
+Provider-bound mixed-precision refinement helpers are now surfaced explicitly too:
+`lu_solve_mixed(...)`, `sylvester_solve_mixed(...)`, and `lyapunov_solve_mixed(...)` return typed
+Python result objects carrying both the solved array and `refinement_iterations`. Those rows
+require a source build with `magma-system` and intentionally admit only the truthful mixed-
+provider dtypes (`float64` / `complex128`).
+
+Repeated pairwise cosine, matrix-function, and Sylvester/Lyapunov workloads now also expose
+reusable Python workspace objects (`PairwiseCosineWorkspace`, `MatrixFunctionWorkspace`,
+`SylvesterWorkspace`) through the existing public APIs via `workspace=`. Schur decomposition now
+follows the same explicit reuse contract: `schur_compute(...)` accepts `out=SchurResult(...)` for
+caller-provided result buffers and `workspace=SchurWorkspace(...)` for repeated workloads.
+
+Optional provider/backend/Arrow support on the Python side is a source-build workflow using the
+same Cargo feature names as the Rust facade (`openblas-system`, `openblas-static`,
+`netlib-system`, `netlib-static`, `magma-system`, `accelerator-rayon`, `accelerator-wgpu`,
+`arrow`). Inspect the installed Python extension with `pynabled.build_features()`. For build
+instructions and host/toolchain requirements, see [BUILD.md](BUILD.md).
+
+To publish **pynabled** wheels to PyPI (tags, CI, TestPyPI), see [docs/PYPI_PUBLISH.md](docs/PYPI_PUBLISH.md).
+
 ## Namespaced API
 
 1. `nabled::core`: shared errors, validation, and prelude exports.
@@ -109,7 +216,7 @@ Feature behavior:
 Current Arrow-ingress coverage includes:
 
 1. Canonical dense vector batches over `FixedSizeList<T>(D)`
-2. Canonical sparse vector rows and sparse matrix batches over CSR carriers, including `ndarrow.csr_matrix_batch`
+2. Canonical sparse CSR object rows and sparse matrix batches, including `ndarrow.csr_matrix` and `ndarrow.csr_matrix_batch`, with direct sparse solve/product/reuse workflows
 3. Canonical dense fixed-shape and variable-shape tensor batches
 4. LU, Cholesky, QR, SVD, Eigen, Schur, Polar, matrix-functions, triangular solves
 5. Batched decomposition helpers

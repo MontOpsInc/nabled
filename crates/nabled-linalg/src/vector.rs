@@ -1,7 +1,7 @@
 //! Vector-first primitives for embedding-style workloads.
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Axis};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Axis, Data, DataMut, Ix1, Ix2};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -54,10 +54,15 @@ fn validate_vector_pair<T: NabledReal>(a: &Array1<T>, b: &Array1<T>) -> Result<(
     Ok(())
 }
 
-fn validate_pairwise_inputs<T: NabledReal>(
-    left: &Array2<T>,
-    right: &Array2<T>,
-) -> Result<(), VectorError> {
+fn validate_pairwise_inputs<T, S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
+{
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -298,11 +303,16 @@ pub fn pairwise_l2_distance_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or empty inputs.
-pub fn pairwise_l2_distance_into<T: NabledReal>(
-    left: &Array2<T>,
-    right: &Array2<T>,
-    output: &mut Array2<T>,
-) -> Result<(), VectorError> {
+pub fn pairwise_l2_distance_into<T, S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
+{
     pairwise_l2_distance_view_into(&left.view(), &right.view(), output)
 }
 
@@ -313,7 +323,7 @@ pub fn pairwise_l2_distance_into<T: NabledReal>(
 pub fn pairwise_l2_distance_view_into<T: NabledReal>(
     left: &ArrayView2<'_, T>,
     right: &ArrayView2<'_, T>,
-    output: &mut Array2<T>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
 ) -> Result<(), VectorError> {
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
@@ -412,11 +422,16 @@ pub fn pairwise_cosine_similarity_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
-pub fn pairwise_cosine_similarity_into<T: NabledReal>(
-    left: &Array2<T>,
-    right: &Array2<T>,
-    output: &mut Array2<T>,
-) -> Result<(), VectorError> {
+pub fn pairwise_cosine_similarity_into<T, S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
+{
     let mut workspace = PairwiseCosineWorkspace::<T>::default();
     pairwise_cosine_similarity_with_workspace_into(left, right, output, &mut workspace)
 }
@@ -425,12 +440,17 @@ pub fn pairwise_cosine_similarity_into<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
-pub fn pairwise_cosine_similarity_with_workspace_into<T: NabledReal>(
-    left: &Array2<T>,
-    right: &Array2<T>,
-    output: &mut Array2<T>,
+pub fn pairwise_cosine_similarity_with_workspace_into<T, S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
     workspace: &mut PairwiseCosineWorkspace<T>,
-) -> Result<(), VectorError> {
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
+{
     validate_pairwise_inputs(left, right)?;
     if output.dim() != (left.nrows(), right.nrows()) {
         return Err(VectorError::DimensionMismatch);
@@ -501,6 +521,25 @@ pub fn pairwise_cosine_distance_view<T: NabledReal>(
     Ok(similarity.mapv(|value| T::one() - value))
 }
 
+/// Compute pairwise cosine distances into `output`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, empty inputs, or zero-norm rows.
+pub fn pairwise_cosine_distance_into<T, S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
+{
+    pairwise_cosine_similarity_into(left, right, output)?;
+    output.mapv_inplace(|value| T::one() - value);
+    Ok(())
+}
+
 /// Compute row-wise dot products for two matrices of equal shape.
 ///
 /// # Errors
@@ -549,11 +588,16 @@ pub fn batched_dot_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or empty inputs.
-pub fn batched_dot_into<T: NabledReal>(
-    left: &Array2<T>,
-    right: &Array2<T>,
-    output: &mut Array1<T>,
-) -> Result<(), VectorError> {
+pub fn batched_dot_into<T, S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix1>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
+{
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -605,10 +649,14 @@ pub fn batched_l2_norm_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for empty input or mismatched output dimensions.
-pub fn batched_l2_norm_into<T: NabledReal>(
-    rows: &Array2<T>,
-    output: &mut Array1<T>,
-) -> Result<(), VectorError> {
+pub fn batched_l2_norm_into<T, S>(
+    rows: &ArrayBase<S, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix1>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     if rows.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -676,11 +724,16 @@ pub fn batched_cosine_similarity_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
-pub fn batched_cosine_similarity_into<T: NabledReal>(
-    left: &Array2<T>,
-    right: &Array2<T>,
-    output: &mut Array1<T>,
-) -> Result<(), VectorError> {
+pub fn batched_cosine_similarity_into<T, S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix1>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
+{
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -739,11 +792,16 @@ pub fn batched_cosine_distance_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
-pub fn batched_cosine_distance_into<T: NabledReal>(
-    left: &Array2<T>,
-    right: &Array2<T>,
-    output: &mut Array1<T>,
-) -> Result<(), VectorError> {
+pub fn batched_cosine_distance_into<T, S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix1>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S1: Data<Elem = T>,
+    S2: Data<Elem = T>,
+{
     batched_cosine_similarity_into(left, right, output)?;
     output.mapv_inplace(|value| T::one() - value);
     Ok(())
@@ -786,10 +844,14 @@ pub fn batched_normalize_view<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for empty input or mismatched output dimensions.
-pub fn batched_normalize_into<T: NabledReal>(
-    rows: &Array2<T>,
-    output: &mut Array2<T>,
-) -> Result<(), VectorError> {
+pub fn batched_normalize_into<T, S>(
+    rows: &ArrayBase<S, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+) -> Result<(), VectorError>
+where
+    T: NabledReal,
+    S: Data<Elem = T>,
+{
     if rows.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -853,11 +915,15 @@ pub fn batched_dot_hermitian_view(
 ///
 /// # Errors
 /// Returns an error for empty input or mismatched dimensions.
-pub fn batched_dot_hermitian_into(
-    left: &Array2<Complex64>,
-    right: &Array2<Complex64>,
-    output: &mut Array1<Complex64>,
-) -> Result<(), VectorError> {
+pub fn batched_dot_hermitian_into<S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix1>,
+) -> Result<(), VectorError>
+where
+    S1: Data<Elem = Complex64>,
+    S2: Data<Elem = Complex64>,
+{
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -904,10 +970,13 @@ pub fn batched_l2_norm_complex_view(
 ///
 /// # Errors
 /// Returns an error for empty input or mismatched output dimensions.
-pub fn batched_l2_norm_complex_into(
-    rows: &Array2<Complex64>,
-    output: &mut Array1<f64>,
-) -> Result<(), VectorError> {
+pub fn batched_l2_norm_complex_into<S>(
+    rows: &ArrayBase<S, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = f64>, Ix1>,
+) -> Result<(), VectorError>
+where
+    S: Data<Elem = Complex64>,
+{
     if rows.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -968,11 +1037,15 @@ pub fn batched_cosine_similarity_complex_view(
 ///
 /// # Errors
 /// Returns an error for empty input, mismatched dimensions, or zero-norm rows.
-pub fn batched_cosine_similarity_complex_into(
-    left: &Array2<Complex64>,
-    right: &Array2<Complex64>,
-    output: &mut Array1<Complex64>,
-) -> Result<(), VectorError> {
+pub fn batched_cosine_similarity_complex_into<S1, S2>(
+    left: &ArrayBase<S1, Ix2>,
+    right: &ArrayBase<S2, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix1>,
+) -> Result<(), VectorError>
+where
+    S1: Data<Elem = Complex64>,
+    S2: Data<Elem = Complex64>,
+{
     if left.is_empty() || right.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -1032,10 +1105,13 @@ pub fn batched_normalize_complex_view(
 ///
 /// # Errors
 /// Returns an error for empty input or mismatched output dimensions.
-pub fn batched_normalize_complex_into(
-    rows: &Array2<Complex64>,
-    output: &mut Array2<Complex64>,
-) -> Result<(), VectorError> {
+pub fn batched_normalize_complex_into<S>(
+    rows: &ArrayBase<S, Ix2>,
+    output: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+) -> Result<(), VectorError>
+where
+    S: Data<Elem = Complex64>,
+{
     if rows.is_empty() {
         return Err(VectorError::EmptyInput);
     }
@@ -1264,5 +1340,104 @@ mod tests {
         assert!(
             (normalized.row(0).iter().map(Complex64::norm_sqr).sum::<f64>() - 1.0).abs() < 1e-12
         );
+    }
+
+    #[test]
+    fn pairwise_cosine_distance_view_and_into_paths_work() {
+        let left = arr2(&[[1.0_f64, 0.0], [1.0, 1.0]]);
+        let right = arr2(&[[1.0_f64, 0.0], [0.0, 1.0]]);
+
+        let expected = pairwise_cosine_distance(&left, &right).unwrap();
+        let viewed = pairwise_cosine_distance_view(&left.view(), &right.view()).unwrap();
+        let mut output = Array2::<f64>::zeros((left.nrows(), right.nrows()));
+
+        pairwise_cosine_distance_into(&left, &right, &mut output).unwrap();
+
+        assert_eq!(viewed.shape(), expected.shape());
+        for i in 0..expected.nrows() {
+            for j in 0..expected.ncols() {
+                assert!((viewed[[i, j]] - expected[[i, j]]).abs() < 1e-12);
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-12);
+            }
+        }
+
+        let zero_row = arr2(&[[0.0_f64, 0.0], [1.0, 0.0]]);
+        assert!(matches!(
+            pairwise_cosine_distance_view(&zero_row.view(), &right.view()),
+            Err(VectorError::ZeroNorm)
+        ));
+
+        let mut wrong_shape = Array2::<f64>::zeros((1, 2));
+        assert!(matches!(
+            pairwise_cosine_distance_into(&left, &right, &mut wrong_shape),
+            Err(VectorError::DimensionMismatch)
+        ));
+    }
+
+    #[test]
+    fn batched_complex_into_paths_match_allocating_variants() {
+        let left = arr2(&[[Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)], [
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, 2.0),
+        ]]);
+        let right = arr2(&[[Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)], [
+            Complex64::new(0.0, 2.0),
+            Complex64::new(2.0, 0.0),
+        ]]);
+
+        let expected_dots = batched_dot_hermitian(&left, &right).unwrap();
+        let expected_norms = batched_l2_norm_complex(&left).unwrap();
+        let expected_cosine = batched_cosine_similarity_complex(&left, &right).unwrap();
+        let expected_normalized = batched_normalize_complex(&left).unwrap();
+
+        let mut dots = Array1::<Complex64>::zeros(left.nrows());
+        let mut norms = Array1::<f64>::zeros(left.nrows());
+        let mut cosine = Array1::<Complex64>::zeros(left.nrows());
+        let mut normalized = Array2::<Complex64>::zeros(left.dim());
+
+        batched_dot_hermitian_into(&left, &right, &mut dots).unwrap();
+        batched_l2_norm_complex_into(&left, &mut norms).unwrap();
+        batched_cosine_similarity_complex_into(&left, &right, &mut cosine).unwrap();
+        batched_normalize_complex_into(&left, &mut normalized).unwrap();
+
+        for i in 0..left.nrows() {
+            assert!((dots[i] - expected_dots[i]).norm() < 1e-12);
+            assert!((norms[i] - expected_norms[i]).abs() < 1e-12);
+            assert!((cosine[i] - expected_cosine[i]).norm() < 1e-12);
+        }
+        for i in 0..left.nrows() {
+            for j in 0..left.ncols() {
+                assert!((normalized[[i, j]] - expected_normalized[[i, j]]).norm() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn batched_vector_error_paths_are_explicit() {
+        let empty = Array2::<f64>::zeros((0, 0));
+        assert!(matches!(batched_l2_norm_view(&empty.view()), Err(VectorError::EmptyInput)));
+        assert!(matches!(
+            batched_dot_view(&empty.view(), &empty.view()),
+            Err(VectorError::EmptyInput)
+        ));
+
+        let left = arr2(&[[1.0_f64, 2.0], [0.0, 0.0]]);
+        let right = arr2(&[[2.0_f64, 1.0], [1.0, 1.0]]);
+        assert!(matches!(
+            batched_cosine_similarity_view(&left.view(), &right.view()),
+            Err(VectorError::ZeroNorm)
+        ));
+
+        let complex_zero = arr2(&[[Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0)]]);
+        assert!(matches!(
+            batched_cosine_similarity_complex_view(&complex_zero.view(), &complex_zero.view()),
+            Err(VectorError::ZeroNorm)
+        ));
+
+        let mut wrong_shape = Array2::<f64>::zeros((1, 1));
+        assert!(matches!(
+            batched_normalize_into(&arr2(&[[1.0_f64, 2.0], [3.0, 4.0]]), &mut wrong_shape),
+            Err(VectorError::DimensionMismatch)
+        ));
     }
 }

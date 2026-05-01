@@ -101,7 +101,7 @@ fn test_matrix_function_roundtrip() {
 }
 
 #[test]
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 fn test_regression_pca_orthogonalization_and_sylvester() {
     let x = Array2::from_shape_vec((5, 1), vec![1.0, 2.0, 3.0, 4.0, 5.0]).unwrap();
     let y = Array1::from_vec(vec![3.0, 5.0, 7.0, 9.0, 11.0]);

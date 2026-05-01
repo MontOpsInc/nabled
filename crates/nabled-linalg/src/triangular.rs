@@ -1,7 +1,7 @@
 //! Ndarray-native triangular solve kernels.
 
 use nabled_core::errors::ShapeError;
-use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix2};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, DataMut, Ix1, Ix2};
 use num_complex::Complex64;
 use num_traits::Float;
 use thiserror::Error;
@@ -84,13 +84,14 @@ where
     Ok(())
 }
 
-fn solve_lower_into_internal<T>(
+fn solve_lower_into_internal<T, S>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
-    output: &mut Array1<T>,
+    output: &mut ArrayBase<S, Ix1>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
+    S: DataMut<Elem = T>,
 {
     if matrix.is_empty() || rhs.is_empty() {
         return Err(TriangularError::Shape(ShapeError::EmptyInput));
@@ -123,13 +124,14 @@ where
     Ok(())
 }
 
-fn solve_upper_into_internal<T>(
+fn solve_upper_into_internal<T, S>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView1<'_, T>,
-    output: &mut Array1<T>,
+    output: &mut ArrayBase<S, Ix1>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
+    S: DataMut<Elem = T>,
 {
     if matrix.is_empty() || rhs.is_empty() {
         return Err(TriangularError::Shape(ShapeError::EmptyInput));
@@ -162,11 +164,14 @@ where
     Ok(())
 }
 
-fn solve_lower_complex_into_internal(
+fn solve_lower_complex_into_internal<S>(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
-    output: &mut Array1<Complex64>,
-) -> Result<(), TriangularError> {
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), TriangularError>
+where
+    S: DataMut<Elem = Complex64>,
+{
     if matrix.is_empty() || rhs.is_empty() {
         return Err(TriangularError::Shape(ShapeError::EmptyInput));
     }
@@ -198,11 +203,14 @@ fn solve_lower_complex_into_internal(
     Ok(())
 }
 
-fn solve_upper_complex_into_internal(
+fn solve_upper_complex_into_internal<S>(
     matrix: &ArrayView2<'_, Complex64>,
     rhs: &ArrayView1<'_, Complex64>,
-    output: &mut Array1<Complex64>,
-) -> Result<(), TriangularError> {
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), TriangularError>
+where
+    S: DataMut<Elem = Complex64>,
+{
     if matrix.is_empty() || rhs.is_empty() {
         return Err(TriangularError::Shape(ShapeError::EmptyInput));
     }
@@ -267,15 +275,32 @@ where
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
-pub fn solve_lower_into<T>(
+pub fn solve_lower_into<T, S>(
     matrix: &Array2<T>,
     rhs: &Array1<T>,
-    output: &mut Array1<T>,
+    output: &mut ArrayBase<S, Ix1>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
+    S: DataMut<Elem = T>,
 {
     solve_lower_into_internal(&matrix.view(), &rhs.view(), output)
+}
+
+/// Solve `Lx = b` with forward substitution from matrix/vector views into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+    S: DataMut<Elem = T>,
+{
+    solve_lower_into_internal(matrix, rhs, output)
 }
 
 /// Solve `Ux = b` with back substitution.
@@ -311,15 +336,32 @@ where
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
-pub fn solve_upper_into<T>(
+pub fn solve_upper_into<T, S>(
     matrix: &Array2<T>,
     rhs: &Array1<T>,
-    output: &mut Array1<T>,
+    output: &mut ArrayBase<S, Ix1>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
+    S: DataMut<Elem = T>,
 {
     solve_upper_into_internal(&matrix.view(), &rhs.view(), output)
+}
+
+/// Solve `Ux = b` with back substitution from matrix/vector views into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    rhs: &ArrayView1<'_, T>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), TriangularError>
+where
+    T: Float,
+    S: DataMut<Elem = T>,
+{
+    solve_upper_into_internal(matrix, rhs, output)
 }
 
 /// Solve `LX = B` with forward substitution.
@@ -358,13 +400,14 @@ where
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
-pub fn solve_lower_matrix_into<T>(
+pub fn solve_lower_matrix_into<T, S>(
     matrix: &Array2<T>,
     rhs: &Array2<T>,
-    output: &mut Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
+    S: DataMut<Elem = T>,
 {
     solve_lower_matrix_view_into(&matrix.view(), &rhs.view(), output)
 }
@@ -373,13 +416,14 @@ where
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
-pub fn solve_lower_matrix_view_into<T>(
+pub fn solve_lower_matrix_view_into<T, S>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView2<'_, T>,
-    output: &mut Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
+    S: DataMut<Elem = T>,
 {
     validate_real_triangular_matrix_system(matrix, rhs)?;
     if output.dim() != rhs.dim() {
@@ -438,13 +482,14 @@ where
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
-pub fn solve_upper_matrix_into<T>(
+pub fn solve_upper_matrix_into<T, S>(
     matrix: &Array2<T>,
     rhs: &Array2<T>,
-    output: &mut Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
+    S: DataMut<Elem = T>,
 {
     solve_upper_matrix_view_into(&matrix.view(), &rhs.view(), output)
 }
@@ -453,13 +498,14 @@ where
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
-pub fn solve_upper_matrix_view_into<T>(
+pub fn solve_upper_matrix_view_into<T, S>(
     matrix: &ArrayView2<'_, T>,
     rhs: &ArrayView2<'_, T>,
-    output: &mut Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
 ) -> Result<(), TriangularError>
 where
     T: Float,
+    S: DataMut<Elem = T>,
 {
     validate_real_triangular_matrix_system(matrix, rhs)?;
     if output.dim() != rhs.dim() {
@@ -513,12 +559,30 @@ pub fn solve_lower_complex_view(
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
-pub fn solve_lower_complex_into(
+pub fn solve_lower_complex_into<S>(
     matrix: &Array2<Complex64>,
     rhs: &Array1<Complex64>,
-    output: &mut Array1<Complex64>,
-) -> Result<(), TriangularError> {
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), TriangularError>
+where
+    S: DataMut<Elem = Complex64>,
+{
     solve_lower_complex_into_internal(&matrix.view(), &rhs.view(), output)
+}
+
+/// Solve `Lx = b` for complex-valued lower-triangular systems from views into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_lower_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), TriangularError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    solve_lower_complex_into_internal(matrix, rhs, output)
 }
 
 /// Solve `Ux = b` for complex-valued upper-triangular systems.
@@ -551,12 +615,30 @@ pub fn solve_upper_complex_view(
 ///
 /// # Errors
 /// Returns an error for shape mismatches or singular pivots.
-pub fn solve_upper_complex_into(
+pub fn solve_upper_complex_into<S>(
     matrix: &Array2<Complex64>,
     rhs: &Array1<Complex64>,
-    output: &mut Array1<Complex64>,
-) -> Result<(), TriangularError> {
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), TriangularError>
+where
+    S: DataMut<Elem = Complex64>,
+{
     solve_upper_complex_into_internal(&matrix.view(), &rhs.view(), output)
+}
+
+/// Solve `Ux = b` for complex-valued upper-triangular systems from views into `output`.
+///
+/// # Errors
+/// Returns an error for shape mismatches or singular pivots.
+pub fn solve_upper_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    rhs: &ArrayView1<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), TriangularError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    solve_upper_complex_into_internal(matrix, rhs, output)
 }
 
 #[cfg(test)]
@@ -627,6 +709,26 @@ mod tests {
     }
 
     #[test]
+    fn real_view_into_variants_match_allocating() {
+        let lower = arr2(&[[2.0_f64, 0.0], [1.0, 3.0]]);
+        let upper = arr2(&[[2.0_f64, 1.0], [0.0, 3.0]]);
+        let rhs = arr1(&[4.0_f64, 9.0]);
+
+        let lower_alloc = solve_lower_view(&lower.view(), &rhs.view()).unwrap();
+        let upper_alloc = solve_upper_view(&upper.view(), &rhs.view()).unwrap();
+
+        let mut lower_into = Array1::<f64>::zeros(rhs.len());
+        let mut upper_into = Array1::<f64>::zeros(rhs.len());
+        solve_lower_view_into(&lower.view(), &rhs.view(), &mut lower_into).unwrap();
+        solve_upper_view_into(&upper.view(), &rhs.view(), &mut upper_into).unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((lower_alloc[i] - lower_into[i]).abs() < 1e-12);
+            assert!((upper_alloc[i] - upper_into[i]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
     fn complex_lower_and_upper_reconstruct_rhs() {
         let lower = arr2(&[[Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)], [
             Complex64::new(1.0, -1.0),
@@ -669,6 +771,32 @@ mod tests {
         for i in 0..rhs.len() {
             assert!((lower_owned[i] - lower_view[i]).norm() < 1e-12);
             assert!((upper_owned[i] - upper_view[i]).norm() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn complex_view_into_variants_match_allocating() {
+        let lower = arr2(&[[Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)], [
+            Complex64::new(0.5, 0.25),
+            Complex64::new(1.5, -0.5),
+        ]]);
+        let upper = arr2(&[[Complex64::new(3.0, 0.0), Complex64::new(0.2, -0.1)], [
+            Complex64::new(0.0, 0.0),
+            Complex64::new(2.0, 0.75),
+        ]]);
+        let rhs = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(-0.5, 1.0)]);
+
+        let lower_alloc = solve_lower_complex_view(&lower.view(), &rhs.view()).unwrap();
+        let upper_alloc = solve_upper_complex_view(&upper.view(), &rhs.view()).unwrap();
+
+        let mut lower_into = Array1::<Complex64>::zeros(rhs.len());
+        let mut upper_into = Array1::<Complex64>::zeros(rhs.len());
+        solve_lower_complex_view_into(&lower.view(), &rhs.view(), &mut lower_into).unwrap();
+        solve_upper_complex_view_into(&upper.view(), &rhs.view(), &mut upper_into).unwrap();
+
+        for i in 0..rhs.len() {
+            assert!((lower_alloc[i] - lower_into[i]).norm() < 1e-12);
+            assert!((upper_alloc[i] - upper_into[i]).norm() < 1e-12);
         }
     }
 

@@ -1,0 +1,160 @@
+# Publish pynabled wheels to PyPI (multi-platform).
+# Trigger: push tag pypi-vX.Y.Z where X.Y.Z matches Cargo [workspace.package] and pyproject.toml.
+# Auth: PyPI/TestPyPI Trusted Publishing via GitHub OIDC.
+
+name: Publish pynabled to PyPI
+
+on:
+  push:
+    tags:
+      - 'pypi-v*'
+  workflow_dispatch:
+    inputs:
+      use_testpypi:
+        description: 'Publish to TestPyPI using Trusted Publishing'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  MATURIN_VERSION: v1.13.1
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          target: ${{ matrix.target }}
+          args: --release --locked --out dist --find-interpreter
+          manylinux: 2_28
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: dist
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          target: x64
+          args: --release --locked --out dist --find-interpreter
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-x64
+          path: dist
+
+  macos:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-13
+            target: x86_64
+          - runner: macos-latest
+            target: aarch64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          target: ${{ matrix.target }}
+          args: --release --locked --out dist --find-interpreter
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.target }}
+          path: dist
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          command: sdist
+          args: --out dist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist
+
+  release:
+    name: Publish
+    runs-on: ubuntu-latest
+    needs: [linux, windows, macos, sdist]
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && inputs.use_testpypi && 'testpypi' || 'pypi' }}
+      url: ${{ github.event_name == 'workflow_dispatch' && inputs.use_testpypi && 'https://test.pypi.org/project/pynabled/' || 'https://pypi.org/project/pynabled/' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify tag matches workspace and pyproject versions
+        if: startsWith(github.ref, 'refs/tags/pypi-v')
+        run: |
+          TAG_VER="${GITHUB_REF#refs/tags/pypi-v}"
+          CARGO_VER=$(awk '/^\[workspace\.package\]/ {in_ws=1; next} in_ws && /^version = / {gsub(/"/,"",$3); print $3; exit}' Cargo.toml)
+          if [ "$TAG_VER" != "$CARGO_VER" ]; then
+            echo "Tag pypi-v$TAG_VER must match Cargo.toml workspace.package ($CARGO_VER)"
+            exit 1
+          fi
+          bash scripts/check_pyproject_version_matches_cargo.sh
+
+      - name: Verify pyproject version matches workspace
+        if: ${{ !startsWith(github.ref, 'refs/tags/pypi-v') }}
+        run: bash scripts/check_pyproject_version_matches_cargo.sh
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: List dist
+        run: find dist -type f | sort
+
+      - name: Publish to TestPyPI
+        if: github.event_name == 'workflow_dispatch' && inputs.use_testpypi
+        uses: pypa/gh-action-pypi-publish@v1.14.0
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          print-hash: true
+
+      - name: Publish to PyPI
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.use_testpypi)
+        uses: pypa/gh-action-pypi-publish@v1.14.0
+        with:
+          print-hash: true

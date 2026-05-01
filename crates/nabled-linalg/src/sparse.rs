@@ -178,6 +178,15 @@ impl CsrIndex for i32 {
     }
 }
 
+impl CsrIndex for i64 {
+    fn to_usize(self) -> Result<usize, SparseError> {
+        if self < 0 {
+            return Err(SparseError::InvalidStructure);
+        }
+        usize::try_from(self).map_err(|_| SparseError::InvalidStructure)
+    }
+}
+
 /// Borrowed compressed sparse row (CSR) matrix view.
 #[derive(Debug, Clone, Copy)]
 pub struct CsrMatrixView<'a, R: CsrIndex = usize, T = f64, C: CsrIndex = R> {
@@ -267,6 +276,167 @@ impl<'a, T: NabledReal> From<&'a CsrMatrix<T>> for CsrMatrixView<'a, usize, T, u
             ncols:       matrix.ncols,
             row_ptrs:    &matrix.indptr,
             col_indices: &matrix.indices,
+            values:      &matrix.data,
+        }
+    }
+}
+
+/// Borrowed compressed sparse column (CSC) matrix view.
+#[derive(Debug, Clone, Copy)]
+pub struct CscMatrixView<'a, I: CsrIndex = usize, T = f64> {
+    /// Number of rows.
+    pub nrows:       usize,
+    /// Number of columns.
+    pub ncols:       usize,
+    /// Column pointer offsets (`len = ncols + 1`).
+    pub col_ptrs:    &'a [I],
+    /// Row index for each non-zero value.
+    pub row_indices: &'a [I],
+    /// Non-zero values.
+    pub values:      &'a [T],
+}
+
+impl<'a, I: CsrIndex, T> CscMatrixView<'a, I, T> {
+    /// Construct a borrowed CSC matrix view after validating structure.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are empty or CSC arrays are inconsistent.
+    pub fn new(
+        nrows: usize,
+        ncols: usize,
+        col_ptrs: &'a [I],
+        row_indices: &'a [I],
+        values: &'a [T],
+    ) -> Result<Self, SparseError> {
+        let view = Self { nrows, ncols, col_ptrs, row_indices, values };
+        view.validate()?;
+        Ok(view)
+    }
+
+    /// Validate this view's CSC structure.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are empty or CSC arrays are inconsistent.
+    pub fn validate(&self) -> Result<(), SparseError> {
+        if self.nrows == 0 || self.ncols == 0 {
+            return Err(SparseError::EmptyInput);
+        }
+        if self.col_ptrs.len() != self.ncols + 1 {
+            return Err(SparseError::InvalidStructure);
+        }
+        if self.row_indices.len() != self.values.len() {
+            return Err(SparseError::InvalidStructure);
+        }
+        if self.col_ptrs[0].to_usize()? != 0 {
+            return Err(SparseError::InvalidStructure);
+        }
+        if self.col_ptrs[self.ncols].to_usize()? != self.row_indices.len() {
+            return Err(SparseError::InvalidStructure);
+        }
+        for col in 0..self.ncols {
+            let start = self.col_ptrs[col].to_usize()?;
+            let end = self.col_ptrs[col + 1].to_usize()?;
+            if start > end {
+                return Err(SparseError::InvalidStructure);
+            }
+        }
+        for &index in self.row_indices {
+            if index.to_usize()? >= self.nrows {
+                return Err(SparseError::InvalidStructure);
+            }
+        }
+        Ok(())
+    }
+
+    /// Get column [start, end) bounds in the value/index arrays.
+    ///
+    /// # Errors
+    /// Returns an error if column pointers contain invalid index values.
+    pub fn col_bounds(&self, col: usize) -> Result<(usize, usize), SparseError> {
+        let start = self.col_ptrs[col].to_usize()?;
+        let end = self.col_ptrs[col + 1].to_usize()?;
+        Ok((start, end))
+    }
+}
+
+impl<'a, T: NabledReal> From<&'a CscMatrix<T>> for CscMatrixView<'a, usize, T> {
+    fn from(matrix: &'a CscMatrix<T>) -> Self {
+        Self {
+            nrows:       matrix.nrows,
+            ncols:       matrix.ncols,
+            col_ptrs:    &matrix.indptr,
+            row_indices: &matrix.indices,
+            values:      &matrix.data,
+        }
+    }
+}
+
+/// Borrowed coordinate-list (COO) sparse matrix view.
+#[derive(Debug, Clone, Copy)]
+pub struct CooMatrixView<'a, I: CsrIndex = usize, T = f64> {
+    /// Number of rows.
+    pub nrows:       usize,
+    /// Number of columns.
+    pub ncols:       usize,
+    /// Row index for each non-zero entry.
+    pub row_indices: &'a [I],
+    /// Column index for each non-zero entry.
+    pub col_indices: &'a [I],
+    /// Non-zero values.
+    pub values:      &'a [T],
+}
+
+impl<'a, I: CsrIndex, T> CooMatrixView<'a, I, T> {
+    /// Construct a borrowed COO matrix view after validating structure.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are empty or COO arrays are inconsistent.
+    pub fn new(
+        nrows: usize,
+        ncols: usize,
+        row_indices: &'a [I],
+        col_indices: &'a [I],
+        values: &'a [T],
+    ) -> Result<Self, SparseError> {
+        let view = Self { nrows, ncols, row_indices, col_indices, values };
+        view.validate()?;
+        Ok(view)
+    }
+
+    /// Validate this view's COO structure.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions are empty or COO arrays are inconsistent.
+    pub fn validate(&self) -> Result<(), SparseError> {
+        if self.nrows == 0 || self.ncols == 0 {
+            return Err(SparseError::EmptyInput);
+        }
+        if self.row_indices.len() != self.col_indices.len()
+            || self.row_indices.len() != self.values.len()
+        {
+            return Err(SparseError::InvalidStructure);
+        }
+        for &row in self.row_indices {
+            if row.to_usize()? >= self.nrows {
+                return Err(SparseError::InvalidStructure);
+            }
+        }
+        for &col in self.col_indices {
+            if col.to_usize()? >= self.ncols {
+                return Err(SparseError::InvalidStructure);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a, T: NabledReal> From<&'a CooMatrix<T>> for CooMatrixView<'a, usize, T> {
+    fn from(matrix: &'a CooMatrix<T>) -> Self {
+        Self {
+            nrows:       matrix.nrows,
+            ncols:       matrix.ncols,
+            row_indices: &matrix.row_indices,
+            col_indices: &matrix.col_indices,
             values:      &matrix.data,
         }
     }
@@ -389,34 +559,48 @@ impl<T: NabledReal> CscMatrix<T> {
     ///
     /// # Errors
     /// Returns an error if conversion encounters invalid structure.
-    pub fn to_csr(&self) -> Result<CsrMatrix<T>, SparseError> {
-        let nnz = self.data.len();
-        let mut counts = vec![0_usize; self.nrows];
-        for &row in &self.indices {
-            counts[row] += 1;
-        }
+    pub fn to_csr(&self) -> Result<CsrMatrix<T>, SparseError> { csc_to_csr_view(&self.as_view()) }
 
-        let mut indptr = vec![0_usize; self.nrows + 1];
-        for row in 0..self.nrows {
-            indptr[row + 1] = indptr[row] + counts[row];
-        }
+    /// Borrow this owned CSC matrix as a zero-copy view.
+    #[must_use]
+    pub fn as_view(&self) -> CscMatrixView<'_, usize, T> { self.into() }
+}
 
-        let mut next = indptr[..self.nrows].to_vec();
-        let mut indices = vec![0_usize; nnz];
-        let mut data = vec![T::zero(); nnz];
-
-        for col in 0..self.ncols {
-            for entry in self.indptr[col]..self.indptr[col + 1] {
-                let row = self.indices[entry];
-                let destination = next[row];
-                indices[destination] = col;
-                data[destination] = self.data[entry];
-                next[row] += 1;
-            }
-        }
-
-        CsrMatrix::new(self.nrows, self.ncols, indptr, indices, data)
+/// Convert a borrowed CSC matrix view to CSR.
+///
+/// # Errors
+/// Returns an error if conversion encounters invalid structure.
+pub fn csc_to_csr_view<T: NabledReal, I: CsrIndex>(
+    matrix: &CscMatrixView<'_, I, T>,
+) -> Result<CsrMatrix<T>, SparseError> {
+    matrix.validate()?;
+    let nnz = matrix.values.len();
+    let mut counts = vec![0_usize; matrix.nrows];
+    for &row in matrix.row_indices {
+        counts[row.to_usize()?] += 1;
     }
+
+    let mut indptr = vec![0_usize; matrix.nrows + 1];
+    for row in 0..matrix.nrows {
+        indptr[row + 1] = indptr[row] + counts[row];
+    }
+
+    let mut next = indptr[..matrix.nrows].to_vec();
+    let mut indices = vec![0_usize; nnz];
+    let mut data = vec![T::zero(); nnz];
+
+    for col in 0..matrix.ncols {
+        let (start, end) = matrix.col_bounds(col)?;
+        for entry in start..end {
+            let row = matrix.row_indices[entry].to_usize()?;
+            let destination = next[row];
+            indices[destination] = col;
+            data[destination] = matrix.values[entry];
+            next[row] += 1;
+        }
+    }
+
+    CsrMatrix::new(matrix.nrows, matrix.ncols, indptr, indices, data)
 }
 
 /// Diagonal (Jacobi) preconditioner for iterative sparse solvers.
@@ -591,41 +775,54 @@ impl<T: NabledReal> CooMatrix<T> {
     ///
     /// # Errors
     /// Returns an error if COO structure is invalid.
-    pub fn to_csr(&self) -> Result<CsrMatrix<T>, SparseError> {
-        let mut entries = self
-            .row_indices
-            .iter()
-            .copied()
-            .zip(self.col_indices.iter().copied())
-            .zip(self.data.iter().copied())
-            .map(|((row, col), value)| (row, col, value))
-            .collect::<Vec<_>>();
-        entries.sort_by_key(|&(row, col, _)| (row, col));
+    pub fn to_csr(&self) -> Result<CsrMatrix<T>, SparseError> { coo_to_csr_view(&self.as_view()) }
 
-        let mut collapsed = Vec::<(usize, usize, T)>::new();
-        for (row, col, value) in entries {
-            if let Some((last_row, last_col, last_value)) = collapsed.last_mut()
-                && *last_row == row
-                && *last_col == col
-            {
-                *last_value += value;
-            } else {
-                collapsed.push((row, col, value));
-            }
-        }
+    /// Borrow this owned COO matrix as a zero-copy view.
+    #[must_use]
+    pub fn as_view(&self) -> CooMatrixView<'_, usize, T> { self.into() }
+}
 
-        let mut indptr = vec![0_usize; self.nrows + 1];
-        for &(row, _, _) in &collapsed {
-            indptr[row + 1] += 1;
-        }
-        for row in 0..self.nrows {
-            indptr[row + 1] += indptr[row];
-        }
+/// Convert a borrowed COO matrix view to CSR. Duplicate coordinates are summed.
+///
+/// # Errors
+/// Returns an error if COO structure is invalid.
+pub fn coo_to_csr_view<T: NabledReal, I: CsrIndex>(
+    matrix: &CooMatrixView<'_, I, T>,
+) -> Result<CsrMatrix<T>, SparseError> {
+    matrix.validate()?;
+    let mut entries = matrix
+        .row_indices
+        .iter()
+        .copied()
+        .zip(matrix.col_indices.iter().copied())
+        .zip(matrix.values.iter().copied())
+        .map(|((row, col), value)| Ok((row.to_usize()?, col.to_usize()?, value)))
+        .collect::<Result<Vec<_>, SparseError>>()?;
+    entries.sort_by_key(|&(row, col, _)| (row, col));
 
-        let indices = collapsed.iter().map(|&(_, col, _)| col).collect::<Vec<_>>();
-        let data = collapsed.iter().map(|&(_, _, value)| value).collect::<Vec<_>>();
-        CsrMatrix::new(self.nrows, self.ncols, indptr, indices, data)
+    let mut collapsed = Vec::<(usize, usize, T)>::new();
+    for (row, col, value) in entries {
+        if let Some((last_row, last_col, last_value)) = collapsed.last_mut()
+            && *last_row == row
+            && *last_col == col
+        {
+            *last_value += value;
+        } else {
+            collapsed.push((row, col, value));
+        }
     }
+
+    let mut indptr = vec![0_usize; matrix.nrows + 1];
+    for &(row, _, _) in &collapsed {
+        indptr[row + 1] += 1;
+    }
+    for row in 0..matrix.nrows {
+        indptr[row + 1] += indptr[row];
+    }
+
+    let indices = collapsed.iter().map(|&(_, col, _)| col).collect::<Vec<_>>();
+    let data = collapsed.iter().map(|&(_, _, value)| value).collect::<Vec<_>>();
+    CsrMatrix::new(matrix.nrows, matrix.ncols, indptr, indices, data)
 }
 
 /// Compute sparse matrix-vector product `y = A x`.
@@ -910,15 +1107,31 @@ pub fn matvec_csc<T: NabledReal>(
     matrix: &CscMatrix<T>,
     vector: &Array1<T>,
 ) -> Result<Array1<T>, SparseError> {
+    matvec_csc_view(&matrix.as_view(), vector)
+}
+
+/// Compute sparse matrix-vector product `y = A x` for a borrowed CSC view.
+///
+/// # Errors
+/// Returns an error if vector length mismatches matrix columns.
+pub fn matvec_csc_view<T: NabledReal, I: CsrIndex, S>(
+    matrix: &CscMatrixView<'_, I, T>,
+    vector: &ArrayBase<S, Ix1>,
+) -> Result<Array1<T>, SparseError>
+where
+    S: Data<Elem = T>,
+{
+    matrix.validate()?;
     if vector.len() != matrix.ncols {
         return Err(SparseError::DimensionMismatch);
     }
     let mut output = Array1::<T>::zeros(matrix.nrows);
     for col in 0..matrix.ncols {
         let x = vector[col];
-        for entry in matrix.indptr[col]..matrix.indptr[col + 1] {
-            let row = matrix.indices[entry];
-            output[row] += matrix.data[entry] * x;
+        let (start, end) = matrix.col_bounds(col)?;
+        for entry in start..end {
+            let row = matrix.row_indices[entry].to_usize()?;
+            output[row] += matrix.values[entry] * x;
         }
     }
     Ok(output)
@@ -1158,7 +1371,6 @@ fn retain_strongest_entries<T: NabledReal>(entries: &mut Vec<(usize, T)>, max_en
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or the factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ilut_factor<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     drop_tolerance: T,
@@ -1174,7 +1386,6 @@ pub fn ilut_factor<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or the factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ilut_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     drop_tolerance: T,
@@ -1336,7 +1547,6 @@ type SparseUpperRowWithLevel<T> = Vec<(usize, T, usize)>;
 type IlukRowState<T> = (BTreeMap<usize, T>, HashMap<usize, usize>);
 type IlukRowFactors<T> = (SparseRowEntries<T>, SparseRowEntries<T>, SparseUpperRowWithLevel<T>, T);
 
-#[allow(clippy::many_single_char_names)]
 fn iluk_eliminate_row_entries<T: NabledReal>(
     row: usize,
     level_of_fill: usize,
@@ -1600,7 +1810,6 @@ fn split_lu_rows_to_csr<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn sparse_lu_factor<T: NabledReal>(
     matrix: &CsrMatrix<T>,
 ) -> Result<SparseLUFactorization<T>, SparseError> {
@@ -1613,7 +1822,6 @@ pub fn sparse_lu_factor<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn sparse_lu_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
 ) -> Result<SparseLUFactorization<T>, SparseError> {
@@ -1725,9 +1933,9 @@ pub fn sparse_lu_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Ele
 ///
 /// # Errors
 /// Returns an error for invalid dimensions or singular factors.
-pub fn sparse_lu_solve_with_factorization<T: NabledReal>(
+pub fn sparse_lu_solve_with_factorization<T: NabledReal, S: Data<Elem = T>>(
     matrix: &CsrMatrix<T>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     factorization: &SparseLUFactorization<T>,
 ) -> Result<Array1<T>, SparseError> {
     sparse_lu_solve_with_factorization_view(&matrix.as_view(), rhs, factorization)
@@ -1890,7 +2098,6 @@ pub fn apply_iluk_preconditioner<T: NabledReal, S: Data<Elem = T>>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ic0_factor<T: NabledReal>(
     matrix: &CsrMatrix<T>,
 ) -> Result<IC0Factorization<T>, SparseError> {
@@ -1904,7 +2111,6 @@ pub fn ic0_factor<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error if dimensions are incompatible or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ic0_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
 ) -> Result<IC0Factorization<T>, SparseError> {
@@ -2071,7 +2277,6 @@ pub fn apply_ic0_preconditioner<T: NabledReal, S: Data<Elem = T>>(
 /// # Errors
 /// Returns an error if dimensions are incompatible, input is non-symmetric,
 /// or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ildl0_factor<T: NabledReal>(
     matrix: &CsrMatrix<T>,
 ) -> Result<ILDL0Factorization<T>, SparseError> {
@@ -2087,7 +2292,6 @@ pub fn ildl0_factor<T: NabledReal>(
 /// # Errors
 /// Returns an error if dimensions are incompatible, input is non-symmetric,
 /// or factorization breaks down.
-#[allow(clippy::many_single_char_names)]
 pub fn ildl0_factor_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
 ) -> Result<ILDL0Factorization<T>, SparseError> {
@@ -2536,7 +2740,7 @@ fn pcg_with_operator<T: NabledReal>(
 }
 
 #[cfg(feature = "magma-system")]
-#[allow(clippy::many_single_char_names)]
+#[expect(clippy::many_single_char_names)]
 fn gmres_with_operator<T: NabledReal>(
     rhs: &Array1<T>,
     tolerance: T,
@@ -3477,6 +3681,28 @@ pub fn pcg_ic0_solve<T: NabledReal>(
     pcg_ic0_solve_view(&matrix.as_view(), rhs, tolerance, max_iterations)
 }
 
+/// Solve sparse linear system `A x = b` with a reusable IC(0) factorization.
+///
+/// This routine assumes an SPD matrix `A`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn pcg_ic0_solve_with_factorization<T: NabledReal>(
+    matrix: &CsrMatrix<T>,
+    rhs: &Array1<T>,
+    tolerance: T,
+    max_iterations: usize,
+    factorization: &IC0Factorization<T>,
+) -> Result<Array1<T>, SparseError> {
+    pcg_ic0_solve_with_factorization_view(
+        &matrix.as_view(),
+        rhs,
+        tolerance,
+        max_iterations,
+        factorization,
+    )
+}
+
 /// Solve sparse linear system `A x = b` with IC(0)-preconditioned conjugate gradient from a
 /// borrowed CSR view.
 ///
@@ -3484,9 +3710,9 @@ pub fn pcg_ic0_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
 ) -> Result<Array1<T>, SparseError> {
@@ -3502,10 +3728,43 @@ pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     }
 
     let factorization = ic0_factor_view(matrix)?;
+    pcg_ic0_solve_with_factorization_view(matrix, rhs, tolerance, max_iterations, &factorization)
+}
+
+/// Solve sparse linear system `A x = b` with a reusable IC(0) factorization from a borrowed CSR
+/// view.
+///
+/// This routine assumes an SPD matrix `A`.
+///
+/// # Errors
+/// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
+pub fn pcg_ic0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
+    matrix: &CsrMatrixView<'_, R, T, C>,
+    rhs: &ArrayBase<S, Ix1>,
+    tolerance: T,
+    max_iterations: usize,
+    factorization: &IC0Factorization<T>,
+) -> Result<Array1<T>, SparseError> {
+    matrix.validate()?;
+    if matrix.nrows != matrix.ncols {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.len() != matrix.nrows {
+        return Err(SparseError::DimensionMismatch);
+    }
+    if rhs.is_empty() {
+        return Err(SparseError::EmptyInput);
+    }
+
     let tolerance = tolerance.max(default_tolerance::<T>());
     let mut solution = Array1::<T>::zeros(matrix.ncols);
-    let mut residual = rhs.clone();
-    let mut preconditioned_residual = apply_ic0_preconditioner(&factorization, &residual)?;
+    let mut residual = rhs.to_owned();
+    let mut preconditioned_residual = apply_ic0_preconditioner(factorization, &residual)?;
     let mut direction = preconditioned_residual.clone();
     let mut rho = dot(&residual, &preconditioned_residual)?;
 
@@ -3530,7 +3789,7 @@ pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
             return Ok(solution);
         }
 
-        preconditioned_residual = apply_ic0_preconditioner(&factorization, &residual)?;
+        preconditioned_residual = apply_ic0_preconditioner(factorization, &residual)?;
         let rho_next = dot(&residual, &preconditioned_residual)?;
         let beta = rho_next / rho;
         for i in 0..direction.len() {
@@ -3548,7 +3807,6 @@ pub fn pcg_ic0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilu0_solve<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3564,7 +3822,6 @@ pub fn gmres_ilu0_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilu0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -3581,7 +3838,6 @@ pub fn gmres_ilu0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilu0_solve_with_factorization<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3604,10 +3860,14 @@ pub fn gmres_ilu0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
-pub fn gmres_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gmres_ilu0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILU0Factorization<T>,
@@ -3709,7 +3969,6 @@ pub fn gmres_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: C
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilut_solve<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3734,7 +3993,6 @@ pub fn gmres_ilut_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilut_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -3753,7 +4011,6 @@ pub fn gmres_ilut_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ilut_solve_with_factorization<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3776,10 +4033,14 @@ pub fn gmres_ilut_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
-pub fn gmres_ilut_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gmres_ilut_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUTFactorization<T>,
@@ -3914,7 +4175,6 @@ pub fn gmres_ilut_solve_with_config_view<T: NabledReal, R: CsrIndex, C: CsrIndex
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_iluk_solve<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3931,7 +4191,6 @@ pub fn gmres_iluk_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_iluk_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -3949,7 +4208,6 @@ pub fn gmres_iluk_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_iluk_solve_with_factorization<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -3972,10 +4230,14 @@ pub fn gmres_iluk_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
-pub fn gmres_iluk_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gmres_iluk_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUKFactorization<T>,
@@ -4110,7 +4372,6 @@ pub fn gmres_iluk_solve_with_config_view<T: NabledReal, R: CsrIndex, C: CsrIndex
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ildl0_solve<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -4126,7 +4387,6 @@ pub fn gmres_ildl0_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ildl0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     matrix: &CsrMatrixView<'_, R, T, C>,
     rhs: &Array1<T>,
@@ -4149,7 +4409,6 @@ pub fn gmres_ildl0_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
 pub fn gmres_ildl0_solve_with_factorization<T: NabledReal>(
     matrix: &CsrMatrix<T>,
     rhs: &Array1<T>,
@@ -4172,10 +4431,14 @@ pub fn gmres_ildl0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-#[allow(clippy::many_single_char_names)]
-pub fn gmres_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn gmres_ildl0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILDL0Factorization<T>,
@@ -4325,9 +4588,9 @@ pub fn bicgstab_solve<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, singular breakdown, or non-convergence.
-pub fn bicgstab_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex, S: Data<Elem = T>>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
 ) -> Result<Array1<T>, SparseError> {
@@ -4345,7 +4608,7 @@ pub fn bicgstab_solve_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -4493,9 +4756,14 @@ pub fn bicgstab_ilu0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn bicgstab_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_ilu0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILU0Factorization<T>,
@@ -4514,7 +4782,7 @@ pub fn bicgstab_ilu0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -4628,9 +4896,10 @@ pub fn bicgstab_ilu0_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILU0Factorization<T>,
@@ -4724,9 +4993,14 @@ pub fn bicgstab_ilut_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn bicgstab_ilut_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_ilut_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUTFactorization<T>,
@@ -4745,7 +5019,7 @@ pub fn bicgstab_ilut_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -4859,9 +5133,10 @@ pub fn bicgstab_ilut_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUTFactorization<T>,
@@ -4910,9 +5185,10 @@ pub fn bicgstab_iluk_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUKFactorization<T>,
@@ -5037,9 +5313,14 @@ pub fn bicgstab_iluk_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn bicgstab_iluk_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_iluk_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUKFactorization<T>,
@@ -5058,7 +5339,7 @@ pub fn bicgstab_iluk_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -5246,9 +5527,14 @@ pub fn bicgstab_ildl0_solve_with_factorization<T: NabledReal>(
 ///
 /// # Errors
 /// Returns an error for invalid dimensions, factorization breakdown, or non-convergence.
-pub fn bicgstab_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, C: CsrIndex>(
+pub fn bicgstab_ildl0_solve_with_factorization_view<
+    T: NabledReal,
+    R: CsrIndex,
+    C: CsrIndex,
+    S: Data<Elem = T>,
+>(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array1<T>,
+    rhs: &ArrayBase<S, Ix1>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILDL0Factorization<T>,
@@ -5267,7 +5553,7 @@ pub fn bicgstab_ildl0_solve_with_factorization_view<T: NabledReal, R: CsrIndex, 
     let tolerance = tolerance.max(default_tolerance::<T>());
     let dimension = rhs.len();
     let mut solution = Array1::<T>::zeros(dimension);
-    let mut residual = rhs.clone();
+    let mut residual = rhs.to_owned();
     let residual_shadow = residual.clone();
     let mut rho_prev = T::one();
     let mut alpha = T::one();
@@ -5381,9 +5667,10 @@ pub fn bicgstab_ildl0_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILDL0Factorization<T>,
@@ -5431,9 +5718,10 @@ pub fn gmres_ilu0_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILU0Factorization<T>,
@@ -5481,9 +5769,10 @@ pub fn gmres_ilut_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUTFactorization<T>,
@@ -5531,9 +5820,10 @@ pub fn gmres_iluk_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILUKFactorization<T>,
@@ -5582,9 +5872,10 @@ pub fn gmres_ildl0_solve_multiple_with_factorization_view<
     T: NabledReal,
     R: CsrIndex,
     C: CsrIndex,
+    S: Data<Elem = T>,
 >(
     matrix: &CsrMatrixView<'_, R, T, C>,
-    rhs: &Array2<T>,
+    rhs: &ArrayBase<S, Ix2>,
     tolerance: T,
     max_iterations: usize,
     factorization: &ILDL0Factorization<T>,
@@ -5792,6 +6083,26 @@ mod tests {
     }
 
     #[test]
+    fn coo_view_to_csr_matches_owned_conversion() {
+        let rows = vec![0_i32, 0, 1, 1, 1, 2, 2];
+        let cols = vec![0_i32, 1, 0, 1, 2, 1, 2];
+        let data = vec![4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64];
+        let view = CooMatrixView::new(3, 3, &rows, &cols, &data).unwrap();
+        let owned = CooMatrix::new(
+            3,
+            3,
+            rows.iter().map(|value| usize::try_from(*value).unwrap()).collect(),
+            cols.iter().map(|value| usize::try_from(*value).unwrap()).collect(),
+            data.clone(),
+        )
+        .unwrap();
+
+        let from_view = coo_to_csr_view(&view).unwrap();
+        let from_owned = owned.to_csr().unwrap();
+        assert_eq!(from_view, from_owned);
+    }
+
+    #[test]
     fn gauss_seidel_solves_diagonally_dominant_system() {
         let matrix = toy_matrix();
         let rhs = arr1(&[1.0_f64, 2.0_f64, 3.0_f64]);
@@ -5830,6 +6141,27 @@ mod tests {
         let converted_product = matvec_csc(&csc, &vector).unwrap();
         for i in 0..vector.len() {
             assert!((reference_product[i] - converted_product[i]).abs() < 1e-12_f64);
+        }
+    }
+
+    #[test]
+    fn csc_view_conversion_and_matvec_match_owned() {
+        let matrix = toy_matrix();
+        let csc = csr_to_csc(&matrix).unwrap();
+        let indptr =
+            csc.indptr.iter().map(|value| i32::try_from(*value).unwrap()).collect::<Vec<_>>();
+        let indices =
+            csc.indices.iter().map(|value| i32::try_from(*value).unwrap()).collect::<Vec<_>>();
+        let view = CscMatrixView::new(3, 3, &indptr, &indices, &csc.data).unwrap();
+
+        let vector = arr1(&[1.0_f64, 2.0_f64, 3.0_f64]);
+        let roundtrip = csc_to_csr_view(&view).unwrap();
+        let product = matvec_csc_view(&view, &vector).unwrap();
+
+        assert_eq!(roundtrip, matrix);
+        let reference_product = matvec(&matrix, &vector).unwrap();
+        for i in 0..vector.len() {
+            assert!((reference_product[i] - product[i]).abs() < 1e-12_f64);
         }
     }
 
@@ -6173,6 +6505,20 @@ mod tests {
         let reconstructed = matvec(&matrix, &solution).unwrap();
         for i in 0..rhs.len() {
             assert!((reconstructed[i] - rhs[i]).abs() < 1e-6_f64);
+        }
+    }
+
+    #[test]
+    fn pcg_ic0_with_factorization_matches_direct() {
+        let matrix = toy_matrix();
+        let rhs = arr1(&[1.0_f64, 2.0_f64, 3.0_f64]);
+        let direct = pcg_ic0_solve(&matrix, &rhs, 1e-10_f64, 2000).unwrap();
+        let factorization = ic0_factor(&matrix).unwrap();
+        let reused =
+            pcg_ic0_solve_with_factorization(&matrix, &rhs, 1e-10_f64, 2000, &factorization)
+                .unwrap();
+        for i in 0..direct.len() {
+            assert!((direct[i] - reused[i]).abs() < 1e-10_f64);
         }
     }
 

@@ -3,16 +3,18 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, Array2, ArrayView2};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView2, DataMut, Ix2};
 use num_complex::Complex64;
 
-use crate::internal::{DEFAULT_TOLERANCE, qr_gram_schmidt};
+use crate::internal::DEFAULT_TOLERANCE;
 
 /// Error type for orthogonalization.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OrthogonalizationError {
     /// Matrix is empty.
     EmptyMatrix,
+    /// Input or output shapes are incompatible.
+    InvalidInput(String),
     /// Numerical instability detected.
     NumericalInstability,
 }
@@ -21,6 +23,7 @@ impl fmt::Display for OrthogonalizationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OrthogonalizationError::EmptyMatrix => write!(f, "Matrix cannot be empty"),
+            OrthogonalizationError::InvalidInput(message) => write!(f, "Invalid input: {message}"),
             OrthogonalizationError::NumericalInstability => {
                 write!(f, "Numerical instability detected")
             }
@@ -29,6 +32,73 @@ impl fmt::Display for OrthogonalizationError {
 }
 
 impl std::error::Error for OrthogonalizationError {}
+
+fn validate_output_shape<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &ArrayBase<S, Ix2>,
+    name: &str,
+) -> Result<(), OrthogonalizationError>
+where
+    S: DataMut<Elem = T>,
+{
+    if output.nrows() != matrix.nrows() || output.ncols() != matrix.ncols() {
+        return Err(OrthogonalizationError::InvalidInput(format!(
+            "{name} output shape must match input shape ({}, {})",
+            matrix.nrows(),
+            matrix.ncols(),
+        )));
+    }
+    Ok(())
+}
+
+fn gram_schmidt_into_impl<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), OrthogonalizationError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    if matrix.is_empty() {
+        return Err(OrthogonalizationError::EmptyMatrix);
+    }
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err(OrthogonalizationError::NumericalInstability);
+    }
+    validate_output_shape(matrix, output, "gram_schmidt")?;
+
+    let tolerance = T::from_f64(DEFAULT_TOLERANCE).unwrap_or(T::epsilon());
+    let rows = matrix.nrows();
+    let cols = matrix.ncols();
+    let mut v = Array1::<T>::zeros(rows);
+    output.fill(T::zero());
+
+    for j in 0..cols {
+        for row in 0..rows {
+            v[row] = matrix[[row, j]];
+        }
+
+        for i in 0..j {
+            let mut projection = T::zero();
+            for row in 0..rows {
+                projection += output[[row, i]] * v[row];
+            }
+            for row in 0..rows {
+                v[row] -= projection * output[[row, i]];
+            }
+        }
+
+        let norm =
+            v.iter().map(|value| *value * *value).fold(T::zero(), |sum, value| sum + value).sqrt();
+        if norm > tolerance {
+            for row in 0..rows {
+                output[[row, j]] = v[row] / norm;
+            }
+        }
+    }
+
+    Ok(())
+}
 
 /// Modified Gram-Schmidt orthogonalization.
 ///
@@ -43,31 +113,30 @@ pub fn gram_schmidt<T: NabledReal>(
 fn gram_schmidt_impl<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, OrthogonalizationError> {
-    if matrix.is_empty() {
-        return Err(OrthogonalizationError::EmptyMatrix);
-    }
-    if matrix.iter().any(|value| !value.is_finite()) {
-        return Err(OrthogonalizationError::NumericalInstability);
-    }
-    let tolerance = T::from_f64(DEFAULT_TOLERANCE).unwrap_or(T::epsilon());
-    let (q, _, _) = qr_gram_schmidt(matrix, tolerance);
+    let mut q = Array2::<T>::zeros((matrix.nrows(), matrix.ncols()));
+    gram_schmidt_into_impl(matrix, &mut q)?;
     Ok(q)
 }
 
-fn gram_schmidt_complex_impl(
+fn gram_schmidt_complex_into_impl<S>(
     matrix: &ArrayView2<'_, Complex64>,
-) -> Result<Array2<Complex64>, OrthogonalizationError> {
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), OrthogonalizationError>
+where
+    S: DataMut<Elem = Complex64>,
+{
     if matrix.is_empty() {
         return Err(OrthogonalizationError::EmptyMatrix);
     }
     if matrix.iter().any(|value| !value.re.is_finite() || !value.im.is_finite()) {
         return Err(OrthogonalizationError::NumericalInstability);
     }
+    validate_output_shape(matrix, output, "gram_schmidt_complex")?;
 
     let rows = matrix.nrows();
     let cols = matrix.ncols();
-    let mut q = Array2::<Complex64>::zeros((rows, cols));
     let mut v = Array1::<Complex64>::zeros(rows);
+    output.fill(Complex64::new(0.0, 0.0));
 
     for j in 0..cols {
         for row in 0..rows {
@@ -77,21 +146,29 @@ fn gram_schmidt_complex_impl(
         for i in 0..j {
             let mut projection = Complex64::new(0.0, 0.0);
             for row in 0..rows {
-                projection += q[[row, i]].conj() * v[row];
+                projection += output[[row, i]].conj() * v[row];
             }
             for row in 0..rows {
-                v[row] -= projection * q[[row, i]];
+                v[row] -= projection * output[[row, i]];
             }
         }
 
         let norm = v.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt();
         if norm > DEFAULT_TOLERANCE {
             for row in 0..rows {
-                q[[row, j]] = v[row] / norm;
+                output[[row, j]] = v[row] / norm;
             }
         }
     }
 
+    Ok(())
+}
+
+fn gram_schmidt_complex_impl(
+    matrix: &ArrayView2<'_, Complex64>,
+) -> Result<Array2<Complex64>, OrthogonalizationError> {
+    let mut q = Array2::<Complex64>::zeros((matrix.nrows(), matrix.ncols()));
+    gram_schmidt_complex_into_impl(matrix, &mut q)?;
     Ok(q)
 }
 
@@ -103,6 +180,36 @@ pub fn gram_schmidt_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, OrthogonalizationError> {
     gram_schmidt_impl(matrix)
+}
+
+/// Modified Gram-Schmidt orthogonalization into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty or non-finite input, or incompatible output shape.
+pub fn gram_schmidt_into<T, S>(
+    matrix: &Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), OrthogonalizationError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    gram_schmidt_into_impl(&matrix.view(), output)
+}
+
+/// Modified Gram-Schmidt orthogonalization from a matrix view into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty or non-finite input, or incompatible output shape.
+pub fn gram_schmidt_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), OrthogonalizationError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    gram_schmidt_into_impl(matrix, output)
 }
 
 /// Modified Gram-Schmidt orthogonalization for complex matrices.
@@ -125,6 +232,34 @@ pub fn gram_schmidt_complex_view(
     gram_schmidt_complex_impl(matrix)
 }
 
+/// Modified Gram-Schmidt orthogonalization for complex matrices into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty or non-finite input, or incompatible output shape.
+pub fn gram_schmidt_complex_into<S>(
+    matrix: &Array2<Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), OrthogonalizationError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    gram_schmidt_complex_into_impl(&matrix.view(), output)
+}
+
+/// Modified Gram-Schmidt orthogonalization for complex matrix views into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty or non-finite input, or incompatible output shape.
+pub fn gram_schmidt_complex_view_into<S>(
+    matrix: &ArrayView2<'_, Complex64>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), OrthogonalizationError>
+where
+    S: DataMut<Elem = Complex64>,
+{
+    gram_schmidt_complex_into_impl(matrix, output)
+}
+
 /// Classical Gram-Schmidt orthogonalization.
 ///
 /// # Errors
@@ -143,6 +278,36 @@ pub fn gram_schmidt_classic_view<T: NabledReal>(
     matrix: &ArrayView2<'_, T>,
 ) -> Result<Array2<T>, OrthogonalizationError> {
     gram_schmidt_impl(matrix)
+}
+
+/// Classical Gram-Schmidt orthogonalization into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty or non-finite input, or incompatible output shape.
+pub fn gram_schmidt_classic_into<T, S>(
+    matrix: &Array2<T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), OrthogonalizationError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    gram_schmidt_into_impl(&matrix.view(), output)
+}
+
+/// Classical Gram-Schmidt orthogonalization from a matrix view into caller-provided output.
+///
+/// # Errors
+/// Returns an error for empty or non-finite input, or incompatible output shape.
+pub fn gram_schmidt_classic_view_into<T, S>(
+    matrix: &ArrayView2<'_, T>,
+    output: &mut ArrayBase<S, Ix2>,
+) -> Result<(), OrthogonalizationError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    gram_schmidt_into_impl(matrix, output)
 }
 
 #[cfg(test)]
@@ -243,5 +408,51 @@ mod tests {
                 assert!((owned[[i, j]] - viewed[[i, j]]).norm() < 1e-12_f64);
             }
         }
+    }
+
+    #[test]
+    fn gram_schmidt_view_into_matches_allocating_paths() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 0.0_f64, 1.0_f64,
+        ])
+        .unwrap();
+        let mut modified = Array2::<f64>::zeros(matrix.dim());
+        let mut classic = Array2::<f64>::zeros(matrix.dim());
+
+        gram_schmidt_view_into(&matrix.view(), &mut modified).unwrap();
+        gram_schmidt_classic_view_into(&matrix.view(), &mut classic).unwrap();
+
+        assert_eq!(modified, gram_schmidt(&matrix).unwrap());
+        assert_eq!(classic, gram_schmidt_classic(&matrix).unwrap());
+    }
+
+    #[test]
+    fn gram_schmidt_complex_view_into_matches_allocating_paths() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(2.0_f64, 1.0_f64),
+            Complex64::new(3.0_f64, -1.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
+            Complex64::new(0.0_f64, 1.0_f64),
+            Complex64::new(1.0_f64, 0.0_f64),
+        ])
+        .unwrap();
+        let mut output = Array2::<Complex64>::zeros(matrix.dim());
+
+        gram_schmidt_complex_view_into(&matrix.view(), &mut output).unwrap();
+        assert_eq!(output, gram_schmidt_complex(&matrix).unwrap());
+    }
+
+    #[test]
+    fn gram_schmidt_view_into_rejects_wrong_output_shape() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 0.0_f64, 1.0_f64,
+        ])
+        .unwrap();
+        let mut bad = Array2::<f64>::zeros((2, 2));
+        assert!(matches!(
+            gram_schmidt_view_into(&matrix.view(), &mut bad),
+            Err(OrthogonalizationError::InvalidInput(_))
+        ));
     }
 }

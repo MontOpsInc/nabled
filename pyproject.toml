@@ -1,0 +1,66 @@
+[build-system]
+requires = ["maturin==1.13.1"]
+backend-path = ["."]
+build-backend = "build_backend.pynabled_backend"
+
+[project]
+name = "pynabled"
+version = "0.0.8"
+description = "Ndarray-native linear algebra and ML library - Python bindings for nabled"
+readme = "python/README.md"
+requires-python = ">=3.10"
+license = { text = "MIT OR Apache-2.0" }
+authors = [
+    { name = "Niklaus Parcell", email = "nik.parcell@gmail.com" },
+    { name = "George Lee Patterson", email = "patterson.george@gmail.com" },
+]
+keywords = [
+    "linear-algebra",
+    "numpy",
+    "ndarray",
+    "svd",
+    "pca",
+    "linalg",
+    "scientific",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = ["numpy>=1.16"]
+
+[project.urls]
+Homepage = "https://github.com/MontOpsInc/nabled"
+Repository = "https://github.com/MontOpsInc/nabled"
+Documentation = "https://github.com/MontOpsInc/nabled/blob/main/python/README.md"
+"Build Guide" = "https://github.com/MontOpsInc/nabled/blob/main/BUILD.md"
+Changelog = "https://github.com/MontOpsInc/nabled/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov>=7.0", "pyarrow>=14"]
+security = ["pip-audit==2.10.0"]
+
+[tool.maturin]
+manifest-path = "crates/pynabled/Cargo.toml"
+python-source = "python"
+module-name = "pynabled._pynabled"
+include = [{ path = "build_backend/**/*.py", format = "sdist" }]
+
+[tool.coverage.run]
+branch = true
+source = ["pynabled"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true

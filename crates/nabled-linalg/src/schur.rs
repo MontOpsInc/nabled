@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array2, ArrayView2};
+use ndarray::{Array2, ArrayBase, ArrayView2, Data, DataMut, Ix2};
 use num_complex::Complex64;
 
 use crate::internal::{DenseKernelPolicy, identity};
@@ -162,10 +162,10 @@ fn validate_complex_square_non_empty(matrix: &ArrayView2<'_, Complex64>) -> Resu
     Ok(())
 }
 
-fn validate_output_shapes_complex(
+fn validate_output_shapes_complex<S1: Data<Elem = Complex64>, S2: Data<Elem = Complex64>>(
     matrix: &ArrayView2<'_, Complex64>,
-    output_q: &Array2<Complex64>,
-    output_t: &Array2<Complex64>,
+    output_q: &ArrayBase<S1, Ix2>,
+    output_t: &ArrayBase<S2, Ix2>,
 ) -> Result<(), SchurError> {
     let expected = (matrix.nrows(), matrix.ncols());
     if output_q.dim() != expected || output_t.dim() != expected {
@@ -184,10 +184,10 @@ fn identity_complex(n: usize) -> Array2<Complex64> {
     identity
 }
 
-fn validate_output_shapes<T: NabledReal>(
+fn validate_output_shapes<T: NabledReal, S1: Data<Elem = T>, S2: Data<Elem = T>>(
     matrix: &ArrayView2<'_, T>,
-    output_q: &Array2<T>,
-    output_t: &Array2<T>,
+    output_q: &ArrayBase<S1, Ix2>,
+    output_t: &ArrayBase<S2, Ix2>,
 ) -> Result<(), SchurError> {
     let expected = (matrix.nrows(), matrix.ncols());
     if output_q.dim() != expected || output_t.dim() != expected {
@@ -383,8 +383,8 @@ pub fn compute_schur_complex_view(
 #[cfg(feature = "lapack-provider")]
 pub fn compute_schur_into<T>(
     matrix: &Array2<T>,
-    output_q: &mut Array2<T>,
-    output_t: &mut Array2<T>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
 ) -> Result<(), SchurError>
 where
     T: SchurProviderScalar,
@@ -400,8 +400,8 @@ where
 #[cfg(not(feature = "lapack-provider"))]
 pub fn compute_schur_into<T: qr::QrInternalScalar>(
     matrix: &Array2<T>,
-    output_q: &mut Array2<T>,
-    output_t: &mut Array2<T>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
 ) -> Result<(), SchurError> {
     let mut workspace = SchurWorkspace::default();
     compute_schur_with_workspace_into(matrix, output_q, output_t, &mut workspace)
@@ -413,8 +413,8 @@ pub fn compute_schur_into<T: qr::QrInternalScalar>(
 /// Returns an error for invalid inputs, output shapes, or convergence failure.
 pub fn compute_schur_complex_into(
     matrix: &Array2<Complex64>,
-    output_q: &mut Array2<Complex64>,
-    output_t: &mut Array2<Complex64>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
 ) -> Result<(), SchurError> {
     let mut workspace = SchurComplexWorkspace::default();
     compute_schur_complex_with_workspace_into(matrix, output_q, output_t, &mut workspace)
@@ -427,8 +427,8 @@ pub fn compute_schur_complex_into(
 #[cfg(feature = "lapack-provider")]
 pub fn compute_schur_into_view<T>(
     matrix: &ArrayView2<'_, T>,
-    output_q: &mut Array2<T>,
-    output_t: &mut Array2<T>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
 ) -> Result<(), SchurError>
 where
     T: SchurProviderScalar,
@@ -447,8 +447,8 @@ where
 #[cfg(not(feature = "lapack-provider"))]
 pub fn compute_schur_into_view<T: qr::QrInternalScalar>(
     matrix: &ArrayView2<'_, T>,
-    output_q: &mut Array2<T>,
-    output_t: &mut Array2<T>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
 ) -> Result<(), SchurError> {
     validate_output_shapes(matrix, output_q, output_t)?;
     let result = compute_schur_impl(matrix)?;
@@ -463,8 +463,8 @@ pub fn compute_schur_into_view<T: qr::QrInternalScalar>(
 /// Returns an error for invalid inputs, output shapes, or convergence failure.
 pub fn compute_schur_complex_into_view(
     matrix: &ArrayView2<'_, Complex64>,
-    output_q: &mut Array2<Complex64>,
-    output_t: &mut Array2<Complex64>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
 ) -> Result<(), SchurError> {
     validate_output_shapes_complex(matrix, output_q, output_t)?;
     let result = compute_schur_complex_impl(matrix)?;
@@ -480,22 +480,14 @@ pub fn compute_schur_complex_into_view(
 #[cfg(feature = "lapack-provider")]
 pub fn compute_schur_with_workspace_into<T>(
     matrix: &Array2<T>,
-    output_q: &mut Array2<T>,
-    output_t: &mut Array2<T>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
     workspace: &mut SchurWorkspace<T>,
 ) -> Result<(), SchurError>
 where
     T: SchurProviderScalar,
 {
-    validate_output_shapes(&matrix.view(), output_q, output_t)?;
-    workspace.ensure_square(matrix.nrows());
-
-    let result = compute_schur_impl(&matrix.view())?;
-    workspace.q_scratch.assign(&result.q);
-    workspace.t_scratch.assign(&result.t);
-    output_q.assign(&workspace.q_scratch);
-    output_t.assign(&workspace.t_scratch);
-    Ok(())
+    compute_schur_view_with_workspace_into(&matrix.view(), output_q, output_t, workspace)
 }
 
 /// Compute Schur decomposition into caller-provided outputs using reusable `workspace`.
@@ -505,14 +497,55 @@ where
 #[cfg(not(feature = "lapack-provider"))]
 pub fn compute_schur_with_workspace_into<T: qr::QrInternalScalar>(
     matrix: &Array2<T>,
-    output_q: &mut Array2<T>,
-    output_t: &mut Array2<T>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    workspace: &mut SchurWorkspace<T>,
+) -> Result<(), SchurError> {
+    compute_schur_view_with_workspace_into(&matrix.view(), output_q, output_t, workspace)
+}
+
+/// Compute Schur decomposition from a matrix view into caller-provided outputs using reusable
+/// `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shapes, or convergence failure.
+#[cfg(feature = "lapack-provider")]
+pub fn compute_schur_view_with_workspace_into<T>(
+    matrix: &ArrayView2<'_, T>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    workspace: &mut SchurWorkspace<T>,
+) -> Result<(), SchurError>
+where
+    T: SchurProviderScalar,
+{
+    validate_output_shapes(matrix, output_q, output_t)?;
+    workspace.ensure_square(matrix.nrows());
+
+    let result = compute_schur_impl(matrix)?;
+    workspace.q_scratch.assign(&result.q);
+    workspace.t_scratch.assign(&result.t);
+    output_q.assign(&workspace.q_scratch);
+    output_t.assign(&workspace.t_scratch);
+    Ok(())
+}
+
+/// Compute Schur decomposition from a matrix view into caller-provided outputs using reusable
+/// `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shapes, or convergence failure.
+#[cfg(not(feature = "lapack-provider"))]
+pub fn compute_schur_view_with_workspace_into<T: qr::QrInternalScalar>(
+    matrix: &ArrayView2<'_, T>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = T>, Ix2>,
     workspace: &mut SchurWorkspace<T>,
 ) -> Result<(), SchurError> {
     validate_output_shapes(&matrix.view(), output_q, output_t)?;
     workspace.ensure_square(matrix.nrows());
 
-    let result = compute_schur_impl(&matrix.view())?;
+    let result = compute_schur_impl(matrix)?;
     workspace.q_scratch.assign(&result.q);
     workspace.t_scratch.assign(&result.t);
     output_q.assign(&workspace.q_scratch);
@@ -526,14 +559,27 @@ pub fn compute_schur_with_workspace_into<T: qr::QrInternalScalar>(
 /// Returns an error for invalid inputs, output shapes, or convergence failure.
 pub fn compute_schur_complex_with_workspace_into(
     matrix: &Array2<Complex64>,
-    output_q: &mut Array2<Complex64>,
-    output_t: &mut Array2<Complex64>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
     workspace: &mut SchurComplexWorkspace,
 ) -> Result<(), SchurError> {
-    validate_output_shapes_complex(&matrix.view(), output_q, output_t)?;
+    compute_schur_complex_view_with_workspace_into(&matrix.view(), output_q, output_t, workspace)
+}
+
+/// Compute complex Schur decomposition from a view into outputs using reusable `workspace`.
+///
+/// # Errors
+/// Returns an error for invalid inputs, output shapes, or convergence failure.
+pub fn compute_schur_complex_view_with_workspace_into(
+    matrix: &ArrayView2<'_, Complex64>,
+    output_q: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+    output_t: &mut ArrayBase<impl DataMut<Elem = Complex64>, Ix2>,
+    workspace: &mut SchurComplexWorkspace,
+) -> Result<(), SchurError> {
+    validate_output_shapes_complex(matrix, output_q, output_t)?;
     workspace.ensure_square(matrix.nrows());
 
-    let result = compute_schur_complex_impl(&matrix.view())?;
+    let result = compute_schur_complex_impl(matrix)?;
     workspace.q_scratch.assign(&result.q);
     workspace.t_scratch.assign(&result.t);
     output_q.assign(&workspace.q_scratch);
@@ -571,11 +617,22 @@ mod tests {
         let mut t = Array2::<f64>::zeros((2, 2));
         let mut workspace = SchurWorkspace::default();
         compute_schur_with_workspace_into(&matrix, &mut q, &mut t, &mut workspace).unwrap();
+        let mut q_view_ws = Array2::<f64>::zeros((2, 2));
+        let mut t_view_ws = Array2::<f64>::zeros((2, 2));
+        compute_schur_view_with_workspace_into(
+            &matrix.view(),
+            &mut q_view_ws,
+            &mut t_view_ws,
+            &mut workspace,
+        )
+        .unwrap();
 
         for i in 0..2 {
             for j in 0..2 {
                 assert!((q[[i, j]] - expected.q[[i, j]]).abs() < 1e-8_f64);
                 assert!((t[[i, j]] - expected.t[[i, j]]).abs() < 1e-8_f64);
+                assert!((q_view_ws[[i, j]] - expected.q[[i, j]]).abs() < 1e-8_f64);
+                assert!((t_view_ws[[i, j]] - expected.t[[i, j]]).abs() < 1e-8_f64);
             }
         }
     }
@@ -659,10 +716,21 @@ mod tests {
         let mut t = Array2::<Complex64>::zeros((2, 2));
         let mut workspace = SchurComplexWorkspace::default();
         compute_schur_complex_with_workspace_into(&matrix, &mut q, &mut t, &mut workspace).unwrap();
+        let mut q_view_ws = Array2::<Complex64>::zeros((2, 2));
+        let mut t_view_ws = Array2::<Complex64>::zeros((2, 2));
+        compute_schur_complex_view_with_workspace_into(
+            &matrix.view(),
+            &mut q_view_ws,
+            &mut t_view_ws,
+            &mut workspace,
+        )
+        .unwrap();
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
                 assert!((owned.q[[i, j]] - q[[i, j]]).norm() < 1e-10_f64);
                 assert!((owned.t[[i, j]] - t[[i, j]]).norm() < 1e-10_f64);
+                assert!((owned.q[[i, j]] - q_view_ws[[i, j]]).norm() < 1e-10_f64);
+                assert!((owned.t[[i, j]] - t_view_ws[[i, j]]).norm() < 1e-10_f64);
             }
         }
     }

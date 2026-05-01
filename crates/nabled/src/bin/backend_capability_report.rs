@@ -11,7 +11,7 @@ use serde::Serialize;
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[derive(Debug, Serialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
-#[allow(dead_code)]
+#[expect(dead_code)]
 enum ProviderPath {
     Native,
     Fallback,

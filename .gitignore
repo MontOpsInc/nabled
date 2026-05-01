@@ -49,6 +49,10 @@ cover/
 
 # C extensions
 *.so
+*.dylib
+*.dll
+*.pyd
+*.dSYM/
 
 # Distribution / packaging
 build/
@@ -66,3 +70,4 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+__pycache__

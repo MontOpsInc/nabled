@@ -349,6 +349,68 @@ fn arrow_iterative_pca_regression_and_stats_work() {
     let reconstructed = pca::inverse_transform_f64(&projected, &pca_result).unwrap();
     let reconstructed_view = fixed_size_list_as_array2::<Float64Type>(&reconstructed).unwrap();
     assert_eq!(reconstructed_view.dim(), (4, 2));
+    let projected_from_components = pca::transform_f64_from_components_view(
+        &pca_input,
+        &pca_result.components.view(),
+        &pca_result.mean.view(),
+    )
+    .unwrap();
+    let reconstructed_from_components = pca::inverse_transform_f64_from_components_view(
+        &projected_from_components,
+        &pca_result.components.view(),
+        &pca_result.mean.view(),
+    )
+    .unwrap();
+    let reconstructed_from_components_view =
+        fixed_size_list_as_array2::<Float64Type>(&reconstructed_from_components).unwrap();
+    assert_abs_diff_eq!(
+        reconstructed_from_components_view[[3, 1]],
+        reconstructed_view[[3, 1]],
+        epsilon = 1.0e-12
+    );
+
+    let pca_input_f32 =
+        ndarray::array![[1.0_f32, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]].into_arrow().unwrap();
+    let pca_result_f32 = pca::compute_f32(&pca_input_f32, Some(1)).unwrap();
+    let projected_f32 = pca::transform_f32_from_components_view(
+        &pca_input_f32,
+        &pca_result_f32.components.view(),
+        &pca_result_f32.mean.view(),
+    )
+    .unwrap();
+    let reconstructed_f32 = pca::inverse_transform_f32_from_components_view(
+        &projected_f32,
+        &pca_result_f32.components.view(),
+        &pca_result_f32.mean.view(),
+    )
+    .unwrap();
+    let reconstructed_f32_view =
+        fixed_size_list_as_array2::<Float32Type>(&reconstructed_f32).unwrap();
+    assert_abs_diff_eq!(reconstructed_f32_view[[2, 0]], 3.0_f32, epsilon = 1.0e-4);
+
+    let complex_input = array2_complex64_to_fixed_size_list(ndarray::array![
+        [Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)],
+        [Complex64::new(2.0, 0.0), Complex64::new(0.0, 2.0)],
+        [Complex64::new(3.0, 0.0), Complex64::new(0.0, 3.0)],
+    ])
+    .unwrap();
+    let complex_pca = pca::compute_complex(&complex_input, Some(1)).unwrap();
+    let complex_projected = pca::transform_complex_from_components_view(
+        &complex_input,
+        &complex_pca.components.view(),
+        &complex_pca.mean.view(),
+    )
+    .unwrap();
+    let complex_reconstructed = pca::inverse_transform_complex_from_components_view(
+        &complex_projected,
+        &complex_pca.components.view(),
+        &complex_pca.mean.view(),
+    )
+    .unwrap();
+    let complex_reconstructed_view = complex64_as_array_view2(&complex_reconstructed).unwrap();
+    let reconstructed_value = complex_reconstructed_view[[1, 1]];
+    assert_abs_diff_eq!(reconstructed_value.re, 0.0_f64, epsilon = 1.0e-6);
+    assert_abs_diff_eq!(reconstructed_value.im, 2.0_f64, epsilon = 1.0e-6);
 
     let x = array![[1.0_f64], [2.0], [3.0], [4.0]].into_arrow().unwrap();
     let y = Float64Array::from(vec![2.0, 4.0, 6.0, 8.0]);
@@ -780,6 +842,11 @@ fn arrow_sparse_extended_factorization_and_reuse_workflows_work() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "this integration test intentionally exercises the full advanced Arrow tensor \
+              surface in one workflow"
+)]
 fn arrow_tensor_advanced_decomposition_and_network_workflows_work() {
     let (field, array) =
         tensor_arrow_f64("tensor", &[2, 2, 2], vec![1.0, 3.0, 2.0, 6.0, 2.0, 6.0, 4.0, 12.0]);
@@ -792,6 +859,28 @@ fn arrow_tensor_advanced_decomposition_and_network_workflows_work() {
     let original_view = fixed_shape_tensor_as_array_viewd::<Float64Type>(&field, &array).unwrap();
     assert_eq!(cp_recon_view.shape(), original_view.shape());
     assert_abs_diff_eq!(cp_recon_view[[1, 1, 1]], original_view[[1, 1, 1]], epsilon = 1.0e-6);
+    let cp_factor_views = cp.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>();
+    let cp_metrics = tensor::cp_als_nd_diagnostics_from_factors_view::<Float64Type>(
+        &field,
+        &array,
+        &cp.weights.view(),
+        &cp_factor_views,
+    )
+    .unwrap();
+    assert!(cp_metrics.fit >= 0.999_999_f64);
+    let (cp_recon_view_field, cp_recon_view_array) =
+        tensor::cp_als_nd_reconstruct_from_factors_view::<Float64Type>(
+            "cp_recon_view",
+            &cp.weights.view(),
+            &cp_factor_views,
+        )
+        .unwrap();
+    let cp_recon_view_from_factors = fixed_shape_tensor_as_array_viewd::<Float64Type>(
+        &cp_recon_view_field,
+        &cp_recon_view_array,
+    )
+    .unwrap();
+    assert_abs_diff_eq!(cp_recon_view_from_factors[[0, 1, 1]], 6.0_f64, epsilon = 1.0e-6);
 
     let hosvd = tensor::hosvd_nd::<Float64Type>(&field, &array, &[1, 1, 1]).unwrap();
     let (hosvd_recon_field, hosvd_recon_array) =
@@ -801,18 +890,50 @@ fn arrow_tensor_advanced_decomposition_and_network_workflows_work() {
             .unwrap();
     assert_eq!(hosvd_recon_view.shape(), &[2, 2, 2]);
     assert_abs_diff_eq!(hosvd_recon_view[[0, 0, 1]], 3.0_f64, epsilon = 1.0e-6);
+    let hosvd_factor_views = hosvd.factors.iter().map(|factor| factor.view()).collect::<Vec<_>>();
+    let (hosvd_recon_view_field, hosvd_recon_view_array) =
+        tensor::hosvd_nd_reconstruct_from_factors_view::<Float64Type>(
+            "hosvd_recon_view",
+            &hosvd.core.view(),
+            &hosvd_factor_views,
+        )
+        .unwrap();
+    let hosvd_recon_from_factors = fixed_shape_tensor_as_array_viewd::<Float64Type>(
+        &hosvd_recon_view_field,
+        &hosvd_recon_view_array,
+    )
+    .unwrap();
+    assert_abs_diff_eq!(hosvd_recon_from_factors[[1, 0, 1]], 6.0_f64, epsilon = 1.0e-6);
 
     let tucker_core =
         tensor::tucker_project::<Float64Type>(&field, &array, &hosvd.factors).unwrap();
+    let tucker_core_from_factors = tensor::tucker_project_from_factors_view::<Float64Type>(
+        &field,
+        &array,
+        &hosvd_factor_views,
+    )
+    .unwrap();
     let tucker_reexpanded =
         tensor::tucker_expand::<Float64Type>(&tucker_core.0, &tucker_core.1, &hosvd.factors)
             .unwrap();
+    let tucker_reexpanded_from_factors = tensor::tucker_expand_from_factors_view::<Float64Type>(
+        &tucker_core_from_factors.0,
+        &tucker_core_from_factors.1,
+        &hosvd_factor_views,
+    )
+    .unwrap();
     let tucker_view = fixed_shape_tensor_as_array_viewd::<Float64Type>(
         &tucker_reexpanded.0,
         &tucker_reexpanded.1,
     )
     .unwrap();
     assert_abs_diff_eq!(tucker_view[[1, 1, 1]], 12.0_f64, epsilon = 1.0e-6);
+    let tucker_view_from_factors = fixed_shape_tensor_as_array_viewd::<Float64Type>(
+        &tucker_reexpanded_from_factors.0,
+        &tucker_reexpanded_from_factors.1,
+    )
+    .unwrap();
+    assert_abs_diff_eq!(tucker_view_from_factors[[0, 1, 0]], 2.0_f64, epsilon = 1.0e-6);
 
     let tt = tensor::tt_svd::<Float64Type>(&field, &array, &TtSvdConfig::default()).unwrap();
     let tt_norm = tensor::tt_norm(&tt).unwrap();

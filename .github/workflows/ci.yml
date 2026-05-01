@@ -257,8 +257,8 @@ jobs:
     - name: Generate code coverage
       run: |
         cargo llvm-cov clean --workspace
-        cargo llvm-cov --workspace --exclude nabled --lib --tests --no-default-features --no-report
-        cargo llvm-cov --workspace --exclude nabled --lib --tests --no-default-features --features openblas-system --no-report
+        cargo llvm-cov --workspace --exclude nabled --exclude pynabled --lib --tests --no-default-features --no-report
+        cargo llvm-cov --workspace --exclude nabled --exclude pynabled --lib --tests --no-default-features --features openblas-system --no-report
         cargo llvm-cov report --summary-only --fail-under-lines 90 --ignore-filename-regex "crates/nabled-linalg/src/accelerator/gpu.rs"
         cargo llvm-cov report --lcov --output-path lcov.info --ignore-filename-regex "crates/nabled-linalg/src/accelerator/gpu.rs"
 
@@ -390,27 +390,81 @@ jobs:
         name: benchmark-smoke-${{ github.run_id }}
         path: coverage/benchmarks
 
+  python-version-check:
+    name: Python package version alignment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify pyproject.toml version matches Cargo workspace
+        run: bash scripts/check_pyproject_version_matches_cargo.sh
+
+  python-quality:
+    name: Python quality (coverage + package/feature smoke)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install provider system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libopenblas-dev liblapack-dev
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Run Python quality gate
+        run: bash scripts/python_quality_gate.sh
+      - name: Upload Python coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/python/python-coverage.xml
+          fail_ci_if_error: true
+          disable_telem: true
+      - name: Upload Python quality artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-quality-${{ github.run_id }}
+          path: |
+            coverage/python
+            dist/python-quality
+
   # Summary job that branch protection can depend on
   ci-success:
     name: CI Success
-    needs: [changes, check, test-unit, test-integration, coverage, benchmark-smoke]
+    needs:
+      - changes
+      - check
+      - test-unit
+      - test-integration
+      - coverage
+      - benchmark-smoke
+      - python-version-check
+      - python-quality
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check if all jobs succeeded
         run: |
-          # If only docs changed, that's success
+          if [[ "${{ needs.python-version-check.result }}" != "success" ]]; then
+            echo "python-version-check failed ❌"
+            exit 1
+          fi
+
+          # If only docs changed, that's success (wheel smoke skipped)
           if [[ "${{ needs.changes.outputs.code }}" == "false" ]]; then
             echo "Documentation-only change ✅"
             exit 0
           fi
 
-          # Otherwise check that all CI jobs succeeded
           if [[ "${{ needs.check.result }}" != "success" ||
                 "${{ needs.test-unit.result }}" != "success" ||
                 "${{ needs.test-integration.result }}" != "success" ||
                 "${{ needs.coverage.result }}" != "success" ||
-                "${{ needs.benchmark-smoke.result }}" != "success" ]]; then
+                "${{ needs.benchmark-smoke.result }}" != "success" ||
+                "${{ needs.python-quality.result }}" != "success" ]]; then
             echo "One or more jobs failed ❌"
             exit 1
           fi

@@ -2,6 +2,8 @@
 
 use arrow_array::FixedSizeListArray;
 use arrow_array::types::{Float32Type, Float64Type};
+use ndarray::{ArrayView1, ArrayView2};
+use num_complex::Complex64;
 
 use super::{
     ArrowInteropError, complex64_matrix_from_owned, complex64_matrix_view,
@@ -40,8 +42,20 @@ pub fn transform_f32(
     matrix: &FixedSizeListArray,
     pca: &crate::ml::pca::NdarrayPCAResult<f32>,
 ) -> Result<FixedSizeListArray, ArrowInteropError> {
+    transform_f32_from_components_view(matrix, &pca.components.view(), &pca.mean.view())
+}
+
+/// Project `f32` Arrow dense data into PCA score space using borrowed PCA factors.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls or shape conversion fails.
+pub fn transform_f32_from_components_view(
+    matrix: &FixedSizeListArray,
+    components: &ArrayView2<'_, f32>,
+    mean: &ArrayView1<'_, f32>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
     let matrix_view = fixed_size_list_view::<Float32Type>(matrix)?;
-    let output = crate::ml::pca::transform_view(&matrix_view, pca);
+    let output = crate::ml::pca::transform_from_components_view(&matrix_view, components, mean)?;
     fixed_size_list_from_owned::<Float32Type>(output)
 }
 
@@ -53,8 +67,20 @@ pub fn transform_f64(
     matrix: &FixedSizeListArray,
     pca: &crate::ml::pca::NdarrayPCAResult<f64>,
 ) -> Result<FixedSizeListArray, ArrowInteropError> {
+    transform_f64_from_components_view(matrix, &pca.components.view(), &pca.mean.view())
+}
+
+/// Project `f64` Arrow dense data into PCA score space using borrowed PCA factors.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls or shape conversion fails.
+pub fn transform_f64_from_components_view(
+    matrix: &FixedSizeListArray,
+    components: &ArrayView2<'_, f64>,
+    mean: &ArrayView1<'_, f64>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
     let matrix_view = fixed_size_list_view::<Float64Type>(matrix)?;
-    let output = crate::ml::pca::transform_view(&matrix_view, pca);
+    let output = crate::ml::pca::transform_from_components_view(&matrix_view, components, mean)?;
     fixed_size_list_from_owned::<Float64Type>(output)
 }
 
@@ -66,8 +92,21 @@ pub fn inverse_transform_f32(
     scores: &FixedSizeListArray,
     pca: &crate::ml::pca::NdarrayPCAResult<f32>,
 ) -> Result<FixedSizeListArray, ArrowInteropError> {
+    inverse_transform_f32_from_components_view(scores, &pca.components.view(), &pca.mean.view())
+}
+
+/// Reconstruct `f32` Arrow dense data from PCA scores using borrowed PCA factors.
+///
+/// # Errors
+/// Returns an error when the score matrix contains nulls or shape conversion fails.
+pub fn inverse_transform_f32_from_components_view(
+    scores: &FixedSizeListArray,
+    components: &ArrayView2<'_, f32>,
+    mean: &ArrayView1<'_, f32>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
     let score_view = fixed_size_list_view::<Float32Type>(scores)?;
-    let output = crate::ml::pca::inverse_transform_view(&score_view, pca);
+    let output =
+        crate::ml::pca::inverse_transform_from_components_view(&score_view, components, mean)?;
     fixed_size_list_from_owned::<Float32Type>(output)
 }
 
@@ -79,8 +118,21 @@ pub fn inverse_transform_f64(
     scores: &FixedSizeListArray,
     pca: &crate::ml::pca::NdarrayPCAResult<f64>,
 ) -> Result<FixedSizeListArray, ArrowInteropError> {
+    inverse_transform_f64_from_components_view(scores, &pca.components.view(), &pca.mean.view())
+}
+
+/// Reconstruct `f64` Arrow dense data from PCA scores using borrowed PCA factors.
+///
+/// # Errors
+/// Returns an error when the score matrix contains nulls or shape conversion fails.
+pub fn inverse_transform_f64_from_components_view(
+    scores: &FixedSizeListArray,
+    components: &ArrayView2<'_, f64>,
+    mean: &ArrayView1<'_, f64>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
     let score_view = fixed_size_list_view::<Float64Type>(scores)?;
-    let output = crate::ml::pca::inverse_transform_view(&score_view, pca);
+    let output =
+        crate::ml::pca::inverse_transform_from_components_view(&score_view, components, mean)?;
     fixed_size_list_from_owned::<Float64Type>(output)
 }
 
@@ -104,8 +156,24 @@ pub fn transform_complex(
     matrix: &FixedSizeListArray,
     pca: &crate::ml::pca::NdarrayComplexPCAResult,
 ) -> Result<FixedSizeListArray, ArrowInteropError> {
+    transform_complex_from_components_view(matrix, &pca.components.view(), &pca.mean.view())
+}
+
+/// Project complex Arrow dense data into PCA score space using borrowed PCA factors.
+///
+/// # Errors
+/// Returns an error when the matrix contains nulls or shape conversion fails.
+pub fn transform_complex_from_components_view(
+    matrix: &FixedSizeListArray,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
     let matrix_view = complex64_matrix_view(matrix)?;
-    complex64_matrix_from_owned(crate::ml::pca::transform_complex_view(&matrix_view, pca))
+    complex64_matrix_from_owned(crate::ml::pca::transform_complex_from_components_view(
+        &matrix_view,
+        components,
+        mean,
+    )?)
 }
 
 /// Reconstruct complex Arrow dense data from PCA scores.
@@ -116,6 +184,22 @@ pub fn inverse_transform_complex(
     scores: &FixedSizeListArray,
     pca: &crate::ml::pca::NdarrayComplexPCAResult,
 ) -> Result<FixedSizeListArray, ArrowInteropError> {
+    inverse_transform_complex_from_components_view(scores, &pca.components.view(), &pca.mean.view())
+}
+
+/// Reconstruct complex Arrow dense data from PCA scores using borrowed PCA factors.
+///
+/// # Errors
+/// Returns an error when the score matrix contains nulls or shape conversion fails.
+pub fn inverse_transform_complex_from_components_view(
+    scores: &FixedSizeListArray,
+    components: &ArrayView2<'_, Complex64>,
+    mean: &ArrayView1<'_, Complex64>,
+) -> Result<FixedSizeListArray, ArrowInteropError> {
     let score_view = complex64_matrix_view(scores)?;
-    complex64_matrix_from_owned(crate::ml::pca::inverse_transform_complex_view(&score_view, pca))
+    complex64_matrix_from_owned(crate::ml::pca::inverse_transform_complex_from_components_view(
+        &score_view,
+        components,
+        mean,
+    )?)
 }
