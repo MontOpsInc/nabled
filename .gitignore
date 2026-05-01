@@ -2,7 +2,6 @@
 debug
 target
 **/*.rs.bk
-Cargo.lock
 
 # IDE files
 .zed

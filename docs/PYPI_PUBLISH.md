@@ -44,6 +44,8 @@ maturin build --release --locked --out dist
 ```
 
 Using `--out dist` matches CI and keeps wheels in one place (the default without `--out` is often `target/wheels/`). Fix any compile or packaging errors before tagging.
+The repository tracks `Cargo.lock` intentionally so CI release wheels can build with
+`--locked` from a clean checkout.
 
 ### 2. Local: clean venv + wheel install + import
 
