@@ -46,6 +46,29 @@ def test_pairwise_cosine_workspace_rejects_dtype_mismatch():
         pynabled.pairwise_cosine_similarity(left, right, workspace=workspace)
 
 
+def test_pairwise_cosine_workspace_allocates_outputs_and_validates_dtype():
+    with pytest.raises(TypeError, match="dtype must be float32 or float64"):
+        pynabled.PairwiseCosineWorkspace(np.int64)
+
+    workspace = pynabled.PairwiseCosineWorkspace(np.float64)
+    left = np.array([[1.0, 0.0], [1.0, 1.0]], dtype=np.float64)
+    right = np.array([[0.0, 1.0], [1.0, 1.0]], dtype=np.float64)
+
+    assert workspace.dtype == np.dtype(np.float64)
+    np.testing.assert_allclose(
+        workspace.similarity(left, right),
+        pynabled.pairwise_cosine_similarity(left, right),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        workspace.distance(left, right),
+        pynabled.pairwise_cosine_distance(left, right),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
 def test_matrix_function_workspace_reuses_real_and_complex_paths():
     real_workspace = pynabled.MatrixFunctionWorkspace(np.float32)
     real_matrix = np.array([[1.05, 0.02], [0.0, 0.97]], dtype=np.float32)
@@ -100,6 +123,56 @@ def test_matrix_function_workspace_reuses_real_and_complex_paths():
         complex_workspace.log_taylor(real_matrix.astype(np.float64))
 
 
+def test_matrix_function_workspace_allocates_all_real_paths():
+    workspace = pynabled.MatrixFunctionWorkspace(np.float64)
+    positive_diagonal = np.diag([1.5, 2.0]).astype(np.float64)
+    signed_diagonal = np.diag([-2.0, 3.0]).astype(np.float64)
+
+    assert workspace.dtype == np.dtype(np.float64)
+    np.testing.assert_allclose(
+        workspace.exp(positive_diagonal, max_terms=32, tolerance=1e-12),
+        pynabled.matrix_exp(positive_diagonal, max_terms=32, tolerance=1e-12),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        workspace.exp_eigen(positive_diagonal),
+        pynabled.matrix_exp_eigen(positive_diagonal),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        workspace.log_taylor(positive_diagonal, max_terms=32, tolerance=1e-12),
+        pynabled.matrix_log_taylor(positive_diagonal, max_terms=32, tolerance=1e-12),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        workspace.log_eigen(positive_diagonal),
+        pynabled.matrix_log_eigen(positive_diagonal),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        workspace.log_svd(positive_diagonal),
+        pynabled.matrix_log_svd(positive_diagonal),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        workspace.power(positive_diagonal, 2.0),
+        pynabled.matrix_power(positive_diagonal, 2.0),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        workspace.sign(signed_diagonal),
+        pynabled.matrix_sign(signed_diagonal),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
 def test_sylvester_workspace_reuses_real_and_complex_paths():
     real_workspace = pynabled.SylvesterWorkspace(np.float64)
     a = np.array([[2.0, 0.0], [0.0, 3.0]], dtype=np.float64)
@@ -138,6 +211,28 @@ def test_sylvester_workspace_reuses_real_and_complex_paths():
     )
 
 
+def test_sylvester_workspace_allocates_results_and_reports_dtype():
+    workspace = pynabled.SylvesterWorkspace(np.float64)
+    a = np.array([[2.0, 0.0], [0.0, 3.0]], dtype=np.float64)
+    b = np.array([[1.0, 0.0], [0.0, 4.0]], dtype=np.float64)
+    c = np.array([[3.0, 2.0], [1.0, 5.0]], dtype=np.float64)
+    q = np.array([[2.0, 0.0], [0.0, 1.0]], dtype=np.float64)
+
+    assert workspace.dtype == np.dtype(np.float64)
+    np.testing.assert_allclose(
+        workspace.solve(a, b, c),
+        pynabled.sylvester_solve(a, b, c),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        workspace.lyapunov(a, q),
+        pynabled.lyapunov_solve(a, q),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
 def test_schur_workspace_reuses_real_and_complex_paths():
     real_workspace = pynabled.SchurWorkspace(np.float32)
     real_matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
@@ -170,6 +265,17 @@ def test_schur_workspace_reuses_real_and_complex_paths():
         rtol=1e-10,
         atol=1e-12,
     )
+
+
+def test_schur_workspace_allocates_result_and_reports_dtype():
+    workspace = pynabled.SchurWorkspace(np.float64)
+    matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+
+    assert workspace.dtype == np.dtype(np.float64)
+    result = workspace.compute(matrix)
+
+    assert isinstance(result, pynabled.SchurResult)
+    np.testing.assert_allclose(result.q @ result.t @ result.q.T, matrix, rtol=1e-10, atol=1e-12)
 
 
 def test_workspace_kwargs_validate_expected_types():

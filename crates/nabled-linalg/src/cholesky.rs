@@ -1479,6 +1479,54 @@ mod tests {
     }
 
     #[test]
+    fn solve_into_view_matches_owned_and_rejects_bad_lengths() {
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![5.0_f64, 1.0_f64, 1.0_f64, 2.0_f64])
+                .unwrap();
+        let rhs = Array1::from_vec(vec![3.0_f64, 4.0_f64]);
+        let expected = solve(&matrix, &rhs).unwrap();
+        let mut output = Array1::<f64>::zeros(2);
+
+        solve_into_view(&matrix.view(), &rhs.view(), &mut output.view_mut()).unwrap();
+        assert!((output[0] - expected[0]).abs() < 1e-10_f64);
+        assert!((output[1] - expected[1]).abs() < 1e-10_f64);
+
+        let bad_rhs = Array1::from_vec(vec![1.0_f64]);
+        assert!(matches!(
+            solve_into_view(&matrix.view(), &bad_rhs.view(), &mut output.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+
+        let mut bad_output = Array1::<f64>::zeros(1);
+        assert!(matches!(
+            solve_into_view(&matrix.view(), &rhs.view(), &mut bad_output.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn inverse_into_view_matches_allocating_path_and_rejects_bad_shape() {
+        let matrix =
+            Array2::<f64>::from_shape_vec((2, 2), vec![5.0_f64, 1.0_f64, 1.0_f64, 2.0_f64])
+                .unwrap();
+        let expected = inverse(&matrix).unwrap();
+        let mut output = Array2::<f64>::zeros(matrix.dim());
+
+        inverse_into_view(&matrix.view(), &mut output.view_mut()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((output[[i, j]] - expected[[i, j]]).abs() < 1e-10_f64);
+            }
+        }
+
+        let mut bad_output = Array2::<f64>::zeros((1, 1));
+        assert!(matches!(
+            inverse_into_view(&matrix.view(), &mut bad_output.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
     fn solve_rejects_bad_rhs_length() {
         let matrix = Array2::<f64>::eye(2);
         let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64, 3.0_f64]);
@@ -1587,6 +1635,52 @@ mod tests {
                 assert!((factor_inverse[[i, j]] - factor_inverse_out[[i, j]]).norm() < 1e-10);
             }
         }
+    }
+
+    #[test]
+    fn complex_solve_and_inverse_into_views_match_allocating_paths() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(5.0, 0.0),
+            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0, 1.0),
+            Complex64::new(4.0, 0.0),
+        ])
+        .unwrap();
+        let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
+        let expected_solution = solve_complex(&matrix, &rhs).unwrap();
+        let expected_inverse = inverse_complex(&matrix).unwrap();
+
+        let mut solution = Array1::<Complex64>::zeros(rhs.len());
+        solve_complex_into_view(&matrix.view(), &rhs.view(), &mut solution.view_mut()).unwrap();
+        for i in 0..rhs.len() {
+            assert!((solution[i] - expected_solution[i]).norm() < 1e-10);
+        }
+
+        let mut inverse = Array2::<Complex64>::zeros(matrix.dim());
+        inverse_complex_into_view(&matrix.view(), &mut inverse.view_mut()).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((inverse[[i, j]] - expected_inverse[[i, j]]).norm() < 1e-10);
+            }
+        }
+
+        let bad_rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0)]);
+        assert!(matches!(
+            solve_complex_into_view(&matrix.view(), &bad_rhs.view(), &mut solution.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+
+        let mut bad_solution = Array1::<Complex64>::zeros(1);
+        assert!(matches!(
+            solve_complex_into_view(&matrix.view(), &rhs.view(), &mut bad_solution.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
+
+        let mut bad_inverse = Array2::<Complex64>::zeros((1, 1));
+        assert!(matches!(
+            inverse_complex_into_view(&matrix.view(), &mut bad_inverse.view_mut()),
+            Err(CholeskyError::InvalidInput(_))
+        ));
     }
 
     #[cfg(feature = "magma-system")]

@@ -1656,6 +1656,171 @@ mod tests {
     }
 
     #[test]
+    fn least_squares_from_factor_views_reject_inconsistent_inputs() {
+        let q = Array2::<f64>::eye(2);
+        let r = Array2::<f64>::eye(2);
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64]);
+        let config = QRConfig::default();
+
+        let bad_r_rows = Array2::<f64>::zeros((3, 2));
+        let mut output = Array1::<f64>::zeros(2);
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &bad_r_rows.view(),
+                None,
+                &rhs.view(),
+                &config,
+                &mut output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+
+        let bad_rhs = Array1::from_vec(vec![1.0_f64]);
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &r.view(),
+                None,
+                &bad_rhs.view(),
+                &config,
+                &mut output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+
+        let mut short_output = Array1::<f64>::zeros(1);
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &r.view(),
+                None,
+                &rhs.view(),
+                &config,
+                &mut short_output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+
+        let singular_r = Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0, 0.0, 0.0]).unwrap();
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &singular_r.view(),
+                None,
+                &rhs.view(),
+                &config,
+                &mut output.view_mut(),
+            ),
+            Err(QRError::SingularMatrix)
+        ));
+
+        let bad_permutation = Array2::<f64>::eye(3);
+        assert!(matches!(
+            solve_least_squares_from_qr_factors_view_into(
+                &q.view(),
+                &r.view(),
+                Some(bad_permutation.view()),
+                &rhs.view(),
+                &config,
+                &mut output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+    }
+
+    #[test]
+    fn least_squares_from_factor_views_applies_permutation() {
+        let q = Array2::<f64>::eye(2);
+        let r = Array2::<f64>::eye(2);
+        let permutation =
+            Array2::from_shape_vec((2, 2), vec![0.0_f64, 1.0_f64, 1.0_f64, 0.0_f64]).unwrap();
+        let rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64]);
+        let mut output = Array1::<f64>::zeros(2);
+
+        solve_least_squares_from_qr_factors_view_into(
+            &q.view(),
+            &r.view(),
+            Some(permutation.view()),
+            &rhs.view(),
+            &QRConfig::default(),
+            &mut output.view_mut(),
+        )
+        .unwrap();
+
+        assert!((output[0] - 2.0_f64).abs() < 1e-12_f64);
+        assert!((output[1] - 1.0_f64).abs() < 1e-12_f64);
+    }
+
+    #[test]
+    fn least_squares_view_into_handles_tall_and_wide_systems() {
+        let tall_matrix = Array2::from_shape_vec((4, 2), vec![
+            1.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 4.0_f64,
+        ])
+        .unwrap();
+        let tall_rhs = Array1::from_vec(vec![2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64]);
+        let mut tall_output = Array1::<f64>::zeros(2);
+        solve_least_squares_view_into(
+            &tall_matrix.view(),
+            &tall_rhs.view(),
+            &QRConfig::default(),
+            &mut tall_output.view_mut(),
+        )
+        .unwrap();
+        assert!((tall_output[0] - 1.0_f64).abs() < 1e-8_f64);
+        assert!((tall_output[1] - 1.0_f64).abs() < 1e-8_f64);
+
+        let wide_matrix = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 0.0_f64,
+        ])
+        .unwrap();
+        let wide_rhs = Array1::from_vec(vec![1.0_f64, 2.0_f64]);
+        let mut wide_output = Array1::<f64>::zeros(3);
+        solve_least_squares_view_into(
+            &wide_matrix.view(),
+            &wide_rhs.view(),
+            &QRConfig::default(),
+            &mut wide_output.view_mut(),
+        )
+        .unwrap();
+        assert!((wide_output[0] - 1.0_f64).abs() < 1e-10_f64);
+        assert!((wide_output[1] - 2.0_f64).abs() < 1e-10_f64);
+        assert!(wide_output[2].abs() < 1e-10_f64);
+
+        let mut short_output = Array1::<f64>::zeros(2);
+        assert!(matches!(
+            solve_least_squares_view_into(
+                &wide_matrix.view(),
+                &wide_rhs.view(),
+                &QRConfig::default(),
+                &mut short_output.view_mut(),
+            ),
+            Err(QRError::InvalidDimensions(_))
+        ));
+    }
+
+    #[test]
+    fn permutation_order_rejects_invalid_permutations() {
+        let rectangular = Array2::<f64>::zeros((2, 3));
+        assert!(matches!(permutation_order(&rectangular), Err(QRError::InvalidDimensions(_))));
+
+        let empty_column = Array2::<f64>::zeros((2, 2));
+        assert!(matches!(permutation_order(&empty_column), Err(QRError::InvalidInput(_))));
+
+        let rectangular_complex = Array2::<Complex64>::zeros((2, 3));
+        assert!(matches!(
+            complex_permutation_order(&rectangular_complex),
+            Err(QRError::InvalidDimensions(_))
+        ));
+
+        let empty_complex_column = Array2::<Complex64>::zeros((2, 2));
+        assert!(matches!(
+            complex_permutation_order(&empty_complex_column),
+            Err(QRError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
     fn complex_qr_reconstructs_input() {
         let matrix = Array2::from_shape_vec((2, 2), vec![
             Complex64::new(1.0_f64, 1.0_f64),

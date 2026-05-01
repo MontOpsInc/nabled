@@ -806,7 +806,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use ndarray::Array2;
+    use ndarray::{Array1, Array2};
     use num_complex::Complex64;
 
     use super::*;
@@ -1001,6 +1001,169 @@ mod tests {
         assert_eq!(centered, center_columns_complex(&matrix));
         assert_eq!(covariance, covariance_matrix_complex(&matrix).unwrap());
         assert_eq!(correlation, correlation_matrix_complex(&matrix).unwrap());
+    }
+
+    #[test]
+    fn stats_owned_into_paths_cover_empty_valid_and_error_cases() {
+        assert_eq!(
+            StatsError::InvalidInput("bad shape".to_string()).to_string(),
+            "Invalid input: bad shape"
+        );
+
+        let matrix =
+            Array2::from_shape_vec((4, 2), vec![1.0_f64, 3.0, 2.0, 2.0, 3.0, 1.0, 4.0, 0.0])
+                .unwrap();
+        let mut means = Array1::<f64>::zeros(2);
+        let mut centered = Array2::<f64>::zeros((4, 2));
+        let mut covariance = Array2::<f64>::zeros((2, 2));
+        let mut correlation = Array2::<f64>::zeros((2, 2));
+
+        column_means_into(&matrix, &mut means).unwrap();
+        center_columns_into(&matrix, &mut centered).unwrap();
+        covariance_matrix_into(&matrix, &mut covariance).unwrap();
+        correlation_matrix_into(&matrix, &mut correlation).unwrap();
+
+        assert_eq!(means, column_means(&matrix));
+        assert_eq!(centered, center_columns(&matrix));
+        assert_eq!(covariance, covariance_matrix(&matrix).unwrap());
+        assert_eq!(correlation, correlation_matrix(&matrix).unwrap());
+
+        let empty_columns = Array2::<f64>::zeros((0, 3));
+        let mut empty_means = Array1::<f64>::from_vec(vec![1.0, 1.0, 1.0]);
+        column_means_into(&empty_columns, &mut empty_means).unwrap();
+        assert!(empty_means.iter().all(|value| *value == 0.0));
+
+        let mut bad_means = Array1::<f64>::zeros(3);
+        assert!(matches!(
+            column_means_into(&matrix, &mut bad_means),
+            Err(StatsError::InvalidInput(_))
+        ));
+
+        let mut bad_centered = Array2::<f64>::zeros((4, 3));
+        assert!(matches!(
+            center_columns_into(&matrix, &mut bad_centered),
+            Err(StatsError::InvalidInput(_))
+        ));
+
+        let empty = Array2::<f64>::zeros((0, 0));
+        let mut empty_covariance = Array2::<f64>::zeros((0, 0));
+        assert!(matches!(
+            covariance_matrix_into(&empty, &mut empty_covariance),
+            Err(StatsError::EmptyMatrix)
+        ));
+
+        let one_row = Array2::from_shape_vec((1, 2), vec![1.0, 2.0]).unwrap();
+        let mut one_row_covariance = Array2::<f64>::zeros((2, 2));
+        assert!(matches!(
+            covariance_matrix_into(&one_row, &mut one_row_covariance),
+            Err(StatsError::InsufficientSamples)
+        ));
+
+        let mut bad_covariance = Array2::<f64>::zeros((3, 3));
+        assert!(matches!(
+            covariance_matrix_into(&matrix, &mut bad_covariance),
+            Err(StatsError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            correlation_matrix_into(&matrix, &mut bad_covariance),
+            Err(StatsError::InvalidInput(_))
+        ));
+
+        let unstable = Array2::from_shape_vec((2, 2), vec![f64::MAX, 0.0, -f64::MAX, 0.0]).unwrap();
+        let mut unstable_covariance = Array2::<f64>::zeros((2, 2));
+        assert!(matches!(
+            covariance_matrix_into(&unstable, &mut unstable_covariance),
+            Err(StatsError::NumericalInstability)
+        ));
+    }
+
+    #[test]
+    fn complex_stats_owned_into_paths_cover_empty_valid_and_error_cases() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 2.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(3.0, -2.0),
+            Complex64::new(4.0, 1.0),
+        ])
+        .unwrap();
+        let mut means = Array1::<Complex64>::zeros(2);
+        let mut centered = Array2::<Complex64>::zeros((3, 2));
+        let mut covariance = Array2::<Complex64>::zeros((2, 2));
+        let mut correlation = Array2::<Complex64>::zeros((2, 2));
+
+        column_means_complex_into(&matrix, &mut means).unwrap();
+        center_columns_complex_into(&matrix, &mut centered).unwrap();
+        covariance_matrix_complex_into(&matrix, &mut covariance).unwrap();
+        correlation_matrix_complex_into(&matrix, &mut correlation).unwrap();
+
+        assert_eq!(means, column_means_complex(&matrix));
+        assert_eq!(centered, center_columns_complex(&matrix));
+        assert_eq!(covariance, covariance_matrix_complex(&matrix).unwrap());
+        assert_eq!(correlation, correlation_matrix_complex(&matrix).unwrap());
+
+        let empty_columns = Array2::<Complex64>::zeros((0, 3));
+        let mut empty_means = Array1::<Complex64>::from_vec(vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(1.0, 1.0),
+            Complex64::new(1.0, 1.0),
+        ]);
+        column_means_complex_into(&empty_columns, &mut empty_means).unwrap();
+        assert!(empty_means.iter().all(|value| *value == Complex64::new(0.0, 0.0)));
+
+        let mut bad_means = Array1::<Complex64>::zeros(3);
+        assert!(matches!(
+            column_means_complex_into(&matrix, &mut bad_means),
+            Err(StatsError::InvalidInput(_))
+        ));
+
+        let mut bad_centered = Array2::<Complex64>::zeros((3, 3));
+        assert!(matches!(
+            center_columns_complex_into(&matrix, &mut bad_centered),
+            Err(StatsError::InvalidInput(_))
+        ));
+
+        let empty = Array2::<Complex64>::zeros((0, 0));
+        let mut empty_covariance = Array2::<Complex64>::zeros((0, 0));
+        assert!(matches!(
+            covariance_matrix_complex_into(&empty, &mut empty_covariance),
+            Err(StatsError::EmptyMatrix)
+        ));
+
+        let one_row = Array2::from_shape_vec((1, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+        ])
+        .unwrap();
+        let mut one_row_covariance = Array2::<Complex64>::zeros((2, 2));
+        assert!(matches!(
+            covariance_matrix_complex_into(&one_row, &mut one_row_covariance),
+            Err(StatsError::InsufficientSamples)
+        ));
+
+        let mut bad_covariance = Array2::<Complex64>::zeros((3, 3));
+        assert!(matches!(
+            covariance_matrix_complex_into(&matrix, &mut bad_covariance),
+            Err(StatsError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            correlation_matrix_complex_into(&matrix, &mut bad_covariance),
+            Err(StatsError::InvalidInput(_))
+        ));
+
+        let unstable = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(f64::MAX, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(-f64::MAX, 0.0),
+            Complex64::new(0.0, 0.0),
+        ])
+        .unwrap();
+        let mut unstable_covariance = Array2::<Complex64>::zeros((2, 2));
+        assert!(matches!(
+            covariance_matrix_complex_into(&unstable, &mut unstable_covariance),
+            Err(StatsError::NumericalInstability)
+        ));
     }
 
     #[test]
