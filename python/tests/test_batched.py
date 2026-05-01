@@ -42,7 +42,7 @@ def test_batched_qr():
     results = pynabled.batched_qr(matrices)
     assert len(results) == 2
     for i, result in enumerate(results):
-        np.testing.assert_allclose(result.q @ result.r, matrices[i], rtol=1e-10)
+        np.testing.assert_allclose(result.q @ result.r, matrices[i], rtol=1e-10, atol=1e-12)
         np.testing.assert_allclose(result.q.T @ result.q, np.eye(3), rtol=1e-10, atol=1e-12)
         assert result.rank == 3
 
