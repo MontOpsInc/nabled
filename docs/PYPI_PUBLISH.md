@@ -120,7 +120,9 @@ This will:
 2. Commit and push that change when the file was updated.
 3. Create and push annotated tag `pypi-vX.Y.Z`.
 
-That push triggers [`.github/workflows/publish-pypi.yml`](../.github/workflows/publish-pypi.yml), which builds **manylinux 2_28** (x86_64, aarch64), **Windows** (x64), **macOS** (x86_64 on `macos-13`, aarch64 on `macos-latest`), plus an **sdist**, then publishes the assembled artifacts to PyPI with PyPA Trusted Publishing.
+That push triggers [`.github/workflows/publish-pypi.yml`](../.github/workflows/publish-pypi.yml), which builds the required release artifacts for **manylinux 2_28** (x86_64, aarch64), **Windows** (x64), **macOS** (aarch64 on `macos-latest`), plus an **sdist**, then publishes those assembled artifacts to PyPI with PyPA Trusted Publishing.
+
+The workflow also builds a best-effort **macOS Intel** wheel on `macos-15-intel`. If that wheel builds successfully, a follow-up best-effort publish job uploads it to the same index after the primary release publish completes. Intel macOS wheel failures do not block the primary PyPI/TestPyPI release because the sdist remains the fallback for Intel Mac users.
 
 Release automation is intentionally pinned:
 
@@ -162,5 +164,8 @@ no Python extras that enable these Rust features; use the explicit feature names
   exactly match repository owner `MontOpsInc`, repository `nabled`, workflow
   `.github/workflows/publish-pypi.yml`, and the GitHub environment (`pypi` or
   `testpypi`).
+- **macOS Intel wheel missing**: The `macos-15-intel` wheel is best-effort. A missing
+  x86_64 macOS wheel does not invalidate the release; Intel Mac users can still build
+  from the sdist.
 - **Tag / version mismatch**: Tag must be exactly `pypi-v` + semver matching `Cargo.toml` and `pyproject.toml`.
 - **File already exists**: PyPI does not allow re-uploading the same file version; bump the version and release again.
