@@ -5,8 +5,8 @@ This document describes how to release the **pynabled** Python package to PyPI. 
 ## Prerequisites
 
 1. **PyPI Trusted Publisher**: Configure a PyPI Trusted Publisher for
-   `MontOpsInc/nabled`, workflow `.github/workflows/publish-pypi.yml`, environment
-   `pypi`, and project name `pynabled`.
+   `MontOpsInc/nabled`, workflow `publish-pypi.yml`, environment `pypi`, and
+   project name `pynabled`.
    - If `pynabled` does not exist on PyPI yet, create a pending publisher from the
      account publishing settings. The pending publisher creates the project on first
      successful upload.
@@ -20,6 +20,17 @@ This document describes how to release the **pynabled** Python package to PyPI. 
 
 No long-lived `PYPI_API_TOKEN` or `TEST_PYPI_API_TOKEN` secret is required for the
 normal release path.
+
+Exact GitHub trusted-publisher fields:
+
+| Index | Project | Owner | Repository | Workflow | Environment |
+| --- | --- | --- | --- | --- | --- |
+| TestPyPI | `pynabled` | `MontOpsInc` | `nabled` | `publish-pypi.yml` | `testpypi` |
+| PyPI | `pynabled` | `MontOpsInc` | `nabled` | `publish-pypi.yml` | `pypi` |
+
+The TestPyPI rehearsal run should mint an OIDC token with claims matching
+`repo:MontOpsInc/nabled:environment:testpypi`. If TestPyPI reports
+`invalid-publisher`, the TestPyPI publisher entry is missing or one of those fields does not match.
 
 ## Version policy
 
@@ -75,6 +86,14 @@ Installs the built wheel into a temporary venv and runs `python/tests/`.
 The publish workflow runs PyPA's upload action, which verifies package metadata before upload.
 For a local approximation, inspect the wheel and sdist built above and run `just wheel-smoke` /
 `just wheel-smoke-pytest` before tagging.
+For sdist hygiene, confirm declared license files are present and metadata validates:
+
+```bash
+maturin sdist --out dist
+tar -tzf dist/pynabled-*.tar.gz | grep -E '/LICENSE(-APACHE)?$'
+python -m pip install "twine==6.2.0"
+twine check dist/pynabled-*.tar.gz
+```
 
 ### 6. Optional: TestPyPI
 

@@ -122,6 +122,28 @@ jobs:
           maturin-version: ${{ env.MATURIN_VERSION }}
           command: sdist
           args: --out dist
+      - name: Verify sdist metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdist="$(find dist -maxdepth 1 -name 'pynabled-*.tar.gz' -print -quit)"
+          if [[ -z "$sdist" ]]; then
+            echo "No pynabled sdist found in dist"
+            exit 1
+          fi
+          mkdir sdist-check
+          tar -xzf "$sdist" -C sdist-check
+          root="$(find sdist-check -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          if [[ -z "$root" || ! -f "$root/PKG-INFO" ]]; then
+            echo "sdist is missing PKG-INFO"
+            exit 1
+          fi
+          while IFS= read -r license_file; do
+            if [[ ! -f "$root/$license_file" ]]; then
+              echo "sdist PKG-INFO declares missing License-File: $license_file"
+              exit 1
+            fi
+          done < <(sed -n 's/^License-File: //p' "$root/PKG-INFO")
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:

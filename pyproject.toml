@@ -55,7 +55,11 @@ security = ["pip-audit==2.10.0"]
 manifest-path = "crates/pynabled/Cargo.toml"
 python-source = "python"
 module-name = "pynabled._pynabled"
-include = [{ path = "build_backend/**/*.py", format = "sdist" }]
+include = [
+    { path = "LICENSE", format = "sdist" },
+    { path = "LICENSE-APACHE", format = "sdist" },
+    { path = "build_backend/**/*.py", format = "sdist" },
+]
 
 [tool.coverage.run]
 branch = true
