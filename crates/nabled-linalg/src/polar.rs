@@ -414,10 +414,9 @@ mod tests {
 
     #[test]
     fn polar_rejects_non_square_input() {
-        let matrix = Array2::from_shape_vec(
-            (2, 3),
-            vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64],
-        )
+        let matrix = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64,
+        ])
         .unwrap();
         let result = compute_polar(&matrix);
         assert!(matches!(result, Err(PolarError::NotSquare)));
@@ -465,15 +464,12 @@ mod tests {
 
     #[test]
     fn complex_polar_reconstructs_input_and_view_matches_owned() {
-        let matrix = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex64::new(2.0_f64, 0.5_f64),
-                Complex64::new(0.5_f64, -0.25_f64),
-                Complex64::new(-1.0_f64, 1.0_f64),
-                Complex64::new(1.5_f64, -0.75_f64),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(2.0_f64, 0.5_f64),
+            Complex64::new(0.5_f64, -0.25_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
+            Complex64::new(1.5_f64, -0.75_f64),
+        ])
         .unwrap();
 
         let owned = compute_polar_complex(&matrix).unwrap();
@@ -508,15 +504,12 @@ mod tests {
 
     #[test]
     fn complex_polar_from_svd_factors_matches_direct() {
-        let matrix = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex64::new(2.0_f64, 0.5_f64),
-                Complex64::new(0.5_f64, -0.25_f64),
-                Complex64::new(-1.0_f64, 1.0_f64),
-                Complex64::new(1.5_f64, -0.75_f64),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(2.0_f64, 0.5_f64),
+            Complex64::new(0.5_f64, -0.25_f64),
+            Complex64::new(-1.0_f64, 1.0_f64),
+            Complex64::new(1.5_f64, -0.75_f64),
+        ])
         .unwrap();
         let direct = compute_polar_complex(&matrix).unwrap();
         let svd = svd::decompose_complex(&matrix).unwrap();

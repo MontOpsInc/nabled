@@ -9,6 +9,7 @@ members = [
     "crates/nabled-dynamics",
     "crates/nabled-control",
     "crates/nabled-sensor",
+    "crates/nabled-sim",
     "crates/pynabled",
 ]
 default-members = [
@@ -21,6 +22,7 @@ default-members = [
     "crates/nabled-dynamics",
     "crates/nabled-control",
     "crates/nabled-sensor",
+    "crates/nabled-sim",
 ]
 resolver = "3"
 
@@ -45,6 +47,7 @@ nabled-model = { path = "crates/nabled-model", version = "=0.0.8" }
 nabled-dynamics = { path = "crates/nabled-dynamics", version = "=0.0.8" }
 nabled-control = { path = "crates/nabled-control", version = "=0.0.8" }
 nabled-sensor = { path = "crates/nabled-sensor", version = "=0.0.8" }
+nabled-sim = { path = "crates/nabled-sim", version = "=0.0.8" }
 
 approx = "0.5"
 arrow-array = "58"

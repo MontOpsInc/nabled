@@ -26,6 +26,7 @@ blas = [
     "nabled-dynamics/blas",
     "nabled-control/blas",
     "nabled-sensor/blas",
+    "nabled-sim/blas",
 ]
 lapack-provider = [
     "nabled-linalg/lapack-provider",
@@ -35,6 +36,7 @@ lapack-provider = [
     "nabled-dynamics/lapack-provider",
     "nabled-control/lapack-provider",
     "nabled-sensor/lapack-provider",
+    "nabled-sim/lapack-provider",
 ]
 openblas-system = [
     "blas",
@@ -45,6 +47,7 @@ openblas-system = [
     "nabled-dynamics/openblas-system",
     "nabled-control/openblas-system",
     "nabled-sensor/openblas-system",
+    "nabled-sim/openblas-system",
 ]
 openblas-static = [
     "blas",
@@ -55,6 +58,7 @@ openblas-static = [
     "nabled-dynamics/openblas-static",
     "nabled-control/openblas-static",
     "nabled-sensor/openblas-static",
+    "nabled-sim/openblas-static",
 ]
 netlib-system = [
     "blas",
@@ -65,6 +69,7 @@ netlib-system = [
     "nabled-dynamics/netlib-system",
     "nabled-control/netlib-system",
     "nabled-sensor/netlib-system",
+    "nabled-sim/netlib-system",
 ]
 netlib-static = [
     "blas",
@@ -75,6 +80,7 @@ netlib-static = [
     "nabled-dynamics/netlib-static",
     "nabled-control/netlib-static",
     "nabled-sensor/netlib-static",
+    "nabled-sim/netlib-static",
 ]
 magma-system = [
     "lapack-provider",
@@ -85,8 +91,9 @@ magma-system = [
     "nabled-dynamics/magma-system",
     "nabled-control/magma-system",
     "nabled-sensor/magma-system",
+    "nabled-sim/magma-system",
 ]
-signal = ["nabled-linalg/signal"]
+signal = ["nabled-linalg/signal", "nabled-sim/signal"]
 accelerator-rayon = ["nabled-linalg/accelerator-rayon"]
 accelerator-wgpu = ["nabled-linalg/accelerator-wgpu"]
 
@@ -104,6 +111,7 @@ nabled-linalg.workspace = true
 nabled-ml.workspace = true
 nabled-model.workspace = true
 nabled-sensor.workspace = true
+nabled-sim.workspace = true
 num-complex.workspace = true
 num-traits.workspace = true
 serde.workspace = true

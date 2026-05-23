@@ -25,7 +25,7 @@ impl PyKalmanState {
         match (utils::real_array1(mean, "mean")?, utils::real_array2(covariance, "covariance")?) {
             (utils::RealReadonlyArray1::F64(m), utils::RealReadonlyArray2::F64(p)) => Ok(Self {
                 inner: KalmanState {
-                    mean: m.as_array().to_owned(),
+                    mean:       m.as_array().to_owned(),
                     covariance: p.as_array().to_owned(),
                 },
             }),
@@ -59,9 +59,7 @@ impl PyPinholeIntrinsics {
     }
 }
 
-fn kalman_state_to_py(state: KalmanState<f64>) -> PyKalmanState {
-    PyKalmanState { inner: state }
-}
+fn kalman_state_to_py(state: KalmanState<f64>) -> PyKalmanState { PyKalmanState { inner: state } }
 
 /// Linear Kalman predict step.
 #[pyfunction]

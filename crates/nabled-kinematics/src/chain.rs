@@ -29,14 +29,14 @@ pub struct JointLimits<T> {
 /// Serial chain DH specification.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChainSpec<T> {
-    pub convention: DhConvention,
-    pub joint_types: Vec<JointType>,
-    pub a: Array1<T>,
-    pub alpha: Array1<T>,
-    pub d: Array1<T>,
+    pub convention:   DhConvention,
+    pub joint_types:  Vec<JointType>,
+    pub a:            Array1<T>,
+    pub alpha:        Array1<T>,
+    pub d:            Array1<T>,
     pub theta_offset: Array1<T>,
     /// End-effector joint index; `None` uses the last joint.
-    pub ee_index: Option<usize>,
+    pub ee_index:     Option<usize>,
 }
 
 impl<T: NabledReal> ChainSpec<T> {
@@ -64,9 +64,7 @@ impl<T: NabledReal> ChainSpec<T> {
 
     /// Number of joints / DOF.
     #[must_use]
-    pub fn num_joints(&self) -> usize {
-        self.joint_types.len()
-    }
+    pub fn num_joints(&self) -> usize { self.joint_types.len() }
 
     /// End-effector joint index (defaults to last joint).
     #[must_use]

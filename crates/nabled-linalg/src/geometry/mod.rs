@@ -28,7 +28,7 @@ pub struct Quat<T> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AxisAngle<T> {
     /// Rotation axis.
-    pub axis: [T; 3],
+    pub axis:  [T; 3],
     /// Rotation angle in radians.
     pub angle: T,
 }
@@ -44,7 +44,7 @@ pub struct Rotation3<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transform3<T> {
     /// Orientation.
-    pub rotation: Rotation3<T>,
+    pub rotation:    Rotation3<T>,
     /// Translation vector.
     pub translation: Array1<T>,
 }
@@ -62,10 +62,6 @@ pub enum GeometryError {
     NumericalInstability,
 }
 
-pub(crate) fn scalar_two<T: NabledReal>() -> T {
-    T::from_f64(2.0).unwrap_or(T::one() + T::one())
-}
+pub(crate) fn scalar_two<T: NabledReal>() -> T { T::from_f64(2.0).unwrap_or(T::one() + T::one()) }
 
-pub(crate) fn scalar_half<T: NabledReal>() -> T {
-    T::from_f64(0.5).unwrap_or(T::zero())
-}
+pub(crate) fn scalar_half<T: NabledReal>() -> T { T::from_f64(0.5).unwrap_or(T::zero()) }

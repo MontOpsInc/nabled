@@ -11,30 +11,30 @@ use num_complex::Complex64;
 #[derive(Debug, Clone)]
 pub struct NdarrayPCAResult<T: NabledReal> {
     /// Principal components as rows (`k x features`).
-    pub components: Array2<T>,
+    pub components:               Array2<T>,
     /// Explained variance for each retained component.
-    pub explained_variance: Array1<T>,
+    pub explained_variance:       Array1<T>,
     /// Explained variance ratio for each retained component.
     pub explained_variance_ratio: Array1<T>,
     /// Column means used for centering.
-    pub mean: Array1<T>,
+    pub mean:                     Array1<T>,
     /// Scores (`samples x k`).
-    pub scores: Array2<T>,
+    pub scores:                   Array2<T>,
 }
 
 /// PCA result for complex ndarray matrices.
 #[derive(Debug, Clone)]
 pub struct NdarrayComplexPCAResult {
     /// Principal components as rows (`k x features`).
-    pub components: Array2<Complex64>,
+    pub components:               Array2<Complex64>,
     /// Explained variance for each retained component.
-    pub explained_variance: Array1<f64>,
+    pub explained_variance:       Array1<f64>,
     /// Explained variance ratio for each retained component.
     pub explained_variance_ratio: Array1<f64>,
     /// Column means used for centering.
-    pub mean: Array1<Complex64>,
+    pub mean:                     Array1<Complex64>,
     /// Scores (`samples x k`).
-    pub scores: Array2<Complex64>,
+    pub scores:                   Array2<Complex64>,
 }
 
 /// Error type for PCA operations.
@@ -792,10 +792,9 @@ mod tests {
 
     #[test]
     fn pca_roundtrip_is_consistent() {
-        let matrix = Array2::<f64>::from_shape_vec(
-            (4, 2),
-            vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64],
-        )
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
         .unwrap();
         let pca = compute_pca(&matrix, Some(2)).unwrap();
         let transformed = transform(&matrix, &pca);
@@ -809,10 +808,9 @@ mod tests {
 
     #[test]
     fn pca_rejects_zero_components() {
-        let matrix = Array2::<f64>::from_shape_vec(
-            (4, 2),
-            vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64],
-        )
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
         .unwrap();
         let result = compute_pca(&matrix, Some(0));
         assert!(matches!(result, Err(PCAError::InvalidInput(_))));
@@ -820,10 +818,9 @@ mod tests {
 
     #[test]
     fn explained_variance_ratio_sums_to_one() {
-        let matrix = Array2::<f64>::from_shape_vec(
-            (4, 2),
-            vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64],
-        )
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
         .unwrap();
         let pca = compute_pca(&matrix, Some(2)).unwrap();
         let sum = pca.explained_variance_ratio.iter().sum::<f64>();
@@ -832,10 +829,9 @@ mod tests {
 
     #[test]
     fn pca_view_variants_match_owned() {
-        let matrix = Array2::<f64>::from_shape_vec(
-            (4, 2),
-            vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64],
-        )
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
         .unwrap();
         let pca_owned = compute_pca(&matrix, Some(2)).unwrap();
         let pca_view = compute_pca_view(&matrix.view(), Some(2)).unwrap();
@@ -860,10 +856,9 @@ mod tests {
 
     #[test]
     fn pca_real_f32_paths_are_consistent() {
-        let matrix = Array2::<f32>::from_shape_vec(
-            (4, 2),
-            vec![1.0_f32, 2.0_f32, 2.0_f32, 1.0_f32, 3.0_f32, 4.0_f32, 4.0_f32, 3.0_f32],
-        )
+        let matrix = Array2::<f32>::from_shape_vec((4, 2), vec![
+            1.0_f32, 2.0_f32, 2.0_f32, 1.0_f32, 3.0_f32, 4.0_f32, 4.0_f32, 3.0_f32,
+        ])
         .unwrap();
         let pca = compute_pca(&matrix, Some(2)).unwrap();
         let transformed = transform(&matrix, &pca);
@@ -881,19 +876,16 @@ mod tests {
 
     #[test]
     fn complex_pca_roundtrip_is_consistent() {
-        let matrix = Array2::from_shape_vec(
-            (4, 2),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(2.0, 0.5),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(1.0, 0.2),
-                Complex64::new(3.0, 1.1),
-                Complex64::new(4.0, -0.3),
-                Complex64::new(4.0, 0.9),
-                Complex64::new(3.0, 0.4),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(1.0, 0.2),
+            Complex64::new(3.0, 1.1),
+            Complex64::new(4.0, -0.3),
+            Complex64::new(4.0, 0.9),
+            Complex64::new(3.0, 0.4),
+        ])
         .unwrap();
 
         let pca = compute_pca_complex(&matrix, Some(2)).unwrap();
@@ -908,19 +900,16 @@ mod tests {
 
     #[test]
     fn complex_pca_view_variants_match_owned() {
-        let matrix = Array2::from_shape_vec(
-            (4, 2),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(2.0, 0.5),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(1.0, 0.2),
-                Complex64::new(3.0, 1.1),
-                Complex64::new(4.0, -0.3),
-                Complex64::new(4.0, 0.9),
-                Complex64::new(3.0, 0.4),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(1.0, 0.2),
+            Complex64::new(3.0, 1.1),
+            Complex64::new(4.0, -0.3),
+            Complex64::new(4.0, 0.9),
+            Complex64::new(3.0, 0.4),
+        ])
         .unwrap();
 
         let pca_owned = compute_pca_complex(&matrix, Some(2)).unwrap();
@@ -944,10 +933,9 @@ mod tests {
 
     #[test]
     fn pca_transform_from_components_into_reuses_output_buffer() {
-        let matrix = Array2::<f64>::from_shape_vec(
-            (4, 2),
-            vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64],
-        )
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
         .unwrap();
         let pca = compute_pca(&matrix, Some(2)).unwrap();
         let expected = transform_from_components_view(
@@ -970,10 +958,9 @@ mod tests {
 
     #[test]
     fn pca_inverse_transform_from_components_into_reuses_output_buffer() {
-        let matrix = Array2::<f64>::from_shape_vec(
-            (4, 2),
-            vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64],
-        )
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
         .unwrap();
         let pca = compute_pca(&matrix, Some(2)).unwrap();
         let expected = inverse_transform_from_components_view(
@@ -996,10 +983,9 @@ mod tests {
 
     #[test]
     fn pca_transform_from_components_into_rejects_shape_mismatch() {
-        let matrix = Array2::<f64>::from_shape_vec(
-            (4, 2),
-            vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64],
-        )
+        let matrix = Array2::<f64>::from_shape_vec((4, 2), vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 3.0_f64, 4.0_f64, 4.0_f64, 3.0_f64,
+        ])
         .unwrap();
         let pca = compute_pca(&matrix, Some(2)).unwrap();
         let mut output = Array2::<f64>::zeros((matrix.nrows(), pca.components.nrows() + 1));
@@ -1065,19 +1051,16 @@ mod tests {
 
     #[test]
     fn complex_pca_transform_from_components_into_reuses_output_buffer() {
-        let matrix = Array2::from_shape_vec(
-            (4, 2),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(2.0, 0.5),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(1.0, 0.2),
-                Complex64::new(3.0, 1.1),
-                Complex64::new(4.0, -0.3),
-                Complex64::new(4.0, 0.9),
-                Complex64::new(3.0, 0.4),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(1.0, 0.2),
+            Complex64::new(3.0, 1.1),
+            Complex64::new(4.0, -0.3),
+            Complex64::new(4.0, 0.9),
+            Complex64::new(3.0, 0.4),
+        ])
         .unwrap();
         let pca = compute_pca_complex(&matrix, Some(2)).unwrap();
         let expected = transform_complex_from_components_view(
@@ -1100,19 +1083,16 @@ mod tests {
 
     #[test]
     fn complex_pca_inverse_transform_from_components_into_reuses_output_buffer() {
-        let matrix = Array2::from_shape_vec(
-            (4, 2),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(2.0, 0.5),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(1.0, 0.2),
-                Complex64::new(3.0, 1.1),
-                Complex64::new(4.0, -0.3),
-                Complex64::new(4.0, 0.9),
-                Complex64::new(3.0, 0.4),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(1.0, 0.2),
+            Complex64::new(3.0, 1.1),
+            Complex64::new(4.0, -0.3),
+            Complex64::new(4.0, 0.9),
+            Complex64::new(3.0, 0.4),
+        ])
         .unwrap();
         let pca = compute_pca_complex(&matrix, Some(2)).unwrap();
         let expected = inverse_transform_complex_from_components_view(
@@ -1135,15 +1115,12 @@ mod tests {
 
     #[test]
     fn complex_pca_transform_from_components_into_rejects_shape_mismatch() {
-        let matrix = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(2.0, 0.5),
-                Complex64::new(3.0, -1.0),
-                Complex64::new(4.0, 0.2),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(3.0, -1.0),
+            Complex64::new(4.0, 0.2),
+        ])
         .unwrap();
         let pca = compute_pca_complex(&matrix, Some(2)).unwrap();
         let mut output = Array2::<Complex64>::zeros((matrix.nrows(), pca.components.nrows() + 1));
@@ -1213,19 +1190,16 @@ mod tests {
 
     #[test]
     fn compute_pca_complex_view_into_reuses_outputs() {
-        let matrix = Array2::from_shape_vec(
-            (4, 2),
-            vec![
-                Complex64::new(1.0, 1.0),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(2.0, 0.0),
-                Complex64::new(1.0, 2.0),
-                Complex64::new(3.0, -1.0),
-                Complex64::new(4.0, 1.0),
-                Complex64::new(4.0, 2.0),
-                Complex64::new(3.0, -2.0),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(1.0, 2.0),
+            Complex64::new(3.0, -1.0),
+            Complex64::new(4.0, 1.0),
+            Complex64::new(4.0, 2.0),
+            Complex64::new(3.0, -2.0),
+        ])
         .unwrap();
         let mut components = Array2::<Complex64>::zeros((2, 2));
         let mut explained_variance = Array1::<f64>::zeros(2);

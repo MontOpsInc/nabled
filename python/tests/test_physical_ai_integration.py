@@ -1,4 +1,4 @@
-"""Physical AI integration scenarios S1–S21 (Python parity with Rust)."""
+"""Physical AI integration scenarios S1–S23 (Python parity with Rust)."""
 
 from __future__ import annotations
 
@@ -329,3 +329,54 @@ def test_s20_rolling_covariance_innovations():
     cov = pynabled.rolling_covariance(innovations, 3)
     assert np.isfinite(cov[4, 0])
     assert cov[4, 3] > 0.0
+
+
+def test_s22_y_branch_tree_fk():
+    fixture_data = json.loads((FIXTURES / "y_branch.json").read_text())
+    robot = model.from_urdf_file(str(FIXTURES / "Y_branch.urdf"))
+    assert robot.dof == 3
+
+    for case in fixture_data["cases"]:
+        q = np.array(case["q"])
+        left = kinematics.end_effector_pose_tree(robot, "base", "left_ee", q)
+        right = kinematics.end_effector_pose_tree(robot, "base", "right_ee", q)
+        np.testing.assert_allclose(left.translation, case["left_ee_translation"], rtol=0, atol=1e-10)
+        np.testing.assert_allclose(right.translation, case["right_ee_translation"], rtol=0, atol=1e-10)
+
+        j_left = kinematics.jacobian_tree(robot, "base", "left_ee", q)
+        assert j_left.shape == (6, 3)
+        h = 1e-6
+        for col in range(3):
+            q_plus = q.copy()
+            q_plus[col] += h
+            q_minus = q.copy()
+            q_minus[col] -= h
+            pose_plus = kinematics.end_effector_pose_tree(robot, "base", "left_ee", q_plus)
+            pose_minus = kinematics.end_effector_pose_tree(robot, "base", "left_ee", q_minus)
+            deriv_x = (pose_plus.translation[0] - pose_minus.translation[0]) / (2 * h)
+            deriv_y = (pose_plus.translation[1] - pose_minus.translation[1]) / (2 * h)
+            np.testing.assert_allclose(j_left[0, col], deriv_x, rtol=0, atol=1e-5)
+            np.testing.assert_allclose(j_left[1, col], deriv_y, rtol=0, atol=1e-5)
+
+    left_chain = model.extract_chain_spec(robot, "base", "left_ee")
+    assert left_chain.num_joints == 2
+    q = np.array(fixture_data["cases"][0]["q"])
+    q_chain = np.array([q[0], q[1]])
+    serial_pose = kinematics.end_effector_pose(left_chain, q_chain)
+    tree_pose = kinematics.end_effector_pose_tree(robot, "base", "left_ee", q)
+    np.testing.assert_allclose(serial_pose.translation, tree_pose.translation, rtol=0, atol=1e-10)
+
+
+def test_s23_y_branch_tree_ik():
+    robot = model.from_urdf_file(str(FIXTURES / "Y_branch.urdf"))
+    q_target = np.array([0.3, 0.5, -0.2])
+    target = kinematics.end_effector_pose_tree(robot, "base", "left_ee", q_target)
+    q_init = np.zeros(3)
+    config = kinematics.IkConfig(max_iterations=300, tolerance=1e-3)
+    result = kinematics.inverse_kinematics_tree_dls(
+        robot, "base", "left_ee", q_init, target, config
+    )
+    assert result.q.shape == (3,)
+    achieved = kinematics.end_effector_pose_tree(robot, "base", "left_ee", result.q)
+    err = kinematics.pose_error(achieved, target)
+    assert np.linalg.norm(err) < 1e-3

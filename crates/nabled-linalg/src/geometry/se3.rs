@@ -15,9 +15,7 @@ pub fn from_rotation_translation<T: NabledReal>(
 }
 
 #[must_use]
-pub fn rotation<T: NabledReal>(transform: &Transform3<T>) -> &Rotation3<T> {
-    &transform.rotation
-}
+pub fn rotation<T: NabledReal>(transform: &Transform3<T>) -> &Rotation3<T> { &transform.rotation }
 
 #[must_use]
 pub fn translation<T: NabledReal>(transform: &Transform3<T>) -> &Array1<T> {

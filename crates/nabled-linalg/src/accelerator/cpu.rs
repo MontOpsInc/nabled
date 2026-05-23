@@ -14,9 +14,7 @@ use crate::tensor::{batched_matmul_last_two_view_into_impl, contract_view_into_i
 
 const SPARSE_TOLERANCE: f64 = 1.0e-12;
 
-fn sparse_tolerance<T: NabledReal>() -> T {
-    T::from_f64(SPARSE_TOLERANCE).unwrap_or(T::epsilon())
-}
+fn sparse_tolerance<T: NabledReal>() -> T { T::from_f64(SPARSE_TOLERANCE).unwrap_or(T::epsilon()) }
 
 /// Apply a CPU closure over row chunks.
 ///

@@ -139,15 +139,15 @@ fn map_magma_sparse_error(error: &'static str) -> SparseError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CsrMatrix<T: NabledReal = f64> {
     /// Number of rows.
-    pub nrows: usize,
+    pub nrows:   usize,
     /// Number of columns.
-    pub ncols: usize,
+    pub ncols:   usize,
     /// Row pointer offsets (`len = nrows + 1`).
-    pub indptr: Vec<usize>,
+    pub indptr:  Vec<usize>,
     /// Column index for each non-zero value.
     pub indices: Vec<usize>,
     /// Non-zero values.
-    pub data: Vec<T>,
+    pub data:    Vec<T>,
 }
 
 /// Index contract for borrowed CSR views.
@@ -160,9 +160,7 @@ pub trait CsrIndex: Copy {
 }
 
 impl CsrIndex for usize {
-    fn to_usize(self) -> Result<usize, SparseError> {
-        Ok(self)
-    }
+    fn to_usize(self) -> Result<usize, SparseError> { Ok(self) }
 }
 
 impl CsrIndex for u32 {
@@ -193,15 +191,15 @@ impl CsrIndex for i64 {
 #[derive(Debug, Clone, Copy)]
 pub struct CsrMatrixView<'a, R: CsrIndex = usize, T = f64, C: CsrIndex = R> {
     /// Number of rows.
-    pub nrows: usize,
+    pub nrows:       usize,
     /// Number of columns.
-    pub ncols: usize,
+    pub ncols:       usize,
     /// Row pointer offsets (`len = nrows + 1`).
-    pub row_ptrs: &'a [R],
+    pub row_ptrs:    &'a [R],
     /// Column index for each non-zero value.
     pub col_indices: &'a [C],
     /// Non-zero values.
-    pub values: &'a [T],
+    pub values:      &'a [T],
 }
 
 impl<'a, R: CsrIndex, T, C: CsrIndex> CsrMatrixView<'a, R, T, C> {
@@ -274,11 +272,11 @@ impl<'a, R: CsrIndex, T, C: CsrIndex> CsrMatrixView<'a, R, T, C> {
 impl<'a, T: NabledReal> From<&'a CsrMatrix<T>> for CsrMatrixView<'a, usize, T, usize> {
     fn from(matrix: &'a CsrMatrix<T>) -> Self {
         Self {
-            nrows: matrix.nrows,
-            ncols: matrix.ncols,
-            row_ptrs: &matrix.indptr,
+            nrows:       matrix.nrows,
+            ncols:       matrix.ncols,
+            row_ptrs:    &matrix.indptr,
             col_indices: &matrix.indices,
-            values: &matrix.data,
+            values:      &matrix.data,
         }
     }
 }
@@ -287,15 +285,15 @@ impl<'a, T: NabledReal> From<&'a CsrMatrix<T>> for CsrMatrixView<'a, usize, T, u
 #[derive(Debug, Clone, Copy)]
 pub struct CscMatrixView<'a, I: CsrIndex = usize, T = f64> {
     /// Number of rows.
-    pub nrows: usize,
+    pub nrows:       usize,
     /// Number of columns.
-    pub ncols: usize,
+    pub ncols:       usize,
     /// Column pointer offsets (`len = ncols + 1`).
-    pub col_ptrs: &'a [I],
+    pub col_ptrs:    &'a [I],
     /// Row index for each non-zero value.
     pub row_indices: &'a [I],
     /// Non-zero values.
-    pub values: &'a [T],
+    pub values:      &'a [T],
 }
 
 impl<'a, I: CsrIndex, T> CscMatrixView<'a, I, T> {
@@ -364,11 +362,11 @@ impl<'a, I: CsrIndex, T> CscMatrixView<'a, I, T> {
 impl<'a, T: NabledReal> From<&'a CscMatrix<T>> for CscMatrixView<'a, usize, T> {
     fn from(matrix: &'a CscMatrix<T>) -> Self {
         Self {
-            nrows: matrix.nrows,
-            ncols: matrix.ncols,
-            col_ptrs: &matrix.indptr,
+            nrows:       matrix.nrows,
+            ncols:       matrix.ncols,
+            col_ptrs:    &matrix.indptr,
             row_indices: &matrix.indices,
-            values: &matrix.data,
+            values:      &matrix.data,
         }
     }
 }
@@ -377,15 +375,15 @@ impl<'a, T: NabledReal> From<&'a CscMatrix<T>> for CscMatrixView<'a, usize, T> {
 #[derive(Debug, Clone, Copy)]
 pub struct CooMatrixView<'a, I: CsrIndex = usize, T = f64> {
     /// Number of rows.
-    pub nrows: usize,
+    pub nrows:       usize,
     /// Number of columns.
-    pub ncols: usize,
+    pub ncols:       usize,
     /// Row index for each non-zero entry.
     pub row_indices: &'a [I],
     /// Column index for each non-zero entry.
     pub col_indices: &'a [I],
     /// Non-zero values.
-    pub values: &'a [T],
+    pub values:      &'a [T],
 }
 
 impl<'a, I: CsrIndex, T> CooMatrixView<'a, I, T> {
@@ -435,11 +433,11 @@ impl<'a, I: CsrIndex, T> CooMatrixView<'a, I, T> {
 impl<'a, T: NabledReal> From<&'a CooMatrix<T>> for CooMatrixView<'a, usize, T> {
     fn from(matrix: &'a CooMatrix<T>) -> Self {
         Self {
-            nrows: matrix.nrows,
-            ncols: matrix.ncols,
+            nrows:       matrix.nrows,
+            ncols:       matrix.ncols,
             row_indices: &matrix.row_indices,
             col_indices: &matrix.col_indices,
-            values: &matrix.data,
+            values:      &matrix.data,
         }
     }
 }
@@ -485,39 +483,37 @@ impl<T: NabledReal> CsrMatrix<T> {
 
     /// Borrow this owned CSR matrix as a zero-copy view.
     #[must_use]
-    pub fn as_view(&self) -> CsrMatrixView<'_, usize, T> {
-        self.into()
-    }
+    pub fn as_view(&self) -> CsrMatrixView<'_, usize, T> { self.into() }
 }
 
 /// Coordinate list (COO) sparse matrix.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CooMatrix<T: NabledReal = f64> {
     /// Number of rows.
-    pub nrows: usize,
+    pub nrows:       usize,
     /// Number of columns.
-    pub ncols: usize,
+    pub ncols:       usize,
     /// Row index for each non-zero entry.
     pub row_indices: Vec<usize>,
     /// Column index for each non-zero entry.
     pub col_indices: Vec<usize>,
     /// Non-zero values.
-    pub data: Vec<T>,
+    pub data:        Vec<T>,
 }
 
 /// Compressed sparse column (CSC) matrix.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CscMatrix<T: NabledReal = f64> {
     /// Number of rows.
-    pub nrows: usize,
+    pub nrows:   usize,
     /// Number of columns.
-    pub ncols: usize,
+    pub ncols:   usize,
     /// Column pointer offsets (`len = ncols + 1`).
-    pub indptr: Vec<usize>,
+    pub indptr:  Vec<usize>,
     /// Row index for each non-zero value.
     pub indices: Vec<usize>,
     /// Non-zero values.
-    pub data: Vec<T>,
+    pub data:    Vec<T>,
 }
 
 impl<T: NabledReal> CscMatrix<T> {
@@ -563,15 +559,11 @@ impl<T: NabledReal> CscMatrix<T> {
     ///
     /// # Errors
     /// Returns an error if conversion encounters invalid structure.
-    pub fn to_csr(&self) -> Result<CsrMatrix<T>, SparseError> {
-        csc_to_csr_view(&self.as_view())
-    }
+    pub fn to_csr(&self) -> Result<CsrMatrix<T>, SparseError> { csc_to_csr_view(&self.as_view()) }
 
     /// Borrow this owned CSC matrix as a zero-copy view.
     #[must_use]
-    pub fn as_view(&self) -> CscMatrixView<'_, usize, T> {
-        self.into()
-    }
+    pub fn as_view(&self) -> CscMatrixView<'_, usize, T> { self.into() }
 }
 
 /// Convert a borrowed CSC matrix view to CSR.
@@ -640,9 +632,9 @@ pub struct ILUTFactorization<T: NabledReal = f64> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ILUKFactorization<T: NabledReal = f64> {
     /// Unit-lower factor.
-    pub l: CsrMatrix<T>,
+    pub l:             CsrMatrix<T>,
     /// Upper factor.
-    pub u: CsrMatrix<T>,
+    pub u:             CsrMatrix<T>,
     /// Requested level-of-fill used during construction.
     pub level_of_fill: usize,
 }
@@ -651,9 +643,9 @@ pub struct ILUKFactorization<T: NabledReal = f64> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SparseLUFactorization<T: NabledReal = f64> {
     /// Unit-lower factor.
-    pub l: CsrMatrix<T>,
+    pub l:           CsrMatrix<T>,
     /// Upper factor.
-    pub u: CsrMatrix<T>,
+    pub u:           CsrMatrix<T>,
     /// Row permutation such that `P * A = L * U`.
     pub permutation: Vec<usize>,
 }
@@ -664,7 +656,7 @@ pub struct ILUTConfig<T: NabledReal = f64> {
     /// Drop entries with absolute magnitude less than or equal to this value.
     pub drop_tolerance: T,
     /// Maximum number of retained off-diagonal entries per row in each factor.
-    pub max_fill: usize,
+    pub max_fill:       usize,
 }
 
 impl<T: NabledReal> ILUTConfig<T> {
@@ -698,15 +690,13 @@ impl<T: NabledReal> ILUTConfig<T> {
         };
         Self {
             drop_tolerance: T::from_f64(1e-8).unwrap_or(T::epsilon()),
-            max_fill: fill.min(dimension.max(1)),
+            max_fill:       fill.min(dimension.max(1)),
         }
     }
 }
 
 impl<T: NabledReal> Default for ILUTConfig<T> {
-    fn default() -> Self {
-        Self::balanced()
-    }
+    fn default() -> Self { Self::balanced() }
 }
 
 /// Configuration profile for ILU(k)-based sparse factorization and solves.
@@ -719,34 +709,26 @@ pub struct ILUKConfig {
 impl ILUKConfig {
     /// Conservative profile with no extra fill beyond the original sparsity pattern.
     #[must_use]
-    pub const fn conservative() -> Self {
-        Self { level_of_fill: 0 }
-    }
+    pub const fn conservative() -> Self { Self { level_of_fill: 0 } }
 
     /// Balanced profile allowing limited controlled fill.
     #[must_use]
-    pub const fn balanced() -> Self {
-        Self { level_of_fill: 1 }
-    }
+    pub const fn balanced() -> Self { Self { level_of_fill: 1 } }
 
     /// Aggressive profile allowing deeper fill for stronger preconditioning.
     #[must_use]
-    pub const fn aggressive() -> Self {
-        Self { level_of_fill: 2 }
-    }
+    pub const fn aggressive() -> Self { Self { level_of_fill: 2 } }
 }
 
 impl Default for ILUKConfig {
-    fn default() -> Self {
-        Self::balanced()
-    }
+    fn default() -> Self { Self::balanced() }
 }
 
 /// Incomplete Cholesky(0) sparse factorization for SPD systems.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IC0Factorization<T: NabledReal = f64> {
     /// Lower-triangular factor with diagonal terms.
-    pub l: CsrMatrix<T>,
+    pub l:           CsrMatrix<T>,
     /// Cached transpose of `l` for backward substitution.
     pub l_transpose: CsrMatrix<T>,
 }
@@ -755,9 +737,9 @@ pub struct IC0Factorization<T: NabledReal = f64> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ILDL0Factorization<T: NabledReal = f64> {
     /// Unit-lower factor.
-    pub l: CsrMatrix<T>,
+    pub l:           CsrMatrix<T>,
     /// Diagonal factor.
-    pub d: Array1<T>,
+    pub d:           Array1<T>,
     /// Cached transpose of `l` for backward substitution.
     pub l_transpose: CsrMatrix<T>,
 }
@@ -793,15 +775,11 @@ impl<T: NabledReal> CooMatrix<T> {
     ///
     /// # Errors
     /// Returns an error if COO structure is invalid.
-    pub fn to_csr(&self) -> Result<CsrMatrix<T>, SparseError> {
-        coo_to_csr_view(&self.as_view())
-    }
+    pub fn to_csr(&self) -> Result<CsrMatrix<T>, SparseError> { coo_to_csr_view(&self.as_view()) }
 
     /// Borrow this owned COO matrix as a zero-copy view.
     #[must_use]
-    pub fn as_view(&self) -> CooMatrixView<'_, usize, T> {
-        self.into()
-    }
+    pub fn as_view(&self) -> CooMatrixView<'_, usize, T> { self.into() }
 }
 
 /// Convert a borrowed COO matrix view to CSR. Duplicate coordinates are summed.
@@ -5923,24 +5901,16 @@ mod tests {
         // [4 1 0]
         // [1 3 1]
         // [0 1 2]
-        CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap()
     }
 
     fn toy_matrix_f32() -> CsrMatrix<f32> {
-        CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f32, 1.0_f32, 1.0_f32, 3.0_f32, 1.0_f32, 1.0_f32, 2.0_f32],
-        )
+        CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f32, 1.0_f32, 1.0_f32, 3.0_f32, 1.0_f32, 1.0_f32, 2.0_f32,
+        ])
         .unwrap()
     }
 
@@ -5948,13 +5918,9 @@ mod tests {
         // [4 1 0]
         // [1 0 1]
         // [0 1 3]
-        CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 1.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 3.0_f64],
-        )
+        CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 1.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 3.0_f64,
+        ])
         .unwrap()
     }
 
@@ -5998,10 +5964,9 @@ mod tests {
             assert!((owned_product[i] - view_product[i]).abs() < 1e-6_f32);
         }
 
-        let dense_rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f32, 0.0_f32, 0.5_f32, 2.0_f32, 2.0_f32, -1.0_f32],
-        )
+        let dense_rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f32, 0.0_f32, 0.5_f32, 2.0_f32, 2.0_f32, -1.0_f32,
+        ])
         .unwrap();
         let dense_owned = matmat_dense(&matrix, &dense_rhs).unwrap();
         let dense_view = matmat_dense_view(&view, &dense_rhs).unwrap();
@@ -6043,10 +6008,9 @@ mod tests {
     fn csr_view_i32_u32_matches_owned_matvec_and_products() {
         let matrix = toy_matrix();
         let vector = arr1(&[1.0_f64, 2.0_f64, 3.0_f64]);
-        let dense_right = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, 0.0_f64, 0.5_f64, 2.0_f64, 2.0_f64, -1.0_f64],
-        )
+        let dense_right = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 0.0_f64, 0.5_f64, 2.0_f64, 2.0_f64, -1.0_f64,
+        ])
         .unwrap();
 
         let row_ptrs = vec![0_i32, 2, 5, 7];
@@ -6106,13 +6070,9 @@ mod tests {
 
     #[test]
     fn coo_to_csr_roundtrip_matvec() {
-        let coo = CooMatrix::new(
-            3,
-            3,
-            vec![0, 0, 1, 1, 1, 2, 2],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let coo = CooMatrix::new(3, 3, vec![0, 0, 1, 1, 1, 2, 2], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let csr = coo.to_csr().unwrap();
         let vector = arr1(&[1.0_f64, 2.0_f64, 3.0_f64]);
@@ -6208,10 +6168,9 @@ mod tests {
     #[test]
     fn sparse_dense_matmat_matches_expected() {
         let matrix = toy_matrix();
-        let dense = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64],
-        )
+        let dense = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
+        ])
         .unwrap();
         let y = matmat_dense(&matrix, &dense).unwrap();
         assert_eq!(y.dim(), (3, 2));
@@ -6226,10 +6185,9 @@ mod tests {
     #[test]
     fn batched_matvec_matches_single_path() {
         let matrix = toy_matrix();
-        let batch = Array2::from_shape_vec(
-            (2, 3),
-            vec![1.0_f64, 2.0_f64, 3.0_f64, 3.0_f64, 2.0_f64, 1.0_f64],
-        )
+        let batch = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 3.0_f64, 2.0_f64, 1.0_f64,
+        ])
         .unwrap();
         let batched = batched_matvec(&matrix, &batch).unwrap();
         assert_eq!(batched.dim(), (2, 3));
@@ -6298,13 +6256,9 @@ mod tests {
         // [4 1 0]
         // [2 3 1]
         // [0 1 2]
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution = bicgstab_solve(&matrix, &rhs, 1e-10_f64, 5000).unwrap();
@@ -6394,13 +6348,9 @@ mod tests {
 
     #[test]
     fn sparse_lu_factorization_reconstructs_permuted_matrix() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![0.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            0.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let factorization = sparse_lu_factor(&matrix).unwrap();
         let dense_l = csr_to_dense(&factorization.l);
@@ -6418,13 +6368,9 @@ mod tests {
 
     #[test]
     fn sparse_lu_solve_reconstructs_rhs() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![0.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            0.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution = sparse_lu_solve(&matrix, &rhs).unwrap();
@@ -6436,13 +6382,9 @@ mod tests {
 
     #[test]
     fn sparse_lu_reuse_matches_direct() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![0.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            0.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let factorization = sparse_lu_factor(&matrix).unwrap();
@@ -6455,18 +6397,13 @@ mod tests {
 
     #[test]
     fn sparse_lu_multi_rhs_matches_single_column_reuse() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![0.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            0.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, 0.0_f64, -2.0_f64, 1.5_f64, 3.0_f64, -1.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 0.0_f64, -2.0_f64, 1.5_f64, 3.0_f64, -1.0_f64,
+        ])
         .unwrap();
         let factorization = sparse_lu_factor(&matrix).unwrap();
         let multi =
@@ -6486,13 +6423,9 @@ mod tests {
 
     #[test]
     fn sparse_lu_rejects_singular_matrix() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 4, 6],
-            vec![0, 1, 0, 1, 1, 2],
-            vec![1.0_f64, 2.0_f64, 2.0_f64, 4.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 4, 6], vec![0, 1, 0, 1, 1, 2], vec![
+            1.0_f64, 2.0_f64, 2.0_f64, 4.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let result = sparse_lu_factor(&matrix);
         assert!(matches!(result, Err(SparseError::SingularMatrix)));
@@ -6556,13 +6489,9 @@ mod tests {
 
     #[test]
     fn ildl0_factorization_rejects_nonsymmetric_input() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let result = ildl0_factor(&matrix);
         assert!(matches!(result, Err(SparseError::DimensionMismatch)));
@@ -6595,13 +6524,9 @@ mod tests {
 
     #[test]
     fn bicgstab_ilu0_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution = bicgstab_ilu0_solve(&matrix, &rhs, 1e-10_f64, 5000).unwrap();
@@ -6613,13 +6538,9 @@ mod tests {
 
     #[test]
     fn bicgstab_ilu0_with_factorization_matches_direct() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let factorization = ilu0_factor(&matrix).unwrap();
@@ -6636,13 +6557,9 @@ mod tests {
 
     #[test]
     fn bicgstab_ilut_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution = bicgstab_ilut_solve(&matrix, &rhs, 1e-10_f64, 5000, 0.0_f64, 8).unwrap();
@@ -6654,13 +6571,9 @@ mod tests {
 
     #[test]
     fn bicgstab_ilut_with_config_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution =
@@ -6674,13 +6587,9 @@ mod tests {
 
     #[test]
     fn bicgstab_ilut_with_factorization_matches_direct() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let factorization = ilut_factor(&matrix, 0.0_f64, 8).unwrap();
@@ -6697,13 +6606,9 @@ mod tests {
 
     #[test]
     fn bicgstab_iluk_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution = bicgstab_iluk_solve(&matrix, &rhs, 1e-10_f64, 5000, 1).unwrap();
@@ -6715,13 +6620,9 @@ mod tests {
 
     #[test]
     fn bicgstab_iluk_with_config_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution =
@@ -6735,13 +6636,9 @@ mod tests {
 
     #[test]
     fn bicgstab_iluk_with_factorization_matches_direct() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let factorization = iluk_factor(&matrix, 1).unwrap();
@@ -6785,13 +6682,9 @@ mod tests {
 
     #[test]
     fn gmres_ilu0_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution = gmres_ilu0_solve(&matrix, &rhs, 1e-10_f64, 10).unwrap();
@@ -6803,13 +6696,9 @@ mod tests {
 
     #[test]
     fn gmres_ilu0_with_factorization_matches_direct() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let factorization = ilu0_factor(&matrix).unwrap();
@@ -6826,13 +6715,9 @@ mod tests {
 
     #[test]
     fn gmres_ilut_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution = gmres_ilut_solve(&matrix, &rhs, 1e-10_f64, 10, 0.0_f64, 8).unwrap();
@@ -6844,13 +6729,9 @@ mod tests {
 
     #[test]
     fn gmres_ilut_with_factorization_matches_direct() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let factorization = ilut_factor(&matrix, 0.0_f64, 8).unwrap();
@@ -6867,13 +6748,9 @@ mod tests {
 
     #[test]
     fn gmres_iluk_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution = gmres_iluk_solve(&matrix, &rhs, 1e-10_f64, 10, 1).unwrap();
@@ -6885,13 +6762,9 @@ mod tests {
 
     #[test]
     fn gmres_iluk_with_factorization_matches_direct() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let factorization = iluk_factor(&matrix, 1).unwrap();
@@ -6908,13 +6781,9 @@ mod tests {
 
     #[test]
     fn gmres_iluk_with_config_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution =
@@ -6955,13 +6824,9 @@ mod tests {
 
     #[test]
     fn gmres_ilut_with_config_solves_nonsymmetric_system() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
         let rhs = arr1(&[1.0_f64, -2.0_f64, 3.0_f64]);
         let solution =
@@ -7041,18 +6906,13 @@ mod tests {
 
     #[test]
     fn bicgstab_ilu0_multi_rhs_matches_single_column_reuse() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, 2.0_f64, -2.0_f64, 0.5_f64, 3.0_f64, -1.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 2.0_f64, -2.0_f64, 0.5_f64, 3.0_f64, -1.0_f64,
+        ])
         .unwrap();
         let factorization = ilu0_factor(&matrix).unwrap();
         let multi = bicgstab_ilu0_solve_multiple_with_factorization(
@@ -7081,18 +6941,13 @@ mod tests {
 
     #[test]
     fn bicgstab_ilut_multi_rhs_matches_single_column_reuse() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, -1.0_f64, -2.0_f64, 2.0_f64, 3.0_f64, 0.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, -1.0_f64, -2.0_f64, 2.0_f64, 3.0_f64, 0.0_f64,
+        ])
         .unwrap();
         let factorization = ilut_factor(&matrix, 0.0_f64, 8).unwrap();
         let multi = bicgstab_ilut_solve_multiple_with_factorization(
@@ -7121,18 +6976,13 @@ mod tests {
 
     #[test]
     fn bicgstab_iluk_multi_rhs_matches_single_column_reuse() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, -1.0_f64, -2.0_f64, 2.0_f64, 3.0_f64, 0.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, -1.0_f64, -2.0_f64, 2.0_f64, 3.0_f64, 0.0_f64,
+        ])
         .unwrap();
         let factorization = iluk_factor(&matrix, 1).unwrap();
         let multi = bicgstab_iluk_solve_multiple_with_factorization(
@@ -7162,10 +7012,9 @@ mod tests {
     #[test]
     fn bicgstab_ildl0_multi_rhs_matches_single_column_reuse() {
         let matrix = symmetric_indefinite_matrix();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, 0.0_f64, -2.0_f64, 1.5_f64, 3.0_f64, -1.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 0.0_f64, -2.0_f64, 1.5_f64, 3.0_f64, -1.0_f64,
+        ])
         .unwrap();
         let factorization = ildl0_factor(&matrix).unwrap();
         let multi = bicgstab_ildl0_solve_multiple_with_factorization(
@@ -7194,18 +7043,13 @@ mod tests {
 
     #[test]
     fn gmres_ilu0_multi_rhs_matches_single_column_reuse() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, 2.0_f64, -2.0_f64, 0.5_f64, 3.0_f64, -1.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 2.0_f64, -2.0_f64, 0.5_f64, 3.0_f64, -1.0_f64,
+        ])
         .unwrap();
         let factorization = ilu0_factor(&matrix).unwrap();
         let multi = gmres_ilu0_solve_multiple_with_factorization(
@@ -7234,18 +7078,13 @@ mod tests {
 
     #[test]
     fn gmres_ilut_multi_rhs_matches_single_column_reuse() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, -1.0_f64, -2.0_f64, 2.0_f64, 3.0_f64, 0.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, -1.0_f64, -2.0_f64, 2.0_f64, 3.0_f64, 0.0_f64,
+        ])
         .unwrap();
         let factorization = ilut_factor(&matrix, 0.0_f64, 8).unwrap();
         let multi = gmres_ilut_solve_multiple_with_factorization(
@@ -7274,18 +7113,13 @@ mod tests {
 
     #[test]
     fn gmres_iluk_multi_rhs_matches_single_column_reuse() {
-        let matrix = CsrMatrix::new(
-            3,
-            3,
-            vec![0, 2, 5, 7],
-            vec![0, 1, 0, 1, 2, 1, 2],
-            vec![4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
-        )
+        let matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
+            4.0_f64, 1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .unwrap();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, -1.0_f64, -2.0_f64, 2.0_f64, 3.0_f64, 0.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, -1.0_f64, -2.0_f64, 2.0_f64, 3.0_f64, 0.0_f64,
+        ])
         .unwrap();
         let factorization = iluk_factor(&matrix, 1).unwrap();
         let multi = gmres_iluk_solve_multiple_with_factorization(
@@ -7315,10 +7149,9 @@ mod tests {
     #[test]
     fn gmres_ildl0_multi_rhs_matches_single_column_reuse() {
         let matrix = symmetric_indefinite_matrix();
-        let rhs = Array2::from_shape_vec(
-            (3, 2),
-            vec![1.0_f64, 0.0_f64, -2.0_f64, 1.5_f64, 3.0_f64, -1.0_f64],
-        )
+        let rhs = Array2::from_shape_vec((3, 2), vec![
+            1.0_f64, 0.0_f64, -2.0_f64, 1.5_f64, 3.0_f64, -1.0_f64,
+        ])
         .unwrap();
         let factorization = ildl0_factor(&matrix).unwrap();
         let multi = gmres_ildl0_solve_multiple_with_factorization(
@@ -7399,10 +7232,9 @@ mod tests {
         let col_indices = vec![0_i32, 1, 0, 1];
         let values = vec![4.0_f64, 1.0, 2.0, 3.0];
         let view = CsrMatrixView::new(2, 2, &row_ptrs, &col_indices, &values).unwrap();
-        let dense = Array2::from_shape_vec(
-            (2, 3),
-            vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64],
-        )
+        let dense = Array2::from_shape_vec((2, 3), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64,
+        ])
         .unwrap();
 
         let expected = matmat_dense_view(&view, &dense).unwrap();
@@ -7421,10 +7253,9 @@ mod tests {
         let col_indices = vec![0_i32, 1, 0, 1];
         let values = vec![4.0_f32, 1.0, 2.0, 3.0];
         let view = CsrMatrixView::new(2, 2, &row_ptrs, &col_indices, &values).unwrap();
-        let dense = Array2::from_shape_vec(
-            (2, 3),
-            vec![1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, 5.0_f32, 6.0_f32],
-        )
+        let dense = Array2::from_shape_vec((2, 3), vec![
+            1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, 5.0_f32, 6.0_f32,
+        ])
         .unwrap();
 
         let expected = matmat_dense_view(&view, &dense).unwrap();

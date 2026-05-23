@@ -28,42 +28,42 @@ enum GpuKernelPath {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[derive(Debug, Serialize)]
 struct DomainCapability {
-    tier: &'static str,
-    domain: &'static str,
+    tier:             &'static str,
+    domain:           &'static str,
     baseline_kernels: bool,
-    provider_path: ProviderPath,
-    notes: &'static str,
+    provider_path:    ProviderPath,
+    notes:            &'static str,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[derive(Debug, Serialize)]
 struct KernelCapability {
-    family: &'static str,
-    operation: &'static str,
-    dtype: &'static str,
-    gpu_path: GpuKernelPath,
+    family:              &'static str,
+    operation:           &'static str,
+    dtype:               &'static str,
+    gpu_path:            GpuKernelPath,
     gpu_native_possible: bool,
-    gpu_fallback: bool,
-    notes: &'static str,
+    gpu_fallback:        bool,
+    notes:               &'static str,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[derive(Debug, Serialize)]
 struct CapabilityReport {
-    generated_at_unix: u64,
-    git_sha: String,
-    rustc_version: String,
-    target_os: &'static str,
-    target_arch: &'static str,
-    provider_feature: &'static str,
-    provider_feature_enabled: bool,
-    provider_build_active: bool,
-    native_provider_domains: usize,
+    generated_at_unix:         u64,
+    git_sha:                   String,
+    rustc_version:             String,
+    target_os:                 &'static str,
+    target_arch:               &'static str,
+    provider_feature:          &'static str,
+    provider_feature_enabled:  bool,
+    provider_build_active:     bool,
+    native_provider_domains:   usize,
     fallback_provider_domains: usize,
-    gpu_native_or_fallback: usize,
-    gpu_fallback_only: usize,
-    domains: Vec<DomainCapability>,
-    kernels: Vec<KernelCapability>,
+    gpu_native_or_fallback:    usize,
+    gpu_fallback_only:         usize,
+    domains:                   Vec<DomainCapability>,
+    kernels:                   Vec<KernelCapability>,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -186,60 +186,60 @@ fn selected_provider_feature() -> &'static str {
 fn tier_a_domains() -> Vec<DomainCapability> {
     vec![
         DomainCapability {
-            tier: "tier_a",
-            domain: "svd",
+            tier:             "tier_a",
+            domain:           "svd",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/svd.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/svd.rs",
         },
         DomainCapability {
-            tier: "tier_a",
-            domain: "qr",
+            tier:             "tier_a",
+            domain:           "qr",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/qr.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/qr.rs",
         },
         DomainCapability {
-            tier: "tier_a",
-            domain: "lu",
+            tier:             "tier_a",
+            domain:           "lu",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/lu.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/lu.rs",
         },
         DomainCapability {
-            tier: "tier_a",
-            domain: "cholesky",
+            tier:             "tier_a",
+            domain:           "cholesky",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/cholesky.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/cholesky.rs",
         },
         DomainCapability {
-            tier: "tier_a",
-            domain: "eigen",
+            tier:             "tier_a",
+            domain:           "eigen",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/eigen.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/eigen.rs",
         },
         DomainCapability {
-            tier: "tier_a",
-            domain: "schur",
+            tier:             "tier_a",
+            domain:           "schur",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/schur.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/schur.rs",
         },
         DomainCapability {
-            tier: "tier_a",
-            domain: "triangular_solve",
+            tier:             "tier_a",
+            domain:           "triangular_solve",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/triangular.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/triangular.rs",
         },
         DomainCapability {
-            tier: "tier_a",
-            domain: "vector_primitives",
+            tier:             "tier_a",
+            domain:           "vector_primitives",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/vector.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/vector.rs",
         },
     ]
 }
@@ -248,56 +248,56 @@ fn tier_a_domains() -> Vec<DomainCapability> {
 fn tier_b_domains() -> Vec<DomainCapability> {
     vec![
         DomainCapability {
-            tier: "tier_b",
-            domain: "polar",
+            tier:             "tier_b",
+            domain:           "polar",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/polar.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/polar.rs",
         },
         DomainCapability {
-            tier: "tier_b",
-            domain: "pca",
+            tier:             "tier_b",
+            domain:           "pca",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-ml/src/pca.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-ml/src/pca.rs",
         },
         DomainCapability {
-            tier: "tier_b",
-            domain: "regression",
+            tier:             "tier_b",
+            domain:           "regression",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-ml/src/regression.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-ml/src/regression.rs",
         },
         DomainCapability {
-            tier: "tier_b",
-            domain: "sylvester_lyapunov",
+            tier:             "tier_b",
+            domain:           "sylvester_lyapunov",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/sylvester.rs",
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/sylvester.rs",
         },
         DomainCapability {
-            tier: "tier_b",
-            domain: "matrix_functions",
+            tier:             "tier_b",
+            domain:           "matrix_functions",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/matrix_functions.rs (complex and real \
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/matrix_functions.rs (complex and real \
                                paths are available in internal and provider-enabled builds; \
                                Taylor paths remain baseline by design)",
         },
         DomainCapability {
-            tier: "tier_b",
-            domain: "sparse",
+            tier:             "tier_b",
+            domain:           "sparse",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/sparse.rs (CSR/CSC/COO, iterative \
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/sparse.rs (CSR/CSC/COO, iterative \
                                solvers, and ILU0/IC0/ILUT/ILUK/ILDL0 preconditioned workflows)",
         },
         DomainCapability {
-            tier: "tier_b",
-            domain: "accelerator",
+            tier:             "tier_b",
+            domain:           "accelerator",
             baseline_kernels: true,
-            provider_path: ProviderPath::Native,
-            notes: "crates/nabled-linalg/src/accelerator.rs (CPU kernels + bounded \
+            provider_path:    ProviderPath::Native,
+            notes:            "crates/nabled-linalg/src/accelerator.rs (CPU kernels + bounded \
                                GPU-backend `f32` kernel support via `wgpu` across \
                                dense/vector/tensor families with explicit CPU fallback outside v1 \
                                GPU scope)",

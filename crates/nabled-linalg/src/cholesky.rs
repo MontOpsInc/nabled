@@ -1574,15 +1574,12 @@ mod tests {
 
     #[test]
     fn complex_cholesky_paths_work() {
-        let matrix = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex64::new(5.0, 0.0),
-                Complex64::new(1.0, -1.0),
-                Complex64::new(1.0, 1.0),
-                Complex64::new(4.0, 0.0),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(5.0, 0.0),
+            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0, 1.0),
+            Complex64::new(4.0, 0.0),
+        ])
         .unwrap();
         let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
 
@@ -1642,15 +1639,12 @@ mod tests {
 
     #[test]
     fn complex_solve_and_inverse_into_views_match_allocating_paths() {
-        let matrix = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex64::new(5.0, 0.0),
-                Complex64::new(1.0, -1.0),
-                Complex64::new(1.0, 1.0),
-                Complex64::new(4.0, 0.0),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(5.0, 0.0),
+            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0, 1.0),
+            Complex64::new(4.0, 0.0),
+        ])
         .unwrap();
         let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
         let expected_solution = solve_complex(&matrix, &rhs).unwrap();

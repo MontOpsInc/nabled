@@ -31,8 +31,8 @@ fn adjoint_from_transform<T: NabledReal>(transform: &Transform3<T>) -> Array2<T>
 
 fn default_inertial<T: NabledReal + Default>() -> nabled_model::link::InertialSpec<T> {
     nabled_model::link::InertialSpec {
-        mass: T::one(),
-        com: [T::default(), T::default(), T::default()],
+        mass:    T::one(),
+        com:     [T::default(), T::default(), T::default()],
         inertia: Array2::<T>::eye(3) * T::from_f64(0.01).unwrap_or(T::zero()),
     }
 }
@@ -40,8 +40,8 @@ fn default_inertial<T: NabledReal + Default>() -> nabled_model::link::InertialSp
 pub fn rnea<T: NabledReal + Default>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
-    q: &Array1<T>,
-    qd: &Array1<T>,
+    q: &ArrayView1<'_, T>,
+    qd: &ArrayView1<'_, T>,
     qdd: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, DynamicsError> {
     rnea_with_config(model, chain, q, qd, qdd, &DynamicsConfig::default())
@@ -50,8 +50,8 @@ pub fn rnea<T: NabledReal + Default>(
 pub fn rnea_with_config<T: NabledReal + Default>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
-    q: &Array1<T>,
-    qd: &Array1<T>,
+    q: &ArrayView1<'_, T>,
+    qd: &ArrayView1<'_, T>,
     qdd: &ArrayView1<'_, T>,
     config: &DynamicsConfig<T>,
 ) -> Result<Array1<T>, DynamicsError> {
@@ -62,7 +62,7 @@ pub fn rnea_with_config<T: NabledReal + Default>(
         return Err(DynamicsError::DimensionMismatch);
     }
 
-    let transforms = link_transforms_view(chain, &q.view())
+    let transforms = link_transforms_view(chain, q)
         .map_err(|_| DynamicsError::InvalidInput("FK failed".to_string()))?;
     let num_joints = chain.num_joints();
     let indices = model.actuated_indices();
@@ -126,14 +126,14 @@ pub fn rnea_view<T: NabledReal + Default>(
     qd: &ArrayView1<'_, T>,
     qdd: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, DynamicsError> {
-    rnea(model, chain, &q.to_owned(), &qd.to_owned(), qdd)
+    rnea(model, chain, q, qd, qdd)
 }
 
 pub fn rnea_into<T: NabledReal + Default>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
-    q: &Array1<T>,
-    qd: &Array1<T>,
+    q: &ArrayView1<'_, T>,
+    qd: &ArrayView1<'_, T>,
     qdd: &ArrayView1<'_, T>,
     output: &mut Array1<T>,
 ) -> Result<(), DynamicsError> {
@@ -168,21 +168,21 @@ mod tests {
     fn pendulum_gravity_torque() {
         let mut model = RobotModel::<f64>::new();
         let body = BodySpec {
-            link: nabled_model::link::LinkSpec { name: "link1".to_string() },
-            parent_link: "base".to_string(),
-            joint_type: ModelJointType::Revolute,
-            axis: JointAxis::Z,
-            limits: None,
-            inertial: Some(nabled_model::link::InertialSpec {
-                mass: 1.0,
-                com: [0.5, 0.0, 0.0],
+            link:         nabled_model::link::LinkSpec { name: "link1".to_string() },
+            parent_link:  "base".to_string(),
+            joint_type:   ModelJointType::Revolute,
+            axis:         JointAxis::Z,
+            limits:       None,
+            inertial:     Some(nabled_model::link::InertialSpec {
+                mass:    1.0,
+                com:     [0.5, 0.0, 0.0],
                 inertia: Array2::<f64>::zeros((3, 3)),
             }),
             joint_origin: nabled_model::origin::identity_transform(),
-            dh_a: 0.0,
-            dh_alpha: 0.0,
-            dh_d: 0.0,
-            dh_theta: 0.0,
+            dh_a:         0.0,
+            dh_alpha:     0.0,
+            dh_d:         0.0,
+            dh_theta:     0.0,
         };
         let _ = model.add_body(None, body);
         let chain = ChainSpec::from_dh(
@@ -196,8 +196,10 @@ mod tests {
         .unwrap();
         let q = arr1(&[0.0_f64]);
         let zeros = arr1(&[0.0]);
-        let config = DynamicsConfig { gravity: [0.0, -9.81, 0.0] };
-        let tau = rnea_with_config(&model, &chain, &q, &zeros, &zeros.view(), &config).unwrap();
+        let config = DynamicsConfig { gravity: [0.0, -9.81, 0.0], ..DynamicsConfig::default() };
+        let tau =
+            rnea_with_config(&model, &chain, &q.view(), &zeros.view(), &zeros.view(), &config)
+                .unwrap();
         assert!(tau[0].abs() > 0.1, "expected gravity torque, got {}", tau[0]);
     }
 
@@ -210,13 +212,15 @@ mod tests {
         let model = fixture.to_robot_model().unwrap();
         let chain = fixture.to_chain_spec().unwrap();
         let gravity: [f64; 3] = fixture.gravity.unwrap_or([0.0, -9.81, 0.0]);
-        let config = DynamicsConfig { gravity };
+        let config = DynamicsConfig { gravity, ..DynamicsConfig::default() };
         for case in &fixture.cases {
             if let (Some(qd), Some(qdd), Some(tau_ref)) = (&case.qd, &case.qdd, &case.tau) {
                 let q = arr1(&case.q);
                 let qd = arr1(qd);
                 let qdd = arr1(qdd);
-                let tau = rnea_with_config(&model, &chain, &q, &qd, &qdd.view(), &config).unwrap();
+                let tau =
+                    rnea_with_config(&model, &chain, &q.view(), &qd.view(), &qdd.view(), &config)
+                        .unwrap();
                 for (computed, expected) in tau.iter().zip(tau_ref.iter()) {
                     assert_relative_eq!(computed, expected, epsilon = 1e-6);
                 }

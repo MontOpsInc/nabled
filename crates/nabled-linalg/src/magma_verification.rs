@@ -19,9 +19,7 @@ impl VerifyForceGuard {
 }
 
 impl Drop for VerifyForceGuard {
-    fn drop(&mut self) {
-        MagmaProviderPolicy::set_verify_force_override(None);
-    }
+    fn drop(&mut self) { MagmaProviderPolicy::set_verify_force_override(None); }
 }
 
 fn assert_dense_provider_used(context: &str) {

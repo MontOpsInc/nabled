@@ -85,6 +85,29 @@ pub fn se3_log<'py>(py: Python<'py>, transform: &PyTransform3) -> PyResult<Py<Py
     Ok(utils::pyarray1_from_owned(py, twist))
 }
 
+/// SE(3) logarithm into caller-provided output buffer.
+#[pyfunction]
+pub fn se3_log_into(transform: &PyTransform3, output: &Bound<'_, PyAny>) -> PyResult<()> {
+    let twist = se3::log(&transform.inner).map_err(to_py_err)?;
+    let mut out = utils::output_array1::<f64>(output, "output", "float64")?;
+    if out.as_array_mut().len() != 6 {
+        return Err(pyo3::exceptions::PyValueError::new_err("output must have length 6"));
+    }
+    out.as_array_mut().assign(&twist);
+    Ok(())
+}
+
+/// Compose two rigid transforms into caller-provided output carrier.
+#[pyfunction]
+pub fn se3_compose_into(
+    left: &PyTransform3,
+    right: &PyTransform3,
+    output: &mut PyTransform3,
+) -> PyResult<()> {
+    output.inner = se3::compose(&left.inner, &right.inner).map_err(to_py_err)?;
+    Ok(())
+}
+
 /// SE(3) exponential map from a 6-vector twist.
 #[pyfunction]
 pub fn se3_exp(twist: &Bound<'_, PyAny>) -> PyResult<PyTransform3> {

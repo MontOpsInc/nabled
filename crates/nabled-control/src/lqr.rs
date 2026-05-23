@@ -9,7 +9,7 @@ use crate::dare::dare_solve_view;
 /// LQR solution containing gain and Riccati matrix.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LqrResult<T> {
-    pub gain: Array2<T>,
+    pub gain:    Array2<T>,
     pub riccati: Array2<T>,
 }
 

@@ -65,10 +65,10 @@ impl JointAxis {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JointLimits<T> {
-    pub lower: T,
-    pub upper: T,
+    pub lower:    T,
+    pub upper:    T,
     pub velocity: T,
-    pub effort: T,
+    pub effort:   T,
 }
 
 /// Validate joint limits ordering.

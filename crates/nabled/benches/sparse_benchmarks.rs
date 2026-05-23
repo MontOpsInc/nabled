@@ -7,10 +7,10 @@ use ndarray::{Array1, Array2};
 use rand::RngExt;
 
 struct SparseFactorizations<'a> {
-    direct: &'a sparse::SparseLUFactorization,
+    direct:    &'a sparse::SparseLUFactorization,
     zero_fill: &'a sparse::ILU0Factorization,
     threshold: &'a sparse::ILUTFactorization,
-    level: &'a sparse::ILUKFactorization,
+    level:     &'a sparse::ILUKFactorization,
     symmetric: &'a sparse::ILDL0Factorization,
 }
 
@@ -70,10 +70,10 @@ fn benchmark_sparse_solvers(
     let level_factorization = sparse::iluk_factor(matrix, 1).expect("iluk factorization");
     let symmetric_factorization = sparse::ildl0_factor(matrix).expect("ildl0 factorization");
     let factorizations = SparseFactorizations {
-        direct: &direct_factorization,
+        direct:    &direct_factorization,
         zero_fill: &zero_fill_factorization,
         threshold: &threshold_factorization,
-        level: &level_factorization,
+        level:     &level_factorization,
         symmetric: &symmetric_factorization,
     };
 

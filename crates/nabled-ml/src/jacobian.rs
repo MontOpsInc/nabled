@@ -41,23 +41,19 @@ impl std::error::Error for JacobianError {}
 #[derive(Debug, Clone)]
 pub struct JacobianConfig<T = f64> {
     /// Finite-difference step size.
-    pub step_size: T,
+    pub step_size:      T,
     /// Relative tolerance.
-    pub tolerance: T,
+    pub tolerance:      T,
     /// Maximum iterations.
     pub max_iterations: usize,
 }
 
 impl Default for JacobianConfig<f64> {
-    fn default() -> Self {
-        Self { step_size: 1e-6, tolerance: 1e-8, max_iterations: 100 }
-    }
+    fn default() -> Self { Self { step_size: 1e-6, tolerance: 1e-8, max_iterations: 100 } }
 }
 
 impl Default for JacobianConfig<f32> {
-    fn default() -> Self {
-        Self { step_size: 1e-3, tolerance: 1e-5, max_iterations: 100 }
-    }
+    fn default() -> Self { Self { step_size: 1e-3, tolerance: 1e-5, max_iterations: 100 } }
 }
 
 impl<T: NabledReal> JacobianConfig<T> {

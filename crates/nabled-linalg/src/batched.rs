@@ -1044,13 +1044,10 @@ mod tests {
 
     #[test]
     fn batched_qr_reconstructs_inputs() {
-        let matrices = Array3::from_shape_vec(
-            (2, 2, 2),
-            vec![
-                1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, //
-                2.0_f64, 0.0_f64, 1.0_f64, 2.0_f64,
-            ],
-        )
+        let matrices = Array3::from_shape_vec((2, 2, 2), vec![
+            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, //
+            2.0_f64, 0.0_f64, 1.0_f64, 2.0_f64,
+        ])
         .expect("valid shape");
         let results = qr(&matrices, &qr::QRConfig::default()).expect("batched qr");
         assert_eq!(results.len(), 2);
@@ -1068,13 +1065,10 @@ mod tests {
 
     #[test]
     fn batched_svd_matches_single_path() {
-        let matrices = Array3::from_shape_vec(
-            (2, 2, 2),
-            vec![
-                3.0_f64, 0.0_f64, 0.0_f64, 2.0_f64, //
-                1.0_f64, 2.0_f64, 2.0_f64, 4.0_f64,
-            ],
-        )
+        let matrices = Array3::from_shape_vec((2, 2, 2), vec![
+            3.0_f64, 0.0_f64, 0.0_f64, 2.0_f64, //
+            1.0_f64, 2.0_f64, 2.0_f64, 4.0_f64,
+        ])
         .expect("valid shape");
         let batch = svd(&matrices).expect("batched svd");
         assert_eq!(batch.len(), 2);
@@ -1093,13 +1087,10 @@ mod tests {
 
     #[test]
     fn batched_lu_cholesky_and_eigen_work() {
-        let lu_matrices = Array3::from_shape_vec(
-            (2, 2, 2),
-            vec![
-                4.0_f64, 3.0_f64, 6.0_f64, 3.0_f64, //
-                2.0_f64, 1.0_f64, 5.0_f64, 3.0_f64,
-            ],
-        )
+        let lu_matrices = Array3::from_shape_vec((2, 2, 2), vec![
+            4.0_f64, 3.0_f64, 6.0_f64, 3.0_f64, //
+            2.0_f64, 1.0_f64, 5.0_f64, 3.0_f64,
+        ])
         .expect("valid shape");
         let lu_results = lu(&lu_matrices).expect("batched lu");
         let lu_results_with_metadata = lu_with_metadata(&lu_matrices).expect("batched lu metadata");
@@ -1114,13 +1105,10 @@ mod tests {
             assert!(matches!(*permutation_sign, -1 | 1));
         }
 
-        let spd = Array3::from_shape_vec(
-            (2, 2, 2),
-            vec![
-                4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
-                9.0_f64, 3.0_f64, 3.0_f64, 5.0_f64,
-            ],
-        )
+        let spd = Array3::from_shape_vec((2, 2, 2), vec![
+            4.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
+            9.0_f64, 3.0_f64, 3.0_f64, 5.0_f64,
+        ])
         .expect("valid shape");
         let chol_results = cholesky(&spd).expect("batched cholesky");
         let eig_results = symmetric_eigen(&spd).expect("batched eigen");

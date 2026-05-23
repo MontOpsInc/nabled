@@ -1,6 +1,6 @@
 //! Dynamics bindings (RNEA, mass matrix, forward dynamics).
 
-use nabled::dynamics::config::DynamicsConfig;
+use nabled::dynamics::config::{DynamicsConfig, ForwardDynamicsMethod};
 use nabled::dynamics::crba::mass_matrix;
 use nabled::dynamics::fd::forward_dynamics_with_config;
 use nabled::dynamics::rnea::rnea_with_config;
@@ -22,9 +22,23 @@ pub struct PyDynamicsConfig {
 #[pymethods]
 impl PyDynamicsConfig {
     #[new]
-    #[pyo3(signature = (*, gravity=(0.0, 0.0, -9.81)))]
-    fn new(gravity: (f64, f64, f64)) -> Self {
-        Self { inner: DynamicsConfig { gravity: [gravity.0, gravity.1, gravity.2] } }
+    #[pyo3(signature = (*, gravity=(0.0, 0.0, -9.81), forward_dynamics="aba"))]
+    fn new(gravity: (f64, f64, f64), forward_dynamics: &str) -> PyResult<Self> {
+        let fd_method = match forward_dynamics {
+            "aba" => ForwardDynamicsMethod::Aba,
+            "crba_lu" => ForwardDynamicsMethod::CrbaLu,
+            _ => {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "forward_dynamics must be 'aba' or 'crba_lu'",
+                ));
+            }
+        };
+        Ok(Self {
+            inner: DynamicsConfig {
+                gravity:          [gravity.0, gravity.1, gravity.2],
+                forward_dynamics: fd_method,
+            },
+        })
     }
 }
 
@@ -54,8 +68,8 @@ pub fn rnea<'py>(
             let tau = rnea_with_config(
                 &model.inner,
                 &chain.inner,
-                &q_arr.as_array().to_owned(),
-                &qd_arr.as_array().to_owned(),
+                &q_arr.as_array(),
+                &qd_arr.as_array(),
                 &qdd_arr.as_array(),
                 &config,
             )
@@ -79,7 +93,7 @@ pub fn mass_matrix_py<'py>(
             let m = mass_matrix(
                 &model.inner,
                 &chain.inner,
-                &arr.as_array().to_owned(),
+                &arr.as_array(),
                 &DynamicsConfig::default(),
             )
             .map_err(to_py_err)?;
@@ -115,8 +129,8 @@ pub fn forward_dynamics<'py>(
             let qdd = forward_dynamics_with_config(
                 &model.inner,
                 &chain.inner,
-                &q_arr.as_array().to_owned(),
-                &qd_arr.as_array().to_owned(),
+                &q_arr.as_array(),
+                &qd_arr.as_array(),
                 &tau_arr.as_array(),
                 &config,
             )
@@ -153,8 +167,8 @@ pub fn rnea_into(
             let tau = rnea_with_config(
                 &model.inner,
                 &chain.inner,
-                &q_arr.as_array().to_owned(),
-                &qd_arr.as_array().to_owned(),
+                &q_arr.as_array(),
+                &qd_arr.as_array(),
                 &qdd_arr.as_array(),
                 &config,
             )
@@ -198,8 +212,8 @@ pub fn forward_dynamics_into(
             let qdd = forward_dynamics_with_config(
                 &model.inner,
                 &chain.inner,
-                &q_arr.as_array().to_owned(),
-                &qd_arr.as_array().to_owned(),
+                &q_arr.as_array(),
+                &qd_arr.as_array(),
                 &tau_arr.as_array(),
                 &config,
             )

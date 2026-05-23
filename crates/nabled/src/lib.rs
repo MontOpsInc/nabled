@@ -13,6 +13,8 @@
 //! 6. [`dynamics`] for rigid-body dynamics algorithms.
 //! 7. [`control`] for LTI control synthesis (DARE/LQR and related tools).
 //! 8. [`sensor`] for sensor fusion (Kalman/EKF and related models).
+//! 9. [`sim`] for cross-crate Physical AI orchestration (simulation, IK trajectories, control
+//!    loops, estimation pipelines).
 //!
 //! ## Feature Flags
 //!
@@ -96,6 +98,11 @@ pub mod control {
 /// Sensor fusion for Physical AI workloads.
 pub mod sensor {
     pub use nabled_sensor::*;
+}
+
+/// Physical AI orchestration (simulation, manipulation, control, estimation pipelines).
+pub mod sim {
+    pub use nabled_sim::*;
 }
 
 /// Optional Arrow/ndarray interop adapters that delegate into ndarray-native `nabled` domains.

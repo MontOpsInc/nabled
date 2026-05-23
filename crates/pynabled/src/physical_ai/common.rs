@@ -20,7 +20,7 @@ pub(crate) fn transform_from_arrays(
                 ));
             }
             Ok(Transform3 {
-                rotation: Rotation3 { matrix: r.as_array().to_owned() },
+                rotation:    Rotation3 { matrix: r.as_array().to_owned() },
                 translation: t.as_array().to_owned(),
             })
         }

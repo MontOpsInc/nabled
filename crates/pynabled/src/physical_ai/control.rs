@@ -15,14 +15,14 @@ use crate::utils;
 #[pyclass(name = "LqrResult")]
 pub struct PyLqrResult {
     #[pyo3(get)]
-    pub gain: Py<PyAny>,
+    pub gain:    Py<PyAny>,
     #[pyo3(get)]
     pub riccati: Py<PyAny>,
 }
 
 fn lqr_result_to_py(py: Python<'_>, result: LqrResult<f64>) -> PyResult<PyLqrResult> {
     Ok(PyLqrResult {
-        gain: utils::pyarray2_from_owned(py, result.gain),
+        gain:    utils::pyarray2_from_owned(py, result.gain),
         riccati: utils::pyarray2_from_owned(py, result.riccati),
     })
 }

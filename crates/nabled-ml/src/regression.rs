@@ -11,26 +11,26 @@ use num_complex::Complex64;
 #[derive(Debug, Clone)]
 pub struct NdarrayRegressionResult<T = f64> {
     /// Regression coefficients.
-    pub coefficients: Array1<T>,
+    pub coefficients:  Array1<T>,
     /// Model fitted values.
     pub fitted_values: Array1<T>,
     /// Residuals (`y - y_hat`).
-    pub residuals: Array1<T>,
+    pub residuals:     Array1<T>,
     /// Coefficient of determination.
-    pub r_squared: T,
+    pub r_squared:     T,
 }
 
 /// Complex regression result for ndarray inputs.
 #[derive(Debug, Clone)]
 pub struct NdarrayComplexRegressionResult {
     /// Regression coefficients.
-    pub coefficients: Array1<Complex64>,
+    pub coefficients:  Array1<Complex64>,
     /// Model fitted values.
     pub fitted_values: Array1<Complex64>,
     /// Residuals (`y - y_hat`).
-    pub residuals: Array1<Complex64>,
+    pub residuals:     Array1<Complex64>,
     /// Coefficient of determination (real-valued).
-    pub r_squared: f64,
+    pub r_squared:     f64,
 }
 
 /// Error type for regression operations.
@@ -540,15 +540,12 @@ mod tests {
 
     #[test]
     fn complex_regression_fits_known_line() {
-        let x = Array2::from_shape_vec(
-            (4, 1),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(2.0, 0.0),
-                Complex64::new(3.0, 0.0),
-                Complex64::new(4.0, 0.0),
-            ],
-        )
+        let x = Array2::from_shape_vec((4, 1), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(4.0, 0.0),
+        ])
         .unwrap();
         let y = Array1::from_vec(vec![
             Complex64::new(3.0, 1.0),
@@ -565,15 +562,12 @@ mod tests {
 
     #[test]
     fn complex_regression_view_matches_owned() {
-        let x = Array2::from_shape_vec(
-            (4, 1),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(2.0, 0.0),
-                Complex64::new(3.0, 0.0),
-                Complex64::new(4.0, 0.0),
-            ],
-        )
+        let x = Array2::from_shape_vec((4, 1), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(4.0, 0.0),
+        ])
         .unwrap();
         let y = Array1::from_vec(vec![
             Complex64::new(3.0, 1.0),
@@ -640,15 +634,12 @@ mod tests {
 
     #[test]
     fn complex_regression_view_into_reuses_outputs() {
-        let x = Array2::from_shape_vec(
-            (4, 1),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(2.0, 0.0),
-                Complex64::new(3.0, 0.0),
-                Complex64::new(4.0, 0.0),
-            ],
-        )
+        let x = Array2::from_shape_vec((4, 1), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(4.0, 0.0),
+        ])
         .unwrap();
         let y = Array1::from_vec(vec![
             Complex64::new(3.0, 1.0),

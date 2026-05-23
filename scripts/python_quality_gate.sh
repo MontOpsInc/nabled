@@ -218,6 +218,9 @@ main() {
         --cov-report= \
         --cov-fail-under=0 \
         -q
+    run_in_repo "${dev_venv}/bin/python" -m coverage report \
+        --include='pynabled/geometry.py','pynabled/kinematics.py','pynabled/model.py','pynabled/dynamics.py','pynabled/control.py','pynabled/sensor.py','pynabled/signal.py' \
+        --show-missing --fail-under="${COVERAGE_THRESHOLD}"
     run_in_repo \
         "${dev_venv}/bin/python" -m coverage xml -o "${COVERAGE_DIR}/python-coverage.xml"
     run_in_repo "${dev_venv}/bin/python" -m coverage report \

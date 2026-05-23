@@ -1,6 +1,7 @@
-//! Physical AI integration scenarios S1–S22.
+//! Physical AI integration scenarios S1–S25.
 
-#![expect(clippy::many_single_char_names, clippy::cast_precision_loss)]
+#![expect(clippy::many_single_char_names)]
+#![allow(clippy::cast_precision_loss, clippy::cast_lossless)]
 
 use approx::assert_relative_eq;
 use nabled::control::dare::{dare_residual_norm, dare_solve};
@@ -13,11 +14,11 @@ use nabled::dynamics::fd::forward_dynamics_with_config;
 use nabled::dynamics::rnea::rnea_with_config;
 use nabled::kinematics::chain::{ChainSpec, DhConvention, JointType};
 use nabled::kinematics::fk::{end_effector_pose, fk_view};
-use nabled::kinematics::ik::{IkConfig, inverse_kinematics_dls};
+use nabled::kinematics::ik::{IkConfig, inverse_kinematics_dls, inverse_kinematics_tree_dls};
 use nabled::kinematics::jacobian::{jacobian, jacobian_translation};
 use nabled::kinematics::tree::{end_effector_pose_tree, jacobian_tree};
 use nabled::ml::stats::rolling::{rolling_covariance, rolling_covariance_view};
-use nabled::model::dh::{extract_chain_spec, to_chain_spec};
+use nabled::model::dh::{extract_chain_spec, extract_chain_spec_for_dynamics, to_chain_spec};
 use nabled::model::fixture::{load_planar2r_json, load_y_branch_json};
 use nabled::model::urdf::from_urdf_file;
 use nabled::sensor::camera::{PinholeIntrinsics, pinhole_project};
@@ -150,16 +151,18 @@ fn s5_rnea_tau() {
     let model = fixture.to_robot_model::<f64>().expect("model");
     let chain = fixture.to_chain_spec::<f64>().expect("chain");
     let gravity: [f64; 3] = fixture.gravity.unwrap_or([0.0, -9.81, 0.0]);
-    let config = DynamicsConfig { gravity };
+    let config = DynamicsConfig { gravity, ..DynamicsConfig::default() };
     let case =
         fixture.cases.iter().find(|c| c.qd.is_some() && c.qdd.is_some()).expect("dynamics case");
     let q = arr1(&case.q);
     let qd = arr1(case.qd.as_ref().expect("qd"));
     let qdd = arr1(case.qdd.as_ref().expect("qdd"));
-    let tau = rnea_with_config(&model, &chain, &q, &qd, &qdd.view(), &config).expect("rnea");
+    let tau = rnea_with_config(&model, &chain, &q.view(), &qd.view(), &qdd.view(), &config)
+        .expect("rnea");
     assert!(tau.iter().all(|v| v.is_finite()));
     let recovered =
-        forward_dynamics_with_config(&model, &chain, &q, &qd, &tau.view(), &config).expect("fd");
+        forward_dynamics_with_config(&model, &chain, &q.view(), &qd.view(), &tau.view(), &config)
+            .expect("fd");
     assert_relative_eq!(recovered, qdd, epsilon = 1e-6);
 }
 
@@ -169,13 +172,18 @@ fn s5b_forward_dynamics_round_trip() {
     let fixture = load_planar2r_json().expect("fixture");
     let model = fixture.to_robot_model::<f64>().expect("model");
     let chain = fixture.to_chain_spec::<f64>().expect("chain");
-    let config = DynamicsConfig { gravity: fixture.gravity.unwrap_or([0.0, -9.81, 0.0]) };
+    let config = DynamicsConfig {
+        gravity: fixture.gravity.unwrap_or([0.0, -9.81, 0.0]),
+        ..DynamicsConfig::default()
+    };
     let q = arr1(&[0.2_f64, 0.4]);
     let qd = arr1(&[0.05_f64, -0.1]);
     let qdd = arr1(&[0.3_f64, 0.15]);
-    let tau = rnea_with_config(&model, &chain, &q, &qd, &qdd.view(), &config).expect("rnea");
+    let tau = rnea_with_config(&model, &chain, &q.view(), &qd.view(), &qdd.view(), &config)
+        .expect("rnea");
     let qdd_fd =
-        forward_dynamics_with_config(&model, &chain, &q, &qd, &tau.view(), &config).expect("fd");
+        forward_dynamics_with_config(&model, &chain, &q.view(), &qd.view(), &tau.view(), &config)
+            .expect("fd");
     assert_relative_eq!(qdd_fd, qdd, epsilon = 1e-6);
 }
 
@@ -367,8 +375,10 @@ fn s21_lqr_algebraic_consistency() {
 /// S11: Multi-dimensional linear Kalman tracking.
 #[test]
 fn s11_multi_d_kalman_tracking() {
-    let state =
-        KalmanState { mean: arr1(&[0.0_f64, 0.0]), covariance: arr2(&[[1.0, 0.0], [0.0, 1.0]]) };
+    let state = KalmanState {
+        mean:       arr1(&[0.0_f64, 0.0]),
+        covariance: arr2(&[[1.0, 0.0], [0.0, 1.0]]),
+    };
     let f = arr2(&[[1.0, 0.1], [0.0, 1.0]]);
     let q = arr2(&[[0.01, 0.0], [0.0, 0.01]]);
     let predicted = predict(&state, &f.view(), &q.view()).expect("predict");
@@ -384,12 +394,13 @@ fn s11_multi_d_kalman_tracking() {
 #[test]
 fn s17_ekf_nonlinear_update() {
     let model = EkModel {
-        predict_state: |x: &ndarray::ArrayView1<'_, f64>| arr1(&[x[0].cos()]),
+        predict_state:    |x: &ndarray::ArrayView1<'_, f64>| arr1(&[x[0].cos()]),
         predict_jacobian: |x: &ndarray::ArrayView1<'_, f64>| arr2(&[[-x[0].sin()]]),
-        measure: |x: &ndarray::ArrayView1<'_, f64>| arr1(&[x[0]]),
+        measure:          |x: &ndarray::ArrayView1<'_, f64>| arr1(&[x[0]]),
         measure_jacobian: |_: &ndarray::ArrayView1<'_, f64>| arr2(&[[1.0]]),
     };
-    let config = EkConfig { process_noise: arr2(&[[0.01]]), measurement_noise: arr2(&[[0.05]]) };
+    let config =
+        EkConfig { process_noise: arr2(&[[0.01]]), measurement_noise: arr2(&[[0.05]]) };
     let state = KalmanState { mean: arr1(&[0.2_f64]), covariance: arr2(&[[1.0]]) };
     let predicted = ekf_predict(&state, &model, &config).expect("predict");
     let updated = ekf_update(&predicted, &arr1(&[0.9]).view(), &model, &config).expect("update");
@@ -415,7 +426,7 @@ fn s19_imu_strapdown_small_angle() {
     let q1 = strapdown_predict(&q0, &gyro, dt).expect("strapdown");
     let expected =
         nabled::linalg::geometry::quat::from_axis_angle(&nabled::linalg::geometry::AxisAngle {
-            axis: [0.0, 0.0, 1.0],
+            axis:  [0.0, 0.0, 1.0],
             angle: 0.001,
         });
     assert_relative_eq!(q1[0], expected.w, epsilon = 1e-6);
@@ -476,4 +487,90 @@ fn s22_y_branch_tree_fk() {
     let serial_pose = end_effector_pose(&left_chain, &q_chain).expect("serial fk");
     let tree_pose = end_effector_pose_tree(&model, "base", "left_ee", &q).expect("tree fk");
     assert_relative_eq!(serial_pose.translation, tree_pose.translation, epsilon = 1e-10);
+
+    let branch = extract_chain_spec_for_dynamics(&model, "base", "left_ee").expect("branch");
+    let q_branch = branch.branch_q(&model, &q).expect("branch q");
+    assert_relative_eq!(q_branch, q_chain, epsilon = 1e-10);
+}
+
+/// S23: Tree DLS IK on Y-branch left end effector.
+#[test]
+fn s23_y_branch_tree_ik() {
+    let urdf_path =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/physical_ai/Y_branch.urdf");
+    let model = from_urdf_file::<f64>(urdf_path).expect("urdf");
+    let q_target = arr1(&[0.3_f64, 0.5, -0.2]);
+    let target = end_effector_pose_tree(&model, "base", "left_ee", &q_target).expect("target fk");
+    let q_init = arr1(&[0.0_f64, 0.0, 0.0]);
+    let config = IkConfig { max_iterations: 300, tolerance: 1e-3, ..IkConfig::default() };
+    let q = inverse_kinematics_tree_dls(&model, "base", "left_ee", &q_init, &target, &config)
+        .expect("tree ik");
+    assert_eq!(q.len(), model.dof());
+    let achieved = end_effector_pose_tree(&model, "base", "left_ee", &q).expect("achieved fk");
+    let err = nabled::kinematics::pose_error(&achieved, &target).expect("pose error");
+    assert!(err.iter().map(|v| v * v).sum::<f64>().sqrt() < 1e-3);
+}
+
+/// S24: Sim torque log → rolling covariance bounded (orchestrator + stats).
+#[test]
+#[expect(clippy::cast_possible_truncation)]
+fn s24_sim_torque_rolling_covariance() {
+    use nabled::sim::context::RobotContext;
+    use nabled::sim::pipeline::PhysicalAiPipeline;
+    use nabled::sim::sim::{SimConfig, SimState};
+    use ndarray::Array1;
+
+    let fixture = load_planar2r_json().expect("fixture");
+    let ctx = RobotContext::new(
+        fixture.to_robot_model::<f64>().expect("model"),
+        fixture.to_chain_spec::<f64>().expect("chain"),
+        DynamicsConfig {
+            gravity: fixture.gravity.unwrap_or([0.0, -9.81, 0.0]),
+            ..DynamicsConfig::default()
+        },
+    );
+    let pipeline = PhysicalAiPipeline::new(ctx, SimConfig::new(0.01), 5);
+    let initial = SimState::new(arr1(&[0.2_f64, 0.4]), Array1::zeros(2));
+    let (_, cov) = pipeline
+        .sim_torque_rolling_covariance(
+            &initial,
+            |step| {
+                let t = f64::from(step as u32) * 0.01;
+                arr1(&[0.5 * t.sin(), 0.2 * t.cos()])
+            },
+            30,
+        )
+        .expect("pipeline");
+    assert_eq!(cov.nrows(), 30);
+    assert!(cov[[29, 0]].is_finite());
+    assert!(cov[[29, 3]].is_finite());
+    assert!(cov[[29, 3]].abs() < 1.0, "rolling variance should stay bounded");
+}
+
+/// S25: Closed-loop LQR + observer via orchestrator matches standalone example pattern.
+#[test]
+fn s25_closed_loop_orchestrator() {
+    use nabled::sim::control_loop::{ClosedLoopPlant, ClosedLoopState, ClosedLoopStep};
+    use ndarray::{arr1, arr2};
+
+    let dt = 0.05_f64;
+    let plant = ClosedLoopPlant {
+        a: arr2(&[[1.0, dt], [0.0, 1.0]]),
+        b: arr2(&[[0.0], [dt]]),
+        c: arr2(&[[1.0, 0.0]]),
+    };
+    let controller = ClosedLoopStep::design(
+        plant.clone(),
+        &arr2(&[[10.0, 0.0], [0.0, 1.0]]),
+        &arr2(&[[0.1]]),
+        &[-0.5, -0.6],
+    )
+    .expect("design");
+    let mut state = ClosedLoopState { x: arr1(&[1.0, 0.5]), x_hat: arr1(&[0.0, 0.0]) };
+    for _ in 0..80 {
+        let _ = controller.step(&mut state).expect("step");
+    }
+    let err = (&state.x - &state.x_hat).mapv(|v: f64| v * v).sum().sqrt();
+    assert!(err < 1e-2, "observer error {err}");
+    assert!(state.x[0].abs() < 0.15, "state should regulate toward zero");
 }

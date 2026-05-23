@@ -11,13 +11,9 @@ fn random_start(dim: usize) -> Array1<f64> {
     Array1::from_vec(values)
 }
 
-fn quadratic_objective(x: &Array1<f64>) -> f64 {
-    x.iter().map(|value| value * value).sum()
-}
+fn quadratic_objective(x: &Array1<f64>) -> f64 { x.iter().map(|value| value * value).sum() }
 
-fn quadratic_gradient(x: &Array1<f64>) -> Array1<f64> {
-    x.mapv(|value| 2.0 * value)
-}
+fn quadratic_gradient(x: &Array1<f64>) -> Array1<f64> { x.mapv(|value| 2.0 * value) }
 
 fn gradient_descent_manual(
     start: &Array1<f64>,
@@ -81,12 +77,12 @@ fn benchmark_optimization(c: &mut Criterion) {
             );
 
             let adam_config = AdamConfig {
-                learning_rate: 1e-2,
-                beta1: 0.9,
-                beta2: 0.999,
-                epsilon: 1e-8,
+                learning_rate:  1e-2,
+                beta1:          0.9,
+                beta2:          0.999,
+                epsilon:        1e-8,
                 max_iterations: 200,
-                tolerance: 1e-8,
+                tolerance:      1e-8,
             };
             _ = group.bench_with_input(BenchmarkId::new("adam", &id), &dim, |bench, _| {
                 bench.iter(|| {
@@ -110,12 +106,12 @@ fn benchmark_optimization(c: &mut Criterion) {
             let sgd_config =
                 SGDConfig { learning_rate: 1e-2, max_iterations: 200, tolerance: 1e-8 };
             let adam_config = AdamConfig {
-                learning_rate: 1e-2,
-                beta1: 0.9,
-                beta2: 0.999,
-                epsilon: 1e-8,
+                learning_rate:  1e-2,
+                beta1:          0.9,
+                beta2:          0.999,
+                epsilon:        1e-8,
                 max_iterations: 200,
-                tolerance: 1e-8,
+                tolerance:      1e-8,
             };
 
             _ = competitor_group.bench_with_input(

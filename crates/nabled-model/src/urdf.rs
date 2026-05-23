@@ -17,20 +17,20 @@ use crate::robot::{BodySpec, RobotModel};
 
 #[derive(Clone)]
 struct PendingJoint {
-    name: String,
-    joint_type: JointType,
+    name:        String,
+    joint_type:  JointType,
     parent_link: String,
-    child_link: String,
-    origin_xyz: [f64; 3],
-    origin_rpy: [f64; 3],
-    axis: JointAxis,
-    limits: Option<JointLimits<f64>>,
+    child_link:  String,
+    origin_xyz:  [f64; 3],
+    origin_rpy:  [f64; 3],
+    axis:        JointAxis,
+    limits:      Option<JointLimits<f64>>,
 }
 
 #[derive(Clone)]
 struct PendingInertial {
-    mass: f64,
-    com: [f64; 3],
+    mass:    f64,
+    com:     [f64; 3],
     inertia: Array2<f64>,
 }
 
@@ -53,7 +53,7 @@ pub fn from_urdf_file<T: NabledReal + Default>(path: &str) -> Result<RobotModel<
 
 struct ParsedUrdf {
     joints: Vec<PendingJoint>,
-    links: HashMap<String, LinkData>,
+    links:  HashMap<String, LinkData>,
 }
 
 fn parse_urdf_tree(urdf: &str) -> Result<ParsedUrdf, ModelError> {
@@ -172,14 +172,14 @@ fn parse_urdf_tree(urdf: &str) -> Result<ParsedUrdf, ModelError> {
 
 fn empty_joint() -> PendingJoint {
     PendingJoint {
-        name: String::new(),
-        joint_type: JointType::Revolute,
+        name:        String::new(),
+        joint_type:  JointType::Revolute,
         parent_link: String::new(),
-        child_link: String::new(),
-        origin_xyz: [0.0; 3],
-        origin_rpy: [0.0; 3],
-        axis: JointAxis::Z,
-        limits: None,
+        child_link:  String::new(),
+        origin_xyz:  [0.0; 3],
+        origin_rpy:  [0.0; 3],
+        axis:        JointAxis::Z,
+        limits:      None,
     }
 }
 
@@ -198,10 +198,10 @@ fn parse_joint_type(value: &str) -> Result<JointType, ModelError> {
 
 fn parse_limit_element(e: &quick_xml::events::BytesStart<'_>) -> JointLimits<f64> {
     JointLimits {
-        lower: parse_attr_f64(e, "lower").unwrap_or(-std::f64::consts::PI),
-        upper: parse_attr_f64(e, "upper").unwrap_or(std::f64::consts::PI),
+        lower:    parse_attr_f64(e, "lower").unwrap_or(-std::f64::consts::PI),
+        upper:    parse_attr_f64(e, "upper").unwrap_or(std::f64::consts::PI),
         velocity: parse_attr_f64(e, "velocity").unwrap_or(1.0),
-        effort: parse_attr_f64(e, "effort").unwrap_or(1.0),
+        effort:   parse_attr_f64(e, "effort").unwrap_or(1.0),
     }
 }
 
@@ -285,8 +285,8 @@ fn body_from_joint<T: NabledReal + Default>(
 ) -> Result<BodySpec<T>, ModelError> {
     let inertial_spec = match inertial {
         Some(spec) => Some(InertialSpec {
-            mass: parse_scalar::<T>(spec.mass)?,
-            com: [
+            mass:    parse_scalar::<T>(spec.mass)?,
+            com:     [
                 parse_scalar::<T>(spec.com[0])?,
                 parse_scalar::<T>(spec.com[1])?,
                 parse_scalar::<T>(spec.com[2])?,
@@ -298,10 +298,10 @@ fn body_from_joint<T: NabledReal + Default>(
 
     let limits = match joint.limits.as_ref() {
         Some(limits) => Some(JointLimits {
-            lower: parse_scalar::<T>(limits.lower)?,
-            upper: parse_scalar::<T>(limits.upper)?,
+            lower:    parse_scalar::<T>(limits.lower)?,
+            upper:    parse_scalar::<T>(limits.upper)?,
             velocity: parse_scalar::<T>(limits.velocity)?,
-            effort: parse_scalar::<T>(limits.effort)?,
+            effort:   parse_scalar::<T>(limits.effort)?,
         }),
         None => None,
     };

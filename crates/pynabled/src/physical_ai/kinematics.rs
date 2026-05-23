@@ -2,13 +2,18 @@
 
 use nabled::kinematics::chain::{ChainSpec, DhConvention, JointType};
 use nabled::kinematics::fk::{end_effector_pose, fk_view};
-use nabled::kinematics::ik::{IkConfig, IkResult, inverse_kinematics_dls_with_limits, pose_error};
+use nabled::kinematics::ik::{
+    IkConfig, IkResult, IkWorkspace, inverse_kinematics_dls_into,
+    inverse_kinematics_dls_with_limits, inverse_kinematics_tree_dls_with_limits, pose_error,
+};
 use nabled::kinematics::jacobian::{jacobian, jacobian_translation};
+use nabled::kinematics::tree::{end_effector_pose_tree, jacobian_tree, link_transforms_tree};
 use pyo3::prelude::*;
-use pyo3::types::PyAny;
+use pyo3::types::{PyAny, PyDict};
 
 use crate::error::to_py_err;
 use crate::physical_ai::geometry::PyTransform3;
+use crate::physical_ai::model::PyRobotModel;
 use crate::utils;
 
 /// Serial DH chain specification.
@@ -77,9 +82,7 @@ impl PyChainSpec {
     }
 
     #[getter]
-    fn num_joints(&self) -> usize {
-        self.inner.num_joints()
-    }
+    fn num_joints(&self) -> usize { self.inner.num_joints() }
 }
 
 /// IK solver configuration.
@@ -98,25 +101,37 @@ impl PyIkConfig {
     }
 }
 
+/// Reusable workspace for DLS IK hot paths.
+#[pyclass(name = "IkWorkspace")]
+pub struct PyIkWorkspace {
+    pub(crate) inner: IkWorkspace<f64>,
+}
+
+#[pymethods]
+impl PyIkWorkspace {
+    #[new]
+    fn new(num_joints: usize) -> Self { Self { inner: IkWorkspace::new(num_joints) } }
+}
+
 /// DLS IK result.
 #[pyclass(name = "IkResult")]
 pub struct PyIkResult {
     #[pyo3(get)]
-    pub q: Py<PyAny>,
+    pub q:           Py<PyAny>,
     #[pyo3(get)]
-    pub iterations: usize,
+    pub iterations:  usize,
     #[pyo3(get)]
     pub final_error: f64,
     #[pyo3(get)]
-    pub converged: bool,
+    pub converged:   bool,
 }
 
 fn ik_result_to_py(py: Python<'_>, result: IkResult<f64>) -> PyResult<PyIkResult> {
     Ok(PyIkResult {
-        q: utils::pyarray1_from_owned(py, result.q),
-        iterations: result.iterations,
+        q:           utils::pyarray1_from_owned(py, result.q),
+        iterations:  result.iterations,
         final_error: result.final_error,
-        converged: result.converged,
+        converged:   result.converged,
     })
 }
 
@@ -196,6 +211,85 @@ pub fn pose_error_py<'py>(
     Ok(utils::pyarray1_from_owned(py, err))
 }
 
+/// Pose error into caller-provided output buffer.
+#[pyfunction]
+pub fn pose_error_into_py(
+    achieved: &PyTransform3,
+    target: &PyTransform3,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let mut out = utils::output_array1::<f64>(output, "output", "float64")?;
+    if out.as_array_mut().len() != 6 {
+        return Err(pyo3::exceptions::PyValueError::new_err("output must have length 6"));
+    }
+    let err = pose_error(&achieved.inner, &target.inner).map_err(to_py_err)?;
+    out.as_array_mut().assign(&err);
+    Ok(())
+}
+
+/// End-effector pose on a branched kinematic tree.
+#[pyfunction]
+pub fn end_effector_pose_tree_py(
+    model: &PyRobotModel,
+    base_link: &str,
+    ee_link: &str,
+    q: &Bound<'_, PyAny>,
+) -> PyResult<PyTransform3> {
+    match utils::real_array1(q, "q")? {
+        utils::RealReadonlyArray1::F64(arr) => {
+            let pose = end_effector_pose_tree(
+                &model.inner,
+                base_link,
+                ee_link,
+                &arr.as_array().to_owned(),
+            )
+            .map_err(to_py_err)?;
+            Ok(PyTransform3 { inner: pose })
+        }
+        _ => Err(utils::matching_real_dtype_error(&["q"])),
+    }
+}
+
+/// Geometric Jacobian for a branched kinematic tree.
+#[pyfunction]
+pub fn jacobian_tree_py<'py>(
+    py: Python<'py>,
+    model: &PyRobotModel,
+    base_link: &str,
+    ee_link: &str,
+    q: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    match utils::real_array1(q, "q")? {
+        utils::RealReadonlyArray1::F64(arr) => {
+            let j = jacobian_tree(&model.inner, base_link, ee_link, &arr.as_array().to_owned())
+                .map_err(to_py_err)?;
+            Ok(utils::pyarray2_from_owned(py, j))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["q"])),
+    }
+}
+
+/// World-frame link transforms for a branched kinematic tree.
+#[pyfunction]
+pub fn link_transforms_tree_py<'py>(
+    py: Python<'py>,
+    model: &PyRobotModel,
+    q: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    match utils::real_array1(q, "q")? {
+        utils::RealReadonlyArray1::F64(arr) => {
+            let transforms = link_transforms_tree(&model.inner, &arr.as_array().to_owned())
+                .map_err(to_py_err)?;
+            let dict = PyDict::new(py);
+            for (link, transform) in transforms {
+                dict.set_item(link, PyTransform3 { inner: transform })?;
+            }
+            Ok(dict)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["q"])),
+    }
+}
+
 /// Damped least-squares inverse kinematics.
 #[pyfunction]
 #[pyo3(signature = (chain, q_init, target, config=None))]
@@ -211,6 +305,79 @@ pub fn inverse_kinematics_dls_py<'py>(
         utils::RealReadonlyArray1::F64(arr) => {
             let result = inverse_kinematics_dls_with_limits(
                 &chain.inner,
+                &arr.as_array().to_owned(),
+                &target.inner,
+                &config,
+                None,
+            )
+            .map_err(to_py_err)?;
+            ik_result_to_py(py, result)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["q_init"])),
+    }
+}
+
+/// DLS IK into caller buffers with reusable workspace.
+#[pyfunction]
+#[pyo3(signature = (chain, q_init, target, output, config=None, workspace=None))]
+pub fn inverse_kinematics_dls_into_py<'py>(
+    py: Python<'py>,
+    chain: &PyChainSpec,
+    q_init: &Bound<'py, PyAny>,
+    target: &PyTransform3,
+    output: &Bound<'py, PyAny>,
+    config: Option<&PyIkConfig>,
+    workspace: Option<&mut PyIkWorkspace>,
+) -> PyResult<PyIkResult> {
+    let config = config.map(|c| c.inner.clone()).unwrap_or_default();
+    match utils::real_array1(q_init, "q_init")? {
+        utils::RealReadonlyArray1::F64(arr) => {
+            let mut out = utils::output_array1::<f64>(output, "output", "float64")?;
+            if out.as_array_mut().len() != chain.inner.num_joints() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "output length must match chain joint count",
+                ));
+            }
+            let mut owned_workspace = IkWorkspace::new(chain.inner.num_joints());
+            let workspace_ref =
+                if let Some(ws) = workspace { &mut ws.inner } else { &mut owned_workspace };
+            let mut q_out = ndarray::Array1::<f64>::zeros(chain.inner.num_joints());
+            let result = inverse_kinematics_dls_into(
+                &chain.inner,
+                &arr.as_array().to_owned(),
+                &target.inner,
+                &config,
+                None,
+                workspace_ref,
+                &mut q_out,
+            )
+            .map_err(to_py_err)?;
+            out.as_array_mut().assign(&q_out);
+            ik_result_to_py(py, result)
+        }
+        _ => Err(utils::matching_real_dtype_error(&["q_init", "output"])),
+    }
+}
+
+/// Tree DLS inverse kinematics on a branched kinematic model.
+#[pyfunction]
+#[pyo3(signature = (model, base_link, ee_link, q_init, target, config=None))]
+pub fn inverse_kinematics_tree_dls_py<'py>(
+    py: Python<'py>,
+    model: &PyRobotModel,
+    base_link: &str,
+    ee_link: &str,
+    q_init: &Bound<'py, PyAny>,
+    target: &PyTransform3,
+    config: Option<&PyIkConfig>,
+) -> PyResult<PyIkResult> {
+    let config = config.map(|c| c.inner.clone()).unwrap_or_default();
+    match utils::real_array1(q_init, "q_init")? {
+        utils::RealReadonlyArray1::F64(arr) => {
+            let result = inverse_kinematics_tree_dls_with_limits(
+                &model.inner,
+                base_link,
+                ee_link,
                 &arr.as_array().to_owned(),
                 &target.inner,
                 &config,

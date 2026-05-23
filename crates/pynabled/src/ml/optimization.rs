@@ -46,9 +46,7 @@ where
     Ok(config)
 }
 
-fn is_f32<T: 'static>() -> bool {
-    TypeId::of::<T>() == TypeId::of::<f32>()
-}
+fn is_f32<T: 'static>() -> bool { TypeId::of::<T>() == TypeId::of::<f32>() }
 
 fn sgd_config<T: NabledReal>(
     learning_rate: Option<f64>,

@@ -8,16 +8,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 struct CriterionBenchmark {
-    group_id: String,
+    group_id:    String,
     function_id: String,
-    value_str: String,
-    full_id: String,
+    value_str:   String,
+    full_id:     String,
 }
 
 #[derive(Debug, Deserialize)]
 struct CriterionEstimates {
-    mean: CriterionEstimate,
-    median: CriterionEstimate,
+    mean:    CriterionEstimate,
+    median:  CriterionEstimate,
     std_dev: CriterionEstimate,
 }
 
@@ -28,46 +28,46 @@ struct CriterionEstimate {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BenchmarkEntry {
-    domain: String,
-    operation: String,
-    backend: String,
-    competitor: String,
-    group_id: String,
+    domain:      String,
+    operation:   String,
+    backend:     String,
+    competitor:  String,
+    group_id:    String,
     function_id: String,
-    full_id: String,
-    shape: String,
-    rows: usize,
-    cols: usize,
-    size: usize,
-    dtype: String,
-    mean_ns: f64,
-    median_ns: f64,
-    std_dev_ns: f64,
-    throughput: Option<String>,
+    full_id:     String,
+    shape:       String,
+    rows:        usize,
+    cols:        usize,
+    size:        usize,
+    dtype:       String,
+    mean_ns:     f64,
+    median_ns:   f64,
+    std_dev_ns:  f64,
+    throughput:  Option<String>,
     correctness: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BenchmarkSummary {
     generated_at_unix: u64,
-    git_sha: String,
-    rustc_version: String,
-    source: String,
-    entries: Vec<BenchmarkEntry>,
+    git_sha:           String,
+    rustc_version:     String,
+    source:            String,
+    entries:           Vec<BenchmarkEntry>,
 }
 
 #[derive(Debug)]
 struct RegressionSummary {
     baseline_found: bool,
-    fail_count: usize,
+    fail_count:     usize,
 }
 
 #[derive(Debug)]
 struct RegressionPolicy {
-    warn_pct: f64,
-    fail_pct: f64,
+    warn_pct:          f64,
+    fail_pct:          f64,
     min_regression_ns: f64,
-    min_baseline_ns: f64,
+    min_baseline_ns:   f64,
 }
 
 fn main() -> io::Result<()> {
@@ -348,9 +348,7 @@ fn infer_dtype(group_id: &str, function_id: &str) -> String {
     "f64".to_string()
 }
 
-fn is_protected_nabled_case(entry: &BenchmarkEntry) -> bool {
-    entry.competitor == "none"
-}
+fn is_protected_nabled_case(entry: &BenchmarkEntry) -> bool { entry.competitor == "none" }
 
 fn write_summary_json(output_root: &Path, summary: &BenchmarkSummary) -> io::Result<()> {
     let path = output_root.join("summary.json");
@@ -497,10 +495,10 @@ fn write_regressions_md(
 
 fn regression_policy_from_env() -> RegressionPolicy {
     RegressionPolicy {
-        warn_pct: env_f64("BENCH_WARN_PCT", 5.0),
-        fail_pct: env_f64("BENCH_FAIL_PCT", 10.0),
+        warn_pct:          env_f64("BENCH_WARN_PCT", 5.0),
+        fail_pct:          env_f64("BENCH_FAIL_PCT", 10.0),
         min_regression_ns: env_f64("BENCH_MIN_REGRESSION_NS", 25_000.0),
-        min_baseline_ns: env_f64("BENCH_MIN_BASELINE_NS", 0.0),
+        min_baseline_ns:   env_f64("BENCH_MIN_BASELINE_NS", 0.0),
     }
 }
 

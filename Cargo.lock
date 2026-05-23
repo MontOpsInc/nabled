@@ -1626,6 +1626,7 @@ dependencies = [
  "nabled-ml",
  "nabled-model",
  "nabled-sensor",
+ "nabled-sim",
  "ndarray",
  "ndarrow",
  "num-complex",
@@ -1743,6 +1744,23 @@ dependencies = [
  "nabled-linalg",
  "nabled-ml",
  "ndarray",
+]
+
+[[package]]
+name = "nabled-sim"
+version = "0.0.8"
+dependencies = [
+ "approx",
+ "nabled-control",
+ "nabled-core",
+ "nabled-dynamics",
+ "nabled-kinematics",
+ "nabled-linalg",
+ "nabled-ml",
+ "nabled-model",
+ "nabled-sensor",
+ "ndarray",
+ "num-traits",
 ]
 
 [[package]]

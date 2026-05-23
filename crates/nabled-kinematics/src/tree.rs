@@ -29,6 +29,11 @@ pub trait KinematicTreeModel<T: NabledReal> {
     fn joint_origin(&self, body_index: usize) -> &Transform3<T>;
     fn joint_axis(&self, body_index: usize) -> [T; 3];
     fn chain_indices(&self, base_link: &str, ee_link: &str) -> Result<Vec<usize>, KinematicsError>;
+    /// Lower/upper limits for actuated joint `joint_index` (0-based among actuated DOF).
+    fn joint_limits(&self, joint_index: usize) -> Option<(T, T)> {
+        let _ = joint_index;
+        None
+    }
 }
 
 /// World-frame link transforms keyed by link name (base link at identity).

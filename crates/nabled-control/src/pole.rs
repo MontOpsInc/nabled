@@ -137,10 +137,9 @@ pub fn place_poles_into<T: NabledReal + LuProviderScalar>(
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
+    use nabled_linalg::eigen;
     use ndarray::arr2;
     use num_complex::Complex;
-
-    use nabled_linalg::eigen;
 
     use super::*;
 

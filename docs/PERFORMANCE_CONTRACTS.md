@@ -1,6 +1,6 @@
 # Performance Contracts
 
-Last updated: 2026-04-19
+Last updated: 2026-05-23
 
 ## Purpose
 
@@ -37,6 +37,8 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 17. Arrow-side PCA transform/inverse plus CP/HOSVD/Tucker helper paths now borrow factor/core arrays directly through `nabled::arrow`; the PyO3 Arrow bridge no longer rebuilds owned PCA or tensor result structs from Python factor/core arrays just to reach the underlying kernels.
 18. N-D Tucker/HOSVD projection and expansion helpers no longer start from blanket `tensor.to_owned()` clones or allocate a full final temporary before `out=` assignment; the Rust tensor core now composes the final mode product directly into caller-provided buffers for the current `tensor_tucker_project(...)`, `tensor_tucker_expand(...)`, and `hosvd_nd`-derived helper reuse paths.
 19. Canonical Arrow carrier packing/unpacking in `python/pynabled/arrow.py` now uses flat NumPy buffers plus Arrow offsets for `ndarrow.complex64`, `ndarrow.csr_matrix`, `ndarrow.csr_matrix_batch`, and variable-shape tensor rows instead of Python `tolist()` / `to_pylist()` rebuilding at the PyO3 boundary.
+20. `nabled-dynamics::rnea_view` and `forward_dynamics_view` now delegate directly over borrowed `ArrayView1` inputs without wrapper-level `to_owned()` copies; core `rnea_with_config`, `mass_matrix`, and `forward_dynamics_with_config` accept views natively.
+21. `pynabled` Physical AI dynamics bindings pass borrowed NumPy 1-D arrays into Rust `rnea` / `forward_dynamics` / `mass_matrix` instead of cloning `q`/`qd` at the PyO3 boundary.
 
 ### Unavoidable internal materializations
 
@@ -47,6 +49,7 @@ The goal is explicit: avoid hidden materialization in public convenience paths, 
 5. Opt-in MAGMA sparse APIs (`matvec_magma_*`, `matmat_dense_magma_*`) stage CSR/vector/dense host buffers and allocate provider/device workspace per invocation; this is required by MAGMA sparse C API contracts and is explicit to these MAGMA-only entrypoints.
 6. Opt-in MAGMA mixed LU APIs (`solve_mixed_f64*`, `solve_mixed_complex*`) allocate provider work buffers and stage matrix/RHS/solution host↔device transfers per invocation; behavior is explicit and confined to mixed-precision APIs.
 7. Python-callable Jacobian/optimization callback helpers, plus their Arrow-admitted callback variants, materialize transient NumPy/PyArrow carrier objects on each callback invocation and re-own the returned arrays before re-entering the Rust loop. That copy boundary is explicit convenience-path behavior, not hidden hot-path degradation in the array-in/array-out kernels.
+8. `nabled-dynamics` ABA forward dynamics allocates per-link spatial buffers (6×6 articulated inertias, 6-vectors) and clones link inertias during the backward pass; this is algorithm-structure overhead, not wrapper-level hidden copy. `ForwardDynamicsMethod::CrbaLu` additionally forms the full joint-space mass matrix and allocates an LU solve workspace.
 
 ## V1 No-Surprises Audit Status
 

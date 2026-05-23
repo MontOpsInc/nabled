@@ -10,31 +10,29 @@ use crate::link::{InertialSpec, LinkSpec};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BodySpec<T> {
-    pub link: LinkSpec,
-    pub parent_link: String,
-    pub joint_type: JointType,
-    pub axis: crate::joint::JointAxis,
-    pub limits: Option<JointLimits<T>>,
-    pub inertial: Option<InertialSpec<T>>,
+    pub link:         LinkSpec,
+    pub parent_link:  String,
+    pub joint_type:   JointType,
+    pub axis:         crate::joint::JointAxis,
+    pub limits:       Option<JointLimits<T>>,
+    pub inertial:     Option<InertialSpec<T>>,
     /// Static URDF `<origin>` transform from parent link to joint frame.
     pub joint_origin: Transform3<T>,
-    pub dh_a: T,
-    pub dh_alpha: T,
-    pub dh_d: T,
-    pub dh_theta: T,
+    pub dh_a:         T,
+    pub dh_alpha:     T,
+    pub dh_d:         T,
+    pub dh_theta:     T,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RobotModel<T> {
-    bodies: Vec<BodySpec<T>>,
-    parents: Vec<Option<usize>>,
+    bodies:       Vec<BodySpec<T>>,
+    parents:      Vec<Option<usize>>,
     link_to_body: HashMap<String, usize>,
 }
 
 impl<T: Clone> Default for RobotModel<T> {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 impl<T: Clone> RobotModel<T> {
@@ -57,9 +55,7 @@ impl<T: Clone> RobotModel<T> {
     }
 
     #[must_use]
-    pub fn joint(&self, index: usize) -> Option<&BodySpec<T>> {
-        self.bodies.get(index)
-    }
+    pub fn joint(&self, index: usize) -> Option<&BodySpec<T>> { self.bodies.get(index) }
 
     #[must_use]
     pub fn body_index_for_link(&self, link_name: &str) -> Option<usize> {
@@ -210,18 +206,18 @@ mod tests {
 
     fn sample_body(name: &str, parent_link: &str) -> BodySpec<f64> {
         BodySpec {
-            link: LinkSpec { name: name.to_string() },
-            parent_link: parent_link.to_string(),
-            joint_type: JointType::Revolute,
-            axis: JointAxis::Z,
-            limits: None,
-            inertial: None,
+            link:         LinkSpec { name: name.to_string() },
+            parent_link:  parent_link.to_string(),
+            joint_type:   JointType::Revolute,
+            axis:         JointAxis::Z,
+            limits:       None,
+            inertial:     None,
             joint_origin: crate::origin::transform_from_xyz_rpy([1.0, 0.0, 0.0], [0.0, 0.0, 0.0])
                 .expect("valid origin"),
-            dh_a: 1.0,
-            dh_alpha: 0.0,
-            dh_d: 0.0,
-            dh_theta: 0.0,
+            dh_a:         1.0,
+            dh_alpha:     0.0,
+            dh_d:         0.0,
+            dh_theta:     0.0,
         }
     }
 

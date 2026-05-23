@@ -38,9 +38,7 @@ fn usize_to_scalar<T: NabledReal>(value: usize) -> T {
     T::from_usize(value).unwrap_or(T::max_value())
 }
 
-fn complex_is_finite(value: Complex64) -> bool {
-    value.re.is_finite() && value.im.is_finite()
-}
+fn complex_is_finite(value: Complex64) -> bool { value.re.is_finite() && value.im.is_finite() }
 
 fn validate_vector_output_len<T, S>(
     output: &ArrayBase<S, Ix1>,
@@ -816,13 +814,11 @@ pub mod online {
     #[derive(Debug, Clone, PartialEq)]
     pub struct OnlineMean<T> {
         count: usize,
-        mean: T,
+        mean:  T,
     }
 
     impl<T: NabledReal> Default for OnlineMean<T> {
-        fn default() -> Self {
-            Self { count: 0, mean: T::zero() }
-        }
+        fn default() -> Self { Self { count: 0, mean: T::zero() } }
     }
 
     impl<T: NabledReal> OnlineMean<T> {
@@ -833,9 +829,7 @@ pub mod online {
         }
 
         #[must_use]
-        pub fn mean(&self) -> T {
-            self.mean
-        }
+        pub fn mean(&self) -> T { self.mean }
 
         pub fn reset(&mut self) {
             self.count = 0;
@@ -847,14 +841,12 @@ pub mod online {
     #[derive(Debug, Clone, PartialEq)]
     pub struct OnlineVariance<T> {
         count: usize,
-        mean: T,
-        m2: T,
+        mean:  T,
+        m2:    T,
     }
 
     impl<T: NabledReal> Default for OnlineVariance<T> {
-        fn default() -> Self {
-            Self { count: 0, mean: T::zero(), m2: T::zero() }
-        }
+        fn default() -> Self { Self { count: 0, mean: T::zero(), m2: T::zero() } }
     }
 
     impl<T: NabledReal> OnlineVariance<T> {
@@ -868,9 +860,7 @@ pub mod online {
         }
 
         #[must_use]
-        pub fn mean(&self) -> T {
-            self.mean
-        }
+        pub fn mean(&self) -> T { self.mean }
 
         #[must_use]
         pub fn variance(&self) -> T {
@@ -903,9 +893,7 @@ pub mod ewma {
     }
 
     impl<T: NabledReal> EwmaState<T> {
-        pub fn new(alpha: T) -> Self {
-            Self { alpha, value: None }
-        }
+        pub fn new(alpha: T) -> Self { Self { alpha, value: None } }
 
         pub fn push(&mut self, sample: T) -> T {
             if let Some(prev) = self.value {
@@ -1230,19 +1218,16 @@ mod tests {
 
     #[test]
     fn complex_covariance_and_correlation_are_well_formed() {
-        let matrix = Array2::from_shape_vec(
-            (4, 2),
-            vec![
-                Complex64::new(1.0, 0.0),
-                Complex64::new(3.0, 1.0),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(2.0, 0.5),
-                Complex64::new(3.0, 0.2),
-                Complex64::new(1.0, -0.3),
-                Complex64::new(4.0, 0.7),
-                Complex64::new(0.0, 0.0),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((4, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(3.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 0.5),
+            Complex64::new(3.0, 0.2),
+            Complex64::new(1.0, -0.3),
+            Complex64::new(4.0, 0.7),
+            Complex64::new(0.0, 0.0),
+        ])
         .unwrap();
 
         let covariance = covariance_matrix_complex(&matrix).unwrap();
@@ -1253,17 +1238,14 @@ mod tests {
 
     #[test]
     fn complex_view_variants_match_owned() {
-        let matrix = Array2::from_shape_vec(
-            (3, 2),
-            vec![
-                Complex64::new(1.0, 1.0),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(2.0, 2.0),
-                Complex64::new(3.0, 0.0),
-                Complex64::new(3.0, -2.0),
-                Complex64::new(4.0, 1.0),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 2.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(3.0, -2.0),
+            Complex64::new(4.0, 1.0),
+        ])
         .unwrap();
 
         let means_owned = column_means_complex(&matrix);
@@ -1315,17 +1297,14 @@ mod tests {
 
     #[test]
     fn complex_stats_view_into_reuses_outputs() {
-        let matrix = Array2::from_shape_vec(
-            (3, 2),
-            vec![
-                Complex64::new(1.0, 1.0),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(2.0, 2.0),
-                Complex64::new(3.0, 0.0),
-                Complex64::new(3.0, -2.0),
-                Complex64::new(4.0, 1.0),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 2.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(3.0, -2.0),
+            Complex64::new(4.0, 1.0),
+        ])
         .unwrap();
 
         let mut means = Array1::<Complex64>::zeros(2);
@@ -1420,17 +1399,14 @@ mod tests {
 
     #[test]
     fn complex_stats_owned_into_paths_cover_empty_valid_and_error_cases() {
-        let matrix = Array2::from_shape_vec(
-            (3, 2),
-            vec![
-                Complex64::new(1.0, 1.0),
-                Complex64::new(2.0, -1.0),
-                Complex64::new(2.0, 2.0),
-                Complex64::new(3.0, 0.0),
-                Complex64::new(3.0, -2.0),
-                Complex64::new(4.0, 1.0),
-            ],
-        )
+        let matrix = Array2::from_shape_vec((3, 2), vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(2.0, -1.0),
+            Complex64::new(2.0, 2.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(3.0, -2.0),
+            Complex64::new(4.0, 1.0),
+        ])
         .unwrap();
         let mut means = Array1::<Complex64>::zeros(2);
         let mut centered = Array2::<Complex64>::zeros((3, 2));
@@ -1475,10 +1451,10 @@ mod tests {
             Err(StatsError::EmptyMatrix)
         ));
 
-        let one_row = Array2::from_shape_vec(
-            (1, 2),
-            vec![Complex64::new(1.0, 0.0), Complex64::new(2.0, 0.0)],
-        )
+        let one_row = Array2::from_shape_vec((1, 2), vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+        ])
         .unwrap();
         let mut one_row_covariance = Array2::<Complex64>::zeros((2, 2));
         assert!(matches!(
@@ -1496,15 +1472,12 @@ mod tests {
             Err(StatsError::InvalidInput(_))
         ));
 
-        let unstable = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex64::new(f64::MAX, 0.0),
-                Complex64::new(0.0, 0.0),
-                Complex64::new(-f64::MAX, 0.0),
-                Complex64::new(0.0, 0.0),
-            ],
-        )
+        let unstable = Array2::from_shape_vec((2, 2), vec![
+            Complex64::new(f64::MAX, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(-f64::MAX, 0.0),
+            Complex64::new(0.0, 0.0),
+        ])
         .unwrap();
         let mut unstable_covariance = Array2::<Complex64>::zeros((2, 2));
         assert!(matches!(

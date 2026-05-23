@@ -11,7 +11,7 @@ pub mod id;
 pub mod rnea;
 pub mod spatial;
 
-pub use config::DynamicsConfig;
+pub use config::{DynamicsConfig, ForwardDynamicsMethod};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DynamicsError {

@@ -33,9 +33,7 @@ fn generate_upper_triangular(size: usize) -> Array2<f64> {
     generate_lower_triangular(size).t().to_owned()
 }
 
-fn generate_rhs(size: usize) -> Array1<f64> {
-    Array1::from_vec(generate_random_data(size))
-}
+fn generate_rhs(size: usize) -> Array1<f64> { Array1::from_vec(generate_random_data(size)) }
 
 fn ndarray_to_faer(matrix: &Array2<f64>) -> Mat<f64> {
     Mat::from_fn(matrix.nrows(), matrix.ncols(), |i, j| matrix[[i, j]])

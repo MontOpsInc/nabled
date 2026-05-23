@@ -9,23 +9,24 @@ use crate::chain::{ChainSpec, JointLimits};
 use crate::error::KinematicsError;
 use crate::fk::fk_view;
 use crate::jacobian::jacobian_view;
+use crate::tree::{KinematicTreeModel, end_effector_pose_tree, jacobian_tree_view};
 
 /// IK solver configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IkConfig<T> {
     pub max_iterations: usize,
-    pub tolerance: T,
-    pub damping: T,
-    pub step_scale: T,
+    pub tolerance:      T,
+    pub damping:        T,
+    pub step_scale:     T,
 }
 
 impl<T: NabledReal> Default for IkConfig<T> {
     fn default() -> Self {
         Self {
             max_iterations: 500,
-            tolerance: T::from_f64(1e-4).unwrap_or(T::zero()),
-            damping: T::from_f64(0.01).unwrap_or(T::zero()),
-            step_scale: T::one(),
+            tolerance:      T::from_f64(1e-4).unwrap_or(T::zero()),
+            damping:        T::from_f64(0.01).unwrap_or(T::zero()),
+            step_scale:     T::one(),
         }
     }
 }
@@ -33,22 +34,22 @@ impl<T: NabledReal> Default for IkConfig<T> {
 /// Result of damped least-squares IK.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IkResult<T> {
-    pub q: Array1<T>,
-    pub iterations: usize,
+    pub q:           Array1<T>,
+    pub iterations:  usize,
     pub final_error: T,
-    pub converged: bool,
+    pub converged:   bool,
 }
 
 /// Reusable workspace for DLS IK hot paths.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IkWorkspace<T> {
-    jacobian: Array2<T>,
-    error: Array1<T>,
+    jacobian:   Array2<T>,
+    error:      Array1<T>,
     task_error: Array1<T>,
-    jtj: Array2<T>,
-    jte: Array1<T>,
-    dq: Array1<T>,
-    q: Array1<T>,
+    jtj:        Array2<T>,
+    jte:        Array1<T>,
+    dq:         Array1<T>,
+    q:          Array1<T>,
 }
 
 impl<T: NabledReal> IkWorkspace<T> {
@@ -56,13 +57,13 @@ impl<T: NabledReal> IkWorkspace<T> {
     #[must_use]
     pub fn new(num_joints: usize) -> Self {
         Self {
-            jacobian: Array2::zeros((6, num_joints)),
-            error: Array1::zeros(6),
+            jacobian:   Array2::zeros((6, num_joints)),
+            error:      Array1::zeros(6),
             task_error: Array1::zeros(6),
-            jtj: Array2::zeros((num_joints, num_joints)),
-            jte: Array1::zeros(num_joints),
-            dq: Array1::zeros(num_joints),
-            q: Array1::zeros(num_joints),
+            jtj:        Array2::zeros((num_joints, num_joints)),
+            jte:        Array1::zeros(num_joints),
+            dq:         Array1::zeros(num_joints),
+            q:          Array1::zeros(num_joints),
         }
     }
 }
@@ -232,6 +233,108 @@ pub fn inverse_kinematics_dls_into<T: NabledReal + LuProviderScalar>(
 
     output.assign(&workspace.q);
     Ok(IkResult { q: output.clone(), iterations, final_error, converged })
+}
+
+fn tree_limits_from_model<M, T>(model: &M, dof: usize) -> Option<Vec<JointLimits<T>>>
+where
+    M: KinematicTreeModel<T>,
+    T: NabledReal,
+{
+    let mut limits = Vec::with_capacity(dof);
+    for joint_index in 0..dof {
+        let (lower, upper) = model.joint_limits(joint_index)?;
+        limits.push(JointLimits { lower, upper });
+    }
+    Some(limits)
+}
+
+/// Damped least-squares tree IK returning full actuated `q` (`model.actuated_indices()` order).
+pub fn inverse_kinematics_tree_dls<M, T>(
+    model: &M,
+    base_link: &str,
+    ee_link: &str,
+    q_init: &Array1<T>,
+    target: &Transform3<T>,
+    config: &IkConfig<T>,
+) -> Result<Array1<T>, KinematicsError>
+where
+    M: KinematicTreeModel<T>,
+    T: NabledReal + LuProviderScalar,
+{
+    inverse_kinematics_tree_dls_with_limits(model, base_link, ee_link, q_init, target, config, None)
+        .map(|result| result.q)
+}
+
+/// Tree DLS IK with optional joint limits; defaults to [`KinematicTreeModel::joint_limits`].
+pub fn inverse_kinematics_tree_dls_with_limits<M, T>(
+    model: &M,
+    base_link: &str,
+    ee_link: &str,
+    q_init: &Array1<T>,
+    target: &Transform3<T>,
+    config: &IkConfig<T>,
+    limits: Option<&[JointLimits<T>]>,
+) -> Result<IkResult<T>, KinematicsError>
+where
+    M: KinematicTreeModel<T>,
+    T: NabledReal + LuProviderScalar,
+{
+    model.validate_tree()?;
+    let dof = model.dof();
+    if q_init.len() != dof {
+        return Err(KinematicsError::DimensionMismatch);
+    }
+
+    let model_limits = tree_limits_from_model(model, dof);
+    let effective_limits = limits.or(model_limits.as_deref());
+    if let Some(limits) = effective_limits {
+        if limits.len() != dof {
+            return Err(KinematicsError::DimensionMismatch);
+        }
+        validate_limits(&q_init.view(), limits)?;
+    }
+
+    let mut workspace = IkWorkspace::new(dof);
+    let mut q = q_init.clone();
+    let mut iterations = 0_usize;
+    let mut final_error = T::zero();
+    let mut converged = false;
+
+    for iter in 0..config.max_iterations {
+        iterations = iter + 1;
+        let current = end_effector_pose_tree(model, base_link, ee_link, &q)?;
+        pose_error_into(&current, target, &mut workspace.error)?;
+        final_error = error_norm(&workspace.error);
+        if final_error <= config.tolerance {
+            converged = true;
+            break;
+        }
+
+        let j = jacobian_tree_view(model, base_link, ee_link, &q.view())?;
+        workspace.jacobian.assign(&j);
+        task_error_for_jacobian(&workspace.error, &mut workspace.task_error);
+        dls_step(
+            &workspace.jacobian,
+            &workspace.task_error,
+            config.damping,
+            &mut workspace.jtj,
+            &mut workspace.jte,
+            &mut workspace.dq,
+        )?;
+
+        for i in 0..dof {
+            q[i] += config.step_scale * workspace.dq[i];
+        }
+        if let Some(limits) = effective_limits {
+            clip_to_limits(&mut q, limits);
+        }
+    }
+
+    if !converged {
+        return Err(KinematicsError::ConvergenceFailed);
+    }
+
+    Ok(IkResult { q, iterations, final_error, converged })
 }
 
 #[cfg(test)]

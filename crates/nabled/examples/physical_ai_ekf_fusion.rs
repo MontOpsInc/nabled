@@ -2,17 +2,14 @@
 //!
 //! Run: `cargo run -p nabled --example physical_ai_ekf_fusion`
 //!
-//! Composes: constant-velocity landmark in the camera frame → `pinhole_project` measurements
-//! fused by `ekf_predict`/`ekf_update`, with parallel `strapdown_predict` orientation.
-//!
-//! MT-A2: `nabled-sim` was not extracted — sensor fusion callbacks and camera geometry are
-//! unrelated to rigid-body integration or batch IK orchestration.
+//! Composes: `nabled::sim::estimation::EstimationPipeline` + IMU strapdown.
 
 use nabled::linalg::geometry::{AxisAngle, quat};
 use nabled::sensor::camera::{PinholeIntrinsics, pinhole_jacobian, pinhole_project};
-use nabled::sensor::ekf::{EkConfig, EkModel, ekf_predict, ekf_update};
+use nabled::sensor::ekf::{EkConfig, EkModel};
 use nabled::sensor::imu::strapdown_predict;
 use nabled::sensor::kalman::KalmanState;
+use nabled::sim::estimation::EstimationPipeline;
 use ndarray::{Array1, Array2, ArrayView1, arr1, arr2, s};
 
 const DT: f64 = 0.05;
@@ -45,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model =
         EkModel { predict_state, predict_jacobian, measure: measure_state, measure_jacobian };
     let config = EkConfig {
-        process_noise: arr2(&[
+        process_noise:     arr2(&[
             [0.001, 0.0, 0.0, 0.0],
             [0.0, 0.001, 0.0, 0.0],
             [0.0, 0.0, 0.01, 0.0],
@@ -54,15 +51,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         measurement_noise: arr2(&[[4.0, 0.0], [0.0, 4.0]]),
     };
 
-    let mut state = KalmanState {
-        mean: arr1(&[0.0, 0.0, 0.4, 0.1]),
-        covariance: arr2(&[
-            [0.5, 0.0, 0.0, 0.0],
-            [0.0, 0.5, 0.0, 0.0],
-            [0.0, 0.0, 0.1, 0.0],
-            [0.0, 0.0, 0.0, 0.1],
-        ]),
-    };
+    let mut pipeline = EstimationPipeline::new(model, config, KalmanState {
+        mean:       arr1(&[0.0, 0.0, 0.4, 0.1]),
+        covariance: arr2(&[[0.5, 0.0, 0.0, 0.0], [0.0, 0.5, 0.0, 0.0], [0.0, 0.0, 0.1, 0.0], [
+            0.0, 0.0, 0.0, 0.1,
+        ]]),
+    });
     let mut orientation = arr1(&[1.0, 0.0, 0.0, 0.0]);
     let gyro = arr1(&[0.0, 0.0, 0.08]);
 
@@ -76,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if step % 5 == 0 {
             println!(
                 "{step:3}    {true_x:.3}    {:.3}    {:.1}    {:.1}    {:.4}",
-                state.mean[0], noisy_uv[0], noisy_uv[1], orientation[0]
+                pipeline.state.mean[0], noisy_uv[0], noisy_uv[1], orientation[0]
             );
         }
 
@@ -84,8 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
 
-        let predicted = ekf_predict(&state, &model, &config)?;
-        state = ekf_update(&predicted, &noisy_uv.view(), &model, &config)?;
+        pipeline.predict_update(&noisy_uv.view())?;
         orientation = strapdown_predict(&orientation, &gyro, DT)?;
     }
 
@@ -93,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         quat::from_axis_angle(&AxisAngle { axis: [0.0, 0.0, 1.0], angle: 0.08 * DT * 20.0 });
     println!(
         "Final orientation w={:.4} (expected {:.4}), position estimate x={:.3}",
-        orientation[0], expected.w, state.mean[0]
+        orientation[0], expected.w, pipeline.state.mean[0]
     );
 
     Ok(())

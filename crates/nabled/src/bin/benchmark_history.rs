@@ -9,15 +9,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize)]
 struct BenchmarkSummary {
     generated_at_unix: u64,
-    git_sha: String,
-    entries: Vec<BenchmarkEntry>,
+    git_sha:           String,
+    entries:           Vec<BenchmarkEntry>,
 }
 
 #[derive(Debug, Deserialize)]
 struct BenchmarkEntry {
     competitor: String,
-    full_id: String,
-    median_ns: f64,
+    full_id:    String,
+    median_ns:  f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -27,20 +27,20 @@ struct BenchmarkHistory {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct HistoryRun {
-    run_id: String,
-    branch: String,
-    git_sha: String,
+    run_id:            String,
+    branch:            String,
+    git_sha:           String,
     generated_at_unix: u64,
-    case_count: usize,
+    case_count:        usize,
     geometric_mean_ns: f64,
-    medians: BTreeMap<String, f64>,
+    medians:           BTreeMap<String, f64>,
 }
 
 #[derive(Debug)]
 struct CliArgs {
     history_path: PathBuf,
-    max_runs: usize,
-    output_md: PathBuf,
+    max_runs:     usize,
+    output_md:    PathBuf,
     summary_path: PathBuf,
 }
 

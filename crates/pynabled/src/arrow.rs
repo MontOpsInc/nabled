@@ -244,29 +244,19 @@ fn sparse_tolerance_f32(tolerance: Option<f64>) -> PyResult<f32> {
     tolerance.map_or(Ok(1.0e-6_f32), |value| utils::f64_to_f32(value, "tolerance"))
 }
 
-fn sparse_tolerance_f64(tolerance: Option<f64>) -> f64 {
-    tolerance.unwrap_or(1.0e-10)
-}
+fn sparse_tolerance_f64(tolerance: Option<f64>) -> f64 { tolerance.unwrap_or(1.0e-10) }
 
-fn sparse_max_iterations(max_iterations: Option<usize>) -> usize {
-    max_iterations.unwrap_or(5000)
-}
+fn sparse_max_iterations(max_iterations: Option<usize>) -> usize { max_iterations.unwrap_or(5000) }
 
 fn ilut_drop_tolerance_f32(drop_tolerance: Option<f64>) -> PyResult<f32> {
     drop_tolerance.map_or(Ok(1.0e-8_f32), |value| utils::f64_to_f32(value, "drop_tolerance"))
 }
 
-fn ilut_drop_tolerance_f64(drop_tolerance: Option<f64>) -> f64 {
-    drop_tolerance.unwrap_or(1.0e-8)
-}
+fn ilut_drop_tolerance_f64(drop_tolerance: Option<f64>) -> f64 { drop_tolerance.unwrap_or(1.0e-8) }
 
-fn ilut_max_fill(max_fill: Option<usize>) -> usize {
-    max_fill.unwrap_or(16)
-}
+fn ilut_max_fill(max_fill: Option<usize>) -> usize { max_fill.unwrap_or(16) }
 
-fn iluk_level_of_fill(level_of_fill: Option<usize>) -> usize {
-    level_of_fill.unwrap_or(1)
-}
+fn iluk_level_of_fill(level_of_fill: Option<usize>) -> usize { level_of_fill.unwrap_or(1) }
 
 fn qr_config_f32(
     rank_tolerance: Option<f64>,
@@ -364,7 +354,7 @@ fn iterative_config_f32(
 ) -> PyResult<nabled_ml::iterative::IterativeConfig<f32>> {
     let default = nabled_ml::iterative::IterativeConfig::<f32>::default_f32();
     Ok(nabled_ml::iterative::IterativeConfig {
-        tolerance: tolerance
+        tolerance:      tolerance
             .map_or(Ok(default.tolerance), |value| utils::f64_to_f32(value, "tolerance"))?,
         max_iterations: max_iterations.unwrap_or(default.max_iterations),
     })
@@ -376,7 +366,7 @@ fn iterative_config_f64(
 ) -> nabled_ml::iterative::IterativeConfig<f64> {
     let default = nabled_ml::iterative::IterativeConfig::<f64>::default_f64();
     nabled_ml::iterative::IterativeConfig {
-        tolerance: tolerance.unwrap_or(default.tolerance),
+        tolerance:      tolerance.unwrap_or(default.tolerance),
         max_iterations: max_iterations.unwrap_or(default.max_iterations),
     }
 }

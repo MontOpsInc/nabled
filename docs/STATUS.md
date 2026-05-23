@@ -12,7 +12,8 @@ Workspace migration for library domains is complete.
    `docs/PHYSICAL_AI_TRACKER.md`).
 2. Physical AI horizontal depth is **Real** (REFERENCE_RUBRIC Implemented): URDF v2 model, true DLS IK,
    RealFft signal pipeline, control pole/observer/gramians, serial RNEA/CRBA/FD, EKF/camera/IMU; integration
-   scenarios S1–S22 pass (23 tests, 0 ignored with `--features signal`).
+   scenarios S1–S25 pass (26 tests, 0 ignored with `--features signal`); `nabled-sim` orchestrator
+   composes domain crates (see `docs/PHYSICAL_AI_ORCHESTRATOR.md`).
 3. `crates/nabled` is the facade package re-exporting workspace crates, including Physical AI modules
    (`kinematics`, `model`, `dynamics`, `control`, `sensor`) and horizontal layers `linalg::geometry` /
    `linalg::signal`.

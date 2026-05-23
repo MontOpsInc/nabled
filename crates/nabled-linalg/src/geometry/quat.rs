@@ -206,9 +206,7 @@ pub fn log<T: NabledReal>(q: &Quat<T>) -> Array1<T> {
     ndarray::arr1(&[qn.x * scale, qn.y * scale, qn.z * scale])
 }
 
-pub fn mul_into<T: NabledReal>(a: &Quat<T>, b: &Quat<T>, out: &mut Quat<T>) {
-    *out = mul(a, b);
-}
+pub fn mul_into<T: NabledReal>(a: &Quat<T>, b: &Quat<T>, out: &mut Quat<T>) { *out = mul(a, b); }
 
 pub fn slerp_into<T: NabledReal>(a: &Quat<T>, b: &Quat<T>, t: T, out: &mut Quat<T>) {
     *out = slerp(a, b, t);

@@ -13,9 +13,7 @@ use crate::utils;
 
 pub(crate) type PyCsrParts = (usize, usize, Py<PyAny>, Py<PyAny>, Py<PyAny>);
 
-fn py_value_error(message: impl ToString) -> PyErr {
-    PyValueError::new_err(message.to_string())
-}
+fn py_value_error(message: impl ToString) -> PyErr { PyValueError::new_err(message.to_string()) }
 
 #[expect(clippy::cast_possible_truncation)]
 fn tolerance_f32(tolerance: Option<f64>, default: f32) -> f32 {
@@ -1819,11 +1817,11 @@ impl PyJacobiPreconditioner {
 pub(crate) enum PyIlu0FactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::ILU0Factorization<f32>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
     F64 {
         factorization: nabled_linalg::sparse::ILU0Factorization<f64>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
 }
 
@@ -2425,11 +2423,11 @@ impl PyIlu0Factorization {
 pub(crate) enum PyIlutFactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::ILUTFactorization<f32>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
     F64 {
         factorization: nabled_linalg::sparse::ILUTFactorization<f64>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
 }
 
@@ -3031,11 +3029,11 @@ impl PyIlutFactorization {
 pub(crate) enum PyIlukFactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::ILUKFactorization<f32>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
     F64 {
         factorization: nabled_linalg::sparse::ILUKFactorization<f64>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
 }
 
@@ -3645,11 +3643,11 @@ impl PyIlukFactorization {
 pub(crate) enum PyIc0FactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::IC0Factorization<f32>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
     F64 {
         factorization: nabled_linalg::sparse::IC0Factorization<f64>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
 }
 
@@ -3862,11 +3860,11 @@ impl PyIc0Factorization {
 pub(crate) enum PyIldl0FactorizationInner {
     F32 {
         factorization: nabled_linalg::sparse::ILDL0Factorization<f32>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
     F64 {
         factorization: nabled_linalg::sparse::ILDL0Factorization<f64>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
 }
 
@@ -4479,14 +4477,14 @@ impl PyIldl0Factorization {
 
 pub(crate) enum PySparseLuFactorizationInner {
     F32 {
-        matrix: nabled_linalg::sparse::CsrMatrix<f32>,
+        matrix:        nabled_linalg::sparse::CsrMatrix<f32>,
         factorization: nabled_linalg::sparse::SparseLUFactorization<f32>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
     F64 {
-        matrix: nabled_linalg::sparse::CsrMatrix<f64>,
+        matrix:        nabled_linalg::sparse::CsrMatrix<f64>,
         factorization: nabled_linalg::sparse::SparseLUFactorization<f64>,
-        index_dtype: StoredIndexDtype,
+        index_dtype:   StoredIndexDtype,
     },
 }
 

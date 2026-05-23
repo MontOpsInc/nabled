@@ -9,7 +9,7 @@ pub struct LinkSpec {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct InertialSpec<T> {
-    pub mass: T,
-    pub com: [T; 3],
+    pub mass:    T,
+    pub com:     [T; 3],
     pub inertia: Array2<T>,
 }

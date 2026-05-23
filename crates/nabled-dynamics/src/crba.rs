@@ -3,7 +3,7 @@
 use nabled_core::scalar::NabledReal;
 use nabled_kinematics::chain::ChainSpec;
 use nabled_model::robot::RobotModel;
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView1};
 
 use crate::DynamicsError;
 use crate::config::DynamicsConfig;
@@ -13,17 +13,17 @@ use crate::rnea::rnea_with_config;
 pub fn mass_matrix<T: NabledReal + Default>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
-    q: &Array1<T>,
+    q: &ArrayView1<'_, T>,
     config: &DynamicsConfig<T>,
 ) -> Result<Array2<T>, DynamicsError> {
     let n = chain.num_joints();
     let zeros = Array1::<T>::zeros(n);
-    let bias = rnea_with_config(model, chain, q, &zeros, &zeros.view(), config)?;
+    let bias = rnea_with_config(model, chain, q, &zeros.view(), &zeros.view(), config)?;
     let mut m = Array2::<T>::zeros((n, n));
     for i in 0..n {
         let mut qdd = Array1::<T>::zeros(n);
         qdd[i] = T::one();
-        let tau = rnea_with_config(model, chain, q, &zeros, &qdd.view(), config)?;
+        let tau = rnea_with_config(model, chain, q, &zeros.view(), &qdd.view(), config)?;
         for row in 0..n {
             m[[row, i]] = tau[row] - bias[row];
         }
@@ -45,7 +45,7 @@ pub fn mass_matrix_into<T: NabledReal + Default>(
     config: &DynamicsConfig<T>,
     output: &mut Array2<T>,
 ) -> Result<(), DynamicsError> {
-    let m = mass_matrix(model, chain, q, config)?;
+    let m = mass_matrix(model, chain, &q.view(), config)?;
     if output.dim() != m.dim() {
         return Err(DynamicsError::DimensionMismatch);
     }
@@ -72,7 +72,7 @@ mod tests {
         let chain = fixture.to_chain_spec().unwrap();
         let q = arr1(&[0.3_f64, 0.2]);
         let config = DynamicsConfig::default();
-        let m = mass_matrix(&model, &chain, &q, &config).unwrap();
+        let m = mass_matrix(&model, &chain, &q.view(), &config).unwrap();
         assert!(m[[0, 0]] > 0.0);
         assert!(m[[1, 1]] > 0.0);
         assert!((m[[0, 1]] - m[[1, 0]]).abs() < 1e-6);

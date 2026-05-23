@@ -18,9 +18,7 @@ use pyo3::types::{PyAny, PyComplex};
 /// Dense kernels should borrow strided views when the Rust API admits them, and wrappers that
 /// still materialize owned arrays must do so because of API shape rather than a blanket layout
 /// restriction at ingress.
-pub fn require_contiguous<'py, A: PyUntypedArrayMethods<'py>>(_array: &A) -> PyResult<()> {
-    Ok(())
-}
+pub fn require_contiguous<'py, A: PyUntypedArrayMethods<'py>>(_array: &A) -> PyResult<()> { Ok(()) }
 
 pub enum RealReadonlyArray1<'py> {
     F32(PyReadonlyArray1<'py, f32>),

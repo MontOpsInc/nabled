@@ -1,18 +1,15 @@
 //! Autocorrelation and cross-correlation at a fixed lag.
 
 use nabled_core::scalar::NabledReal;
-use ndarray::ArrayView1;
-
 #[cfg(feature = "signal")]
 use ndarray::Array1;
-
-use super::{SignalError, dot_segment};
+use ndarray::ArrayView1;
+#[cfg(feature = "signal")]
+use num_complex::Complex;
 
 #[cfg(feature = "signal")]
 use super::fft::{RfftSpectrum, irfft, rfft};
-
-#[cfg(feature = "signal")]
-use num_complex::Complex;
+use super::{SignalError, dot_segment};
 
 fn validate_lag(len: usize, lag: usize) -> Result<(), SignalError> {
     if len == 0 {

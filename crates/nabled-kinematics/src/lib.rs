@@ -21,7 +21,8 @@ pub use chain::{ChainSpec, DhConvention, JointLimits, JointType};
 pub use error::KinematicsError;
 pub use ik::{
     IkConfig, IkResult, IkWorkspace, inverse_kinematics_dls, inverse_kinematics_dls_into,
-    inverse_kinematics_dls_with_limits, pose_error, pose_error_into,
+    inverse_kinematics_dls_with_limits, inverse_kinematics_tree_dls,
+    inverse_kinematics_tree_dls_with_limits, pose_error, pose_error_into,
 };
 
 impl IntoNabledError for KinematicsError {

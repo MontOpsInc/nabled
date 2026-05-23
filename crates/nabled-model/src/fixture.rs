@@ -13,31 +13,31 @@ use crate::robot::{BodySpec, RobotModel};
 
 #[derive(Debug, Deserialize)]
 pub struct Planar2rFixture {
-    pub description: String,
-    pub link_lengths: Vec<f64>,
+    pub description:   String,
+    pub link_lengths:  Vec<f64>,
     pub dh_convention: String,
-    pub dh_params: Vec<[f64; 4]>,
-    pub gravity: Option<[f64; 3]>,
-    pub links: Option<Vec<LinkFixture>>,
-    pub cases: Vec<Planar2rCase>,
+    pub dh_params:     Vec<[f64; 4]>,
+    pub gravity:       Option<[f64; 3]>,
+    pub links:         Option<Vec<LinkFixture>>,
+    pub cases:         Vec<Planar2rCase>,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy)]
 pub struct LinkFixture {
-    pub mass: f64,
-    pub com: [f64; 3],
+    pub mass:    f64,
+    pub com:     [f64; 3],
     pub inertia: [[f64; 3]; 3],
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Planar2rCase {
-    pub name: String,
-    pub q: Vec<f64>,
-    pub qd: Option<Vec<f64>>,
-    pub qdd: Option<Vec<f64>>,
-    pub tau: Option<Vec<f64>>,
-    pub tau_gravity: Option<Vec<f64>>,
-    pub ee_translation: Option<Vec<f64>>,
+    pub name:                 String,
+    pub q:                    Vec<f64>,
+    pub qd:                   Option<Vec<f64>>,
+    pub qdd:                  Option<Vec<f64>>,
+    pub tau:                  Option<Vec<f64>>,
+    pub tau_gravity:          Option<Vec<f64>>,
+    pub ee_translation:       Option<Vec<f64>>,
     pub jacobian_translation: Option<Vec<Vec<f64>>>,
 }
 
@@ -49,8 +49,8 @@ impl Planar2rFixture {
         for (i, params) in self.dh_params.iter().enumerate() {
             let inertial =
                 self.links.as_ref().and_then(|links| links.get(i)).map(|link| InertialSpec {
-                    mass: parse_scalar::<T>(link.mass).unwrap_or(T::one()),
-                    com: [
+                    mass:    parse_scalar::<T>(link.mass).unwrap_or(T::one()),
+                    com:     [
                         parse_scalar::<T>(link.com[0]).unwrap_or(T::zero()),
                         parse_scalar::<T>(link.com[1]).unwrap_or(T::zero()),
                         parse_scalar::<T>(link.com[2]).unwrap_or(T::zero()),
@@ -127,19 +127,19 @@ pub fn load_planar2r_json() -> Result<Planar2rFixture, ModelError> {
 
 #[derive(Debug, Deserialize)]
 pub struct SixDofDhFixture {
-    pub description: String,
+    pub description:   String,
     pub dh_convention: String,
-    pub dh_params: Vec<[f64; 4]>,
-    pub cases: Vec<SixDofCase>,
+    pub dh_params:     Vec<[f64; 4]>,
+    pub cases:         Vec<SixDofCase>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SixDofCase {
-    pub name: String,
-    pub q: Vec<f64>,
+    pub name:           String,
+    pub q:              Vec<f64>,
     pub ee_translation: Vec<f64>,
     #[serde(default)]
-    pub tolerance: f64,
+    pub tolerance:      f64,
 }
 
 impl SixDofDhFixture {
@@ -185,14 +185,14 @@ pub fn load_six_dof_dh_json() -> Result<SixDofDhFixture, ModelError> {
 #[derive(Debug, Deserialize)]
 pub struct YBranchFixture {
     pub description: String,
-    pub cases: Vec<YBranchCase>,
+    pub cases:       Vec<YBranchCase>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct YBranchCase {
-    pub name: String,
-    pub q: Vec<f64>,
-    pub left_ee_translation: Vec<f64>,
+    pub name:                 String,
+    pub q:                    Vec<f64>,
+    pub left_ee_translation:  Vec<f64>,
     pub right_ee_translation: Vec<f64>,
 }
 

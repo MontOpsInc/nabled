@@ -13,17 +13,11 @@ impl<T: NabledReal + Clone> KinematicTreeModel<T> for RobotModel<T> {
         self.validate().map_err(|err| KinematicsError::InvalidInput(err.to_string()))
     }
 
-    fn dof(&self) -> usize {
-        RobotModel::dof(self)
-    }
+    fn dof(&self) -> usize { RobotModel::dof(self) }
 
-    fn actuated_indices(&self) -> Vec<usize> {
-        RobotModel::actuated_indices(self)
-    }
+    fn actuated_indices(&self) -> Vec<usize> { RobotModel::actuated_indices(self) }
 
-    fn topological_order(&self) -> Vec<usize> {
-        RobotModel::topological_order(self)
-    }
+    fn topological_order(&self) -> Vec<usize> { RobotModel::topological_order(self) }
 
     fn body_index_for_link(&self, link_name: &str) -> Option<usize> {
         RobotModel::body_index_for_link(self, link_name)
@@ -56,5 +50,9 @@ impl<T: NabledReal + Clone> KinematicTreeModel<T> for RobotModel<T> {
     fn chain_indices(&self, base_link: &str, ee_link: &str) -> Result<Vec<usize>, KinematicsError> {
         extract_chain(self, base_link, ee_link)
             .map_err(|err| KinematicsError::InvalidInput(err.to_string()))
+    }
+
+    fn joint_limits(&self, joint_index: usize) -> Option<(T, T)> {
+        self.limits_for_joint(joint_index).map(|limits| (limits.lower, limits.upper))
     }
 }

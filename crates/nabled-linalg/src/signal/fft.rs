@@ -19,21 +19,15 @@ pub struct RfftSpectrum<T: NabledReal> {
 impl<T: NabledReal> RfftSpectrum<T> {
     /// Number of complex bins.
     #[must_use]
-    pub fn len(&self) -> usize {
-        self.bins.len()
-    }
+    pub fn len(&self) -> usize { self.bins.len() }
 
     /// True when the spectrum contains no bins.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.bins.is_empty()
-    }
+    pub fn is_empty(&self) -> bool { self.bins.is_empty() }
 
     /// Per-bin power `|z|²`.
     #[must_use]
-    pub fn power(&self) -> Array1<T> {
-        self.bins.mapv(|c| c.re * c.re + c.im * c.im)
-    }
+    pub fn power(&self) -> Array1<T> { self.bins.mapv(|c| c.re * c.re + c.im * c.im) }
 
     /// Per-bin magnitude `|z|`.
     #[must_use]

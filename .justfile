@@ -88,6 +88,20 @@ coverage-check:
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
     cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }} --ignore-filename-regex {{ coverage_ignore_regex }}
 
+# Per-crate Physical AI line coverage (informational; workspace gate remains coverage-check).
+coverage-physical-ai-report:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Physical AI crate coverage (lib only) ==="
+    for pkg in nabled-kinematics nabled-model nabled-dynamics nabled-control nabled-sensor nabled-sim; do
+        echo "--- ${pkg} ---"
+        cargo llvm-cov -p "${pkg}" --lib --summary-only --ignore-filename-regex {{ coverage_ignore_regex }} || true
+    done
+    echo "--- nabled-linalg (signal) ---"
+    cargo llvm-cov -p nabled-linalg --lib --features signal --summary-only --ignore-filename-regex {{ coverage_ignore_regex }} || true
+    echo "--- nabled integration (informational) ---"
+    cargo llvm-cov -p nabled --test physical_ai_integration --features signal --summary-only --ignore-filename-regex {{ coverage_ignore_regex }} || true
+
 python-quality:
     {{ provider_env_prefix }} bash scripts/python_quality_gate.sh
 

@@ -57,7 +57,7 @@ Objective production-readiness and domain done criteria live in `docs/REFERENCE_
 | Dynamics | RNEA/CRBA/forward dynamics | `nabled-dynamics` | Implemented | No | Serial RNEA + CRBA mass matrix + FD; `DynamicsConfig`; S5/S5b pass. |
 | Control | DARE/LQR/gramians/pole placement | `nabled-control` | Implemented | No | pole/observer/gramians/discrete gramians + `dare_residual`; S9/S10/S15/S16/S21 pass. |
 | Sensor fusion | Kalman/EKF/camera/IMU | `nabled-sensor` | Implemented | No | EKF predict/update, `PinholeIntrinsics`, strapdown IMU; S7/S11/S17–S19 pass. |
-| pynabled Physical AI | geometry/kinematics/model/dynamics/control/sensor/signal | `pynabled.physical_ai` | Partial | No | Phase 1+2 bindings landed post-0.0.8; Python S1–S21 parity tests; `0.0.9` release after PyPI 0.0.8 observation. |
+| pynabled Physical AI | geometry/kinematics/model/dynamics/control/sensor/signal | `pynabled.physical_ai` | Implemented | No | Tree FK/Jacobian + `IkWorkspace` + S22 Python parity; `0.0.9` release after PyPI 0.0.8 observation. |
 
 ## Execution Axes Model
 

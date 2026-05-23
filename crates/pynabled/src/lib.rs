@@ -6,11 +6,9 @@
     clippy::type_complexity,
     clippy::doc_markdown,
     clippy::unnecessary_wraps,
-    clippy::needless_pass_by_value,
-    clippy::missing_copy_implementations,
-    clippy::missing_errors_doc,
-    clippy::must_use_candidate
+    clippy::needless_pass_by_value
 )]
+#![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
 
 mod error;
 mod linalg;
@@ -444,6 +442,8 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::quat_to_rotation_matrix, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::se3_compose, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::se3_log, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::se3_log_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::se3_compose_into, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::se3_exp, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::transform3_from_parts, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::transform3_to_parts, m)?)?;
@@ -452,23 +452,39 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Physical AI — kinematics
     m.add_class::<physical_ai::kinematics::PyChainSpec>()?;
     m.add_class::<physical_ai::kinematics::PyIkConfig>()?;
+    m.add_class::<physical_ai::kinematics::PyIkWorkspace>()?;
     m.add_class::<physical_ai::kinematics::PyIkResult>()?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::end_effector_pose_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::fk, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::jacobian_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::jacobian_translation_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::pose_error_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::pose_error_into_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::end_effector_pose_tree_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::jacobian_tree_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::link_transforms_tree_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::inverse_kinematics_dls_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        physical_ai::kinematics::inverse_kinematics_dls_into_py,
+        m
+    )?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        physical_ai::kinematics::inverse_kinematics_tree_dls_py,
+        m
+    )?)?;
 
     // Physical AI — model
     m.add_class::<physical_ai::model::PyRobotModel>()?;
     m.add_class::<physical_ai::model::PyPlanar2rFixture>()?;
     m.add_class::<physical_ai::model::PySixDofDhFixture>()?;
+    m.add_class::<physical_ai::model::PyYBranchFixture>()?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::from_urdf_file_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::from_urdf_str_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::to_chain_spec_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::extract_chain_spec_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::load_planar2r_fixture, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::load_six_dof_dh_fixture, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::load_y_branch_fixture, m)?)?;
 
     // Physical AI — dynamics
     m.add_class::<physical_ai::dynamics::PyDynamicsConfig>()?;

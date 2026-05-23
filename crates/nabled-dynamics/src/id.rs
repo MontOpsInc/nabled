@@ -11,8 +11,8 @@ use crate::rnea::{rnea, rnea_view};
 pub fn inverse_dynamics<T: NabledReal + Default>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
-    q: &Array1<T>,
-    qd: &Array1<T>,
+    q: &ArrayView1<'_, T>,
+    qd: &ArrayView1<'_, T>,
     qdd: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, DynamicsError> {
     rnea(model, chain, q, qd, qdd)
@@ -21,18 +21,18 @@ pub fn inverse_dynamics<T: NabledReal + Default>(
 pub fn gravity_torques<T: NabledReal + Default>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
-    q: &Array1<T>,
+    q: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, DynamicsError> {
     let zeros = Array1::<T>::zeros(q.len());
     let qdd = Array1::<T>::zeros(q.len());
-    rnea(model, chain, q, &zeros, &qdd.view())
+    rnea(model, chain, q, &zeros.view(), &qdd.view())
 }
 
 pub fn coriolis_torques<T: NabledReal + Default>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
-    q: &Array1<T>,
-    qd: &Array1<T>,
+    q: &ArrayView1<'_, T>,
+    qd: &ArrayView1<'_, T>,
 ) -> Result<Array1<T>, DynamicsError> {
     let zeros = Array1::<T>::zeros(q.len());
     let qdd = Array1::<T>::zeros(q.len());

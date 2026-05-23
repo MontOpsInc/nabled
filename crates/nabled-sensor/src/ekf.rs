@@ -10,15 +10,15 @@ use crate::kalman::KalmanState;
 /// Nonlinear EKF model callbacks.
 #[derive(Clone)]
 pub struct EkModel<T> {
-    pub predict_state: fn(&ArrayView1<'_, T>) -> Array1<T>,
+    pub predict_state:    fn(&ArrayView1<'_, T>) -> Array1<T>,
     pub predict_jacobian: fn(&ArrayView1<'_, T>) -> Array2<T>,
-    pub measure: fn(&ArrayView1<'_, T>) -> Array1<T>,
+    pub measure:          fn(&ArrayView1<'_, T>) -> Array1<T>,
     pub measure_jacobian: fn(&ArrayView1<'_, T>) -> Array2<T>,
 }
 
 #[derive(Debug, Clone)]
 pub struct EkConfig<T> {
-    pub process_noise: Array2<T>,
+    pub process_noise:     Array2<T>,
     pub measurement_noise: Array2<T>,
 }
 
@@ -91,19 +91,20 @@ mod tests {
 
     fn scalar_model() -> EkModel<f64> {
         EkModel {
-            predict_state: |x| arr1(&[x[0].sin()]),
+            predict_state:    |x| arr1(&[x[0].sin()]),
             predict_jacobian: |x| ndarray::arr2(&[[x[0].cos()]]),
-            measure: |x| arr1(&[x[0]]),
+            measure:          |x| arr1(&[x[0]]),
             measure_jacobian: |_| ndarray::arr2(&[[1.0]]),
         }
     }
 
     #[test]
     fn ekf_update_moves_toward_measurement() {
-        let state = KalmanState { mean: arr1(&[0.2_f64]), covariance: ndarray::arr2(&[[1.0]]) };
+        let state =
+            KalmanState { mean: arr1(&[0.2_f64]), covariance: ndarray::arr2(&[[1.0]]) };
         let model = scalar_model();
         let config = EkConfig {
-            process_noise: ndarray::arr2(&[[0.01]]),
+            process_noise:     ndarray::arr2(&[[0.01]]),
             measurement_noise: ndarray::arr2(&[[0.05]]),
         };
         let updated = ekf_update(&state, &arr1(&[1.0]).view(), &model, &config).unwrap();

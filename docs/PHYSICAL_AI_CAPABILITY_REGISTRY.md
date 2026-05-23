@@ -54,6 +54,7 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 | `tree::*`, `KinematicTreeModel` | `kinematics::tree` (URDF-origin tree FK/Jacobian) |
 | `jacobian::*` | `kinematics::jacobian` |
 | `ik::*`, `IkResult`, `IkWorkspace`, `JointLimits` | `kinematics::ik`, `kinematics::chain` |
+| `ik::inverse_kinematics_tree_dls*` | `kinematics::ik` (tree DLS; full-model `q` in actuated order) |
 
 ### `nabled-model`
 
@@ -61,7 +62,8 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 |---|---|
 | `joint::*`, `link::*`, `robot::*` | `nabled-model` |
 | `origin::*`, `tree_model::*` | `nabled-model` (URDF joint origins, tree trait impl) |
-| `dh::to_chain_spec` | `nabled-model::dh` |
+| `dh::to_chain_spec`, `dh::extract_chain_spec` | `nabled-model::dh` |
+| `dh::extract_chain_spec_for_dynamics`, `DynamicsBranchSpec` | `nabled-model::dh` (per-branch RNEA/FD; whole-tree RNEA out of scope) |
 | `urdf::*`, `fixture::load_planar2r_json` | `nabled-model` |
 
 ### `nabled-dynamics`
@@ -82,6 +84,22 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 |---|---|
 | `kalman::*`, `ekf::EkModel`, `camera::PinholeIntrinsics`, `imu::strapdown_*` | `nabled-sensor` |
 
+### `nabled-sim`
+
+Cross-crate orchestration (compose-down only — no algorithm reimplementation).
+
+| Module | Composes |
+|---|---|
+| `context::RobotContext` | `nabled-model` + serial `ChainSpec` validation, `extract_chain_spec_for_dynamics` |
+| `sim::semi_implicit_step` | `nabled-dynamics::forward_dynamics`, `nabled-kinematics::fk` |
+| `manipulation::TrajectoryIk` | Serial `inverse_kinematics_dls_with_limits`, `pose_error` |
+| `manipulation::TrajectoryTreeIk` | `inverse_kinematics_tree_dls_with_limits`, tree FK verify |
+| `control_loop::ClosedLoopStep` | `discrete_lqr`, `luenberger_gain` (no sensor dep) |
+| `estimation::EstimationPipeline` | `ekf_predict`/`ekf_update`, `InnovationMonitor` → `rolling_covariance` (no control dep) |
+| `pipeline::PhysicalAiPipeline` | Sim torque log + stats (S24) |
+
+Docs: `docs/PHYSICAL_AI_ORCHESTRATOR.md`. Facade: `nabled::sim`.
+
 ### `pynabled` Physical AI (post-0.0.8)
 
 | Module | Rust source | Python surface |
@@ -96,9 +114,10 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 
 Parity matrix: `docs/PYNABLED_PHYSICAL_AI_PARITY.md`.
 
-### Deferred
+### Tree dynamics and IK scope
 
-| Surface | Status |
-|---|---|
-| Branched-tree IK | deferred (serial chain extract only) |
-| `nabled-sim` orchestration | deferred (examples-first; no shared code >30%) |
+| Surface | Status | Notes |
+|---|---|---|
+| Tree FK/Jacobian | implemented | `kinematics::tree::*`, URDF-origin models |
+| Branched-tree IK | implemented | `inverse_kinematics_tree_dls*`; `q` in `actuated_indices()` order |
+| Whole-tree RNEA | out of scope | use `extract_chain_spec_for_dynamics` + branch `q` slice |

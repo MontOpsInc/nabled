@@ -39,14 +39,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("matmat shape = {:?}", matmat_view.shape());
 
     // Complex dense matrix values represented as custom complex fixed-size-list extension arrays.
-    let left = array![
-        [Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)],
-        [Complex64::new(2.0, 0.0), Complex64::new(0.0, 2.0)]
-    ];
-    let right = array![
-        [Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)],
-        [Complex64::new(0.0, 2.0), Complex64::new(2.0, 0.0)]
-    ];
+    let left = array![[Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)], [
+        Complex64::new(2.0, 0.0),
+        Complex64::new(0.0, 2.0)
+    ]];
+    let right = array![[Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)], [
+        Complex64::new(0.0, 2.0),
+        Complex64::new(2.0, 0.0)
+    ]];
     let left_complex = array2_complex64_to_fixed_size_list(left.clone())?;
     let right_complex = array2_complex64_to_fixed_size_list(right.clone())?;
     let (dot_field, dot_array) = vector::batched_dot_hermitian(&left_complex, &right_complex)?;
@@ -87,22 +87,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sum_iter = variable_shape_tensor_iter::<Float64Type>(&sum_field, &sum_array)?;
     let first_sum = sum_iter.next().expect("at least one row")?.1;
     let second_sum = sum_iter.next().expect("second row")?.1;
-    println!(
-        "ragged row sums = {:?}",
-        vec![
-            first_sum.iter().copied().collect::<Vec<_>>(),
-            second_sum.iter().copied().collect::<Vec<_>>()
-        ]
-    );
+    println!("ragged row sums = {:?}", vec![
+        first_sum.iter().copied().collect::<Vec<_>>(),
+        second_sum.iter().copied().collect::<Vec<_>>()
+    ]);
 
     // Sparse CSR matrix in extension array form (CSR row pointers, col indices, nonzero values).
-    let (csr_field, csr_matrix) = csr_to_extension_array(
-        "sparse",
-        4,
-        vec![0_i32, 2, 3, 5],
-        vec![0_u32, 2, 1, 0, 3],
-        vec![1.0_f64, 5.0, 2.0, 3.0, 4.0],
-    )?;
+    let (csr_field, csr_matrix) =
+        csr_to_extension_array("sparse", 4, vec![0_i32, 2, 3, 5], vec![0_u32, 2, 1, 0, 3], vec![
+            1.0_f64, 5.0, 2.0, 3.0, 4.0,
+        ])?;
     let csr_rhs = Float64Array::from(vec![1.0, 2.0, 3.0, 4.0]);
     let csr_matvec =
         sparse::matvec_csr_extension::<Float64Type>(&csr_field, &csr_matrix, &csr_rhs)?;
