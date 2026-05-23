@@ -7,11 +7,7 @@ use ndarray::{Array1, Array2, ArrayView1};
 
 /// Build spatial inertia from link inertial spec.
 pub fn from_inertial_spec<T: NabledReal>(spec: &InertialSpec<T>) -> SpatialInertia<T> {
-    SpatialInertia {
-        mass:    spec.mass,
-        com:     ndarray::arr1(&spec.com),
-        inertia: spec.inertia.clone(),
-    }
+    SpatialInertia { mass: spec.mass, com: ndarray::arr1(&spec.com), inertia: spec.inertia.clone() }
 }
 
 /// 6×6 spatial inertia matrix via the parallel-axis theorem.
@@ -37,7 +33,10 @@ pub fn spatial_inertia_6x6<T: NabledReal>(spec: &InertialSpec<T>) -> Array2<T> {
 }
 
 /// Apply spatial inertia to a motion vector: `f = I v`.
-pub fn spatial_inertia_apply<T: NabledReal>(inertia: &Array2<T>, v: &ArrayView1<'_, T>) -> Array1<T> {
+pub fn spatial_inertia_apply<T: NabledReal>(
+    inertia: &Array2<T>,
+    v: &ArrayView1<'_, T>,
+) -> Array1<T> {
     inertia.dot(v)
 }
 
@@ -97,9 +96,9 @@ pub fn force_cross_product<T: NabledReal>(
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpatialInertia<T> {
     /// Link mass.
-    pub mass:    T,
+    pub mass: T,
     /// Center of mass.
-    pub com:     Array1<T>,
+    pub com: Array1<T>,
     /// 3×3 inertia tensor.
     pub inertia: Array2<T>,
 }
@@ -113,8 +112,8 @@ mod tests {
     #[test]
     fn point_mass_inertia_diagonal() {
         let spec = InertialSpec {
-            mass:    2.0_f64,
-            com:     [0.5, 0.0, 0.0],
+            mass: 2.0_f64,
+            com: [0.5, 0.0, 0.0],
             inertia: Array2::<f64>::zeros((3, 3)),
         };
         let i6 = spatial_inertia_6x6(&spec);
@@ -124,11 +123,8 @@ mod tests {
 
     #[test]
     fn spatial_inertia_apply_matches_hand_calc() {
-        let spec = InertialSpec {
-            mass:    1.0_f64,
-            com:     [0.0, 0.0, 0.0],
-            inertia: Array2::<f64>::eye(3),
-        };
+        let spec =
+            InertialSpec { mass: 1.0_f64, com: [0.0, 0.0, 0.0], inertia: Array2::<f64>::eye(3) };
         let i6 = spatial_inertia_6x6(&spec);
         let v = ndarray::arr1(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         let f = spatial_inertia_apply(&i6, &v.view());

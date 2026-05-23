@@ -11,12 +11,6 @@ pub struct DynamicsConfig<T> {
 
 impl<T: NabledReal> Default for DynamicsConfig<T> {
     fn default() -> Self {
-        Self {
-            gravity: [
-                T::zero(),
-                T::from_f64(-9.81).unwrap_or(T::zero()),
-                T::zero(),
-            ],
-        }
+        Self { gravity: [T::zero(), T::from_f64(-9.81).unwrap_or(T::zero()), T::zero()] }
     }
 }

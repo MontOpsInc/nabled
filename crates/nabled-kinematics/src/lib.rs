@@ -15,6 +15,7 @@ pub mod error;
 pub mod fk;
 pub mod ik;
 pub mod jacobian;
+pub mod tree;
 
 pub use chain::{ChainSpec, DhConvention, JointLimits, JointType};
 pub use error::KinematicsError;

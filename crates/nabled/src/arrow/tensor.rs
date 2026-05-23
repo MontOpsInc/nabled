@@ -22,9 +22,9 @@ use super::{
 #[derive(Debug, Deserialize, Serialize)]
 struct VariableShapeTensorWireMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    dim_names:     Option<Vec<String>>,
+    dim_names: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    permutations:  Option<Vec<usize>>,
+    permutations: Option<Vec<usize>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     uniform_shape: Option<Vec<Option<i32>>>,
 }

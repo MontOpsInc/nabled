@@ -13,7 +13,7 @@ const DEFAULT_TOLERANCE: f64 = 1.0e-12;
 #[derive(Debug, Clone)]
 pub struct IterativeConfig<T = f64> {
     /// Relative residual tolerance.
-    pub tolerance:      T,
+    pub tolerance: T,
     /// Maximum iterations.
     pub max_iterations: usize,
 }
@@ -21,21 +21,29 @@ pub struct IterativeConfig<T = f64> {
 impl IterativeConfig<f64> {
     /// Default configuration for `f64`.
     #[must_use]
-    pub const fn default_f64() -> Self { Self { tolerance: 1e-10, max_iterations: 1000 } }
+    pub const fn default_f64() -> Self {
+        Self { tolerance: 1e-10, max_iterations: 1000 }
+    }
 }
 
 impl Default for IterativeConfig<f64> {
-    fn default() -> Self { Self::default_f64() }
+    fn default() -> Self {
+        Self::default_f64()
+    }
 }
 
 impl IterativeConfig<f32> {
     /// Default configuration for `f32`.
     #[must_use]
-    pub const fn default_f32() -> Self { Self { tolerance: 1e-6, max_iterations: 1000 } }
+    pub const fn default_f32() -> Self {
+        Self { tolerance: 1e-6, max_iterations: 1000 }
+    }
 }
 
 impl Default for IterativeConfig<f32> {
-    fn default() -> Self { Self::default_f32() }
+    fn default() -> Self {
+        Self::default_f32()
+    }
 }
 
 /// Error type for iterative solvers.
@@ -972,12 +980,15 @@ mod tests {
 
     #[test]
     fn cg_complex_solves_hermitian_spd_system() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(4.0, 0.0),
-            Complex64::new(1.0, 1.0),
-            Complex64::new(1.0, -1.0),
-            Complex64::new(3.0, 0.0),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(4.0, 0.0),
+                Complex64::new(1.0, 1.0),
+                Complex64::new(1.0, -1.0),
+                Complex64::new(3.0, 0.0),
+            ],
+        )
         .unwrap();
         let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.5), Complex64::new(2.0, -1.0)]);
         let solution =
@@ -990,12 +1001,15 @@ mod tests {
 
     #[test]
     fn gmres_complex_solves_small_system() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(3.0, 1.0),
-            Complex64::new(1.0, -0.5),
-            Complex64::new(0.5, 1.0),
-            Complex64::new(2.0, -1.0),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(3.0, 1.0),
+                Complex64::new(1.0, -0.5),
+                Complex64::new(0.5, 1.0),
+                Complex64::new(2.0, -1.0),
+            ],
+        )
         .unwrap();
         let rhs = Array1::from_vec(vec![Complex64::new(1.0, 2.0), Complex64::new(3.0, -1.0)]);
         let solution = gmres_complex(&matrix, &rhs, &IterativeConfig::default()).unwrap();
@@ -1007,20 +1021,26 @@ mod tests {
 
     #[test]
     fn complex_iterative_into_variants_reuse_output_buffers() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(4.0, 0.0),
-            Complex64::new(1.0, 1.0),
-            Complex64::new(1.0, -1.0),
-            Complex64::new(3.0, 0.0),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(4.0, 0.0),
+                Complex64::new(1.0, 1.0),
+                Complex64::new(1.0, -1.0),
+                Complex64::new(3.0, 0.0),
+            ],
+        )
         .unwrap();
         let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.5), Complex64::new(2.0, -1.0)]);
-        let general = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(3.0, 1.0),
-            Complex64::new(1.0, -0.5),
-            Complex64::new(0.5, 1.0),
-            Complex64::new(2.0, -1.0),
-        ])
+        let general = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(3.0, 1.0),
+                Complex64::new(1.0, -0.5),
+                Complex64::new(0.5, 1.0),
+                Complex64::new(2.0, -1.0),
+            ],
+        )
         .unwrap();
         let general_rhs =
             Array1::from_vec(vec![Complex64::new(1.0, 2.0), Complex64::new(3.0, -1.0)]);
@@ -1042,12 +1062,15 @@ mod tests {
 
     #[test]
     fn cg_complex_rejects_dimension_mismatch() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(1.0, 0.0),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0, 0.0),
+                Complex64::new(0.0, 0.0),
+                Complex64::new(0.0, 0.0),
+                Complex64::new(1.0, 0.0),
+            ],
+        )
         .unwrap();
         let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0)]);
         let result = conjugate_gradient_complex(&matrix, &rhs, &IterativeConfig::default());

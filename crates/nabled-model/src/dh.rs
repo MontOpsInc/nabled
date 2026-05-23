@@ -69,41 +69,30 @@ mod tests {
     use super::*;
     use crate::joint::JointAxis;
     use crate::link::LinkSpec;
+    use crate::origin::joint_origin_from_dh_scalars;
     use crate::robot::BodySpec;
+
+    fn sample_body(name: &str, parent_link: &str) -> BodySpec<f64> {
+        BodySpec {
+            link: LinkSpec { name: name.to_string() },
+            parent_link: parent_link.to_string(),
+            joint_type: JointType::Revolute,
+            axis: JointAxis::Z,
+            limits: None,
+            inertial: None,
+            joint_origin: joint_origin_from_dh_scalars(1.0, 0.0, 0.0, 0.0).unwrap(),
+            dh_a: 1.0,
+            dh_alpha: 0.0,
+            dh_d: 0.0,
+            dh_theta: 0.0,
+        }
+    }
 
     #[test]
     fn extract_chain_matches_full_serial_model() {
         let mut model = RobotModel::new();
-        let root = model.add_body(
-            None,
-            BodySpec {
-                link: LinkSpec { name: "link1".to_string() },
-                parent_link: "base".to_string(),
-                joint_type: JointType::Revolute,
-                axis: JointAxis::Z,
-                limits: None,
-                inertial: None,
-                dh_a: 1.0,
-                dh_alpha: 0.0,
-                dh_d: 0.0,
-                dh_theta: 0.0,
-            },
-        );
-        model.add_body(
-            Some(root),
-            BodySpec {
-                link: LinkSpec { name: "link2".to_string() },
-                parent_link: "link1".to_string(),
-                joint_type: JointType::Revolute,
-                axis: JointAxis::Z,
-                limits: None,
-                inertial: None,
-                dh_a: 1.0,
-                dh_alpha: 0.0,
-                dh_d: 0.0,
-                dh_theta: 0.0,
-            },
-        );
+        let root = model.add_body(None, sample_body("link1", "base"));
+        let _ = model.add_body(Some(root), sample_body("link2", "link1"));
         let full = to_chain_spec(&model).unwrap();
         let extracted = extract_chain_spec(&model, "base", "link2").unwrap();
         assert_eq!(full, extracted);

@@ -6,12 +6,16 @@
     clippy::type_complexity,
     clippy::doc_markdown,
     clippy::unnecessary_wraps,
-    clippy::needless_pass_by_value
+    clippy::needless_pass_by_value,
+    clippy::missing_copy_implementations,
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate
 )]
 
 mod error;
 mod linalg;
 mod ml;
+mod physical_ai;
 mod sparse;
 mod utils;
 
@@ -31,6 +35,7 @@ fn build_features() -> Vec<String> {
         ("netlib-system", cfg!(feature = "netlib-system")),
         ("openblas-static", cfg!(feature = "openblas-static")),
         ("openblas-system", cfg!(feature = "openblas-system")),
+        ("signal", cfg!(feature = "signal")),
     ]
     .into_iter()
     .filter(|&(_, enabled)| enabled)
@@ -366,6 +371,10 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::correlation_matrix_complex, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::correlation_matrix_complex_into, m)?)?;
 
+    // Rolling stats
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::rolling_covariance, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(ml::stats::rolling_covariance_into, m)?)?;
+
     // Iterative (dense CG, GMRES)
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient_into, m)?)?;
@@ -428,6 +437,80 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::ic0_factor, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::ildl0_factor, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(sparse::csr::sparse_lu_factor, m)?)?;
+
+    // Physical AI — geometry
+    m.add_class::<physical_ai::geometry::PyTransform3>()?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::quat_from_axis_angle, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::quat_to_rotation_matrix, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::se3_compose, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::se3_log, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::se3_exp, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::transform3_from_parts, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::transform3_to_parts, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::geometry::so3_compose, m)?)?;
+
+    // Physical AI — kinematics
+    m.add_class::<physical_ai::kinematics::PyChainSpec>()?;
+    m.add_class::<physical_ai::kinematics::PyIkConfig>()?;
+    m.add_class::<physical_ai::kinematics::PyIkResult>()?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::end_effector_pose_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::fk, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::jacobian_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::jacobian_translation_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::pose_error_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::kinematics::inverse_kinematics_dls_py, m)?)?;
+
+    // Physical AI — model
+    m.add_class::<physical_ai::model::PyRobotModel>()?;
+    m.add_class::<physical_ai::model::PyPlanar2rFixture>()?;
+    m.add_class::<physical_ai::model::PySixDofDhFixture>()?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::from_urdf_file_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::from_urdf_str_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::to_chain_spec_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::load_planar2r_fixture, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::model::load_six_dof_dh_fixture, m)?)?;
+
+    // Physical AI — dynamics
+    m.add_class::<physical_ai::dynamics::PyDynamicsConfig>()?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::dynamics::rnea, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::dynamics::mass_matrix_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::dynamics::forward_dynamics, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::dynamics::rnea_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::dynamics::forward_dynamics_into, m)?)?;
+
+    // Physical AI — control
+    m.add_class::<physical_ai::control::PyLqrResult>()?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::control::discrete_lqr_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::control::dare_solve_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::control::dare_residual_norm_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::control::controllability_gramian_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::control::place_poles_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::control::luenberger_gain_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::control::discrete_lqr_into, m)?)?;
+
+    // Physical AI — sensor
+    m.add_class::<physical_ai::sensor::PyKalmanState>()?;
+    m.add_class::<physical_ai::sensor::PyPinholeIntrinsics>()?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::kalman_predict, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::kalman_update, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::kalman_predict_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::kalman_update_into, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::ekf_predict, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::ekf_update, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::pinhole_project_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::strapdown_predict_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(physical_ai::sensor::strapdown_predict_into, m)?)?;
+
+    #[cfg(feature = "signal")]
+    {
+        m.add_function(pyo3::wrap_pyfunction!(physical_ai::signal::rfft_py, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(physical_ai::signal::irfft_py, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(physical_ai::signal::dominant_frequency_py, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(physical_ai::signal::bin_to_hz_py, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(physical_ai::signal::autocorrelation_full_py, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(physical_ai::signal::rfft_into_py, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(physical_ai::signal::irfft_into_py, m)?)?;
+    }
 
     #[cfg(feature = "arrow")]
     {

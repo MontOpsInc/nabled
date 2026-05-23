@@ -1,4 +1,6 @@
-//! Physical AI integration scenarios S1–S21.
+//! Physical AI integration scenarios S1–S22.
+
+#![expect(clippy::many_single_char_names, clippy::cast_precision_loss)]
 
 use approx::assert_relative_eq;
 use nabled::control::dare::{dare_residual_norm, dare_solve};
@@ -6,16 +8,17 @@ use nabled::control::gramian::controllability_gramian;
 use nabled::control::lqr::{LqrResult, discrete_lqr};
 use nabled::control::observer::luenberger_gain;
 use nabled::control::pole::place_poles;
+use nabled::dynamics::config::DynamicsConfig;
+use nabled::dynamics::fd::forward_dynamics_with_config;
+use nabled::dynamics::rnea::rnea_with_config;
 use nabled::kinematics::chain::{ChainSpec, DhConvention, JointType};
 use nabled::kinematics::fk::{end_effector_pose, fk_view};
 use nabled::kinematics::ik::{IkConfig, inverse_kinematics_dls};
 use nabled::kinematics::jacobian::{jacobian, jacobian_translation};
+use nabled::kinematics::tree::{end_effector_pose_tree, jacobian_tree};
 use nabled::ml::stats::rolling::{rolling_covariance, rolling_covariance_view};
-use nabled::model::dh::to_chain_spec;
-use nabled::dynamics::config::DynamicsConfig;
-use nabled::dynamics::fd::forward_dynamics_with_config;
-use nabled::dynamics::rnea::rnea_with_config;
-use nabled::model::fixture::load_planar2r_json;
+use nabled::model::dh::{extract_chain_spec, to_chain_spec};
+use nabled::model::fixture::{load_planar2r_json, load_y_branch_json};
 use nabled::model::urdf::from_urdf_file;
 use nabled::sensor::camera::{PinholeIntrinsics, pinhole_project};
 use nabled::sensor::ekf::{EkConfig, EkModel, ekf_predict, ekf_update};
@@ -111,11 +114,7 @@ fn s3_dls_ik_to_target_pose() {
     let q_target = arr1(&[0.2_f64, -0.3, 0.5, 0.1, -0.2, 0.4]);
     let target = fk_view(&chain, &q_target.view()).expect("fk");
     let q_init = arr1(&[0.0; 6]);
-    let config = IkConfig {
-        max_iterations: 200,
-        tolerance:      1e-3,
-        ..IkConfig::default()
-    };
+    let config = IkConfig { max_iterations: 200, tolerance: 1e-3, ..IkConfig::default() };
     let q = inverse_kinematics_dls(&chain, &q_init, &target, &config).expect("ik");
     let achieved = fk_view(&chain, &q.view()).expect("fk");
     let err = nabled::kinematics::pose_error(&achieved, &target).expect("pose error");
@@ -126,7 +125,8 @@ fn s3_dls_ik_to_target_pose() {
 #[test]
 fn s4_urdf_model_fk() {
     let fixture = load_planar2r_json().expect("fixture");
-    let urdf_path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/physical_ai/planar2r.urdf");
+    let urdf_path =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/physical_ai/planar2r.urdf");
     let model = from_urdf_file::<f64>(urdf_path).expect("urdf");
     let chain = to_chain_spec(&model).expect("chain");
 
@@ -151,11 +151,8 @@ fn s5_rnea_tau() {
     let chain = fixture.to_chain_spec::<f64>().expect("chain");
     let gravity: [f64; 3] = fixture.gravity.unwrap_or([0.0, -9.81, 0.0]);
     let config = DynamicsConfig { gravity };
-    let case = fixture
-        .cases
-        .iter()
-        .find(|c| c.qd.is_some() && c.qdd.is_some())
-        .expect("dynamics case");
+    let case =
+        fixture.cases.iter().find(|c| c.qd.is_some() && c.qdd.is_some()).expect("dynamics case");
     let q = arr1(&case.q);
     let qd = arr1(case.qd.as_ref().expect("qd"));
     let qdd = arr1(case.qdd.as_ref().expect("qdd"));
@@ -172,9 +169,7 @@ fn s5b_forward_dynamics_round_trip() {
     let fixture = load_planar2r_json().expect("fixture");
     let model = fixture.to_robot_model::<f64>().expect("model");
     let chain = fixture.to_chain_spec::<f64>().expect("chain");
-    let config = DynamicsConfig {
-        gravity: fixture.gravity.unwrap_or([0.0, -9.81, 0.0]),
-    };
+    let config = DynamicsConfig { gravity: fixture.gravity.unwrap_or([0.0, -9.81, 0.0]) };
     let q = arr1(&[0.2_f64, 0.4]);
     let qd = arr1(&[0.05_f64, -0.1]);
     let qdd = arr1(&[0.3_f64, 0.15]);
@@ -246,7 +241,11 @@ fn s12_dominant_frequency_sine_bin() {
     }));
     let peak_bin = dominant_frequency(&signal.view()).expect("dominant bin");
     assert_eq!(peak_bin, bin);
-    assert_relative_eq!(bin_to_hz(peak_bin, n, sample_rate), freq, epsilon = sample_rate / n as f64);
+    assert_relative_eq!(
+        bin_to_hz(peak_bin, n, sample_rate),
+        freq,
+        epsilon = sample_rate / n as f64
+    );
 }
 
 /// S13: real FFT round-trip through facade.
@@ -324,7 +323,9 @@ fn s15_luenberger_observer_tracks_state() {
         let y = c.dot(&x);
         x = a.dot(&x) + &(b.column(0).to_owned() * u);
         let innovation = &y - &c.dot(&x_hat);
-        x_hat = a.dot(&x_hat) + &(b.column(0).to_owned() * u) + &(l.column(0).to_owned() * innovation[[0]]);
+        x_hat = a.dot(&x_hat)
+            + &(b.column(0).to_owned() * u)
+            + &(l.column(0).to_owned() * innovation[[0]]);
     }
     let err = (&x - &x_hat).mapv(|v| v * v).sum().sqrt();
     assert!(err < 1e-2, "observer error {err}");
@@ -340,9 +341,10 @@ fn s16_pole_placement_double_integrator() {
     let closed = &a - &b.dot(&k);
     let eig = nabled::linalg::eigen::nonsymmetric(&closed).expect("eigen");
     for &pole in &poles {
-        let matched = eig.eigenvalues.iter().any(|lambda| {
-            (lambda.re - pole).abs() < 1e-6 && lambda.im.abs() < 1e-6
-        });
+        let matched = eig
+            .eigenvalues
+            .iter()
+            .any(|lambda| (lambda.re - pole).abs() < 1e-6 && lambda.im.abs() < 1e-6);
         assert!(matched, "missing pole {pole}");
     }
 }
@@ -365,10 +367,8 @@ fn s21_lqr_algebraic_consistency() {
 /// S11: Multi-dimensional linear Kalman tracking.
 #[test]
 fn s11_multi_d_kalman_tracking() {
-    let state = KalmanState {
-        mean:       arr1(&[0.0_f64, 0.0]),
-        covariance: arr2(&[[1.0, 0.0], [0.0, 1.0]]),
-    };
+    let state =
+        KalmanState { mean: arr1(&[0.0_f64, 0.0]), covariance: arr2(&[[1.0, 0.0], [0.0, 1.0]]) };
     let f = arr2(&[[1.0, 0.1], [0.0, 1.0]]);
     let q = arr2(&[[0.01, 0.0], [0.0, 0.01]]);
     let predicted = predict(&state, &f.view(), &q.view()).expect("predict");
@@ -389,10 +389,7 @@ fn s17_ekf_nonlinear_update() {
         measure: |x: &ndarray::ArrayView1<'_, f64>| arr1(&[x[0]]),
         measure_jacobian: |_: &ndarray::ArrayView1<'_, f64>| arr2(&[[1.0]]),
     };
-    let config = EkConfig {
-        process_noise:     arr2(&[[0.01]]),
-        measurement_noise: arr2(&[[0.05]]),
-    };
+    let config = EkConfig { process_noise: arr2(&[[0.01]]), measurement_noise: arr2(&[[0.05]]) };
     let state = KalmanState { mean: arr1(&[0.2_f64]), covariance: arr2(&[[1.0]]) };
     let predicted = ekf_predict(&state, &model, &config).expect("predict");
     let updated = ekf_update(&predicted, &arr1(&[0.9]).view(), &model, &config).expect("update");
@@ -416,9 +413,11 @@ fn s19_imu_strapdown_small_angle() {
     let gyro = arr1(&[0.0_f64, 0.0, 0.1]);
     let dt = 0.01;
     let q1 = strapdown_predict(&q0, &gyro, dt).expect("strapdown");
-    let expected = nabled::linalg::geometry::quat::from_axis_angle(
-        &nabled::linalg::geometry::AxisAngle { axis: [0.0, 0.0, 1.0], angle: 0.001 },
-    );
+    let expected =
+        nabled::linalg::geometry::quat::from_axis_angle(&nabled::linalg::geometry::AxisAngle {
+            axis: [0.0, 0.0, 1.0],
+            angle: 0.001,
+        });
     assert_relative_eq!(q1[0], expected.w, epsilon = 1e-6);
     assert_relative_eq!(q1[3], expected.z, epsilon = 1e-6);
 }
@@ -426,14 +425,55 @@ fn s19_imu_strapdown_small_angle() {
 /// S20: Rolling covariance on synthetic innovation sequence.
 #[test]
 fn s20_rolling_covariance_innovations() {
-    let innovations = arr2(&[
-        [0.1_f64, -0.2],
-        [0.0, 0.1],
-        [-0.1, 0.0],
-        [0.2, 0.1],
-        [0.05, -0.05],
-    ]);
+    let innovations = arr2(&[[0.1_f64, -0.2], [0.0, 0.1], [-0.1, 0.0], [0.2, 0.1], [0.05, -0.05]]);
     let cov = rolling_covariance(&innovations.view(), 3);
     assert!(cov[[4, 0]].is_finite());
     assert!(cov[[4, 3]] > 0.0);
+}
+
+/// S22: Branched-tree FK/Jacobian vs Y-branch fixture; serial extract for dynamics.
+#[test]
+fn s22_y_branch_tree_fk() {
+    let fixture = load_y_branch_json().expect("fixture");
+    let urdf_path =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/physical_ai/Y_branch.urdf");
+    let model = from_urdf_file::<f64>(urdf_path).expect("urdf");
+    assert_eq!(model.dof(), 3);
+
+    for case in &fixture.cases {
+        let q = arr1(&case.q);
+        let left = end_effector_pose_tree(&model, "base", "left_ee", &q).expect("left fk");
+        let right = end_effector_pose_tree(&model, "base", "right_ee", &q).expect("right fk");
+        assert_relative_eq!(left.translation[0], case.left_ee_translation[0], epsilon = 1e-10);
+        assert_relative_eq!(left.translation[1], case.left_ee_translation[1], epsilon = 1e-10);
+        assert_relative_eq!(left.translation[2], case.left_ee_translation[2], epsilon = 1e-10);
+        assert_relative_eq!(right.translation[0], case.right_ee_translation[0], epsilon = 1e-10);
+        assert_relative_eq!(right.translation[1], case.right_ee_translation[1], epsilon = 1e-10);
+        assert_relative_eq!(right.translation[2], case.right_ee_translation[2], epsilon = 1e-10);
+
+        let j_left = jacobian_tree(&model, "base", "left_ee", &q).expect("left jacobian");
+        assert_eq!(j_left.nrows(), 6);
+        assert_eq!(j_left.ncols(), 3);
+        let h = 1e-6;
+        for col in 0..3 {
+            let mut q_plus = q.clone();
+            q_plus[col] += h;
+            let pose_plus = end_effector_pose_tree(&model, "base", "left_ee", &q_plus).unwrap();
+            let mut q_minus = q.clone();
+            q_minus[col] -= h;
+            let pose_minus = end_effector_pose_tree(&model, "base", "left_ee", &q_minus).unwrap();
+            let deriv_x = (pose_plus.translation[0] - pose_minus.translation[0]) / (2.0 * h);
+            let deriv_y = (pose_plus.translation[1] - pose_minus.translation[1]) / (2.0 * h);
+            assert_relative_eq!(j_left[[0, col]], deriv_x, epsilon = 1e-5);
+            assert_relative_eq!(j_left[[1, col]], deriv_y, epsilon = 1e-5);
+        }
+    }
+
+    let left_chain = extract_chain_spec(&model, "base", "left_ee").expect("left chain");
+    assert_eq!(left_chain.num_joints(), 2);
+    let q = arr1(&fixture.cases[0].q);
+    let q_chain = arr1(&[q[0], q[1]]);
+    let serial_pose = end_effector_pose(&left_chain, &q_chain).expect("serial fk");
+    let tree_pose = end_effector_pose_tree(&model, "base", "left_ee", &q).expect("tree fk");
+    assert_relative_eq!(serial_pose.translation, tree_pose.translation, epsilon = 1e-10);
 }

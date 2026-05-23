@@ -41,12 +41,13 @@ fn controllability_matrix<T: NabledReal + LuProviderScalar>(
 
 /// Monic polynomial coefficients `[1, c_{n-1}, ..., c_0]` from real pole locations.
 fn monic_coefficients_from_poles<T: NabledReal>(poles: &[T]) -> Vec<T> {
-    let mut coeffs = vec![num_traits::FromPrimitive::from_f64(1.0).unwrap_or_else(num_traits::One::one)];
+    let mut coeffs =
+        vec![num_traits::FromPrimitive::from_f64(1.0).unwrap_or_else(num_traits::One::one)];
     for &pole in poles {
         let mut next = vec![num_traits::Zero::zero(); coeffs.len() + 1];
         for (index, &coef) in coeffs.iter().enumerate() {
-            next[index] = next[index] + coef;
-            next[index + 1] = next[index + 1] - coef * pole;
+            next[index] += coef;
+            next[index + 1] -= coef * pole;
         }
         coeffs = next;
     }
@@ -70,7 +71,7 @@ fn matrix_monic_polynomial<T: NabledReal + LuProviderScalar>(
         let exponent = degree - index;
         for i in 0..n {
             for j in 0..n {
-                result[[i, j]] = result[[i, j]] + coef * powers[exponent][[i, j]];
+                result[[i, j]] += coef * powers[exponent][[i, j]];
             }
         }
     }
@@ -86,7 +87,9 @@ fn ackermann_gain<T: NabledReal + LuProviderScalar>(
     let n = a.nrows();
     let ctl = controllability_matrix(a, b)?;
     let det = lu::determinant(&ctl).map_err(|_| ControlError::SingularSystem)?;
-    if det.abs() <= num_traits::FromPrimitive::from_f64(1e-12).unwrap_or(T::epsilon()) {
+    if num_traits::Float::abs(det)
+        <= num_traits::FromPrimitive::from_f64(1e-12).unwrap_or(T::epsilon())
+    {
         return Err(ControlError::InvalidInput("system is not controllable".to_string()));
     }
     let ctl_inv = lu::inverse(&ctl).map_err(|_| ControlError::SingularSystem)?;
@@ -141,7 +144,11 @@ mod tests {
 
     use super::*;
 
-    fn eigenvalue_near(requested: f64, values: impl IntoIterator<Item = Complex<f64>>, tol: f64) -> bool {
+    fn eigenvalue_near(
+        requested: f64,
+        values: impl IntoIterator<Item = Complex<f64>>,
+        tol: f64,
+    ) -> bool {
         values.into_iter().any(|lambda| {
             let re_diff = (lambda.re - requested).abs();
             let im = lambda.im.abs();
@@ -183,9 +190,6 @@ mod tests {
         let b = arr2(&[[0.0], [1.0]]);
         let poles = [-1.0, -2.0];
         let err = place_poles(&a, &b, &poles).unwrap_err();
-        assert!(matches!(
-            err,
-            ControlError::InvalidInput(_) | ControlError::SingularSystem
-        ));
+        assert!(matches!(err, ControlError::InvalidInput(_) | ControlError::SingularSystem));
     }
 }

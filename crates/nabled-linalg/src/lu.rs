@@ -30,7 +30,7 @@ pub struct NdarrayLUResult<T = f64> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LogDetResult<T> {
     /// Determinant sign.
-    pub sign:       i8,
+    pub sign: i8,
     /// Natural logarithm of absolute determinant.
     pub ln_abs_det: T,
 }
@@ -39,7 +39,7 @@ pub struct LogDetResult<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MixedSolveResult<T> {
     /// The solved vector `x` from `Ax=b`.
-    pub solution:              Array1<T>,
+    pub solution: Array1<T>,
     /// Iterative-refinement steps performed by the provider.
     pub refinement_iterations: usize,
 }
@@ -1571,12 +1571,15 @@ mod tests {
     #[cfg(feature = "magma-system")]
     #[test]
     fn mixed_complex_solve_reconstructs_rhs() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(3.0, 0.5),
-            Complex64::new(1.0, -0.25),
-            Complex64::new(0.5, 0.5),
-            Complex64::new(2.5, -0.75),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(3.0, 0.5),
+                Complex64::new(1.0, -0.25),
+                Complex64::new(0.5, 0.5),
+                Complex64::new(2.5, -0.75),
+            ],
+        )
         .unwrap();
         let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.5), Complex64::new(0.0, 1.0)]);
         let result = solve_mixed_complex(&matrix, &rhs).unwrap();
@@ -1709,12 +1712,15 @@ mod tests {
 
     #[test]
     fn complex_lu_paths_solve_inverse_and_determinant() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0, 1.0),
-            Complex64::new(1.0, -1.0),
-            Complex64::new(0.5, 0.25),
-            Complex64::new(3.0, -0.5),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(2.0, 1.0),
+                Complex64::new(1.0, -1.0),
+                Complex64::new(0.5, 0.25),
+                Complex64::new(3.0, -0.5),
+            ],
+        )
         .unwrap();
         let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
 

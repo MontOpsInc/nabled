@@ -33,6 +33,11 @@ ndarray.workspace = true
 
 [dev-dependencies]
 approx.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "dynamics"
+harness = false
 
 [lints]
 workspace = true

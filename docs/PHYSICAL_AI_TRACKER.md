@@ -41,6 +41,11 @@ Operational sequencing for the broader workspace lives in `docs/EXECUTION_TRACKE
 | PAI-11 | Spatial inertia + joint subspaces | Done | MT-5: `spatial_inertia_6x6`, `joint_motion_subspace`, gravity vector |
 | PAI-12 | JSON fixture loader shared | Done | `load_planar2r_json`, dynamics cases in `2r_planar.json` |
 | PAI-13 | Capability matrix + registry sync | Done | Physical AI rows → Implemented |
+| PAI-14 | Tree FK/Jacobian on URDF origins | Done | `kinematics::tree`, `KinematicTreeModel`, Y-branch fixture, S22 |
+| PAI-15 | Dynamics/kinematics bench smoke + advisory CI | Done | `benches/dynamics.rs`, `just bench-smoke-physical-ai`, CI `benchmark-physical-ai` |
+| PAI-16 | Reference composition examples | Done | four `physical_ai_*` examples in `crates/nabled/examples/` |
+| PAI-17 | `pynabled` Physical AI bindings (post-0.0.8) | Done | `pynabled.{geometry,kinematics,model,dynamics,control,sensor,signal}` |
+| PAI-18 | Python S1–S21 parity + doc matrix | Done | `python/tests/test_physical_ai_integration.py`, `docs/PYNABLED_PHYSICAL_AI_PARITY.md` |
 
 ## Locked Boundaries
 
@@ -49,12 +54,13 @@ See `docs/PHYSICAL_AI_CAPABILITY_REGISTRY.md` for single-owner function table.
 ## Validation Snapshot (2026-05-23)
 
 - `cargo test --workspace --lib`: pass
-- `cargo test -p nabled --test physical_ai_integration --features signal`: 22 passed, 0 ignored
+- `cargo test -p nabled --test physical_ai_integration --features signal`: 23 passed, 0 ignored
 - `cargo +stable clippy --workspace --no-default-features --features "openblas-system accelerator-rayon accelerator-wgpu signal" --all-targets -- -D warnings`: run locally with OpenBLAS link env
-- `just checks`: clippy/fmt pass when OpenBLAS available; provider/coverage gates environment-dependent
+- `just checks`: signal clippy leg + `test-physical-ai-integration` in integration recipe; provider/coverage legs require OpenBLAS or `NABLED_PROVIDER_FEATURES=netlib-system`
 
 ## Remaining Gaps
 
-1. Full `just checks` provider/coverage gates require OpenBLAS or `netlib-static` link environment.
-2. Multi-DOF branched-tree FK beyond serial `ChainSpec` extraction (tree API exists; FK remains serial).
-3. Optional dynamics/kinematics bench CI wiring when GPU/OpenBLAS runners available.
+1. Provider/coverage legs in `just checks` require OpenBLAS (macOS: `brew install openblas`; see `BUILD.md`) or `NABLED_PROVIDER_FEATURES=netlib-system`.
+2. Branched-tree IK (keep IK on extracted serial chains); closed kinematic loops remain out of scope.
+3. `nabled-sim` thin orchestration crate deferred — examples do not share enough code to justify extraction (see MT-A2 note in `physical_ai_planar2r_sim.rs`).
+4. `pynabled` Physical AI release prep for `0.0.9` after PyPI `0.0.8` ships (version bump + publish observation).

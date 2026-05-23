@@ -22,7 +22,7 @@ pub enum VectorError {
 /// Reusable workspace for pairwise cosine similarity kernels.
 #[derive(Debug, Clone)]
 pub struct PairwiseCosineWorkspace<T: NabledReal> {
-    left_norms:  Array1<T>,
+    left_norms: Array1<T>,
     right_norms: Array1<T>,
 }
 
@@ -149,7 +149,9 @@ pub fn dot_hermitian_view(
 ///
 /// # Errors
 /// Returns an error if the vector is empty.
-pub fn l2_norm<T: NabledReal>(v: &Array1<T>) -> Result<T, VectorError> { l2_norm_view(&v.view()) }
+pub fn l2_norm<T: NabledReal>(v: &Array1<T>) -> Result<T, VectorError> {
+    l2_norm_view(&v.view())
+}
 
 /// Compute L2 norm of a vector view.
 ///
@@ -1319,14 +1321,14 @@ mod tests {
 
     #[test]
     fn batched_rowwise_complex_vector_kernels_match_expected() {
-        let left = arr2(&[[Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)], [
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, 2.0),
-        ]]);
-        let right = arr2(&[[Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)], [
-            Complex64::new(0.0, 2.0),
-            Complex64::new(2.0, 0.0),
-        ]]);
+        let left = arr2(&[
+            [Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)],
+            [Complex64::new(2.0, 0.0), Complex64::new(0.0, 2.0)],
+        ]);
+        let right = arr2(&[
+            [Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)],
+            [Complex64::new(0.0, 2.0), Complex64::new(2.0, 0.0)],
+        ]);
 
         let dots = batched_dot_hermitian(&left, &right).unwrap();
         let norms = batched_l2_norm_complex(&left).unwrap();
@@ -1376,14 +1378,14 @@ mod tests {
 
     #[test]
     fn batched_complex_into_paths_match_allocating_variants() {
-        let left = arr2(&[[Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)], [
-            Complex64::new(2.0, 0.0),
-            Complex64::new(0.0, 2.0),
-        ]]);
-        let right = arr2(&[[Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)], [
-            Complex64::new(0.0, 2.0),
-            Complex64::new(2.0, 0.0),
-        ]]);
+        let left = arr2(&[
+            [Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)],
+            [Complex64::new(2.0, 0.0), Complex64::new(0.0, 2.0)],
+        ]);
+        let right = arr2(&[
+            [Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)],
+            [Complex64::new(0.0, 2.0), Complex64::new(2.0, 0.0)],
+        ]);
 
         let expected_dots = batched_dot_hermitian(&left, &right).unwrap();
         let expected_norms = batched_l2_norm_complex(&left).unwrap();

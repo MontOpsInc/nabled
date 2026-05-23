@@ -319,9 +319,10 @@ mod tests {
 
     #[test]
     fn gram_schmidt_returns_orthonormal_columns() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            1.0_f64, 1.0_f64, 1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f64, 1.0_f64, 1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64],
+        )
         .unwrap();
         let q = gram_schmidt(&matrix).unwrap();
         let qtq = q.t().dot(&q);
@@ -332,9 +333,10 @@ mod tests {
 
     #[test]
     fn classical_variant_matches_modified() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 0.5_f64, -1.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f64, 2.0_f64, 2.0_f64, 1.0_f64, 0.5_f64, -1.0_f64],
+        )
         .unwrap();
         let modified = gram_schmidt(&matrix).unwrap();
         let classical = gram_schmidt_classic(&matrix).unwrap();
@@ -354,9 +356,10 @@ mod tests {
 
     #[test]
     fn view_variants_match_owned() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 0.0_f64, 1.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 0.0_f64, 1.0_f64],
+        )
         .unwrap();
         let modified_owned = gram_schmidt(&matrix).unwrap();
         let modified_view = gram_schmidt_view(&matrix.view()).unwrap();
@@ -373,14 +376,17 @@ mod tests {
 
     #[test]
     fn gram_schmidt_complex_returns_orthonormal_columns() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(1.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, -1.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(1.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, -1.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
         let q = gram_schmidt_complex(&matrix).unwrap();
         let q_h_q = q.t().mapv(|value| value.conj()).dot(&q);
@@ -392,14 +398,17 @@ mod tests {
 
     #[test]
     fn gram_schmidt_complex_view_matches_owned() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(2.0_f64, 1.0_f64),
-            Complex64::new(3.0_f64, -1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(2.0_f64, 1.0_f64),
+                Complex64::new(3.0_f64, -1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
         let owned = gram_schmidt_complex(&matrix).unwrap();
         let viewed = gram_schmidt_complex_view(&matrix.view()).unwrap();
@@ -412,9 +421,10 @@ mod tests {
 
     #[test]
     fn gram_schmidt_view_into_matches_allocating_paths() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 0.0_f64, 1.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 0.0_f64, 1.0_f64],
+        )
         .unwrap();
         let mut modified = Array2::<f64>::zeros(matrix.dim());
         let mut classic = Array2::<f64>::zeros(matrix.dim());
@@ -428,14 +438,17 @@ mod tests {
 
     #[test]
     fn gram_schmidt_complex_view_into_matches_allocating_paths() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(2.0_f64, 1.0_f64),
-            Complex64::new(3.0_f64, -1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(2.0_f64, 1.0_f64),
+                Complex64::new(3.0_f64, -1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
         let mut output = Array2::<Complex64>::zeros(matrix.dim());
 
@@ -445,9 +458,10 @@ mod tests {
 
     #[test]
     fn gram_schmidt_view_into_rejects_wrong_output_shape() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 0.0_f64, 1.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 0.0_f64, 1.0_f64],
+        )
         .unwrap();
         let mut bad = Array2::<f64>::zeros((2, 2));
         assert!(matches!(

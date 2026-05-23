@@ -33,6 +33,7 @@ arrow = [
     "dep:arrow-data",
     "dep:arrow-schema",
 ]
+signal = ["nabled/signal"]
 
 [dependencies]
 nabled.workspace = true

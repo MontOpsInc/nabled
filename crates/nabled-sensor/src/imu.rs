@@ -26,12 +26,7 @@ pub fn strapdown_predict_into<T: NabledReal>(
     if orientation.len() != 4 || gyro.len() != 3 || output.len() != 4 {
         return Err(SensorError::DimensionMismatch);
     }
-    let q = Quat {
-        w: orientation[0],
-        x: orientation[1],
-        y: orientation[2],
-        z: orientation[3],
-    };
+    let q = Quat { w: orientation[0], x: orientation[1], y: orientation[2], z: orientation[3] };
     let delta = quat::exp(&ndarray::arr1(&[gyro[0] * dt, gyro[1] * dt, gyro[2] * dt]).view());
     let next = quat::mul(&delta, &q);
     let normalized = quat::normalize(&next);

@@ -6,8 +6,8 @@ use num_complex::Complex;
 use num_traits::FromPrimitive;
 use realfft::RealFftPlanner;
 
-use super::{SignalError, validate_output_len};
 use super::window::{WindowKind, apply_window};
+use super::{SignalError, validate_output_len};
 
 /// Half-complex spectrum from a real-valued forward FFT (`n/2 + 1` bins).
 #[derive(Debug, Clone, PartialEq)]
@@ -91,10 +91,7 @@ fn complex_from_f64<T: NabledReal>(value: Complex<f64>) -> Complex<T> {
 }
 
 fn complex_to_f64<T: NabledReal>(value: Complex<T>) -> Complex<f64> {
-    Complex::new(
-        value.re.to_f64().unwrap_or(0.0),
-        value.im.to_f64().unwrap_or(0.0),
-    )
+    Complex::new(value.re.to_f64().unwrap_or(0.0), value.im.to_f64().unwrap_or(0.0))
 }
 
 /// Forward real FFT returning the half-complex spectrum (`n/2 + 1` bins).
@@ -107,9 +104,7 @@ pub fn rfft<T: NabledReal>(signal: &ArrayView1<'_, T>) -> Result<RfftSpectrum<T>
     }
     let signal_f64: Vec<f64> = signal.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
     let (spectrum, _) = rfft_f64(&signal_f64)?;
-    Ok(RfftSpectrum {
-        bins: Array1::from_iter(spectrum.into_iter().map(complex_from_f64::<T>)),
-    })
+    Ok(RfftSpectrum { bins: Array1::from_iter(spectrum.into_iter().map(complex_from_f64::<T>)) })
 }
 
 /// Magnitude spectrum (`|X[k]|`) for each half-complex bin.
@@ -174,8 +169,7 @@ pub fn bin_to_hz<T: NabledReal>(bin: usize, n: usize, sample_rate: T) -> T {
     if n == 0 {
         return T::zero();
     }
-    T::from_usize(bin).unwrap_or(T::zero()) * sample_rate
-        / T::from_usize(n).unwrap_or(T::one())
+    T::from_usize(bin).unwrap_or(T::zero()) * sample_rate / T::from_usize(n).unwrap_or(T::one())
 }
 
 /// Power spectrum (squared magnitudes of complex bins).
@@ -207,20 +201,21 @@ mod tests {
 
     #[test]
     fn rfft_sine_peak_at_expected_bin() {
-        let n = 64;
-        let bin = 5;
+        let n: u16 = 64;
+        let bin: u16 = 5;
         let sample_rate = 1_000.0_f64;
-        let freq = bin as f64 * sample_rate / n as f64;
+        let freq = bin_to_hz(usize::from(bin), usize::from(n), sample_rate);
+        let n_f = f64::from(n);
         let signal: Array1<f64> = Array1::from_iter((0..n).map(|i| {
-            let t = i as f64 / sample_rate;
+            let t = f64::from(i) / sample_rate;
             (2.0 * std::f64::consts::PI * freq * t).sin()
         }));
         let peak = dominant_frequency(&signal.view()).unwrap();
-        assert_eq!(peak, bin);
+        assert_eq!(peak, usize::from(bin));
         assert_relative_eq!(
-            bin_to_hz(peak, n, sample_rate),
+            bin_to_hz(peak, usize::from(n), sample_rate),
             freq,
-            epsilon = sample_rate / n as f64
+            epsilon = sample_rate / n_f
         );
     }
 

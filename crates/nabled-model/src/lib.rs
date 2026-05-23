@@ -8,7 +8,9 @@ pub mod dh;
 pub mod fixture;
 pub mod joint;
 pub mod link;
+pub mod origin;
 pub mod robot;
+pub mod tree_model;
 pub mod urdf;
 
 #[derive(Debug, Clone, PartialEq)]

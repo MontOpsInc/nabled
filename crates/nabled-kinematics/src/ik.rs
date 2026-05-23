@@ -14,18 +14,18 @@ use crate::jacobian::jacobian_view;
 #[derive(Debug, Clone, PartialEq)]
 pub struct IkConfig<T> {
     pub max_iterations: usize,
-    pub tolerance:      T,
-    pub damping:        T,
-    pub step_scale:     T,
+    pub tolerance: T,
+    pub damping: T,
+    pub step_scale: T,
 }
 
 impl<T: NabledReal> Default for IkConfig<T> {
     fn default() -> Self {
         Self {
             max_iterations: 500,
-            tolerance:      T::from_f64(1e-4).unwrap_or(T::zero()),
-            damping:        T::from_f64(0.01).unwrap_or(T::zero()),
-            step_scale:     T::one(),
+            tolerance: T::from_f64(1e-4).unwrap_or(T::zero()),
+            damping: T::from_f64(0.01).unwrap_or(T::zero()),
+            step_scale: T::one(),
         }
     }
 }
@@ -33,22 +33,22 @@ impl<T: NabledReal> Default for IkConfig<T> {
 /// Result of damped least-squares IK.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IkResult<T> {
-    pub q:            Array1<T>,
-    pub iterations:   usize,
-    pub final_error:  T,
-    pub converged:    bool,
+    pub q: Array1<T>,
+    pub iterations: usize,
+    pub final_error: T,
+    pub converged: bool,
 }
 
 /// Reusable workspace for DLS IK hot paths.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IkWorkspace<T> {
-    jacobian:  Array2<T>,
-    error:     Array1<T>,
+    jacobian: Array2<T>,
+    error: Array1<T>,
     task_error: Array1<T>,
-    jtj:       Array2<T>,
-    jte:       Array1<T>,
-    dq:        Array1<T>,
-    q:         Array1<T>,
+    jtj: Array2<T>,
+    jte: Array1<T>,
+    dq: Array1<T>,
+    q: Array1<T>,
 }
 
 impl<T: NabledReal> IkWorkspace<T> {
@@ -57,12 +57,12 @@ impl<T: NabledReal> IkWorkspace<T> {
     pub fn new(num_joints: usize) -> Self {
         Self {
             jacobian: Array2::zeros((6, num_joints)),
-            error:    Array1::zeros(6),
+            error: Array1::zeros(6),
             task_error: Array1::zeros(6),
-            jtj:      Array2::zeros((num_joints, num_joints)),
-            jte:      Array1::zeros(num_joints),
-            dq:       Array1::zeros(num_joints),
-            q:        Array1::zeros(num_joints),
+            jtj: Array2::zeros((num_joints, num_joints)),
+            jte: Array1::zeros(num_joints),
+            dq: Array1::zeros(num_joints),
+            q: Array1::zeros(num_joints),
         }
     }
 }
@@ -290,11 +290,7 @@ mod tests {
         let q_target = arr1(&[0.2_f64, -0.3, 0.5, 0.1, -0.2, 0.4]);
         let target = fk_view(&chain, &q_target.view()).unwrap();
         let q_init = arr1(&[0.0; 6]);
-        let config = IkConfig {
-            max_iterations: 200,
-            tolerance:      1e-3,
-            ..IkConfig::default()
-        };
+        let config = IkConfig { max_iterations: 200, tolerance: 1e-3, ..IkConfig::default() };
         let result =
             inverse_kinematics_dls_with_limits(&chain, &q_init, &target, &config, None).unwrap();
         let achieved = fk_view(&chain, &result.q.view()).unwrap();
@@ -339,10 +335,8 @@ mod tests {
         let chain = planar_2r_chain();
         let q_target = arr1(&[0.5_f64, -0.3]);
         let target = fk_view(&chain, &q_target.view()).unwrap();
-        let limits = vec![
-            JointLimits { lower: -3.0, upper: 3.0 },
-            JointLimits { lower: -3.0, upper: 3.0 },
-        ];
+        let limits =
+            vec![JointLimits { lower: -3.0, upper: 3.0 }, JointLimits { lower: -3.0, upper: 3.0 }];
         let result = inverse_kinematics_dls_with_limits(
             &chain,
             &arr1(&[0.0, 0.0]),
@@ -361,10 +355,8 @@ mod tests {
         let chain = planar_2r_chain();
         let q_target = arr1(&[0.5_f64, -0.3]);
         let target = fk_view(&chain, &q_target.view()).unwrap();
-        let limits = vec![
-            JointLimits { lower: -1.0, upper: 1.0 },
-            JointLimits { lower: -1.0, upper: 1.0 },
-        ];
+        let limits =
+            vec![JointLimits { lower: -1.0, upper: 1.0 }, JointLimits { lower: -1.0, upper: 1.0 }];
         let err = inverse_kinematics_dls_with_limits(
             &chain,
             &arr1(&[2.0, 0.0]),
@@ -399,7 +391,7 @@ mod tests {
         .unwrap();
         let achieved = fk_view(&chain, &result.q.view()).unwrap();
         let err = pose_error(&achieved, &target).unwrap();
-        let err_norm = err.iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>().sqrt();
+        let err_norm = err.iter().map(|v| f64::from(*v) * f64::from(*v)).sum::<f64>().sqrt();
         assert!(err_norm < 1e-2);
     }
 
@@ -420,6 +412,10 @@ mod tests {
             &mut output,
         )
         .unwrap();
-        assert_relative_eq!(result.q.as_slice().unwrap(), output.as_slice().unwrap(), epsilon = 1e-12);
+        assert_relative_eq!(
+            result.q.as_slice().unwrap(),
+            output.as_slice().unwrap(),
+            epsilon = 1e-12
+        );
     }
 }

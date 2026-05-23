@@ -48,10 +48,7 @@ fn stein_solve<T: NabledReal + LuProviderScalar>(
     let mut w = q.to_owned();
     for _ in 0..MAX_STEIN_ITERATIONS {
         let next = a.dot(&w).dot(&a.t()) + q;
-        let diff = (&next - &w)
-            .mapv(|value| (value * value).to_f64().unwrap_or(0.0))
-            .sum()
-            .sqrt();
+        let diff = (&next - &w).mapv(|value| (value * value).to_f64().unwrap_or(0.0)).sum().sqrt();
         w = next;
         if diff < 1e-12 {
             return Ok(w);
@@ -59,7 +56,6 @@ fn stein_solve<T: NabledReal + LuProviderScalar>(
     }
     Err(ControlError::ConvergenceFailed)
 }
-
 
 #[cfg(test)]
 fn stein_residual_norm<T: NabledReal + LuProviderScalar>(
@@ -216,9 +212,6 @@ mod tests {
     fn gramian_rejects_dimension_mismatch() {
         let a = arr2(&[[-1.0, 0.0], [0.0, -2.0]]);
         let b = arr2(&[[1.0, 0.0]]);
-        assert!(matches!(
-            controllability_gramian(&a, &b),
-            Err(ControlError::DimensionMismatch)
-        ));
+        assert!(matches!(controllability_gramian(&a, &b), Err(ControlError::DimensionMismatch)));
     }
 }

@@ -59,6 +59,10 @@ test-integration test_name:
 
 test-integration-all:
     RUST_LOG={{ LOG }} cargo test -p nabled --tests -- --nocapture --show-output
+    just -f {{ justfile() }} test-physical-ai-integration
+
+test-physical-ai-integration:
+    RUST_LOG={{ LOG }} cargo test -p nabled --test physical_ai_integration --features signal -- --nocapture --show-output
 
 coverage:
     cargo llvm-cov clean --workspace
@@ -211,6 +215,10 @@ bench-smoke-report-provider-decomposition-lto:
     just -f {{ justfile() }} bench-smoke-provider-decomposition-lto
     just -f {{ justfile() }} bench-report
 
+bench-smoke-physical-ai:
+    cargo bench -p nabled-kinematics --bench kinematics -- --quick
+    cargo bench -p nabled-dynamics --bench dynamics -- --quick
+
 bench-smoke-check:
     just -f {{ justfile() }} bench-smoke
     just -f {{ justfile() }} bench-report-check
@@ -317,10 +325,12 @@ checks:
     cargo +nightly clippy --workspace --no-default-features --all-targets -- -D warnings
     cargo +nightly clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
     cargo +nightly clippy --workspace --no-default-features --features arrow --all-targets -- -D warnings
+    cargo +nightly clippy --workspace --no-default-features --features signal --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +nightly clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features arrow --all-targets -- -D warnings
+    cargo +stable clippy --workspace --no-default-features --features signal --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features accelerator-rayon --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features accelerator-wgpu --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
@@ -384,6 +394,11 @@ test-accelerator:
 test-arrow:
     cargo +stable test -p nabled --no-default-features --features arrow --test arrow_interop -- --nocapture --show-output
     {{ provider_env_prefix }} cargo +stable test -p nabled --no-default-features --features "{{ provider_features }} arrow" --test arrow_interop -- --nocapture --show-output
+
+# Verify Physical AI integration scenarios (S1–S21; S12–S14 require signal).
+check-signal:
+    cargo +stable clippy --workspace --no-default-features --features signal --all-targets -- -D warnings
+    cargo +stable check --workspace --no-default-features --features signal --all-targets
 
 # Initialize development environment for maintainers
 init-dev:

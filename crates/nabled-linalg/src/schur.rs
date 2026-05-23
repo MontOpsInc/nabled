@@ -218,7 +218,7 @@ fn compute_schur_impl<T: qr::QrInternalScalar>(
     let config = QRConfig {
         rank_tolerance: T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
         max_iterations: DenseKernelPolicy::QR_MAX_ITERATIONS,
-        use_pivoting:   false,
+        use_pivoting: false,
     };
 
     let mut converged = false;
@@ -260,7 +260,7 @@ where
     let config = QRConfig {
         rank_tolerance: T::from_f64(DenseKernelPolicy::BASE_TOLERANCE).unwrap_or(T::epsilon()),
         max_iterations: DenseKernelPolicy::QR_MAX_ITERATIONS,
-        use_pivoting:   false,
+        use_pivoting: false,
     };
 
     let mut converged = false;
@@ -687,12 +687,15 @@ mod tests {
 
     #[test]
     fn complex_schur_reconstructs_and_view_into_match() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(3.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, -0.5_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, -0.25_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(3.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, -0.5_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, -0.25_f64),
+            ],
+        )
         .unwrap();
 
         let owned = compute_schur_complex(&matrix).unwrap();

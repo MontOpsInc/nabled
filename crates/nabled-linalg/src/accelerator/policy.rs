@@ -32,43 +32,43 @@ enum GpuRoutingMode {
 
 #[derive(Debug, Clone, Copy)]
 struct GpuRoutingPolicy {
-    mode:                            GpuRoutingMode,
-    matmat_min_flops:                usize,
-    matvec_min_flops:                usize,
-    batched_matmat_min_flops:        usize,
-    batched_row_matvec_min_flops:    usize,
-    dot_min_len:                     usize,
-    pairwise_min_flops:              usize,
-    sparse_matvec_min_work:          usize,
-    sparse_matmat_dense_min_work:    usize,
-    sparse_matmat_sparse_min_nnz:    usize,
-    triangular_solve_vec_min_flops:  usize,
-    triangular_solve_mat_min_flops:  usize,
-    tensor_contract_min_flops:       usize,
+    mode: GpuRoutingMode,
+    matmat_min_flops: usize,
+    matvec_min_flops: usize,
+    batched_matmat_min_flops: usize,
+    batched_row_matvec_min_flops: usize,
+    dot_min_len: usize,
+    pairwise_min_flops: usize,
+    sparse_matvec_min_work: usize,
+    sparse_matmat_dense_min_work: usize,
+    sparse_matmat_sparse_min_nnz: usize,
+    triangular_solve_vec_min_flops: usize,
+    triangular_solve_mat_min_flops: usize,
+    tensor_contract_min_flops: usize,
     tensor_batched_matmul_min_flops: usize,
-    tensor_sum_min_work:             usize,
+    tensor_sum_min_work: usize,
 }
 
 impl Default for GpuRoutingPolicy {
     fn default() -> Self {
         Self {
-            mode:                            GpuRoutingMode::Auto,
+            mode: GpuRoutingMode::Auto,
             // Defaults are tuned for release-profile 4090 measurements where small/medium
             // workloads are often faster on CPU because GPU launch/staging dominates.
-            matmat_min_flops:                1_200_000_000,
-            matvec_min_flops:                120_000_000,
-            batched_matmat_min_flops:        800_000_000,
-            batched_row_matvec_min_flops:    200_000_000,
-            dot_min_len:                     1_048_576,
-            pairwise_min_flops:              800_000_000,
-            sparse_matvec_min_work:          2_000_000,
-            sparse_matmat_dense_min_work:    8_000_000,
-            sparse_matmat_sparse_min_nnz:    1_000_000,
-            triangular_solve_vec_min_flops:  120_000_000,
-            triangular_solve_mat_min_flops:  160_000_000,
-            tensor_contract_min_flops:       1_000_000_000,
+            matmat_min_flops: 1_200_000_000,
+            matvec_min_flops: 120_000_000,
+            batched_matmat_min_flops: 800_000_000,
+            batched_row_matvec_min_flops: 200_000_000,
+            dot_min_len: 1_048_576,
+            pairwise_min_flops: 800_000_000,
+            sparse_matvec_min_work: 2_000_000,
+            sparse_matmat_dense_min_work: 8_000_000,
+            sparse_matmat_sparse_min_nnz: 1_000_000,
+            triangular_solve_vec_min_flops: 120_000_000,
+            triangular_solve_mat_min_flops: 160_000_000,
+            tensor_contract_min_flops: 1_000_000_000,
             tensor_batched_matmul_min_flops: 1_200_000_000,
-            tensor_sum_min_work:             8_000_000,
+            tensor_sum_min_work: 8_000_000,
         }
     }
 }
@@ -149,13 +149,17 @@ fn default_policy() -> GpuRoutingPolicy {
     policy
 }
 
-fn policy() -> &'static GpuRoutingPolicy { GPU_POLICY.get_or_init(default_policy) }
+fn policy() -> &'static GpuRoutingPolicy {
+    GPU_POLICY.get_or_init(default_policy)
+}
 
 fn flops2(rows: usize, inner: usize, cols: usize) -> usize {
     rows.saturating_mul(inner).saturating_mul(cols).saturating_mul(2)
 }
 
-fn tri_flops(n: usize, rhs_cols: usize) -> usize { n.saturating_mul(n).saturating_mul(rhs_cols) }
+fn tri_flops(n: usize, rhs_cols: usize) -> usize {
+    n.saturating_mul(n).saturating_mul(rhs_cols)
+}
 
 fn mode_gate(auto_decision: bool) -> bool {
     match policy().mode {
@@ -190,7 +194,9 @@ pub(crate) fn should_attempt_gpu_batched_row_matvec(
     mode_gate(batch.saturating_mul(flops2(1, inner, cols)) >= policy().batched_row_matvec_min_flops)
 }
 
-pub(crate) fn should_attempt_gpu_dot(len: usize) -> bool { mode_gate(len >= policy().dot_min_len) }
+pub(crate) fn should_attempt_gpu_dot(len: usize) -> bool {
+    mode_gate(len >= policy().dot_min_len)
+}
 
 pub(crate) fn should_attempt_gpu_pairwise(rows_left: usize, rows_right: usize, dim: usize) -> bool {
     mode_gate(flops2(rows_left, dim, rows_right) >= policy().pairwise_min_flops)

@@ -802,12 +802,15 @@ mod tests {
 
     #[test]
     fn matvec_complex_variants_match() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(0.0, -1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(1.0, 2.0),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0, 1.0),
+                Complex64::new(0.0, -1.0),
+                Complex64::new(2.0, 0.0),
+                Complex64::new(1.0, 2.0),
+            ],
+        )
         .unwrap();
         let vector = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.5, -0.5)]);
 
@@ -846,19 +849,25 @@ mod tests {
 
     #[test]
     fn matmat_complex_variants_match() {
-        let left = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(1.0, 0.0),
-        ])
+        let left = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0, 0.0),
+                Complex64::new(2.0, -1.0),
+                Complex64::new(0.0, 1.0),
+                Complex64::new(1.0, 0.0),
+            ],
+        )
         .unwrap();
-        let right = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(0.0, 1.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(1.0, -1.0),
-        ])
+        let right = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0, 1.0),
+                Complex64::new(0.0, 1.0),
+                Complex64::new(2.0, 0.0),
+                Complex64::new(1.0, -1.0),
+            ],
+        )
         .unwrap();
 
         let allocating = matmat_complex(&left, &right).unwrap();
@@ -921,13 +930,15 @@ mod tests {
 
     #[test]
     fn batched_matmat_variants_match() {
-        let left_batches = Array3::from_shape_vec((2, 2, 3), vec![
-            1.0, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
-        ])
+        let left_batches = Array3::from_shape_vec(
+            (2, 2, 3),
+            vec![1.0, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0],
+        )
         .unwrap();
-        let right_batches = Array3::from_shape_vec((2, 3, 2), vec![
-            1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
-        ])
+        let right_batches = Array3::from_shape_vec(
+            (2, 3, 2),
+            vec![1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0],
+        )
         .unwrap();
 
         let allocating = batched_matmat(&left_batches, &right_batches).unwrap();
@@ -952,13 +963,15 @@ mod tests {
 
     #[test]
     fn batched_f32_variants_match() {
-        let left_batches = Array3::from_shape_vec((2, 2, 3), vec![
-            1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
-        ])
+        let left_batches = Array3::from_shape_vec(
+            (2, 2, 3),
+            vec![1.0_f32, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0],
+        )
         .unwrap();
-        let right_batches = Array3::from_shape_vec((2, 3, 2), vec![
-            1.0_f32, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
-        ])
+        let right_batches = Array3::from_shape_vec(
+            (2, 3, 2),
+            vec![1.0_f32, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0],
+        )
         .unwrap();
 
         let alloc = batched_matmat(&left_batches, &right_batches).unwrap();
@@ -975,10 +988,13 @@ mod tests {
 
     #[test]
     fn batched_matmat_broadcast_variants_match() {
-        let left_batches = Array3::from_shape_vec((2, 2, 3), vec![
-            1.0, 2.0, 0.0, 0.0, 1.0, 1.0, //
-            2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
-        ])
+        let left_batches = Array3::from_shape_vec(
+            (2, 2, 3),
+            vec![
+                1.0, 2.0, 0.0, 0.0, 1.0, 1.0, //
+                2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
+            ],
+        )
         .unwrap();
         let right = Array2::from_shape_vec((3, 2), vec![1.0, 0.0, 2.0, 1.0, 1.0, 3.0]).unwrap();
 
@@ -998,10 +1014,13 @@ mod tests {
         }
 
         let left = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 0.0, 0.0, 1.0, 1.0]).unwrap();
-        let right_batches = Array3::from_shape_vec((2, 3, 2), vec![
-            1.0, 0.0, 2.0, 1.0, 1.0, 3.0, //
-            0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
-        ])
+        let right_batches = Array3::from_shape_vec(
+            (2, 3, 2),
+            vec![
+                1.0, 0.0, 2.0, 1.0, 1.0, 3.0, //
+                0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
+            ],
+        )
         .unwrap();
 
         let left_alloc = batched_matmat_broadcast_left(&left, &right_batches).unwrap();

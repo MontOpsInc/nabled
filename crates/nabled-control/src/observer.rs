@@ -67,10 +67,14 @@ mod tests {
 
     use super::*;
 
-    fn eigenvalue_near(requested: f64, values: impl IntoIterator<Item = Complex<f64>>, tol: f64) -> bool {
-        values.into_iter().any(|lambda| {
-            (lambda.re - requested).abs() < tol && lambda.im.abs() < tol
-        })
+    fn eigenvalue_near(
+        requested: f64,
+        values: impl IntoIterator<Item = Complex<f64>>,
+        tol: f64,
+    ) -> bool {
+        values
+            .into_iter()
+            .any(|lambda| (lambda.re - requested).abs() < tol && lambda.im.abs() < tol)
     }
 
     #[test]

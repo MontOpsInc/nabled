@@ -31,8 +31,8 @@ fn adjoint_from_transform<T: NabledReal>(transform: &Transform3<T>) -> Array2<T>
 
 fn default_inertial<T: NabledReal + Default>() -> nabled_model::link::InertialSpec<T> {
     nabled_model::link::InertialSpec {
-        mass:    T::one(),
-        com:     [T::default(), T::default(), T::default()],
+        mass: T::one(),
+        com: [T::default(), T::default(), T::default()],
         inertia: Array2::<T>::eye(3) * T::from_f64(0.01).unwrap_or(T::zero()),
     }
 }
@@ -64,24 +64,24 @@ pub fn rnea_with_config<T: NabledReal + Default>(
 
     let transforms = link_transforms_view(chain, &q.view())
         .map_err(|_| DynamicsError::InvalidInput("FK failed".to_string()))?;
-    let n = chain.num_joints();
+    let num_joints = chain.num_joints();
     let indices = model.actuated_indices();
-    if indices.len() != n {
+    if indices.len() != num_joints {
         return Err(DynamicsError::DimensionMismatch);
     }
 
-    let mut v = vec![Array1::<T>::zeros(6); n + 1];
-    let mut a = vec![Array1::<T>::zeros(6); n + 1];
-    a[0] = spatial_gravity(&config.gravity);
+    let mut link_vel = vec![Array1::<T>::zeros(6); num_joints + 1];
+    let mut link_acc = vec![Array1::<T>::zeros(6); num_joints + 1];
+    link_acc[0] = spatial_gravity(&config.gravity);
 
-    let mut subspaces = Vec::with_capacity(n);
-    let mut inertias = Vec::with_capacity(n);
-    let mut adjoints = Vec::with_capacity(n);
+    let mut subspaces = Vec::with_capacity(num_joints);
+    let mut inertias = Vec::with_capacity(num_joints);
+    let mut adjoints = Vec::with_capacity(num_joints);
 
-    for joint_idx in 0..n {
+    for joint_idx in 0..num_joints {
         let body_idx = indices[joint_idx];
         let body = model.joint(body_idx).ok_or(DynamicsError::EmptyModel)?;
-        let spec = body.inertial.as_ref().cloned().unwrap_or_else(default_inertial);
+        let spec = body.inertial.clone().unwrap_or_else(default_inertial);
         inertias.push(spatial_inertia_6x6(&spec));
         subspaces.push(joint_motion_subspace(body.joint_type, body.axis));
         let parent_tf = &transforms[joint_idx];
@@ -91,26 +91,28 @@ pub fn rnea_with_config<T: NabledReal + Default>(
         adjoints.push(adjoint_from_transform(&relative));
     }
 
-    for i in 0..n {
-        let s = &subspaces[i];
-        let vj = s.mapv(|val| val * qd[i]);
-        v[i + 1] = adjoints[i].dot(&v[i]) + &vj;
-        let aj = s.mapv(|val| val * qdd[i]);
-        a[i + 1] = adjoints[i].dot(&a[i]) + aj + motion_cross_product(&v[i + 1].view(), &vj.view());
+    for joint_idx in 0..num_joints {
+        let subspace = &subspaces[joint_idx];
+        let vj = subspace.mapv(|val| val * qd[joint_idx]);
+        link_vel[joint_idx + 1] = adjoints[joint_idx].dot(&link_vel[joint_idx]) + &vj;
+        let aj = subspace.mapv(|val| val * qdd[joint_idx]);
+        link_acc[joint_idx + 1] = adjoints[joint_idx].dot(&link_acc[joint_idx])
+            + aj
+            + motion_cross_product(&link_vel[joint_idx + 1].view(), &vj.view());
     }
 
-    let mut tau = Array1::<T>::zeros(n);
+    let mut tau = Array1::<T>::zeros(num_joints);
     let mut f_child = Array1::<T>::zeros(6);
-    for i in (0..n).rev() {
-        let iv = spatial_inertia_apply(&inertias[i], &v[i + 1].view());
-        let ia = spatial_inertia_apply(&inertias[i], &a[i + 1].view());
-        let local = ia + force_cross_product(&v[i + 1].view(), &iv.view());
-        let f_i = if i + 1 < n {
-            local + adjoints[i + 1].t().dot(&f_child)
+    for joint_idx in (0..num_joints).rev() {
+        let iv = spatial_inertia_apply(&inertias[joint_idx], &link_vel[joint_idx + 1].view());
+        let ia = spatial_inertia_apply(&inertias[joint_idx], &link_acc[joint_idx + 1].view());
+        let local = ia + force_cross_product(&link_vel[joint_idx + 1].view(), &iv.view());
+        let f_i = if joint_idx + 1 < num_joints {
+            local + adjoints[joint_idx + 1].t().dot(&f_child)
         } else {
             local
         };
-        tau[i] = subspaces[i].dot(&f_i);
+        tau[joint_idx] = subspaces[joint_idx].dot(&f_i);
         f_child = f_i;
     }
 
@@ -172,16 +174,17 @@ mod tests {
             axis: JointAxis::Z,
             limits: None,
             inertial: Some(nabled_model::link::InertialSpec {
-                mass:    1.0,
-                com:     [0.5, 0.0, 0.0],
+                mass: 1.0,
+                com: [0.5, 0.0, 0.0],
                 inertia: Array2::<f64>::zeros((3, 3)),
             }),
+            joint_origin: nabled_model::origin::identity_transform(),
             dh_a: 0.0,
             dh_alpha: 0.0,
             dh_d: 0.0,
             dh_theta: 0.0,
         };
-        model.add_body(None, body);
+        let _ = model.add_body(None, body);
         let chain = ChainSpec::from_dh(
             DhConvention::Standard,
             vec![JointType::Revolute],
@@ -213,8 +216,7 @@ mod tests {
                 let q = arr1(&case.q);
                 let qd = arr1(qd);
                 let qdd = arr1(qdd);
-                let tau =
-                    rnea_with_config(&model, &chain, &q, &qd, &qdd.view(), &config).unwrap();
+                let tau = rnea_with_config(&model, &chain, &q, &qd, &qdd.view(), &config).unwrap();
                 for (computed, expected) in tau.iter().zip(tau_ref.iter()) {
                     assert_relative_eq!(computed, expected, epsilon = 1e-6);
                 }

@@ -95,7 +95,9 @@ pub fn cross_correlation_at_lag_into<T: NabledReal>(
 
 /// Full linear autocorrelation for lags `0..n` via FFT convolution (requires `signal` feature).
 #[cfg(feature = "signal")]
-pub fn autocorrelation_full<T: NabledReal>(signal: &ArrayView1<'_, T>) -> Result<Array1<T>, SignalError> {
+pub fn autocorrelation_full<T: NabledReal>(
+    signal: &ArrayView1<'_, T>,
+) -> Result<Array1<T>, SignalError> {
     if signal.is_empty() {
         return Err(SignalError::EmptyInput);
     }
@@ -105,9 +107,7 @@ pub fn autocorrelation_full<T: NabledReal>(signal: &ArrayView1<'_, T>) -> Result
     padded.slice_mut(ndarray::s![..n]).assign(signal);
     let spectrum = rfft(&padded.view())?;
     let power = spectrum.power();
-    let power_spectrum = RfftSpectrum {
-        bins: power.mapv(|value| Complex::new(value, T::zero())),
-    };
+    let power_spectrum = RfftSpectrum { bins: power.mapv(|value| Complex::new(value, T::zero())) };
     let circular = irfft(&power_spectrum)?;
     Ok(Array1::from_iter(circular.iter().take(n).copied()))
 }
@@ -128,19 +128,19 @@ mod tests {
     #[cfg(feature = "signal")]
     #[test]
     fn autocorrelation_full_periodic_peak() {
-        let period = 8;
-        let n = 32;
+        let period: u16 = 8;
+        let n: u16 = 32;
         let signal: Array1<f64> = Array1::from_iter(
-            (0..n).map(|i| (2.0 * std::f64::consts::PI * i as f64 / period as f64).sin()),
+            (0..n).map(|i| (2.0 * std::f64::consts::PI * f64::from(i) / f64::from(period)).sin()),
         );
         let acf = autocorrelation_full(&signal.view()).unwrap();
-        assert!(acf[0] >= acf[period]);
+        assert!(acf[0] >= acf[usize::from(period)]);
         let (peak_lag, _) = acf
             .iter()
             .enumerate()
             .skip(1)
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap();
-        assert_eq!(peak_lag, period);
+        assert_eq!(peak_lag, usize::from(period));
     }
 }

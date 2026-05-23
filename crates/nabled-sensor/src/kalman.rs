@@ -8,7 +8,7 @@ use crate::SensorError;
 /// Kalman filter state (mean and covariance).
 #[derive(Debug, Clone, PartialEq)]
 pub struct KalmanState<T> {
-    pub mean:       Array1<T>,
+    pub mean: Array1<T>,
     pub covariance: Array2<T>,
 }
 
@@ -73,8 +73,7 @@ mod tests {
 
     #[test]
     fn kalman_fuses_measurement() {
-        let state =
-            KalmanState { mean: ndarray::arr1(&[0.0_f64]), covariance: arr2(&[[1.0]]) };
+        let state = KalmanState { mean: ndarray::arr1(&[0.0_f64]), covariance: arr2(&[[1.0]]) };
         let f = arr2(&[[1.0]]);
         let q = arr2(&[[0.01]]);
         let predicted = predict(&state, &f.view(), &q.view()).unwrap();

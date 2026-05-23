@@ -109,9 +109,10 @@ fn test_regression_pca_orthogonalization_and_sylvester() {
     assert_relative_eq!(regression.coefficients[0], 1.0, epsilon = 1e-8);
     assert_relative_eq!(regression.coefficients[1], 2.0, epsilon = 1e-8);
 
-    let pca_input = Array2::from_shape_vec((5, 3), vec![
-        1.0, 2.0, 3.0, 2.0, 3.0, 4.0, 3.0, 4.0, 5.0, 4.0, 5.0, 6.0, 5.0, 6.0, 7.0,
-    ])
+    let pca_input = Array2::from_shape_vec(
+        (5, 3),
+        vec![1.0, 2.0, 3.0, 2.0, 3.0, 4.0, 3.0, 4.0, 5.0, 4.0, 5.0, 6.0, 5.0, 6.0, 7.0],
+    )
     .unwrap();
     let pca = pca::compute_pca(&pca_input, Some(3)).unwrap();
     let transformed = pca::transform(&pca_input, &pca);
@@ -157,12 +158,15 @@ fn test_vector_primitives_and_workspace_paths() {
 
 #[test]
 fn test_complex_dense_parity_pipeline() {
-    let hpd = Array2::from_shape_vec((2, 2), vec![
-        Complex64::new(5.0, 0.0),
-        Complex64::new(1.0, -1.0),
-        Complex64::new(1.0, 1.0),
-        Complex64::new(4.0, 0.0),
-    ])
+    let hpd = Array2::from_shape_vec(
+        (2, 2),
+        vec![
+            Complex64::new(5.0, 0.0),
+            Complex64::new(1.0, -1.0),
+            Complex64::new(1.0, 1.0),
+            Complex64::new(4.0, 0.0),
+        ],
+    )
     .unwrap();
     let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
 
@@ -198,12 +202,15 @@ fn test_complex_dense_parity_pipeline() {
         }
     }
 
-    let signed_h = Array2::from_shape_vec((2, 2), vec![
-        Complex64::new(-4.0, 0.0),
-        Complex64::new(0.0, 0.0),
-        Complex64::new(0.0, 0.0),
-        Complex64::new(9.0, 0.0),
-    ])
+    let signed_h = Array2::from_shape_vec(
+        (2, 2),
+        vec![
+            Complex64::new(-4.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(9.0, 0.0),
+        ],
+    )
     .unwrap();
     let sign_h = matrix_functions::matrix_sign_complex(&signed_h).unwrap();
     assert!((sign_h[[0, 0]] - Complex64::new(-1.0, 0.0)).norm() < 1e-10);
@@ -226,26 +233,35 @@ fn test_complex_dense_parity_pipeline() {
         }
     }
 
-    let a = Array2::from_shape_vec((2, 2), vec![
-        Complex64::new(2.0, 0.0),
-        Complex64::new(0.0, 0.0),
-        Complex64::new(0.0, 0.0),
-        Complex64::new(3.0, 0.0),
-    ])
+    let a = Array2::from_shape_vec(
+        (2, 2),
+        vec![
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(3.0, 0.0),
+        ],
+    )
     .unwrap();
-    let b = Array2::from_shape_vec((2, 2), vec![
-        Complex64::new(4.0, 0.0),
-        Complex64::new(0.0, 0.0),
-        Complex64::new(0.0, 0.0),
-        Complex64::new(5.0, 0.0),
-    ])
+    let b = Array2::from_shape_vec(
+        (2, 2),
+        vec![
+            Complex64::new(4.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(5.0, 0.0),
+        ],
+    )
     .unwrap();
-    let c = Array2::from_shape_vec((2, 2), vec![
-        Complex64::new(1.0, 0.0),
-        Complex64::new(2.0, 0.0),
-        Complex64::new(3.0, 0.0),
-        Complex64::new(4.0, 0.0),
-    ])
+    let c = Array2::from_shape_vec(
+        (2, 2),
+        vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(4.0, 0.0),
+        ],
+    )
     .unwrap();
     let x = sylvester::solve_sylvester_complex(&a, &b, &c).unwrap();
     let residual = a.dot(&x) + x.dot(&b) - c;
@@ -256,36 +272,45 @@ fn test_complex_dense_parity_pipeline() {
 
 #[test]
 fn test_complex_error_mapping_paths() {
-    let non_hermitian = Array2::from_shape_vec((2, 2), vec![
-        Complex64::new(1.0, 0.0),
-        Complex64::new(2.0, 0.0),
-        Complex64::new(3.0, 0.0),
-        Complex64::new(4.0, 0.0),
-    ])
+    let non_hermitian = Array2::from_shape_vec(
+        (2, 2),
+        vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(3.0, 0.0),
+            Complex64::new(4.0, 0.0),
+        ],
+    )
     .unwrap();
     let matrix_error = matrix_functions::matrix_log_eigen_complex(&non_hermitian)
         .expect_err("non-Hermitian input should error")
         .into_nabled_error();
     assert!(matches!(matrix_error, NabledError::NotSymmetric));
 
-    let non_hpd = Array2::from_shape_vec((2, 2), vec![
-        Complex64::new(-1.0, 0.0),
-        Complex64::new(0.0, 0.0),
-        Complex64::new(0.0, 0.0),
-        Complex64::new(2.0, 0.0),
-    ])
+    let non_hpd = Array2::from_shape_vec(
+        (2, 2),
+        vec![
+            Complex64::new(-1.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(2.0, 0.0),
+        ],
+    )
     .unwrap();
     let cholesky_error = cholesky::decompose_complex(&non_hpd)
         .expect_err("indefinite Hermitian input should error")
         .into_nabled_error();
     assert!(matches!(cholesky_error, NabledError::NotPositiveDefinite));
 
-    let singular = Array2::from_shape_vec((2, 2), vec![
-        Complex64::new(1.0, 0.0),
-        Complex64::new(2.0, 0.0),
-        Complex64::new(2.0, 0.0),
-        Complex64::new(4.0, 0.0),
-    ])
+    let singular = Array2::from_shape_vec(
+        (2, 2),
+        vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(4.0, 0.0),
+        ],
+    )
     .unwrap();
     let rhs = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(2.0, 0.0)]);
     let lu_error = lu::solve_complex(&singular, &rhs)
@@ -311,13 +336,15 @@ fn test_matrix_sparse_and_nonsymmetric_eigen_paths() {
     let batch_out = matrix::batched_row_matvec(&batch_vectors, &dense).unwrap();
     assert_eq!(batch_out.dim(), (2, 2));
 
-    let left_batches = Array3::from_shape_vec((2, 2, 3), vec![
-        1.0, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0,
-    ])
+    let left_batches = Array3::from_shape_vec(
+        (2, 2, 3),
+        vec![1.0, 2.0, 0.0, 0.0, 1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 3.0, 2.0],
+    )
     .unwrap();
-    let right_batches = Array3::from_shape_vec((2, 3, 2), vec![
-        1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0,
-    ])
+    let right_batches = Array3::from_shape_vec(
+        (2, 3, 2),
+        vec![1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0, 2.0, 1.0, 1.0, 3.0, 0.0],
+    )
     .unwrap();
     let batched_mm = matrix::batched_matmat(&left_batches, &right_batches).unwrap();
     assert_eq!(batched_mm.dim(), (2, 2, 2));
@@ -337,9 +364,13 @@ fn test_matrix_sparse_and_nonsymmetric_eigen_paths() {
 }
 
 fn assert_sparse_tensor_and_accelerator_paths(dense: &Array2<f64>, dense_rhs: &Array2<f64>) {
-    let sparse_matrix = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
-        4.0, 1.0, 1.0, 3.0, 1.0, 1.0, 2.0,
-    ])
+    let sparse_matrix = CsrMatrix::new(
+        3,
+        3,
+        vec![0, 2, 5, 7],
+        vec![0, 1, 0, 1, 2, 1, 2],
+        vec![4.0, 1.0, 1.0, 3.0, 1.0, 1.0, 2.0],
+    )
     .unwrap();
     let transposed = sparse::transpose(&sparse_matrix).unwrap();
     assert_eq!(transposed.nrows, 3);
@@ -383,9 +414,10 @@ fn assert_sparse_tensor_and_accelerator_paths(dense: &Array2<f64>, dense_rhs: &A
         assert_relative_eq!(reconstructed_pcg[i], rhs[i], epsilon = 1e-6);
     }
 
-    let cube = Array3::from_shape_vec((2, 2, 3), vec![
-        1.0, 2.0, 3.0, 0.0, 1.0, 1.0, 2.0, -1.0, 0.5, 3.0, 0.0, 2.0,
-    ])
+    let cube = Array3::from_shape_vec(
+        (2, 2, 3),
+        vec![1.0, 2.0, 3.0, 0.0, 1.0, 1.0, 2.0, -1.0, 0.5, 3.0, 0.0, 2.0],
+    )
     .unwrap();
     let cube_vectors = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 2.0, 0.5, -1.0, 1.0]).unwrap();
     let cube_out = tensor::cube_matvec(&cube, &cube_vectors).unwrap();
@@ -393,9 +425,10 @@ fn assert_sparse_tensor_and_accelerator_paths(dense: &Array2<f64>, dense_rhs: &A
     let flat = tensor::flatten_cubes(&cube).unwrap();
     assert_eq!(flat.dim(), (2, 6));
 
-    let tensor_dyn = ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&[2, 2, 3]), vec![
-        1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0,
-    ])
+    let tensor_dyn = ndarray::ArrayD::from_shape_vec(
+        ndarray::IxDyn(&[2, 2, 3]),
+        vec![1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 3.0, 4.0, 1.0, 2.0, 2.0],
+    )
     .unwrap();
     let tensor_sum = tensor::sum_last_axis(&tensor_dyn).unwrap();
     assert_eq!(tensor_sum.shape(), &[2, 2]);

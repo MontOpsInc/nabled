@@ -730,14 +730,14 @@ mod tests {
 
     #[test]
     fn complex_lower_and_upper_reconstruct_rhs() {
-        let lower = arr2(&[[Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)], [
-            Complex64::new(1.0, -1.0),
-            Complex64::new(3.0, 0.5),
-        ]]);
-        let upper = arr2(&[[Complex64::new(2.5, 0.25), Complex64::new(-1.0, 0.5)], [
-            Complex64::new(0.0, 0.0),
-            Complex64::new(1.5, -0.25),
-        ]]);
+        let lower = arr2(&[
+            [Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)],
+            [Complex64::new(1.0, -1.0), Complex64::new(3.0, 0.5)],
+        ]);
+        let upper = arr2(&[
+            [Complex64::new(2.5, 0.25), Complex64::new(-1.0, 0.5)],
+            [Complex64::new(0.0, 0.0), Complex64::new(1.5, -0.25)],
+        ]);
         let rhs = arr1(&[Complex64::new(2.0, 1.0), Complex64::new(4.0, -2.0)]);
 
         let lower_solution = solve_lower_complex(&lower, &rhs).unwrap();
@@ -753,14 +753,14 @@ mod tests {
 
     #[test]
     fn complex_view_variants_match_owned() {
-        let lower = arr2(&[[Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)], [
-            Complex64::new(0.5, 0.25),
-            Complex64::new(1.5, -0.5),
-        ]]);
-        let upper = arr2(&[[Complex64::new(3.0, 0.0), Complex64::new(0.2, -0.1)], [
-            Complex64::new(0.0, 0.0),
-            Complex64::new(2.0, 0.75),
-        ]]);
+        let lower = arr2(&[
+            [Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)],
+            [Complex64::new(0.5, 0.25), Complex64::new(1.5, -0.5)],
+        ]);
+        let upper = arr2(&[
+            [Complex64::new(3.0, 0.0), Complex64::new(0.2, -0.1)],
+            [Complex64::new(0.0, 0.0), Complex64::new(2.0, 0.75)],
+        ]);
         let rhs = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(-0.5, 1.0)]);
 
         let lower_owned = solve_lower_complex(&lower, &rhs).unwrap();
@@ -776,14 +776,14 @@ mod tests {
 
     #[test]
     fn complex_view_into_variants_match_allocating() {
-        let lower = arr2(&[[Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)], [
-            Complex64::new(0.5, 0.25),
-            Complex64::new(1.5, -0.5),
-        ]]);
-        let upper = arr2(&[[Complex64::new(3.0, 0.0), Complex64::new(0.2, -0.1)], [
-            Complex64::new(0.0, 0.0),
-            Complex64::new(2.0, 0.75),
-        ]]);
+        let lower = arr2(&[
+            [Complex64::new(2.0, 0.0), Complex64::new(0.0, 0.0)],
+            [Complex64::new(0.5, 0.25), Complex64::new(1.5, -0.5)],
+        ]);
+        let upper = arr2(&[
+            [Complex64::new(3.0, 0.0), Complex64::new(0.2, -0.1)],
+            [Complex64::new(0.0, 0.0), Complex64::new(2.0, 0.75)],
+        ]);
         let rhs = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(-0.5, 1.0)]);
 
         let lower_alloc = solve_lower_complex_view(&lower.view(), &rhs.view()).unwrap();
@@ -802,10 +802,10 @@ mod tests {
 
     #[test]
     fn complex_singular_matrix_errors() {
-        let lower = arr2(&[[Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0)], [
-            Complex64::new(1.0, 0.0),
-            Complex64::new(1.0, 0.0),
-        ]]);
+        let lower = arr2(&[
+            [Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0)],
+            [Complex64::new(1.0, 0.0), Complex64::new(1.0, 0.0)],
+        ]);
         let rhs = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(2.0, 0.0)]);
         let result = solve_lower_complex(&lower, &rhs);
         assert!(matches!(result, Err(TriangularError::Singular)));

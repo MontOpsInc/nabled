@@ -8,36 +8,37 @@ use serde::Deserialize;
 use crate::ModelError;
 use crate::joint::JointType;
 use crate::link::InertialSpec;
+use crate::origin::joint_origin_from_dh_scalars;
 use crate::robot::{BodySpec, RobotModel};
 
 #[derive(Debug, Deserialize)]
 pub struct Planar2rFixture {
-    pub description:          String,
-    pub link_lengths:         Vec<f64>,
-    pub dh_convention:        String,
-    pub dh_params:            Vec<[f64; 4]>,
-    pub gravity:              Option<[f64; 3]>,
-    pub links:                Option<Vec<LinkFixture>>,
-    pub cases:                Vec<Planar2rCase>,
+    pub description: String,
+    pub link_lengths: Vec<f64>,
+    pub dh_convention: String,
+    pub dh_params: Vec<[f64; 4]>,
+    pub gravity: Option<[f64; 3]>,
+    pub links: Option<Vec<LinkFixture>>,
+    pub cases: Vec<Planar2rCase>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Copy)]
 pub struct LinkFixture {
-    pub mass:    f64,
-    pub com:     [f64; 3],
+    pub mass: f64,
+    pub com: [f64; 3],
     pub inertia: [[f64; 3]; 3],
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Planar2rCase {
-    pub name:                   String,
-    pub q:                      Vec<f64>,
-    pub qd:                     Option<Vec<f64>>,
-    pub qdd:                    Option<Vec<f64>>,
-    pub tau:                    Option<Vec<f64>>,
-    pub tau_gravity:            Option<Vec<f64>>,
-    pub ee_translation:         Option<Vec<f64>>,
-    pub jacobian_translation:   Option<Vec<Vec<f64>>>,
+    pub name: String,
+    pub q: Vec<f64>,
+    pub qd: Option<Vec<f64>>,
+    pub qdd: Option<Vec<f64>>,
+    pub tau: Option<Vec<f64>>,
+    pub tau_gravity: Option<Vec<f64>>,
+    pub ee_translation: Option<Vec<f64>>,
+    pub jacobian_translation: Option<Vec<Vec<f64>>>,
 }
 
 impl Planar2rFixture {
@@ -46,10 +47,10 @@ impl Planar2rFixture {
         let mut model = RobotModel::new();
         let mut parent = None;
         for (i, params) in self.dh_params.iter().enumerate() {
-            let inertial = self.links.as_ref().and_then(|links| links.get(i)).map(|link| {
-                InertialSpec {
-                    mass:    parse_scalar::<T>(link.mass).unwrap_or(T::one()),
-                    com:     [
+            let inertial =
+                self.links.as_ref().and_then(|links| links.get(i)).map(|link| InertialSpec {
+                    mass: parse_scalar::<T>(link.mass).unwrap_or(T::one()),
+                    com: [
                         parse_scalar::<T>(link.com[0]).unwrap_or(T::zero()),
                         parse_scalar::<T>(link.com[1]).unwrap_or(T::zero()),
                         parse_scalar::<T>(link.com[2]).unwrap_or(T::zero()),
@@ -57,19 +58,20 @@ impl Planar2rFixture {
                     inertia: Array2::from_shape_fn((3, 3), |(r, c)| {
                         parse_scalar::<T>(link.inertia[r][c]).unwrap_or(T::zero())
                     }),
-                }
-            });
+                });
             let body = BodySpec {
                 link: crate::link::LinkSpec { name: format!("link{i}") },
-                parent_link: if i == 0 {
-                    "base".to_string()
-                } else {
-                    format!("link{}", i - 1)
-                },
+                parent_link: if i == 0 { "base".to_string() } else { format!("link{}", i - 1) },
                 joint_type: JointType::Revolute,
                 axis: crate::joint::JointAxis::Z,
                 limits: None,
                 inertial,
+                joint_origin: joint_origin_from_dh_scalars(
+                    parse_scalar::<T>(params[0])?,
+                    parse_scalar::<T>(params[1])?,
+                    parse_scalar::<T>(params[2])?,
+                    parse_scalar::<T>(params[3])?,
+                )?,
                 dh_a: parse_scalar::<T>(params[0])?,
                 dh_alpha: parse_scalar::<T>(params[1])?,
                 dh_d: parse_scalar::<T>(params[2])?,
@@ -118,28 +120,26 @@ fn parse_scalar<T: NabledReal>(value: f64) -> Result<T, ModelError> {
 
 /// Load the canonical planar 2R JSON fixture used by integration tests.
 pub fn load_planar2r_json() -> Result<Planar2rFixture, ModelError> {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../nabled/tests/fixtures/physical_ai/2r_planar.json"
-    );
+    let path =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../nabled/tests/fixtures/physical_ai/2r_planar.json");
     Planar2rFixture::from_file(path)
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SixDofDhFixture {
-    pub description:   String,
+    pub description: String,
     pub dh_convention: String,
-    pub dh_params:     Vec<[f64; 4]>,
-    pub cases:           Vec<SixDofCase>,
+    pub dh_params: Vec<[f64; 4]>,
+    pub cases: Vec<SixDofCase>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SixDofCase {
-    pub name:           String,
-    pub q:                Vec<f64>,
-    pub ee_translation:   Vec<f64>,
+    pub name: String,
+    pub q: Vec<f64>,
+    pub ee_translation: Vec<f64>,
     #[serde(default)]
-    pub tolerance:        f64,
+    pub tolerance: f64,
 }
 
 impl SixDofDhFixture {
@@ -180,6 +180,37 @@ pub fn load_six_dof_dh_json() -> Result<SixDofDhFixture, ModelError> {
         "/../nabled/tests/fixtures/physical_ai/six_dof_dh.json"
     );
     SixDofDhFixture::from_file(path)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct YBranchFixture {
+    pub description: String,
+    pub cases: Vec<YBranchCase>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct YBranchCase {
+    pub name: String,
+    pub q: Vec<f64>,
+    pub left_ee_translation: Vec<f64>,
+    pub right_ee_translation: Vec<f64>,
+}
+
+impl YBranchFixture {
+    /// Load fixture from JSON file path.
+    pub fn from_file(path: &str) -> Result<Self, ModelError> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|err| ModelError::ParseError(format!("failed to read {path}: {err}")))?;
+        serde_json::from_str(&content)
+            .map_err(|err| ModelError::ParseError(format!("invalid JSON: {err}")))
+    }
+}
+
+/// Load the Y-branch tree fixture used by integration test S22.
+pub fn load_y_branch_json() -> Result<YBranchFixture, ModelError> {
+    let path =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../nabled/tests/fixtures/physical_ai/y_branch.json");
+    YBranchFixture::from_file(path)
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ use crate::config::DynamicsConfig;
 use crate::crba::mass_matrix;
 use crate::rnea::rnea_with_config;
 
-pub fn forward_dynamics<T: NabledReal + Default>(
+pub fn forward_dynamics<T: NabledReal + Default + lu::LuProviderScalar>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
     q: &Array1<T>,
@@ -21,7 +21,7 @@ pub fn forward_dynamics<T: NabledReal + Default>(
     forward_dynamics_with_config(model, chain, q, qd, tau, &DynamicsConfig::default())
 }
 
-pub fn forward_dynamics_with_config<T: NabledReal + Default + nabled_linalg::lu::LuProviderScalar>(
+pub fn forward_dynamics_with_config<T: NabledReal + Default + lu::LuProviderScalar>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
     q: &Array1<T>,
@@ -36,10 +36,11 @@ pub fn forward_dynamics_with_config<T: NabledReal + Default + nabled_linalg::lu:
     let bias = rnea_with_config(model, chain, q, qd, &zero_qdd.view(), config)?;
     let m = mass_matrix(model, chain, q, config)?;
     let rhs = tau - bias;
-    lu::solve(&m, &rhs).map_err(|_| DynamicsError::InvalidInput("mass matrix solve failed".to_string()))
+    lu::solve(&m, &rhs)
+        .map_err(|_| DynamicsError::InvalidInput("mass matrix solve failed".to_string()))
 }
 
-pub fn forward_dynamics_view<T: NabledReal + Default>(
+pub fn forward_dynamics_view<T: NabledReal + Default + lu::LuProviderScalar>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
     q: &ArrayView1<'_, T>,
@@ -49,7 +50,7 @@ pub fn forward_dynamics_view<T: NabledReal + Default>(
     forward_dynamics(model, chain, &q.to_owned(), &qd.to_owned(), tau)
 }
 
-pub fn forward_dynamics_into<T: NabledReal + Default>(
+pub fn forward_dynamics_into<T: NabledReal + Default + lu::LuProviderScalar>(
     model: &RobotModel<T>,
     chain: &ChainSpec<T>,
     q: &Array1<T>,
@@ -89,7 +90,8 @@ mod tests {
         let qd = arr1(&[0.1_f64, -0.2]);
         let qdd = arr1(&[0.5_f64, 0.25]);
         let tau = rnea_with_config(&model, &chain, &q, &qd, &qdd.view(), &config).unwrap();
-        let recovered = forward_dynamics_with_config(&model, &chain, &q, &qd, &tau.view(), &config).unwrap();
+        let recovered =
+            forward_dynamics_with_config(&model, &chain, &q, &qd, &tau.view(), &config).unwrap();
         assert_relative_eq!(recovered, qdd, epsilon = 1e-6);
     }
 }

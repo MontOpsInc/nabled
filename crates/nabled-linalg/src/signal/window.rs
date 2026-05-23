@@ -5,9 +5,13 @@ use ndarray::{Array1, ArrayBase, ArrayView1, DataMut, Ix1};
 
 use super::{SignalError, validate_output_len};
 
-fn scalar_pi<T: NabledReal>() -> T { T::from_f64(std::f64::consts::PI).unwrap_or(T::zero()) }
+fn scalar_pi<T: NabledReal>() -> T {
+    T::from_f64(std::f64::consts::PI).unwrap_or(T::zero())
+}
 
-fn scalar_two<T: NabledReal>() -> T { T::from_f64(2.0).unwrap_or(T::one() + T::one()) }
+fn scalar_two<T: NabledReal>() -> T {
+    T::from_f64(2.0).unwrap_or(T::one() + T::one())
+}
 
 /// Built-in window families for spectral analysis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,7 +25,10 @@ pub enum WindowKind {
 }
 
 /// Generate a window of the given kind into `output`.
-pub fn window_into<T, S>(kind: WindowKind, output: &mut ArrayBase<S, Ix1>) -> Result<(), SignalError>
+pub fn window_into<T, S>(
+    kind: WindowKind,
+    output: &mut ArrayBase<S, Ix1>,
+) -> Result<(), SignalError>
 where
     T: NabledReal,
     S: DataMut<Elem = T>,

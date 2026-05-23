@@ -105,7 +105,9 @@ impl<T: NabledReal> MatrixFunctionWorkspace<T> {
 }
 
 impl<T: NabledReal> Default for MatrixFunctionWorkspace<T> {
-    fn default() -> Self { Self { scratch: Array2::<T>::zeros((0, 0)) } }
+    fn default() -> Self {
+        Self { scratch: Array2::<T>::zeros((0, 0)) }
+    }
 }
 
 /// Reusable workspace for complex matrix-function `_into` kernels.
@@ -2606,9 +2608,10 @@ mod tests {
 
     #[test]
     fn matrix_sign_handles_negative_positive_and_zero_spectrum() {
-        let matrix = Array2::from_shape_vec((3, 3), vec![
-            2.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, -4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 3),
+            vec![2.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, -4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64],
+        )
         .unwrap();
         let sign = matrix_sign(&matrix).unwrap();
         assert!((sign[[0, 0]] - 1.0_f64).abs() < 1e-10_f64);
@@ -2704,12 +2707,15 @@ mod tests {
 
     #[test]
     fn complex_exp_variants_match_and_into_paths_work() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
 
         let owned = matrix_exp_complex(&matrix, 32, 1e-12_f64).unwrap();
@@ -2729,12 +2735,15 @@ mod tests {
         )
         .unwrap();
 
-        let expected = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-        ])
+        let expected = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
 
         for i in 0..2 {
@@ -2749,12 +2758,15 @@ mod tests {
 
     #[test]
     fn complex_into_rejects_bad_output_shape() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
         let mut bad = Array2::<Complex64>::zeros((1, 1));
         assert!(matches!(
@@ -2781,12 +2793,15 @@ mod tests {
 
     #[test]
     fn complex_log_svd_paths_work() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(3.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(2.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(3.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
 
         let owned = matrix_log_svd_complex(&matrix).unwrap();
@@ -2816,19 +2831,25 @@ mod tests {
 
     #[test]
     fn complex_eigen_power_sign_paths_work() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(4.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(9.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(4.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(9.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
-        let signed_matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(-4.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(9.0_f64, 0.0_f64),
-        ])
+        let signed_matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(-4.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(9.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
 
         let exp_eigen_owned = matrix_exp_eigen_complex(&matrix).unwrap();
@@ -3059,19 +3080,25 @@ mod tests {
     #[test]
     #[expect(clippy::too_many_lines)]
     fn complex_view_into_and_workspace_view_into_variants_match_allocating_paths() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(4.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(9.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(4.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(9.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
-        let signed_matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(-4.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(9.0_f64, 0.0_f64),
-        ])
+        let signed_matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(-4.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(9.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
 
         let exp_expected = matrix_exp_complex(&matrix, 32, 1e-12_f64).unwrap();
@@ -3233,12 +3260,15 @@ mod tests {
             Err(MatrixFunctionError::InvalidInput(_))
         ));
 
-        let complex_matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(4.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(9.0_f64, 0.0_f64),
-        ])
+        let complex_matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(4.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(9.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
         let mut complex_bad = Array2::<Complex64>::zeros((1, 1));
         let mut complex_bad_view = complex_bad.view_mut();
@@ -3299,12 +3329,15 @@ mod tests {
 
     #[test]
     fn matrix_log_svd_complex_from_factors_matches_direct() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(4.0_f64, 0.0_f64),
-            Complex64::new(0.5_f64, 0.25_f64),
-            Complex64::new(0.5_f64, -0.25_f64),
-            Complex64::new(3.0_f64, 0.0_f64),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(4.0_f64, 0.0_f64),
+                Complex64::new(0.5_f64, 0.25_f64),
+                Complex64::new(0.5_f64, -0.25_f64),
+                Complex64::new(3.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
         let direct = matrix_log_svd_complex(&matrix).unwrap();
         let svd = svd::decompose_complex(&matrix).unwrap();

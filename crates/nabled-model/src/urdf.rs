@@ -1,5 +1,7 @@
 //! URDF parser (serial and branched tree models).
 
+#![allow(clippy::too_many_lines, clippy::unnested_or_patterns, clippy::needless_pass_by_value)]
+
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use nabled_core::scalar::NabledReal;
@@ -10,24 +12,25 @@ use quick_xml::events::Event;
 use crate::ModelError;
 use crate::joint::{JointAxis, JointLimits, JointType};
 use crate::link::{InertialSpec, LinkSpec};
+use crate::origin::transform_from_xyz_rpy;
 use crate::robot::{BodySpec, RobotModel};
 
 #[derive(Clone)]
 struct PendingJoint {
-    name:        String,
-    joint_type:  JointType,
+    name: String,
+    joint_type: JointType,
     parent_link: String,
-    child_link:  String,
-    origin_xyz:  [f64; 3],
-    origin_rpy:  [f64; 3],
-    axis:        JointAxis,
-    limits:      Option<JointLimits<f64>>,
+    child_link: String,
+    origin_xyz: [f64; 3],
+    origin_rpy: [f64; 3],
+    axis: JointAxis,
+    limits: Option<JointLimits<f64>>,
 }
 
 #[derive(Clone)]
 struct PendingInertial {
-    mass:    f64,
-    com:     [f64; 3],
+    mass: f64,
+    com: [f64; 3],
     inertia: Array2<f64>,
 }
 
@@ -50,7 +53,7 @@ pub fn from_urdf_file<T: NabledReal + Default>(path: &str) -> Result<RobotModel<
 
 struct ParsedUrdf {
     joints: Vec<PendingJoint>,
-    links:  HashMap<String, LinkData>,
+    links: HashMap<String, LinkData>,
 }
 
 fn parse_urdf_tree(urdf: &str) -> Result<ParsedUrdf, ModelError> {
@@ -84,7 +87,9 @@ fn parse_urdf_tree(urdf: &str) -> Result<ParsedUrdf, ModelError> {
                     "link" => {
                         in_link = true;
                         current_link_name = extract_attr(&e, "name").unwrap_or_default();
-                        links.entry(current_link_name.clone()).or_insert(LinkData { inertial: None });
+                        let _ = links
+                            .entry(current_link_name.clone())
+                            .or_insert(LinkData { inertial: None });
                     }
                     "origin" if in_joint || in_inertial => {
                         if let Some(xyz) = extract_attr(&e, "xyz") {
@@ -114,7 +119,7 @@ fn parse_urdf_tree(urdf: &str) -> Result<ParsedUrdf, ModelError> {
                         }
                     }
                     "limit" if in_joint => {
-                        current_joint.limits = Some(parse_limit_element(&e)?);
+                        current_joint.limits = Some(parse_limit_element(&e));
                     }
                     "inertial" if in_link => {
                         in_inertial = true;
@@ -122,9 +127,9 @@ fn parse_urdf_tree(urdf: &str) -> Result<ParsedUrdf, ModelError> {
                     }
                     "mass" if in_inertial => {
                         if let Some(value) = extract_attr(&e, "value") {
-                            pending_inertial.mass = value
-                                .parse::<f64>()
-                                .map_err(|_| ModelError::ParseError(format!("invalid mass {value}")))?;
+                            pending_inertial.mass = value.parse::<f64>().map_err(|_| {
+                                ModelError::ParseError(format!("invalid mass {value}"))
+                            })?;
                         }
                     }
                     "inertia" if in_inertial => {
@@ -167,14 +172,14 @@ fn parse_urdf_tree(urdf: &str) -> Result<ParsedUrdf, ModelError> {
 
 fn empty_joint() -> PendingJoint {
     PendingJoint {
-        name:        String::new(),
-        joint_type:  JointType::Revolute,
+        name: String::new(),
+        joint_type: JointType::Revolute,
         parent_link: String::new(),
-        child_link:  String::new(),
-        origin_xyz:  [0.0; 3],
-        origin_rpy:  [0.0; 3],
-        axis:        JointAxis::Z,
-        limits:      None,
+        child_link: String::new(),
+        origin_xyz: [0.0; 3],
+        origin_rpy: [0.0; 3],
+        axis: JointAxis::Z,
+        limits: None,
     }
 }
 
@@ -191,13 +196,13 @@ fn parse_joint_type(value: &str) -> Result<JointType, ModelError> {
     }
 }
 
-fn parse_limit_element(e: &quick_xml::events::BytesStart<'_>) -> Result<JointLimits<f64>, ModelError> {
-    Ok(JointLimits {
-        lower:    parse_attr_f64(e, "lower").unwrap_or(-std::f64::consts::PI),
-        upper:    parse_attr_f64(e, "upper").unwrap_or(std::f64::consts::PI),
+fn parse_limit_element(e: &quick_xml::events::BytesStart<'_>) -> JointLimits<f64> {
+    JointLimits {
+        lower: parse_attr_f64(e, "lower").unwrap_or(-std::f64::consts::PI),
+        upper: parse_attr_f64(e, "upper").unwrap_or(std::f64::consts::PI),
         velocity: parse_attr_f64(e, "velocity").unwrap_or(1.0),
-        effort:   parse_attr_f64(e, "effort").unwrap_or(1.0),
-    })
+        effort: parse_attr_f64(e, "effort").unwrap_or(1.0),
+    }
 }
 
 fn parse_inertia_element(e: &quick_xml::events::BytesStart<'_>) -> Result<Array2<f64>, ModelError> {
@@ -207,11 +212,8 @@ fn parse_inertia_element(e: &quick_xml::events::BytesStart<'_>) -> Result<Array2
     let iyy = parse_attr_f64(e, "iyy").unwrap_or(0.0);
     let iyz = parse_attr_f64(e, "iyz").unwrap_or(0.0);
     let izz = parse_attr_f64(e, "izz").unwrap_or(0.0);
-    Ok(Array2::from_shape_vec(
-        (3, 3),
-        vec![ixx, ixy, ixz, ixy, iyy, iyz, ixz, iyz, izz],
-    )
-    .map_err(|err| ModelError::ParseError(format!("invalid inertia tensor: {err}")))?)
+    Array2::from_shape_vec((3, 3), vec![ixx, ixy, ixz, ixy, iyy, iyz, ixz, iyz, izz])
+        .map_err(|err| ModelError::ParseError(format!("invalid inertia tensor: {err}")))
 }
 
 fn build_model<T: NabledReal + Default>(parsed: &ParsedUrdf) -> Result<RobotModel<T>, ModelError> {
@@ -248,20 +250,18 @@ fn build_model<T: NabledReal + Default>(parsed: &ParsedUrdf) -> Result<RobotMode
     let mut processed = HashSet::new();
 
     while let Some(parent_link) = queue.pop_front() {
-        let child_joints: Vec<&PendingJoint> = parsed
-            .joints
-            .iter()
-            .filter(|joint| joint.parent_link == parent_link)
-            .collect();
+        let child_joints: Vec<&PendingJoint> =
+            parsed.joints.iter().filter(|joint| joint.parent_link == parent_link).collect();
         for joint in child_joints {
             if !processed.insert(joint.name.clone()) {
                 continue;
             }
             let parent_body = link_body.get(&joint.parent_link).copied();
-            let inertial = parsed.links.get(&joint.child_link).and_then(|link| link.inertial.as_ref());
+            let inertial =
+                parsed.links.get(&joint.child_link).and_then(|link| link.inertial.as_ref());
             let body = body_from_joint::<T>(joint, inertial)?;
             let index = model.add_body(parent_body, body);
-            link_body.insert(joint.child_link.clone(), index);
+            let _ = link_body.insert(joint.child_link.clone(), index);
             queue.push_back(joint.child_link.clone());
         }
     }
@@ -298,14 +298,24 @@ fn body_from_joint<T: NabledReal + Default>(
 
     let limits = match joint.limits.as_ref() {
         Some(limits) => Some(JointLimits {
-            lower:    parse_scalar::<T>(limits.lower)?,
-            upper:    parse_scalar::<T>(limits.upper)?,
+            lower: parse_scalar::<T>(limits.lower)?,
+            upper: parse_scalar::<T>(limits.upper)?,
             velocity: parse_scalar::<T>(limits.velocity)?,
-            effort:   parse_scalar::<T>(limits.effort)?,
+            effort: parse_scalar::<T>(limits.effort)?,
         }),
         None => None,
     };
 
+    let xyz = [
+        parse_scalar::<T>(joint.origin_xyz[0])?,
+        parse_scalar::<T>(joint.origin_xyz[1])?,
+        parse_scalar::<T>(joint.origin_xyz[2])?,
+    ];
+    let rpy = [
+        parse_scalar::<T>(joint.origin_rpy[0])?,
+        parse_scalar::<T>(joint.origin_rpy[1])?,
+        parse_scalar::<T>(joint.origin_rpy[2])?,
+    ];
     Ok(BodySpec {
         link: LinkSpec { name: joint.child_link.clone() },
         parent_link: joint.parent_link.clone(),
@@ -313,10 +323,11 @@ fn body_from_joint<T: NabledReal + Default>(
         axis: joint.axis,
         limits,
         inertial: inertial_spec,
-        dh_a: parse_scalar::<T>(joint.origin_xyz[0])?,
-        dh_alpha: parse_scalar::<T>(joint.origin_rpy[0])?,
-        dh_d: parse_scalar::<T>(joint.origin_xyz[2])?,
-        dh_theta: parse_scalar::<T>(joint.origin_rpy[1])?,
+        joint_origin: transform_from_xyz_rpy(xyz, rpy)?,
+        dh_a: xyz[0],
+        dh_alpha: rpy[0],
+        dh_d: xyz[2],
+        dh_theta: rpy[1],
     })
 }
 
@@ -397,6 +408,7 @@ mod tests {
 
     #[test]
     fn parse_planar2r_urdf() {
+        const EXPECTED_LOWER: f64 = -314.0 / 100.0;
         let model = from_urdf_str::<f64>(PLANAR2R).unwrap();
         assert_eq!(model.dof(), 2);
         assert_eq!(model.topological_order(), vec![0, 1]);
@@ -408,7 +420,7 @@ mod tests {
 
         let limits = model.limits_for_joint(0).unwrap();
         validate_limits(limits).unwrap();
-        assert_relative_eq!(limits.lower, -3.14, epsilon = 1e-10);
+        assert_relative_eq!(limits.lower, EXPECTED_LOWER, epsilon = 1e-10);
 
         let body = model.joint(model.actuated_indices()[0]).unwrap();
         let inertial = body.inertial.as_ref().unwrap();

@@ -18,10 +18,10 @@ use crate::sparse::CsrMatrix;
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuMatMulParams {
-    rows:  u32,
-    cols:  u32,
+    rows: u32,
+    cols: u32,
     inner: u32,
-    _pad:  u32,
+    _pad: u32,
 }
 
 #[cfg(feature = "accelerator-wgpu")]
@@ -38,9 +38,9 @@ struct GpuSparseMatVecParams {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuTriangularParams {
-    n:             u32,
-    rhs_cols:      u32,
-    lower:         u32,
+    n: u32,
+    rhs_cols: u32,
+    lower: u32,
     unit_diagonal: u32,
 }
 
@@ -280,49 +280,49 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 #[cfg(feature = "accelerator-wgpu")]
 struct WgpuRuntime {
-    device:                       wgpu::Device,
-    queue:                        wgpu::Queue,
-    pipeline_f32:                 wgpu::ComputePipeline,
-    pipeline_f64:                 Option<wgpu::ComputePipeline>,
-    bind_group_layout:            wgpu::BindGroupLayout,
-    sparse_bind_group_layout:     wgpu::BindGroupLayout,
-    sparse_pipeline_f32:          wgpu::ComputePipeline,
-    sparse_pipeline_f64:          Option<wgpu::ComputePipeline>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    pipeline_f32: wgpu::ComputePipeline,
+    pipeline_f64: Option<wgpu::ComputePipeline>,
+    bind_group_layout: wgpu::BindGroupLayout,
+    sparse_bind_group_layout: wgpu::BindGroupLayout,
+    sparse_pipeline_f32: wgpu::ComputePipeline,
+    sparse_pipeline_f64: Option<wgpu::ComputePipeline>,
     triangular_bind_group_layout: wgpu::BindGroupLayout,
-    triangular_pipeline_f32:      wgpu::ComputePipeline,
-    triangular_pipeline_f64:      Option<wgpu::ComputePipeline>,
+    triangular_pipeline_f32: wgpu::ComputePipeline,
+    triangular_pipeline_f64: Option<wgpu::ComputePipeline>,
 }
 
 #[cfg(feature = "accelerator-wgpu")]
 struct GpuBuffers {
-    output_buffer:   wgpu::Buffer,
+    output_buffer: wgpu::Buffer,
     readback_buffer: wgpu::Buffer,
-    _params_buffer:  wgpu::Buffer,
-    bind_group:      wgpu::BindGroup,
-    elem_size:       usize,
-    rows_u32:        u32,
-    cols_u32:        u32,
+    _params_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    elem_size: usize,
+    rows_u32: u32,
+    cols_u32: u32,
 }
 
 #[cfg(feature = "accelerator-wgpu")]
 struct GpuSparseBuffers {
-    output_buffer:   wgpu::Buffer,
+    output_buffer: wgpu::Buffer,
     readback_buffer: wgpu::Buffer,
-    _params_buffer:  wgpu::Buffer,
-    bind_group:      wgpu::BindGroup,
-    nrows_u32:       u32,
-    elem_size:       usize,
+    _params_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    nrows_u32: u32,
+    elem_size: usize,
 }
 
 #[cfg(feature = "accelerator-wgpu")]
 struct GpuTriangularBuffers {
-    output_buffer:   wgpu::Buffer,
+    output_buffer: wgpu::Buffer,
     readback_buffer: wgpu::Buffer,
-    _params_buffer:  wgpu::Buffer,
-    bind_group:      wgpu::BindGroup,
-    n_u32:           u32,
-    rhs_cols_u32:    u32,
-    elem_size:       usize,
+    _params_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    n_u32: u32,
+    rhs_cols_u32: u32,
+    elem_size: usize,
 }
 
 #[cfg(feature = "accelerator-wgpu")]
@@ -349,47 +349,47 @@ fn request_wgpu_device() -> Result<(wgpu::Device, wgpu::Queue), AcceleratorError
 #[cfg(feature = "accelerator-wgpu")]
 fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label:   Some("nabled.gpu.bind_group_layout"),
+        label: Some("nabled.gpu.bind_group_layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry {
-                binding:    0,
+                binding: 0,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    1,
+                binding: 1,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    2,
+                binding: 2,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: false },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    3,
+                binding: 3,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Uniform,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
         ],
     })
@@ -398,67 +398,67 @@ fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
 #[cfg(feature = "accelerator-wgpu")]
 fn create_sparse_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label:   Some("nabled.gpu.sparse.bind_group_layout"),
+        label: Some("nabled.gpu.sparse.bind_group_layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry {
-                binding:    0,
+                binding: 0,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    1,
+                binding: 1,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    2,
+                binding: 2,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    3,
+                binding: 3,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    4,
+                binding: 4,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: false },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    5,
+                binding: 5,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Uniform,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
         ],
     })
@@ -467,47 +467,47 @@ fn create_sparse_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayo
 #[cfg(feature = "accelerator-wgpu")]
 fn create_triangular_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label:   Some("nabled.gpu.triangular.bind_group_layout"),
+        label: Some("nabled.gpu.triangular.bind_group_layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry {
-                binding:    0,
+                binding: 0,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    1,
+                binding: 1,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    2,
+                binding: 2,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: false },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding:    3,
+                binding: 3,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty:         wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Uniform,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size:   None,
+                    min_binding_size: None,
                 },
-                count:      None,
+                count: None,
             },
         ],
     })
@@ -521,20 +521,20 @@ fn create_pipeline(
     label: &'static str,
 ) -> wgpu::ComputePipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label:  Some(label),
+        label: Some(label),
         source: wgpu::ShaderSource::Wgsl(shader_source.into()),
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label:              Some("nabled.gpu.pipeline_layout"),
+        label: Some("nabled.gpu.pipeline_layout"),
         bind_group_layouts: &[bind_group_layout],
-        immediate_size:     0,
+        immediate_size: 0,
     });
     device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label:               Some(label),
-        layout:              Some(&pipeline_layout),
-        module:              &shader,
-        entry_point:         Some("main"),
-        cache:               None,
+        label: Some(label),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        cache: None,
         compilation_options: wgpu::PipelineCompilationOptions::default(),
     })
 }
@@ -672,35 +672,35 @@ where
     let right_data = matrix_data(right);
 
     let left_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.left"),
+        label: Some("nabled.gpu.left"),
         contents: bytemuck::cast_slice(&left_data),
-        usage:    wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let right_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.right"),
+        label: Some("nabled.gpu.right"),
         contents: bytemuck::cast_slice(&right_data),
-        usage:    wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let output_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
-        label:              Some("nabled.gpu.output"),
-        size:               output_size,
-        usage:              wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        label: Some("nabled.gpu.output"),
+        size: output_size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
     let params_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.params"),
+        label: Some("nabled.gpu.params"),
         contents: bytemuck::bytes_of(&params),
-        usage:    wgpu::BufferUsages::UNIFORM,
+        usage: wgpu::BufferUsages::UNIFORM,
     });
     let readback_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
-        label:              Some("nabled.gpu.readback"),
-        size:               output_size,
-        usage:              wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        label: Some("nabled.gpu.readback"),
+        size: output_size,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
     let bind_group = runtime.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label:   Some("nabled.gpu.bind_group"),
-        layout:  &runtime.bind_group_layout,
+        label: Some("nabled.gpu.bind_group"),
+        layout: &runtime.bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: left_buffer.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: right_buffer.as_entire_binding() },
@@ -746,46 +746,46 @@ where
     let output_size = output_size_bytes::<T>(matrix.nrows, 1)?;
 
     let row_ptrs_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.sparse.row_ptrs"),
+        label: Some("nabled.gpu.sparse.row_ptrs"),
         contents: bytemuck::cast_slice(&row_ptrs_u32),
-        usage:    wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let col_indices_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.sparse.col_indices"),
+        label: Some("nabled.gpu.sparse.col_indices"),
         contents: bytemuck::cast_slice(&col_indices_u32),
-        usage:    wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let values_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.sparse.values"),
+        label: Some("nabled.gpu.sparse.values"),
         contents: bytemuck::cast_slice(values_data),
-        usage:    wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let vector_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.sparse.vector"),
+        label: Some("nabled.gpu.sparse.vector"),
         contents: bytemuck::cast_slice(&vector_data),
-        usage:    wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let output_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
-        label:              Some("nabled.gpu.sparse.output"),
-        size:               output_size,
-        usage:              wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        label: Some("nabled.gpu.sparse.output"),
+        size: output_size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
     let params_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.sparse.params"),
+        label: Some("nabled.gpu.sparse.params"),
         contents: bytemuck::bytes_of(&params),
-        usage:    wgpu::BufferUsages::UNIFORM,
+        usage: wgpu::BufferUsages::UNIFORM,
     });
     let readback_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
-        label:              Some("nabled.gpu.sparse.readback"),
-        size:               output_size,
-        usage:              wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        label: Some("nabled.gpu.sparse.readback"),
+        size: output_size,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
 
     let bind_group = runtime.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label:   Some("nabled.gpu.sparse.bind_group"),
-        layout:  &runtime.sparse_bind_group_layout,
+        label: Some("nabled.gpu.sparse.bind_group"),
+        layout: &runtime.sparse_bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: row_ptrs_buffer.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: col_indices_buffer.as_entire_binding() },
@@ -829,43 +829,43 @@ where
     let matrix_values = matrix_data(matrix);
     let rhs_values = matrix_data(rhs);
     let params = GpuTriangularParams {
-        n:             n_u32,
-        rhs_cols:      rhs_cols_u32,
-        lower:         u32::from(lower),
+        n: n_u32,
+        rhs_cols: rhs_cols_u32,
+        lower: u32::from(lower),
         unit_diagonal: u32::from(unit_diagonal),
     };
     let output_size = output_size_bytes::<T>(n, rhs_cols)?;
 
     let matrix_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.triangular.matrix"),
+        label: Some("nabled.gpu.triangular.matrix"),
         contents: bytemuck::cast_slice(&matrix_values),
-        usage:    wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let rhs_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.triangular.rhs"),
+        label: Some("nabled.gpu.triangular.rhs"),
         contents: bytemuck::cast_slice(&rhs_values),
-        usage:    wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE,
     });
     let output_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
-        label:              Some("nabled.gpu.triangular.output"),
-        size:               output_size,
-        usage:              wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        label: Some("nabled.gpu.triangular.output"),
+        size: output_size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
     let params_buffer = runtime.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label:    Some("nabled.gpu.triangular.params"),
+        label: Some("nabled.gpu.triangular.params"),
         contents: bytemuck::bytes_of(&params),
-        usage:    wgpu::BufferUsages::UNIFORM,
+        usage: wgpu::BufferUsages::UNIFORM,
     });
     let readback_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
-        label:              Some("nabled.gpu.triangular.readback"),
-        size:               output_size,
-        usage:              wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        label: Some("nabled.gpu.triangular.readback"),
+        size: output_size,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
     let bind_group = runtime.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label:   Some("nabled.gpu.triangular.bind_group"),
-        layout:  &runtime.triangular_bind_group_layout,
+        label: Some("nabled.gpu.triangular.bind_group"),
+        layout: &runtime.triangular_bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: matrix_buffer.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: rhs_buffer.as_entire_binding() },
@@ -1227,7 +1227,9 @@ fn sparse_matvec_gpu_f64_into_impl(
     }
 }
 
-fn shape_product(dims: &[usize]) -> usize { dims.iter().copied().product::<usize>().max(1) }
+fn shape_product(dims: &[usize]) -> usize {
+    dims.iter().copied().product::<usize>().max(1)
+}
 
 fn uncontracted_axes(ndim: usize, contracted_axis: usize) -> Result<Vec<usize>, AcceleratorError> {
     if contracted_axis >= ndim {

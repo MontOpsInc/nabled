@@ -45,7 +45,7 @@ impl std::error::Error for SylvesterError {}
 #[derive(Debug, Clone, PartialEq)]
 pub struct MixedSylvesterResult<T = f64> {
     /// Solution matrix.
-    pub solution:              Array2<T>,
+    pub solution: Array2<T>,
     /// Iterative-refinement steps performed by the provider.
     pub refinement_iterations: usize,
 }
@@ -54,8 +54,8 @@ pub struct MixedSylvesterResult<T = f64> {
 #[derive(Debug, Clone)]
 pub struct SylvesterWorkspace<T: NabledReal = f64> {
     coefficient: Array2<T>,
-    rhs:         Array1<T>,
-    solution:    Array1<T>,
+    rhs: Array1<T>,
+    solution: Array1<T>,
 }
 
 fn map_lu_error_to_sylvester(error: lu::LUError) -> SylvesterError {
@@ -146,8 +146,8 @@ impl<T: NabledReal> Default for SylvesterWorkspace<T> {
     fn default() -> Self {
         Self {
             coefficient: Array2::<T>::zeros((0, 0)),
-            rhs:         Array1::<T>::zeros(0),
-            solution:    Array1::<T>::zeros(0),
+            rhs: Array1::<T>::zeros(0),
+            solution: Array1::<T>::zeros(0),
         }
     }
 }
@@ -156,8 +156,8 @@ impl<T: NabledReal> Default for SylvesterWorkspace<T> {
 #[derive(Debug, Clone, Default)]
 pub struct SylvesterComplexWorkspace {
     coefficient: Array2<Complex64>,
-    rhs:         Array1<Complex64>,
-    solution:    Array1<Complex64>,
+    rhs: Array1<Complex64>,
+    solution: Array1<Complex64>,
 }
 
 impl SylvesterComplexWorkspace {
@@ -1419,26 +1419,35 @@ mod tests {
 
     #[test]
     fn complex_sylvester_and_lyapunov_paths_work() {
-        let a = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0_f64, 0.5_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(3.0_f64, -0.25_f64),
-        ])
+        let a = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(2.0_f64, 0.5_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(3.0_f64, -0.25_f64),
+            ],
+        )
         .unwrap();
-        let b = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.75_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(4.0_f64, -0.5_f64),
-        ])
+        let b = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.75_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(4.0_f64, -0.5_f64),
+            ],
+        )
         .unwrap();
-        let c = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.5_f64, -0.2_f64),
-            Complex64::new(-1.0_f64, 0.4_f64),
-            Complex64::new(2.0_f64, 0.1_f64),
-        ])
+        let c = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.5_f64, -0.2_f64),
+                Complex64::new(-1.0_f64, 0.4_f64),
+                Complex64::new(2.0_f64, 0.1_f64),
+            ],
+        )
         .unwrap();
 
         let owned = solve_sylvester_complex(&a, &b, &c).unwrap();
@@ -1519,26 +1528,35 @@ mod tests {
 
     #[test]
     fn complex_view_into_variants_match_owned_with_output_views() {
-        let a = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0_f64, 0.5_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(3.0_f64, -0.25_f64),
-        ])
+        let a = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(2.0_f64, 0.5_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(3.0_f64, -0.25_f64),
+            ],
+        )
         .unwrap();
-        let b = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.75_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(4.0_f64, -0.5_f64),
-        ])
+        let b = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.75_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(4.0_f64, -0.5_f64),
+            ],
+        )
         .unwrap();
-        let c = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.5_f64, -0.2_f64),
-            Complex64::new(-1.0_f64, 0.4_f64),
-            Complex64::new(2.0_f64, 0.1_f64),
-        ])
+        let c = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.5_f64, -0.2_f64),
+                Complex64::new(-1.0_f64, 0.4_f64),
+                Complex64::new(2.0_f64, 0.1_f64),
+            ],
+        )
         .unwrap();
         let expected = solve_sylvester_complex(&a, &b, &c).unwrap();
 
@@ -1569,26 +1587,35 @@ mod tests {
 
     #[test]
     fn complex_view_workspace_variants_match_allocating_paths() {
-        let a = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0_f64, 0.5_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(3.0_f64, -0.25_f64),
-        ])
+        let a = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(2.0_f64, 0.5_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(3.0_f64, -0.25_f64),
+            ],
+        )
         .unwrap();
-        let b = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.75_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(4.0_f64, -0.5_f64),
-        ])
+        let b = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.75_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(4.0_f64, -0.5_f64),
+            ],
+        )
         .unwrap();
-        let c = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.5_f64, -0.2_f64),
-            Complex64::new(-1.0_f64, 0.4_f64),
-            Complex64::new(2.0_f64, 0.1_f64),
-        ])
+        let c = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.5_f64, -0.2_f64),
+                Complex64::new(-1.0_f64, 0.4_f64),
+                Complex64::new(2.0_f64, 0.1_f64),
+            ],
+        )
         .unwrap();
         let expected = solve_sylvester_complex(&a, &b, &c).unwrap();
 
@@ -1716,26 +1743,35 @@ mod tests {
     #[cfg(feature = "magma-system")]
     #[test]
     fn mixed_complex_sylvester_and_lyapunov_paths_work() {
-        let a = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0_f64, 0.5_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(3.0_f64, -0.25_f64),
-        ])
+        let a = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(2.0_f64, 0.5_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(3.0_f64, -0.25_f64),
+            ],
+        )
         .unwrap();
-        let b = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.75_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(4.0_f64, -0.5_f64),
-        ])
+        let b = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.75_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(4.0_f64, -0.5_f64),
+            ],
+        )
         .unwrap();
-        let c = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.5_f64, -0.2_f64),
-            Complex64::new(-1.0_f64, 0.4_f64),
-            Complex64::new(2.0_f64, 0.1_f64),
-        ])
+        let c = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.5_f64, -0.2_f64),
+                Complex64::new(-1.0_f64, 0.4_f64),
+                Complex64::new(2.0_f64, 0.1_f64),
+            ],
+        )
         .unwrap();
 
         let mixed = solve_sylvester_mixed_complex(&a, &b, &c).unwrap();

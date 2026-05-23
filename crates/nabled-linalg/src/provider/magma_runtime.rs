@@ -21,10 +21,14 @@ fn mark_magma_runtime_call() {
 fn mark_magma_runtime_call() {}
 
 #[cfg(test)]
-pub(crate) fn reset_magma_runtime_call_count() { MAGMA_RUNTIME_CALLS.store(0, Ordering::Relaxed); }
+pub(crate) fn reset_magma_runtime_call_count() {
+    MAGMA_RUNTIME_CALLS.store(0, Ordering::Relaxed);
+}
 
 #[cfg(test)]
-pub(crate) fn magma_runtime_call_count() -> u64 { MAGMA_RUNTIME_CALLS.load(Ordering::Relaxed) }
+pub(crate) fn magma_runtime_call_count() -> u64 {
+    MAGMA_RUNTIME_CALLS.load(Ordering::Relaxed)
+}
 
 #[link(name = "magma")]
 unsafe extern "C" {

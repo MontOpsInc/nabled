@@ -10,12 +10,15 @@ use ndarray::{
 };
 use num_complex::Complex64;
 
+use crate::accelerator::backends::AcceleratorError;
 #[cfg(feature = "accelerator-wgpu")]
 use crate::accelerator::backends::GpuBackend;
-use crate::accelerator::backends::{AcceleratorError, CpuBackend};
 use crate::accelerator::dispatch::{
-    tensor_batched_matmul_last_two_cpu, tensor_batched_matmul_last_two_with_backend,
-    tensor_contract_axes_cpu, tensor_contract_axes_with_backend, tensor_sum_last_axis_cpu,
+    tensor_batched_matmul_last_two_cpu, tensor_contract_axes_cpu, tensor_sum_last_axis_cpu,
+};
+#[cfg(feature = "accelerator-wgpu")]
+use crate::accelerator::dispatch::{
+    tensor_batched_matmul_last_two_with_backend, tensor_contract_axes_with_backend,
     tensor_sum_last_axis_with_backend,
 };
 use crate::svd;
@@ -55,19 +58,13 @@ fn tensor_contract_axes_complex_dispatch(
         tensor_contract_axes_with_backend::<GpuBackend, Complex64>(
             left, right, left_axis, right_axis,
         )
-        .or_else(|_| {
-            tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
-                left, right, left_axis, right_axis,
-            )
-        })
+        .or_else(|_| tensor_contract_axes_cpu(left, right, left_axis, right_axis))
         .map_err(map_accelerator_error_to_tensor)
     }
     #[cfg(not(feature = "accelerator-wgpu"))]
     {
-        tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
-            left, right, left_axis, right_axis,
-        )
-        .map_err(map_accelerator_error_to_tensor)
+        tensor_contract_axes_cpu(left, right, left_axis, right_axis)
+            .map_err(map_accelerator_error_to_tensor)
     }
 }
 
@@ -78,15 +75,12 @@ fn tensor_batched_matmul_last_two_complex_dispatch(
     #[cfg(feature = "accelerator-wgpu")]
     {
         tensor_batched_matmul_last_two_with_backend::<GpuBackend, Complex64>(left, right)
-            .or_else(|_| {
-                tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(left, right)
-            })
+            .or_else(|_| tensor_batched_matmul_last_two_cpu(left, right))
             .map_err(map_accelerator_error_to_tensor)
     }
     #[cfg(not(feature = "accelerator-wgpu"))]
     {
-        tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(left, right)
-            .map_err(map_accelerator_error_to_tensor)
+        tensor_batched_matmul_last_two_cpu(left, right).map_err(map_accelerator_error_to_tensor)
     }
 }
 
@@ -96,13 +90,12 @@ fn tensor_sum_last_axis_complex_dispatch(
     #[cfg(feature = "accelerator-wgpu")]
     {
         tensor_sum_last_axis_with_backend::<GpuBackend, Complex64>(input)
-            .or_else(|_| tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(input))
+            .or_else(|_| tensor_sum_last_axis_cpu(input))
             .map_err(map_accelerator_error_to_tensor)
     }
     #[cfg(not(feature = "accelerator-wgpu"))]
     {
-        tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(input)
-            .map_err(map_accelerator_error_to_tensor)
+        tensor_sum_last_axis_cpu(input).map_err(map_accelerator_error_to_tensor)
     }
 }
 
@@ -112,11 +105,11 @@ pub struct Hosvd3Result<T: NabledReal = f64> {
     /// Core tensor with shape `(r0, r1, r2)`.
     pub core: Array3<T>,
     /// Mode-0 factor matrix `(i0, r0)`.
-    pub u0:   Array2<T>,
+    pub u0: Array2<T>,
     /// Mode-1 factor matrix `(i1, r1)`.
-    pub u1:   Array2<T>,
+    pub u1: Array2<T>,
     /// Mode-2 factor matrix `(i2, r2)`.
-    pub u2:   Array2<T>,
+    pub u2: Array2<T>,
 }
 
 /// Configuration for rank-`R` CP-ALS decomposition over rank-3 tensors.
@@ -125,22 +118,26 @@ pub struct CpAlsConfig<T: NabledReal = f64> {
     /// Maximum ALS sweeps before returning the current iterate.
     pub max_iterations: usize,
     /// Relative factor-change tolerance for convergence.
-    pub tolerance:      T,
+    pub tolerance: T,
 }
 
 impl Default for CpAlsConfig<f64> {
-    fn default() -> Self { Self { max_iterations: 200, tolerance: 1.0e-8 } }
+    fn default() -> Self {
+        Self { max_iterations: 200, tolerance: 1.0e-8 }
+    }
 }
 
 impl Default for CpAlsConfig<f32> {
-    fn default() -> Self { Self { max_iterations: 200, tolerance: 1.0e-5 } }
+    fn default() -> Self {
+        Self { max_iterations: 200, tolerance: 1.0e-5 }
+    }
 }
 
 /// CP decomposition result for rank-3 real tensors.
 #[derive(Debug, Clone)]
 pub struct CpAls3Result<T: NabledReal = f64> {
     /// Rank weights (`R`).
-    pub weights:  Array1<T>,
+    pub weights: Array1<T>,
     /// Mode-0 factor matrix (`I0 x R`).
     pub factor_0: Array2<T>,
     /// Mode-1 factor matrix (`I1 x R`).
@@ -157,29 +154,29 @@ pub struct CpAlsNdResult<T: NabledReal = f64> {
     /// Per-mode factor matrices (`I_mode x R`), length `N`.
     pub factors: Vec<Array2<T>>,
     /// Original tensor shape `(I_0, ..., I_{N-1})`.
-    pub shape:   Vec<usize>,
+    pub shape: Vec<usize>,
 }
 
 /// CP decomposition reconstruction quality metrics.
 #[derive(Debug, Clone)]
 pub struct CpErrorMetrics<T: NabledReal = f64> {
     /// L2 norm of the reference tensor.
-    pub signal_norm:    T,
+    pub signal_norm: T,
     /// L2 norm of residual (`reference - reconstruction`).
-    pub residual_norm:  T,
+    pub residual_norm: T,
     /// Relative residual (`residual_norm / signal_norm` when `signal_norm > 0`).
     pub relative_error: T,
     /// Fit score (`1 - relative_error`, clamped to `[0, 1]` when defined).
-    pub fit:            T,
+    pub fit: T,
 }
 
 /// CP-ALS convergence summary for a decomposition run.
 #[derive(Debug, Clone)]
 pub struct CpConvergenceReport<T: NabledReal = f64> {
     /// Number of ALS sweeps executed.
-    pub iterations_run:          usize,
+    pub iterations_run: usize,
     /// Whether convergence tolerance was reached before iteration limit.
-    pub converged:               bool,
+    pub converged: bool,
     /// Maximum factor-relative-change observed on the final sweep.
     pub final_max_factor_change: T,
 }
@@ -190,14 +187,14 @@ pub struct CpAlsReport<T: NabledReal = f64> {
     /// ALS convergence summary.
     pub convergence: CpConvergenceReport<T>,
     /// Reconstruction metrics against the input tensor.
-    pub metrics:     CpErrorMetrics<T>,
+    pub metrics: CpErrorMetrics<T>,
 }
 
 /// HOSVD/Tucker decomposition result for rank-`N` real tensors.
 #[derive(Debug, Clone)]
 pub struct HosvdNdResult<T: NabledReal = f64> {
     /// Core tensor with shape `ranks`.
-    pub core:    ArrayD<T>,
+    pub core: ArrayD<T>,
     /// Per-mode factor matrices (`I_mode x R_mode`), length `N`.
     pub factors: Vec<Array2<T>>,
 }
@@ -208,49 +205,61 @@ pub struct HooiConfig<T: NabledReal = f64> {
     /// Maximum refinement sweeps.
     pub max_iterations: usize,
     /// Relative core-change tolerance used for convergence.
-    pub tolerance:      T,
+    pub tolerance: T,
 }
 
 impl Default for HooiConfig<f64> {
-    fn default() -> Self { Self { max_iterations: 50, tolerance: 1.0e-8 } }
+    fn default() -> Self {
+        Self { max_iterations: 50, tolerance: 1.0e-8 }
+    }
 }
 
 impl Default for HooiConfig<f32> {
-    fn default() -> Self { Self { max_iterations: 50, tolerance: 1.0e-5 } }
+    fn default() -> Self {
+        Self { max_iterations: 50, tolerance: 1.0e-5 }
+    }
 }
 
 /// Configuration for Tensor-Train decomposition via TT-SVD.
 #[derive(Debug, Clone)]
 pub struct TtSvdConfig<T: NabledReal = f64> {
     /// Optional global maximum TT rank (`None` means unconstrained).
-    pub max_rank:  Option<usize>,
+    pub max_rank: Option<usize>,
     /// Relative singular-value cutoff used per unfolding.
     pub tolerance: T,
 }
 
 impl Default for TtSvdConfig<f64> {
-    fn default() -> Self { Self { max_rank: None, tolerance: 1.0e-8 } }
+    fn default() -> Self {
+        Self { max_rank: None, tolerance: 1.0e-8 }
+    }
 }
 
 impl Default for TtSvdConfig<f32> {
-    fn default() -> Self { Self { max_rank: None, tolerance: 1.0e-5 } }
+    fn default() -> Self {
+        Self { max_rank: None, tolerance: 1.0e-5 }
+    }
 }
 
 /// Configuration for Tensor-Train rank truncation/rounding.
 #[derive(Debug, Clone)]
 pub struct TtRoundConfig<T: NabledReal = f64> {
     /// Optional global maximum TT rank (`None` means unconstrained).
-    pub max_rank:  Option<usize>,
+    pub max_rank: Option<usize>,
     /// Relative singular-value cutoff used when truncating intermediate ranks.
     pub tolerance: T,
 }
 
 impl Default for TtRoundConfig<f64> {
-    fn default() -> Self { Self { max_rank: None, tolerance: 1.0e-8 } }
+    fn default() -> Self {
+        Self { max_rank: None, tolerance: 1.0e-8 }
+    }
 }
 
 impl Default for TtRoundConfig<f32> {
-    fn default() -> Self { Self { max_rank: None, tolerance: 1.0e-5 } }
+    fn default() -> Self {
+        Self { max_rank: None, tolerance: 1.0e-5 }
+    }
 }
 
 /// Tensor-Train decomposition result for rank-`N` real tensors.
@@ -408,7 +417,9 @@ fn uncontracted_axes(ndim: usize, contracted: &[usize]) -> Vec<usize> {
     (0..ndim).filter(|axis| !is_contracted[*axis]).collect()
 }
 
-fn shape_product(shape: &[usize]) -> usize { shape.iter().copied().product::<usize>().max(1) }
+fn shape_product(shape: &[usize]) -> usize {
+    shape.iter().copied().product::<usize>().max(1)
+}
 
 fn unflatten_prefix_index(mut flat: usize, shape: &[usize]) -> Vec<usize> {
     if shape.is_empty() {
@@ -5305,14 +5316,18 @@ mod tests {
 
     #[test]
     fn cube_matvec_variants_match() {
-        let cube = Array3::from_shape_vec((2, 2, 3), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, -1.0_f64, 0.5_f64,
-            3.0_f64, 0.0_f64, 2.0_f64,
-        ])
+        let cube = Array3::from_shape_vec(
+            (2, 2, 3),
+            vec![
+                1.0_f64, 2.0_f64, 3.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, -1.0_f64, 0.5_f64,
+                3.0_f64, 0.0_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
-        let vectors = Array2::from_shape_vec((2, 3), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 0.5_f64, -1.0_f64, 1.0_f64,
-        ])
+        let vectors = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f64, 0.0_f64, 2.0_f64, 0.5_f64, -1.0_f64, 1.0_f64],
+        )
         .unwrap();
 
         let allocating = cube_matvec(&cube, &vectors).unwrap();
@@ -5330,15 +5345,21 @@ mod tests {
 
     #[test]
     fn cube_matmat_variants_match() {
-        let left = Array3::from_shape_vec((2, 2, 3), vec![
-            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, 0.0_f64, 1.0_f64,
-            1.0_f64, 3.0_f64, 2.0_f64,
-        ])
+        let left = Array3::from_shape_vec(
+            (2, 2, 3),
+            vec![
+                1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 2.0_f64, 0.0_f64, 1.0_f64,
+                1.0_f64, 3.0_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
-        let right = Array3::from_shape_vec((2, 3, 2), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64, 2.0_f64, 1.0_f64,
-            1.0_f64, 3.0_f64, 0.0_f64,
-        ])
+        let right = Array3::from_shape_vec(
+            (2, 3, 2),
+            vec![
+                1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64, 2.0_f64, 1.0_f64,
+                1.0_f64, 3.0_f64, 0.0_f64,
+            ],
+        )
         .unwrap();
 
         let allocating = cube_matmat(&left, &right).unwrap();
@@ -5358,23 +5379,29 @@ mod tests {
 
     #[test]
     fn cube_matvec_complex_variants_match() {
-        let cube = Array3::from_shape_vec((2, 2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(2.0_f64, -1.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(2.0_f64, 1.0_f64),
-            Complex64::new(-1.0_f64, 0.0_f64),
-            Complex64::new(0.5_f64, 0.5_f64),
-            Complex64::new(3.0_f64, -2.0_f64),
-        ])
+        let cube = Array3::from_shape_vec(
+            (2, 2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(2.0_f64, -1.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(2.0_f64, 1.0_f64),
+                Complex64::new(-1.0_f64, 0.0_f64),
+                Complex64::new(0.5_f64, 0.5_f64),
+                Complex64::new(3.0_f64, -2.0_f64),
+            ],
+        )
         .unwrap();
-        let vectors = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(0.5_f64, -0.5_f64),
-            Complex64::new(-1.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, 0.0_f64),
-        ])
+        let vectors = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(0.5_f64, -0.5_f64),
+                Complex64::new(-1.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
 
         let allocating = cube_matvec_complex(&cube, &vectors).unwrap();
@@ -5392,19 +5419,25 @@ mod tests {
 
     #[test]
     fn cube_matmat_complex_variants_match() {
-        let left = Array3::from_shape_vec((1, 2, 2), vec![
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(2.0_f64, -1.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-        ])
+        let left = Array3::from_shape_vec(
+            (1, 2, 2),
+            vec![
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(2.0_f64, -1.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+            ],
+        )
         .unwrap();
-        let right = Array3::from_shape_vec((1, 2, 2), vec![
-            Complex64::new(1.0_f64, 1.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, 0.0_f64),
-            Complex64::new(1.0_f64, -1.0_f64),
-        ])
+        let right = Array3::from_shape_vec(
+            (1, 2, 2),
+            vec![
+                Complex64::new(1.0_f64, 1.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, 0.0_f64),
+                Complex64::new(1.0_f64, -1.0_f64),
+            ],
+        )
         .unwrap();
 
         let allocating = cube_matmat_complex(&left, &right).unwrap();
@@ -5422,9 +5455,10 @@ mod tests {
 
     #[test]
     fn flatten_cubes_is_shape_stable() {
-        let cube = Array3::from_shape_vec((2, 2, 2), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 1.0_f64, -1.0_f64, 2.0_f64,
-        ])
+        let cube = Array3::from_shape_vec(
+            (2, 2, 2),
+            vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 1.0_f64, -1.0_f64, 2.0_f64],
+        )
         .unwrap();
         let flattened = flatten_cubes(&cube).unwrap();
         assert_eq!(flattened.dim(), (2, 4));
@@ -5446,10 +5480,13 @@ mod tests {
 
     #[test]
     fn arrayd_last_axis_ops_match_expected() {
-        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
-            1.0_f64, 2.0_f64, 2.0_f64,
-        ])
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 3]),
+            vec![
+                1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
+                1.0_f64, 2.0_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
 
         let sum = sum_last_axis(&tensor).unwrap();
@@ -5471,10 +5508,13 @@ mod tests {
 
     #[test]
     fn sum_last_axis_view_and_into_match_allocating_path() {
-        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
-            1.0_f64, 2.0_f64, 2.0_f64,
-        ])
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 3]),
+            vec![
+                1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
+                1.0_f64, 2.0_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
 
         let allocating = sum_last_axis(&tensor).unwrap();
@@ -5492,15 +5532,21 @@ mod tests {
 
     #[test]
     fn batched_dot_last_axis_matches_manual() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
-            1.0_f64, 2.0_f64, 2.0_f64,
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 3]),
+            vec![
+                1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 3.0_f64, 4.0_f64,
+                1.0_f64, 2.0_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            0.5_f64, 1.0_f64, -1.0_f64, 0.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
-            2.0_f64, 0.0_f64, 1.0_f64,
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 3]),
+            vec![
+                0.5_f64, 1.0_f64, -1.0_f64, 0.0_f64, 2.0_f64, 3.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
+                2.0_f64, 0.0_f64, 1.0_f64,
+            ],
+        )
         .unwrap();
 
         let dots = batched_dot_last_axis(&left, &right).unwrap();
@@ -5513,12 +5559,15 @@ mod tests {
 
     #[test]
     fn arrayd_complex_last_axis_ops_match_expected() {
-        let tensor = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(1.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, -1.0_f64),
-        ])
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[1, 2, 2]),
+            vec![
+                Complex64::new(1.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, -1.0_f64),
+            ],
+        )
         .unwrap();
 
         let sum = sum_last_axis_complex(&tensor).unwrap();
@@ -5538,12 +5587,15 @@ mod tests {
 
     #[test]
     fn sum_last_axis_complex_view_and_into_match_allocating_path() {
-        let tensor = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(1.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, -1.0_f64),
-        ])
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[1, 2, 2]),
+            vec![
+                Complex64::new(1.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, -1.0_f64),
+            ],
+        )
         .unwrap();
 
         let allocating = sum_last_axis_complex(&tensor).unwrap();
@@ -5561,19 +5613,25 @@ mod tests {
 
     #[test]
     fn batched_dot_last_axis_complex_matches_manual() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(1.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, -1.0_f64),
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[1, 2, 2]),
+            vec![
+                Complex64::new(1.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, -1.0_f64),
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(0.5_f64, 0.0_f64),
-            Complex64::new(-1.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, -1.0_f64),
-            Complex64::new(0.0_f64, 1.0_f64),
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[1, 2, 2]),
+            vec![
+                Complex64::new(0.5_f64, 0.0_f64),
+                Complex64::new(-1.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, -1.0_f64),
+                Complex64::new(0.0_f64, 1.0_f64),
+            ],
+        )
         .unwrap();
 
         let dots = batched_dot_last_axis_complex(&left, &right).unwrap();
@@ -5598,16 +5656,22 @@ mod tests {
 
     #[test]
     fn contract_axes_matches_matrix_multiply() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 3]), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, //
-            4.0_f64, 5.0_f64, 6.0_f64,
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]),
+            vec![
+                1.0_f64, 2.0_f64, 3.0_f64, //
+                4.0_f64, 5.0_f64, 6.0_f64,
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[3, 2]), vec![
-            7.0_f64, 8.0_f64, //
-            9.0_f64, 10.0_f64, //
-            11.0_f64, 12.0_f64,
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[3, 2]),
+            vec![
+                7.0_f64, 8.0_f64, //
+                9.0_f64, 10.0_f64, //
+                11.0_f64, 12.0_f64,
+            ],
+        )
         .unwrap();
 
         let contracted = contract_axes(&left, &right, &[1], &[0]).unwrap();
@@ -5661,15 +5725,21 @@ mod tests {
 
     #[test]
     fn batched_matmul_last_two_matches_cube_matmat() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, //
-            2.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 2.0_f64,
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 3]),
+            vec![
+                1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, //
+                2.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
-            0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64,
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![
+                1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
+                0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64,
+            ],
+        )
         .unwrap();
 
         let nd_output = batched_matmul_last_two(&left, &right).unwrap();
@@ -5727,19 +5797,25 @@ mod tests {
 
     #[test]
     fn complex_contract_and_batched_matmul_paths_work() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-            Complex64::new(1.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, -1.0_f64),
-            Complex64::new(1.0_f64, 2.0_f64),
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]),
+            vec![
+                Complex64::new(1.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, -1.0_f64),
+                Complex64::new(1.0_f64, 2.0_f64),
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(2.0_f64, -1.0_f64),
-            Complex64::new(-1.0_f64, 1.0_f64),
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]),
+            vec![
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(2.0_f64, -1.0_f64),
+                Complex64::new(-1.0_f64, 1.0_f64),
+            ],
+        )
         .unwrap();
 
         let contract = contract_axes_complex(&left, &right, &[1], &[0]).unwrap();
@@ -5759,19 +5835,25 @@ mod tests {
 
     #[test]
     fn complex_contract_and_batched_matmul_view_variants_match() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(1.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, -1.0_f64),
-            Complex64::new(1.0_f64, 2.0_f64),
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[1, 2, 2]),
+            vec![
+                Complex64::new(1.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, -1.0_f64),
+                Complex64::new(1.0_f64, 2.0_f64),
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[1, 2, 2]), vec![
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(2.0_f64, -1.0_f64),
-            Complex64::new(-1.0_f64, 1.0_f64),
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[1, 2, 2]),
+            vec![
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(2.0_f64, -1.0_f64),
+                Complex64::new(-1.0_f64, 1.0_f64),
+            ],
+        )
         .unwrap();
 
         let allocating_contract = contract_axes_complex(&left, &right, &[2], &[1]).unwrap();
@@ -5809,16 +5891,22 @@ mod tests {
 
     #[test]
     fn einsum_matches_matrix_multiply_and_batch_path() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 3]), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, //
-            4.0_f64, 5.0_f64, 6.0_f64,
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]),
+            vec![
+                1.0_f64, 2.0_f64, 3.0_f64, //
+                4.0_f64, 5.0_f64, 6.0_f64,
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[3, 2]), vec![
-            7.0_f64, 8.0_f64, //
-            9.0_f64, 10.0_f64, //
-            11.0_f64, 12.0_f64,
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[3, 2]),
+            vec![
+                7.0_f64, 8.0_f64, //
+                9.0_f64, 10.0_f64, //
+                11.0_f64, 12.0_f64,
+            ],
+        )
         .unwrap();
         let product = einsum("ab,bc->ac", &left, &right).unwrap();
         assert_eq!(product.shape(), &[2, 2]);
@@ -5827,15 +5915,21 @@ mod tests {
         assert!((product[[1, 0]] - 139.0_f64).abs() < 1e-12_f64);
         assert!((product[[1, 1]] - 154.0_f64).abs() < 1e-12_f64);
 
-        let left_batch = ArrayD::from_shape_vec(IxDyn(&[2, 2, 3]), vec![
-            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, //
-            2.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 2.0_f64,
-        ])
+        let left_batch = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 3]),
+            vec![
+                1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, //
+                2.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
-        let right_batch = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
-            0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64,
-        ])
+        let right_batch = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![
+                1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, //
+                0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, 0.0_f64,
+            ],
+        )
         .unwrap();
         let batch_product = einsum("bij,bjk->bik", &left_batch, &right_batch).unwrap();
         let nd_output = batched_matmul_last_two(&left_batch, &right_batch).unwrap();
@@ -5846,19 +5940,25 @@ mod tests {
 
     #[test]
     fn complex_einsum_matches_manual() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-            Complex64::new(1.0_f64, 1.0_f64),
-            Complex64::new(2.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, -1.0_f64),
-            Complex64::new(1.0_f64, 2.0_f64),
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]),
+            vec![
+                Complex64::new(1.0_f64, 1.0_f64),
+                Complex64::new(2.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, -1.0_f64),
+                Complex64::new(1.0_f64, 2.0_f64),
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-            Complex64::new(0.0_f64, 1.0_f64),
-            Complex64::new(1.0_f64, 0.0_f64),
-            Complex64::new(2.0_f64, -1.0_f64),
-            Complex64::new(-1.0_f64, 1.0_f64),
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]),
+            vec![
+                Complex64::new(0.0_f64, 1.0_f64),
+                Complex64::new(1.0_f64, 0.0_f64),
+                Complex64::new(2.0_f64, -1.0_f64),
+                Complex64::new(-1.0_f64, 1.0_f64),
+            ],
+        )
         .unwrap();
         let product = einsum_complex("ab,bc->ac", &left, &right).unwrap();
         let reference = contract_axes_complex(&left, &right, &[1], &[0]).unwrap();
@@ -5923,10 +6023,13 @@ mod tests {
 
     #[test]
     fn hosvd3_roundtrip_is_consistent() {
-        let cube = Array3::from_shape_vec((3, 3, 2), vec![
-            1.0_f64, 0.5_f64, 2.0_f64, -1.0_f64, 0.0_f64, 1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64,
-            1.5_f64, 3.0_f64, 0.0_f64, -1.0_f64, 1.0_f64, 2.5_f64, -0.5_f64, 0.5_f64, 2.0_f64,
-        ])
+        let cube = Array3::from_shape_vec(
+            (3, 3, 2),
+            vec![
+                1.0_f64, 0.5_f64, 2.0_f64, -1.0_f64, 0.0_f64, 1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64,
+                1.5_f64, 3.0_f64, 0.0_f64, -1.0_f64, 1.0_f64, 2.5_f64, -0.5_f64, 0.5_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
         let decomposition = hosvd3(&cube, (3, 3, 2)).unwrap();
         let reconstructed = hosvd3_reconstruct(&decomposition).unwrap();
@@ -5938,10 +6041,13 @@ mod tests {
 
     #[test]
     fn hosvd3_reconstruct_into_matches_allocating_path_and_rejects_bad_shape() {
-        let cube = Array3::from_shape_vec((3, 3, 2), vec![
-            1.0_f32, 0.5_f32, 2.0_f32, -1.0_f32, 0.0_f32, 1.0_f32, 0.0_f32, 2.0_f32, 1.0_f32,
-            1.5_f32, 3.0_f32, 0.0_f32, -1.0_f32, 1.0_f32, 2.5_f32, -0.5_f32, 0.5_f32, 2.0_f32,
-        ])
+        let cube = Array3::from_shape_vec(
+            (3, 3, 2),
+            vec![
+                1.0_f32, 0.5_f32, 2.0_f32, -1.0_f32, 0.0_f32, 1.0_f32, 0.0_f32, 2.0_f32, 1.0_f32,
+                1.5_f32, 3.0_f32, 0.0_f32, -1.0_f32, 1.0_f32, 2.5_f32, -0.5_f32, 0.5_f32, 2.0_f32,
+            ],
+        )
         .unwrap();
         let decomposition = hosvd3(&cube, (3, 3, 2)).unwrap();
         let allocating = hosvd3_reconstruct(&decomposition).unwrap();
@@ -5961,20 +6067,25 @@ mod tests {
     #[test]
     fn hosvd_nd_reconstructs_synthetic_rank_constrained_tensor_f64() {
         let reference = HosvdNdResult {
-            core:    ArrayD::from_shape_vec(IxDyn(&[2, 2, 2, 2]), vec![
-                1.0_f64, 0.4_f64, -0.2_f64, 0.7_f64, 0.5_f64, -0.3_f64, 0.6_f64, 0.2_f64, -0.1_f64,
-                0.8_f64, 0.9_f64, -0.4_f64, 0.3_f64, 0.1_f64, 0.2_f64, 0.5_f64,
-            ])
+            core: ArrayD::from_shape_vec(
+                IxDyn(&[2, 2, 2, 2]),
+                vec![
+                    1.0_f64, 0.4_f64, -0.2_f64, 0.7_f64, 0.5_f64, -0.3_f64, 0.6_f64, 0.2_f64,
+                    -0.1_f64, 0.8_f64, 0.9_f64, -0.4_f64, 0.3_f64, 0.1_f64, 0.2_f64, 0.5_f64,
+                ],
+            )
             .unwrap(),
             factors: vec![
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f64, 0.2_f64, 0.4_f64, 1.1_f64, 0.7_f64, -0.1_f64,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f64, 0.2_f64, 0.4_f64, 1.1_f64, 0.7_f64, -0.1_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![0.8_f64, 0.3_f64, 0.2_f64, 1.0_f64]).unwrap(),
-                Array2::from_shape_vec((4, 2), vec![
-                    1.0_f64, 0.0_f64, 0.6_f64, 0.7_f64, 0.2_f64, 1.1_f64, 0.5_f64, -0.3_f64,
-                ])
+                Array2::from_shape_vec(
+                    (4, 2),
+                    vec![1.0_f64, 0.0_f64, 0.6_f64, 0.7_f64, 0.2_f64, 1.1_f64, 0.5_f64, -0.3_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f64, -0.2_f64, 0.4_f64, 0.9_f64]).unwrap(),
             ],
@@ -5998,14 +6109,16 @@ mod tests {
     #[test]
     fn hosvd_nd_view_and_into_variants_match_f32() {
         let reference = HosvdNdResult {
-            core:    ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-                1.0_f32, 0.3_f32, -0.2_f32, 0.5_f32, 0.4_f32, -0.1_f32, 0.8_f32, 0.6_f32,
-            ])
+            core: ArrayD::from_shape_vec(
+                IxDyn(&[2, 2, 2]),
+                vec![1.0_f32, 0.3_f32, -0.2_f32, 0.5_f32, 0.4_f32, -0.1_f32, 0.8_f32, 0.6_f32],
+            )
             .unwrap(),
             factors: vec![
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f32, 0.2_f32, 0.4_f32, 1.1_f32, 0.7_f32, -0.1_f32,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f32, 0.2_f32, 0.4_f32, 1.1_f32, 0.7_f32, -0.1_f32],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![0.8_f32, 0.3_f32, 0.2_f32, 1.0_f32]).unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f32, -0.2_f32, 0.4_f32, 0.9_f32]).unwrap(),
@@ -6043,7 +6156,7 @@ mod tests {
         assert!(matches!(hosvd_nd(&tensor, &[2, 4, 2]), Err(TensorError::DimensionMismatch)));
 
         let invalid_result = HosvdNdResult {
-            core:    ArrayD::<f64>::zeros(IxDyn(&[2, 2])),
+            core: ArrayD::<f64>::zeros(IxDyn(&[2, 2])),
             factors: vec![Array2::<f64>::zeros((3, 2)), Array2::<f64>::zeros((4, 1))],
         };
         assert!(matches!(
@@ -6062,20 +6175,25 @@ mod tests {
     #[test]
     fn hooi_nd_reconstructs_synthetic_rank_constrained_tensor_f64() {
         let reference = HosvdNdResult {
-            core:    ArrayD::from_shape_vec(IxDyn(&[2, 2, 2, 2]), vec![
-                1.0_f64, 0.4_f64, -0.2_f64, 0.7_f64, 0.5_f64, -0.3_f64, 0.6_f64, 0.2_f64, -0.1_f64,
-                0.8_f64, 0.9_f64, -0.4_f64, 0.3_f64, 0.1_f64, 0.2_f64, 0.5_f64,
-            ])
+            core: ArrayD::from_shape_vec(
+                IxDyn(&[2, 2, 2, 2]),
+                vec![
+                    1.0_f64, 0.4_f64, -0.2_f64, 0.7_f64, 0.5_f64, -0.3_f64, 0.6_f64, 0.2_f64,
+                    -0.1_f64, 0.8_f64, 0.9_f64, -0.4_f64, 0.3_f64, 0.1_f64, 0.2_f64, 0.5_f64,
+                ],
+            )
             .unwrap(),
             factors: vec![
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f64, 0.2_f64, 0.4_f64, 1.1_f64, 0.7_f64, -0.1_f64,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f64, 0.2_f64, 0.4_f64, 1.1_f64, 0.7_f64, -0.1_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![0.8_f64, 0.3_f64, 0.2_f64, 1.0_f64]).unwrap(),
-                Array2::from_shape_vec((4, 2), vec![
-                    1.0_f64, 0.0_f64, 0.6_f64, 0.7_f64, 0.2_f64, 1.1_f64, 0.5_f64, -0.3_f64,
-                ])
+                Array2::from_shape_vec(
+                    (4, 2),
+                    vec![1.0_f64, 0.0_f64, 0.6_f64, 0.7_f64, 0.2_f64, 1.1_f64, 0.5_f64, -0.3_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f64, -0.2_f64, 0.4_f64, 0.9_f64]).unwrap(),
             ],
@@ -6109,14 +6227,16 @@ mod tests {
     #[test]
     fn hooi_nd_view_variants_match_f32() {
         let reference = HosvdNdResult {
-            core:    ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-                1.0_f32, 0.3_f32, -0.2_f32, 0.5_f32, 0.4_f32, -0.1_f32, 0.8_f32, 0.6_f32,
-            ])
+            core: ArrayD::from_shape_vec(
+                IxDyn(&[2, 2, 2]),
+                vec![1.0_f32, 0.3_f32, -0.2_f32, 0.5_f32, 0.4_f32, -0.1_f32, 0.8_f32, 0.6_f32],
+            )
             .unwrap(),
             factors: vec![
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f32, 0.2_f32, 0.4_f32, 1.1_f32, 0.7_f32, -0.1_f32,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f32, 0.2_f32, 0.4_f32, 1.1_f32, 0.7_f32, -0.1_f32],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![0.8_f32, 0.3_f32, 0.2_f32, 1.0_f32]).unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f32, -0.2_f32, 0.4_f32, 0.9_f32]).unwrap(),
@@ -6173,19 +6293,22 @@ mod tests {
     #[test]
     fn tucker_project_and_expand_match_hosvd_outputs_f64() {
         let reference = HosvdNdResult {
-            core:    ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-                1.0_f64, 0.2_f64, 0.4_f64, -0.1_f64, 0.7_f64, 0.3_f64, -0.2_f64, 0.5_f64,
-            ])
+            core: ArrayD::from_shape_vec(
+                IxDyn(&[2, 2, 2]),
+                vec![1.0_f64, 0.2_f64, 0.4_f64, -0.1_f64, 0.7_f64, 0.3_f64, -0.2_f64, 0.5_f64],
+            )
             .unwrap(),
             factors: vec![
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
-                Array2::from_shape_vec((4, 2), vec![
-                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, -1.0_f64,
-                ])
+                Array2::from_shape_vec(
+                    (4, 2),
+                    vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, -1.0_f64],
+                )
                 .unwrap(),
             ],
         };
@@ -6206,16 +6329,20 @@ mod tests {
 
     #[test]
     fn tucker_project_expand_view_and_into_variants_match_f32() {
-        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0_f32, 0.5_f32, -0.2_f32, 0.8_f32, 0.7_f32, -0.1_f32, 0.3_f32, 1.2_f32, -0.4_f32,
-            0.6_f32, 0.9_f32, 0.2_f32,
-        ])
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![
+                1.0_f32, 0.5_f32, -0.2_f32, 0.8_f32, 0.7_f32, -0.1_f32, 0.3_f32, 1.2_f32, -0.4_f32,
+                0.6_f32, 0.9_f32, 0.2_f32,
+            ],
+        )
         .unwrap();
         let factors = vec![
             Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
-            Array2::from_shape_vec((3, 2), vec![
-                1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32,
-            ])
+            Array2::from_shape_vec(
+                (3, 2),
+                vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32],
+            )
             .unwrap(),
             Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
         ];
@@ -6237,16 +6364,20 @@ mod tests {
 
     #[test]
     fn tucker_project_into_matches_allocating_path_and_rejects_bad_shape() {
-        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0_f32, 0.5_f32, -0.2_f32, 0.8_f32, 0.7_f32, -0.1_f32, 0.3_f32, 1.2_f32, -0.4_f32,
-            0.6_f32, 0.9_f32, 0.2_f32,
-        ])
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![
+                1.0_f32, 0.5_f32, -0.2_f32, 0.8_f32, 0.7_f32, -0.1_f32, 0.3_f32, 1.2_f32, -0.4_f32,
+                0.6_f32, 0.9_f32, 0.2_f32,
+            ],
+        )
         .unwrap();
         let factors = vec![
             Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
-            Array2::from_shape_vec((3, 2), vec![
-                1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32,
-            ])
+            Array2::from_shape_vec(
+                (3, 2),
+                vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32],
+            )
             .unwrap(),
             Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
         ];
@@ -6319,17 +6450,20 @@ mod tests {
     fn tt_svd_reconstructs_synthetic_tensor_f64() {
         let reference = TensorTrainResult {
             cores: vec![
-                Array3::from_shape_vec((1, 3, 2), vec![
-                    1.0_f64, 0.2_f64, 0.6_f64, -0.1_f64, 0.4_f64, 0.8_f64,
-                ])
+                Array3::from_shape_vec(
+                    (1, 3, 2),
+                    vec![1.0_f64, 0.2_f64, 0.6_f64, -0.1_f64, 0.4_f64, 0.8_f64],
+                )
                 .unwrap(),
-                Array3::from_shape_vec((2, 2, 2), vec![
-                    0.9_f64, -0.1_f64, 0.3_f64, 0.7_f64, -0.2_f64, 0.5_f64, 1.1_f64, 0.4_f64,
-                ])
+                Array3::from_shape_vec(
+                    (2, 2, 2),
+                    vec![0.9_f64, -0.1_f64, 0.3_f64, 0.7_f64, -0.2_f64, 0.5_f64, 1.1_f64, 0.4_f64],
+                )
                 .unwrap(),
-                Array3::from_shape_vec((2, 4, 1), vec![
-                    1.0_f64, 0.3_f64, -0.2_f64, 0.5_f64, 0.6_f64, 0.8_f64, 0.1_f64, 1.2_f64,
-                ])
+                Array3::from_shape_vec(
+                    (2, 4, 1),
+                    vec![1.0_f64, 0.3_f64, -0.2_f64, 0.5_f64, 0.6_f64, 0.8_f64, 0.1_f64, 1.2_f64],
+                )
                 .unwrap(),
             ],
             shape: vec![3, 2, 4],
@@ -6357,9 +6491,10 @@ mod tests {
             cores: vec![
                 Array3::from_shape_vec((1, 2, 2), vec![1.0_f32, 0.4_f32, -0.2_f32, 0.8_f32])
                     .unwrap(),
-                Array3::from_shape_vec((2, 3, 1), vec![
-                    0.9_f32, 0.2_f32, -0.1_f32, 0.3_f32, 0.5_f32, 1.1_f32,
-                ])
+                Array3::from_shape_vec(
+                    (2, 3, 1),
+                    vec![0.9_f32, 0.2_f32, -0.1_f32, 0.3_f32, 0.5_f32, 1.1_f32],
+                )
                 .unwrap(),
             ],
             shape: vec![2, 3],
@@ -6419,19 +6554,26 @@ mod tests {
     fn tt_orthogonalize_left_preserves_reconstruction_and_columns() {
         let reference = TensorTrainResult {
             cores: vec![
-                Array3::from_shape_vec((1, 3, 2), vec![
-                    1.0_f64, 0.2_f64, 0.6_f64, -0.1_f64, 0.4_f64, 0.8_f64,
-                ])
+                Array3::from_shape_vec(
+                    (1, 3, 2),
+                    vec![1.0_f64, 0.2_f64, 0.6_f64, -0.1_f64, 0.4_f64, 0.8_f64],
+                )
                 .unwrap(),
-                Array3::from_shape_vec((2, 2, 3), vec![
-                    0.9_f64, -0.1_f64, 0.3_f64, 0.7_f64, -0.2_f64, 0.5_f64, 1.1_f64, 0.4_f64,
-                    0.2_f64, 0.3_f64, 0.8_f64, -0.6_f64,
-                ])
+                Array3::from_shape_vec(
+                    (2, 2, 3),
+                    vec![
+                        0.9_f64, -0.1_f64, 0.3_f64, 0.7_f64, -0.2_f64, 0.5_f64, 1.1_f64, 0.4_f64,
+                        0.2_f64, 0.3_f64, 0.8_f64, -0.6_f64,
+                    ],
+                )
                 .unwrap(),
-                Array3::from_shape_vec((3, 4, 1), vec![
-                    1.0_f64, 0.3_f64, -0.2_f64, 0.5_f64, 0.6_f64, 0.8_f64, 0.1_f64, 1.2_f64,
-                    -0.3_f64, 0.2_f64, 0.7_f64, 0.4_f64,
-                ])
+                Array3::from_shape_vec(
+                    (3, 4, 1),
+                    vec![
+                        1.0_f64, 0.3_f64, -0.2_f64, 0.5_f64, 0.6_f64, 0.8_f64, 0.1_f64, 1.2_f64,
+                        -0.3_f64, 0.2_f64, 0.7_f64, 0.4_f64,
+                    ],
+                )
                 .unwrap(),
             ],
             shape: vec![3, 2, 4],
@@ -6474,19 +6616,26 @@ mod tests {
     fn tt_orthogonalize_right_preserves_reconstruction_and_rows() {
         let reference = TensorTrainResult {
             cores: vec![
-                Array3::from_shape_vec((1, 3, 2), vec![
-                    1.0_f64, 0.2_f64, 0.6_f64, -0.1_f64, 0.4_f64, 0.8_f64,
-                ])
+                Array3::from_shape_vec(
+                    (1, 3, 2),
+                    vec![1.0_f64, 0.2_f64, 0.6_f64, -0.1_f64, 0.4_f64, 0.8_f64],
+                )
                 .unwrap(),
-                Array3::from_shape_vec((2, 2, 3), vec![
-                    0.9_f64, -0.1_f64, 0.3_f64, 0.7_f64, -0.2_f64, 0.5_f64, 1.1_f64, 0.4_f64,
-                    0.2_f64, 0.3_f64, 0.8_f64, -0.6_f64,
-                ])
+                Array3::from_shape_vec(
+                    (2, 2, 3),
+                    vec![
+                        0.9_f64, -0.1_f64, 0.3_f64, 0.7_f64, -0.2_f64, 0.5_f64, 1.1_f64, 0.4_f64,
+                        0.2_f64, 0.3_f64, 0.8_f64, -0.6_f64,
+                    ],
+                )
                 .unwrap(),
-                Array3::from_shape_vec((3, 4, 1), vec![
-                    1.0_f64, 0.3_f64, -0.2_f64, 0.5_f64, 0.6_f64, 0.8_f64, 0.1_f64, 1.2_f64,
-                    -0.3_f64, 0.2_f64, 0.7_f64, 0.4_f64,
-                ])
+                Array3::from_shape_vec(
+                    (3, 4, 1),
+                    vec![
+                        1.0_f64, 0.3_f64, -0.2_f64, 0.5_f64, 0.6_f64, 0.8_f64, 0.1_f64, 1.2_f64,
+                        -0.3_f64, 0.2_f64, 0.7_f64, 0.4_f64,
+                    ],
+                )
                 .unwrap(),
             ],
             shape: vec![3, 2, 4],
@@ -6529,38 +6678,47 @@ mod tests {
     fn tt_round_reduces_ranks_with_small_reconstruction_error() {
         let reference = TensorTrainResult {
             cores: vec![
-                Array3::from_shape_vec((1, 3, 3), vec![
-                    1.0_f64,
-                    0.2_f64,
-                    1.0e-6_f64,
-                    0.6_f64,
-                    -0.1_f64,
-                    2.0e-6_f64,
-                    0.4_f64,
-                    0.8_f64,
-                    -1.0e-6_f64,
-                ])
+                Array3::from_shape_vec(
+                    (1, 3, 3),
+                    vec![
+                        1.0_f64,
+                        0.2_f64,
+                        1.0e-6_f64,
+                        0.6_f64,
+                        -0.1_f64,
+                        2.0e-6_f64,
+                        0.4_f64,
+                        0.8_f64,
+                        -1.0e-6_f64,
+                    ],
+                )
                 .unwrap(),
-                Array3::from_shape_vec((3, 2, 3), vec![
-                    1.0_f64, 0.0_f64, 0.0_f64, 0.5_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0_f64,
-                    0.0_f64, 0.0_f64, 0.4_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0e-4_f64, 0.0_f64,
-                    0.0_f64, 2.0e-4_f64,
-                ])
+                Array3::from_shape_vec(
+                    (3, 2, 3),
+                    vec![
+                        1.0_f64, 0.0_f64, 0.0_f64, 0.5_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0_f64,
+                        0.0_f64, 0.0_f64, 0.4_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0e-4_f64, 0.0_f64,
+                        0.0_f64, 2.0e-4_f64,
+                    ],
+                )
                 .unwrap(),
-                Array3::from_shape_vec((3, 4, 1), vec![
-                    1.0_f64,
-                    0.3_f64,
-                    -0.2_f64,
-                    0.5_f64,
-                    0.6_f64,
-                    0.8_f64,
-                    0.1_f64,
-                    1.2_f64,
-                    1.0e-6_f64,
-                    -2.0e-6_f64,
-                    3.0e-6_f64,
-                    1.0e-6_f64,
-                ])
+                Array3::from_shape_vec(
+                    (3, 4, 1),
+                    vec![
+                        1.0_f64,
+                        0.3_f64,
+                        -0.2_f64,
+                        0.5_f64,
+                        0.6_f64,
+                        0.8_f64,
+                        0.1_f64,
+                        1.2_f64,
+                        1.0e-6_f64,
+                        -2.0e-6_f64,
+                        3.0e-6_f64,
+                        1.0e-6_f64,
+                    ],
+                )
                 .unwrap(),
             ],
             shape: vec![3, 2, 4],
@@ -6607,15 +6765,21 @@ mod tests {
 
     #[test]
     fn tt_inner_and_norm_match_dense_f64() {
-        let left_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0_f64, -0.5_f64, 0.7_f64, 0.2_f64, -0.1_f64, 0.9_f64, 0.3_f64, 0.8_f64, -0.6_f64,
-            1.2_f64, 0.4_f64, -0.3_f64,
-        ])
+        let left_tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![
+                1.0_f64, -0.5_f64, 0.7_f64, 0.2_f64, -0.1_f64, 0.9_f64, 0.3_f64, 0.8_f64, -0.6_f64,
+                1.2_f64, 0.4_f64, -0.3_f64,
+            ],
+        )
         .unwrap();
-        let right_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            0.6_f64, 0.2_f64, -0.4_f64, 1.1_f64, 0.5_f64, -0.7_f64, 0.9_f64, 0.3_f64, 0.8_f64,
-            -0.2_f64, 0.4_f64, 1.0_f64,
-        ])
+        let right_tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![
+                0.6_f64, 0.2_f64, -0.4_f64, 1.1_f64, 0.5_f64, -0.7_f64, 0.9_f64, 0.3_f64, 0.8_f64,
+                -0.2_f64, 0.4_f64, 1.0_f64,
+            ],
+        )
         .unwrap();
         let config = TtSvdConfig::<f64> { max_rank: Some(4), tolerance: 1.0e-12_f64 };
         let left_tt = tt_svd(&left_tensor, &config).unwrap();
@@ -6636,13 +6800,15 @@ mod tests {
 
     #[test]
     fn tt_add_and_hadamard_match_dense_f32() {
-        let left_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            1.0_f32, 0.5_f32, -0.2_f32, 0.8_f32, 0.7_f32, -0.1_f32, 0.3_f32, 1.2_f32,
-        ])
+        let left_tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![1.0_f32, 0.5_f32, -0.2_f32, 0.8_f32, 0.7_f32, -0.1_f32, 0.3_f32, 1.2_f32],
+        )
         .unwrap();
-        let right_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            0.4_f32, -0.3_f32, 1.0_f32, 0.6_f32, -0.5_f32, 0.9_f32, 0.2_f32, -0.7_f32,
-        ])
+        let right_tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![0.4_f32, -0.3_f32, 1.0_f32, 0.6_f32, -0.5_f32, 0.9_f32, 0.2_f32, -0.7_f32],
+        )
         .unwrap();
         let config = TtSvdConfig::<f32> { max_rank: Some(4), tolerance: 1.0e-6_f32 };
         let left_tt = tt_svd(&left_tensor, &config).unwrap();
@@ -6666,15 +6832,21 @@ mod tests {
 
     #[test]
     fn tt_hadamard_round_limits_rank_and_preserves_product() {
-        let left_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0_f64, 0.1_f64, 0.8_f64, -0.2_f64, 0.4_f64, 0.9_f64, 0.3_f64, 0.7_f64, -0.5_f64,
-            1.1_f64, 0.6_f64, -0.4_f64,
-        ])
+        let left_tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![
+                1.0_f64, 0.1_f64, 0.8_f64, -0.2_f64, 0.4_f64, 0.9_f64, 0.3_f64, 0.7_f64, -0.5_f64,
+                1.1_f64, 0.6_f64, -0.4_f64,
+            ],
+        )
         .unwrap();
-        let right_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            0.7_f64, -0.3_f64, 0.5_f64, 0.2_f64, 1.0_f64, -0.6_f64, 0.4_f64, 0.8_f64, 0.9_f64,
-            -0.1_f64, 0.3_f64, 0.6_f64,
-        ])
+        let right_tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![
+                0.7_f64, -0.3_f64, 0.5_f64, 0.2_f64, 1.0_f64, -0.6_f64, 0.4_f64, 0.8_f64, 0.9_f64,
+                -0.1_f64, 0.3_f64, 0.6_f64,
+            ],
+        )
         .unwrap();
         let svd_config = TtSvdConfig::<f64> { max_rank: Some(4), tolerance: 1.0e-12_f64 };
         let left_tt = tt_svd(&left_tensor, &svd_config).unwrap();
@@ -6728,14 +6900,16 @@ mod tests {
     #[test]
     fn cp_als3_reconstructs_synthetic_rank2_tensor_f64() {
         let reference = CpAls3Result {
-            weights:  Array1::from_vec(vec![1.5_f64, 0.8_f64]),
-            factor_0: Array2::from_shape_vec((4, 2), vec![
-                1.0_f64, 0.2_f64, 0.7_f64, 1.1_f64, 0.3_f64, 0.9_f64, 1.2_f64, 0.4_f64,
-            ])
+            weights: Array1::from_vec(vec![1.5_f64, 0.8_f64]),
+            factor_0: Array2::from_shape_vec(
+                (4, 2),
+                vec![1.0_f64, 0.2_f64, 0.7_f64, 1.1_f64, 0.3_f64, 0.9_f64, 1.2_f64, 0.4_f64],
+            )
             .unwrap(),
-            factor_1: Array2::from_shape_vec((3, 2), vec![
-                0.5_f64, 1.0_f64, 1.3_f64, 0.4_f64, 0.8_f64, 1.2_f64,
-            ])
+            factor_1: Array2::from_shape_vec(
+                (3, 2),
+                vec![0.5_f64, 1.0_f64, 1.3_f64, 0.4_f64, 0.8_f64, 1.2_f64],
+            )
             .unwrap(),
             factor_2: Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.6_f64, 0.9_f64, 1.4_f64])
                 .unwrap(),
@@ -6760,14 +6934,16 @@ mod tests {
     #[test]
     fn cp_als3_view_and_into_variants_match_f32() {
         let reference = CpAls3Result {
-            weights:  Array1::from_vec(vec![1.0_f32, 0.6_f32]),
-            factor_0: Array2::from_shape_vec((3, 2), vec![
-                1.0_f32, 0.2_f32, 0.7_f32, 1.1_f32, 0.3_f32, 0.9_f32,
-            ])
+            weights: Array1::from_vec(vec![1.0_f32, 0.6_f32]),
+            factor_0: Array2::from_shape_vec(
+                (3, 2),
+                vec![1.0_f32, 0.2_f32, 0.7_f32, 1.1_f32, 0.3_f32, 0.9_f32],
+            )
             .unwrap(),
-            factor_1: Array2::from_shape_vec((3, 2), vec![
-                0.5_f32, 1.0_f32, 1.3_f32, 0.4_f32, 0.8_f32, 1.2_f32,
-            ])
+            factor_1: Array2::from_shape_vec(
+                (3, 2),
+                vec![0.5_f32, 1.0_f32, 1.3_f32, 0.4_f32, 0.8_f32, 1.2_f32],
+            )
             .unwrap(),
             factor_2: Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.6_f32, 0.9_f32, 1.4_f32])
                 .unwrap(),
@@ -6803,7 +6979,7 @@ mod tests {
         assert!(matches!(cp_als3(&cube, 1, &invalid_config), Err(TensorError::DimensionMismatch)));
 
         let invalid_factors = CpAls3Result {
-            weights:  Array1::from_vec(vec![1.0_f64]),
+            weights: Array1::from_vec(vec![1.0_f64]),
             factor_0: Array2::<f64>::zeros((2, 2)),
             factor_1: Array2::<f64>::zeros((2, 1)),
             factor_2: Array2::<f64>::zeros((2, 1)),
@@ -6819,18 +6995,20 @@ mod tests {
         let reference = CpAlsNdResult {
             weights: Array1::from_vec(vec![1.5_f64, 0.8_f64]),
             factors: vec![
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
-                Array2::from_shape_vec((4, 2), vec![
-                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, -1.0_f64,
-                ])
+                Array2::from_shape_vec(
+                    (4, 2),
+                    vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, -1.0_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
             ],
-            shape:   vec![3, 2, 4, 2],
+            shape: vec![3, 2, 4, 2],
         };
         let tensor = cp_als_nd_reconstruct(&reference).unwrap();
 
@@ -6855,13 +7033,14 @@ mod tests {
             weights: Array1::from_vec(vec![1.0_f32, 0.6_f32]),
             factors: vec![
                 Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
             ],
-            shape:   vec![2, 3, 2],
+            shape: vec![2, 3, 2],
         };
         let tensor = cp_als_nd_reconstruct(&reference).unwrap();
         let config = CpAlsConfig { max_iterations: 300, tolerance: 1.0e-6_f32 };
@@ -6909,7 +7088,7 @@ mod tests {
         let invalid_result = CpAlsNdResult {
             weights: Array1::from_vec(vec![1.0_f64]),
             factors: vec![Array2::<f64>::zeros((2, 2)), Array2::<f64>::zeros((3, 1))],
-            shape:   vec![2, 3],
+            shape: vec![2, 3],
         };
         assert!(matches!(
             cp_als_nd_reconstruct(&invalid_result),
@@ -6927,14 +7106,16 @@ mod tests {
     #[test]
     fn cp_als3_report_and_diagnostics_match_f64() {
         let reference = CpAls3Result {
-            weights:  Array1::from_vec(vec![1.5_f64, 0.8_f64]),
-            factor_0: Array2::from_shape_vec((4, 2), vec![
-                1.0_f64, 0.2_f64, 0.7_f64, 1.1_f64, 0.3_f64, 0.9_f64, 1.2_f64, 0.4_f64,
-            ])
+            weights: Array1::from_vec(vec![1.5_f64, 0.8_f64]),
+            factor_0: Array2::from_shape_vec(
+                (4, 2),
+                vec![1.0_f64, 0.2_f64, 0.7_f64, 1.1_f64, 0.3_f64, 0.9_f64, 1.2_f64, 0.4_f64],
+            )
             .unwrap(),
-            factor_1: Array2::from_shape_vec((3, 2), vec![
-                0.5_f64, 1.0_f64, 1.3_f64, 0.4_f64, 0.8_f64, 1.2_f64,
-            ])
+            factor_1: Array2::from_shape_vec(
+                (3, 2),
+                vec![0.5_f64, 1.0_f64, 1.3_f64, 0.4_f64, 0.8_f64, 1.2_f64],
+            )
             .unwrap(),
             factor_2: Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.6_f64, 0.9_f64, 1.4_f64])
                 .unwrap(),
@@ -6960,13 +7141,14 @@ mod tests {
             weights: Array1::from_vec(vec![1.0_f32, 0.6_f32]),
             factors: vec![
                 Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32, 1.0_f32],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32]).unwrap(),
             ],
-            shape:   vec![2, 3, 2],
+            shape: vec![2, 3, 2],
         };
         let tensor = cp_als_nd_reconstruct(&reference).unwrap();
         let config = CpAlsConfig { max_iterations: 300, tolerance: 1.0e-6_f32 };
@@ -6985,9 +7167,10 @@ mod tests {
 
     #[test]
     fn cp_als_diagnostics_reject_mismatched_reference_shapes() {
-        let cube = Array3::<f64>::from_shape_vec((2, 2, 2), vec![
-            1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 0.0_f64, 1.0_f64,
-        ])
+        let cube = Array3::<f64>::from_shape_vec(
+            (2, 2, 2),
+            vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 0.0_f64, 1.0_f64],
+        )
         .unwrap();
         let result3 = cp_als3(&cube, 1, &CpAlsConfig::<f64>::default()).unwrap();
         let bad_cube = Array3::<f64>::zeros((2, 2, 3));
@@ -6996,9 +7179,10 @@ mod tests {
             Err(TensorError::DimensionMismatch)
         ));
 
-        let tensor = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 0.0_f64, 1.0_f64,
-        ])
+        let tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 0.0_f64, 1.0_f64],
+        )
         .unwrap();
         let result_nd = cp_als_nd(&tensor, 1, &CpAlsConfig::<f64>::default()).unwrap();
         let bad_tensor = ArrayD::<f64>::zeros(IxDyn(&[2, 2, 3]));
@@ -7088,14 +7272,16 @@ mod tests {
     #[test]
     fn cp_factor_view_helpers_match_owned_paths_and_diagnostics() {
         let cp3_result = CpAls3Result {
-            weights:  Array1::from_vec(vec![1.5_f64, 0.8_f64]),
-            factor_0: Array2::from_shape_vec((4, 2), vec![
-                1.0_f64, 0.2_f64, 0.7_f64, 1.1_f64, 0.3_f64, 0.9_f64, 1.2_f64, 0.4_f64,
-            ])
+            weights: Array1::from_vec(vec![1.5_f64, 0.8_f64]),
+            factor_0: Array2::from_shape_vec(
+                (4, 2),
+                vec![1.0_f64, 0.2_f64, 0.7_f64, 1.1_f64, 0.3_f64, 0.9_f64, 1.2_f64, 0.4_f64],
+            )
             .unwrap(),
-            factor_1: Array2::from_shape_vec((3, 2), vec![
-                0.5_f64, 1.0_f64, 1.3_f64, 0.4_f64, 0.8_f64, 1.2_f64,
-            ])
+            factor_1: Array2::from_shape_vec(
+                (3, 2),
+                vec![0.5_f64, 1.0_f64, 1.3_f64, 0.4_f64, 0.8_f64, 1.2_f64],
+            )
             .unwrap(),
             factor_2: Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.6_f64, 0.9_f64, 1.4_f64])
                 .unwrap(),
@@ -7143,18 +7329,20 @@ mod tests {
         let cp_nd_result = CpAlsNdResult {
             weights: Array1::from_vec(vec![1.5_f64, 0.8_f64]),
             factors: vec![
-                Array2::from_shape_vec((3, 2), vec![
-                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64,
-                ])
+                Array2::from_shape_vec(
+                    (3, 2),
+                    vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
-                Array2::from_shape_vec((4, 2), vec![
-                    1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, -1.0_f64,
-                ])
+                Array2::from_shape_vec(
+                    (4, 2),
+                    vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64, -1.0_f64],
+                )
                 .unwrap(),
                 Array2::from_shape_vec((2, 2), vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64]).unwrap(),
             ],
-            shape:   vec![3, 2, 4, 2],
+            shape: vec![3, 2, 4, 2],
         };
         let cp_nd_tensor = cp_als_nd_reconstruct(&cp_nd_result).unwrap();
         let mut cp_nd_weight_storage = Array1::<f64>::zeros(4);
@@ -7238,13 +7426,15 @@ mod tests {
         assert_close3(&hosvd3_reconstruct(&hosvd3_owned).unwrap(), &cube, 1.0e-10);
         assert_close3(&hosvd3_reconstruct(&hosvd3_viewed).unwrap(), &cube, 1.0e-10);
 
-        let left_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            1.0_f64, -0.5, 0.7, 0.2, -0.1, 0.9, 0.3, 0.8, -0.6, 1.2, 0.4, -0.3,
-        ])
+        let left_tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![1.0_f64, -0.5, 0.7, 0.2, -0.1, 0.9, 0.3, 0.8, -0.6, 1.2, 0.4, -0.3],
+        )
         .unwrap();
-        let right_tensor = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), vec![
-            0.6_f64, 0.2, -0.4, 1.1, 0.5, -0.7, 0.9, 0.3, 0.8, -0.2, 0.4, 1.0,
-        ])
+        let right_tensor = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            vec![0.6_f64, 0.2, -0.4, 1.1, 0.5, -0.7, 0.9, 0.3, 0.8, -0.2, 0.4, 1.0],
+        )
         .unwrap();
         let round_config = TtRoundConfig::<f64> { max_rank: Some(2), tolerance: 1.0e-8 };
         let left_tt = tt_svd(&left_tensor, &TtSvdConfig::<f64>::default()).unwrap();

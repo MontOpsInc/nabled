@@ -12,14 +12,17 @@ fn top_k_indices(scores: &[f64], k: usize) -> Vec<(usize, f64)> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let embeddings = Array2::from_shape_vec((6, 5), vec![
-        0.8, 0.1, 0.0, 0.4, 0.2, // doc 0
-        0.7, 0.2, 0.1, 0.3, 0.1, // doc 1
-        0.1, 0.9, 0.2, 0.0, 0.1, // doc 2
-        0.0, 0.8, 0.3, 0.1, 0.2, // doc 3
-        0.2, 0.1, 0.9, 0.7, 0.6, // doc 4
-        0.1, 0.0, 0.8, 0.6, 0.7, // doc 5
-    ])?;
+    let embeddings = Array2::from_shape_vec(
+        (6, 5),
+        vec![
+            0.8, 0.1, 0.0, 0.4, 0.2, // doc 0
+            0.7, 0.2, 0.1, 0.3, 0.1, // doc 1
+            0.1, 0.9, 0.2, 0.0, 0.1, // doc 2
+            0.0, 0.8, 0.3, 0.1, 0.2, // doc 3
+            0.2, 0.1, 0.9, 0.7, 0.6, // doc 4
+            0.1, 0.0, 0.8, 0.6, 0.7, // doc 5
+        ],
+    )?;
     let query = Array2::from_shape_vec((1, 5), vec![0.75, 0.2, 0.1, 0.35, 0.15])?;
 
     let full_scores = vector::pairwise_cosine_similarity(&query, &embeddings)?;

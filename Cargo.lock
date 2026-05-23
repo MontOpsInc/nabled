@@ -1665,6 +1665,7 @@ name = "nabled-dynamics"
 version = "0.0.8"
 dependencies = [
  "approx",
+ "criterion",
  "nabled-core",
  "nabled-kinematics",
  "nabled-linalg",

@@ -34,22 +34,22 @@ use crate::schur;
 #[derive(Debug, Clone)]
 pub struct NdarraySVD<T: NabledReal> {
     /// Left singular vectors (`m x k`).
-    pub u:               Array2<T>,
+    pub u: Array2<T>,
     /// Singular values (`k`).
     pub singular_values: Array1<T>,
     /// Right singular vectors transposed (`k x n`).
-    pub vt:              Array2<T>,
+    pub vt: Array2<T>,
 }
 
 /// Complex SVD result for ndarray matrices.
 #[derive(Debug, Clone)]
 pub struct NdarrayComplexSVD {
     /// Left singular vectors (`m x k`).
-    pub u:               Array2<Complex64>,
+    pub u: Array2<Complex64>,
     /// Singular values (`k`).
     pub singular_values: Array1<f64>,
     /// Right singular vectors transposed (`k x n`).
-    pub vt:              Array2<Complex64>,
+    pub vt: Array2<Complex64>,
 }
 
 /// Error types for SVD computation.
@@ -572,9 +572,9 @@ where
     let keep = k.min(full_svd.singular_values.len());
 
     Ok(NdarraySVD {
-        u:               full_svd.u.slice(s![.., ..keep]).to_owned(),
+        u: full_svd.u.slice(s![.., ..keep]).to_owned(),
         singular_values: full_svd.singular_values.slice(s![..keep]).to_owned(),
-        vt:              full_svd.vt.slice(s![..keep, ..]).to_owned(),
+        vt: full_svd.vt.slice(s![..keep, ..]).to_owned(),
     })
 }
 
@@ -607,9 +607,9 @@ pub fn decompose_truncated_view<T: SvdInternalScalar>(
     let keep = k.min(full_svd.singular_values.len());
 
     Ok(NdarraySVD {
-        u:               full_svd.u.slice(s![.., ..keep]).to_owned(),
+        u: full_svd.u.slice(s![.., ..keep]).to_owned(),
         singular_values: full_svd.singular_values.slice(s![..keep]).to_owned(),
-        vt:              full_svd.vt.slice(s![..keep, ..]).to_owned(),
+        vt: full_svd.vt.slice(s![..keep, ..]).to_owned(),
     })
 }
 
@@ -1203,12 +1203,15 @@ mod tests {
 
     #[test]
     fn complex_pseudo_inverse_from_svd_reconstructs_input() {
-        let matrix = Array2::<Complex64>::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(0.5, 0.25),
-            Complex64::new(-1.0, 2.0),
-        ])
+        let matrix = Array2::<Complex64>::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0, 1.0),
+                Complex64::new(2.0, -1.0),
+                Complex64::new(0.5, 0.25),
+                Complex64::new(-1.0, 2.0),
+            ],
+        )
         .unwrap();
         let svd = decompose_complex(&matrix).unwrap();
         let mut pinv = Array2::<Complex64>::zeros((matrix.ncols(), matrix.nrows()));
@@ -1258,12 +1261,15 @@ mod tests {
 
     #[test]
     fn complex_svd_reconstructs_input() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(1.0, 1.0),
-            Complex64::new(2.0, -1.0),
-            Complex64::new(0.5, 0.25),
-            Complex64::new(-1.0, 2.0),
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(1.0, 1.0),
+                Complex64::new(2.0, -1.0),
+                Complex64::new(0.5, 0.25),
+                Complex64::new(-1.0, 2.0),
+            ],
+        )
         .unwrap();
         let svd = decompose_complex(&matrix).unwrap();
         let reconstructed = reconstruct_matrix_complex(&svd);
@@ -1355,9 +1361,10 @@ mod tests {
 
     #[test]
     fn null_space_from_full_svd_factors_matches_matrix_path() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![
-            1.0_f64, 2.0_f64, 2.0_f64, 4.0_f64, 3.0_f64, 6.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f64, 2.0_f64, 2.0_f64, 4.0_f64, 3.0_f64, 6.0_f64],
+        )
         .unwrap();
         let direct = null_space(&matrix, Some(1.0e-10_f64)).unwrap();
         let svd = decompose(&matrix).unwrap();
@@ -1374,9 +1381,10 @@ mod tests {
     #[test]
     fn null_space_from_svd_rejects_missing_full_right_basis() {
         let singular_values = Array1::from_vec(vec![3.0_f64, 1.0_f64]);
-        let vt = Array2::from_shape_vec((2, 3), vec![
-            1.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 0.0_f64,
-        ])
+        let vt = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 0.0_f64],
+        )
         .unwrap();
 
         let result = null_space_from_svd_view(&singular_values.view(), &vt.view(), None);

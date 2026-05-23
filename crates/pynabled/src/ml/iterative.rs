@@ -26,7 +26,7 @@ pub fn conjugate_gradient<'py>(
         (utils::RealReadonlyArray2::F32(a), utils::RealReadonlyArray1::F32(b)) => {
             let default = IterativeConfig::<f32>::default_f32();
             let config = IterativeConfig {
-                tolerance:      tolerance_f32(tolerance, default.tolerance),
+                tolerance: tolerance_f32(tolerance, default.tolerance),
                 max_iterations: max_iterations.unwrap_or(default.max_iterations),
             };
             let result = nabled_ml::iterative::conjugate_gradient_view(
@@ -40,7 +40,7 @@ pub fn conjugate_gradient<'py>(
         (utils::RealReadonlyArray2::F64(a), utils::RealReadonlyArray1::F64(b)) => {
             let default = IterativeConfig::<f64>::default_f64();
             let config = IterativeConfig {
-                tolerance:      tolerance.unwrap_or(default.tolerance),
+                tolerance: tolerance.unwrap_or(default.tolerance),
                 max_iterations: max_iterations.unwrap_or(default.max_iterations),
             };
             let result = nabled_ml::iterative::conjugate_gradient_view(
@@ -68,7 +68,7 @@ pub fn conjugate_gradient_into(
         (utils::RealReadonlyArray2::F32(a), utils::RealReadonlyArray1::F32(b)) => {
             let default = IterativeConfig::<f32>::default_f32();
             let config = IterativeConfig {
-                tolerance:      tolerance_f32(tolerance, default.tolerance),
+                tolerance: tolerance_f32(tolerance, default.tolerance),
                 max_iterations: max_iterations.unwrap_or(default.max_iterations),
             };
             let mut output_arr = utils::output_array1::<f32>(output, "output", "float32")?;
@@ -83,7 +83,7 @@ pub fn conjugate_gradient_into(
         (utils::RealReadonlyArray2::F64(a), utils::RealReadonlyArray1::F64(b)) => {
             let default = IterativeConfig::<f64>::default_f64();
             let config = IterativeConfig {
-                tolerance:      tolerance.unwrap_or(default.tolerance),
+                tolerance: tolerance.unwrap_or(default.tolerance),
                 max_iterations: max_iterations.unwrap_or(default.max_iterations),
             };
             let mut output_arr = utils::output_array1::<f64>(output, "output", "float64")?;
@@ -112,7 +112,7 @@ pub fn gmres<'py>(
         (utils::RealReadonlyArray2::F32(a), utils::RealReadonlyArray1::F32(b)) => {
             let default = IterativeConfig::<f32>::default_f32();
             let config = IterativeConfig {
-                tolerance:      tolerance_f32(tolerance, default.tolerance),
+                tolerance: tolerance_f32(tolerance, default.tolerance),
                 max_iterations: max_iterations.unwrap_or(default.max_iterations),
             };
             let result = nabled_ml::iterative::gmres_view(&a.as_array(), &b.as_array(), &config)
@@ -122,7 +122,7 @@ pub fn gmres<'py>(
         (utils::RealReadonlyArray2::F64(a), utils::RealReadonlyArray1::F64(b)) => {
             let default = IterativeConfig::<f64>::default_f64();
             let config = IterativeConfig {
-                tolerance:      tolerance.unwrap_or(default.tolerance),
+                tolerance: tolerance.unwrap_or(default.tolerance),
                 max_iterations: max_iterations.unwrap_or(default.max_iterations),
             };
             let result = nabled_ml::iterative::gmres_view(&a.as_array(), &b.as_array(), &config)
@@ -146,7 +146,7 @@ pub fn gmres_into(
         (utils::RealReadonlyArray2::F32(a), utils::RealReadonlyArray1::F32(b)) => {
             let default = IterativeConfig::<f32>::default_f32();
             let config = IterativeConfig {
-                tolerance:      tolerance_f32(tolerance, default.tolerance),
+                tolerance: tolerance_f32(tolerance, default.tolerance),
                 max_iterations: max_iterations.unwrap_or(default.max_iterations),
             };
             let mut output_arr = utils::output_array1::<f32>(output, "output", "float32")?;
@@ -161,7 +161,7 @@ pub fn gmres_into(
         (utils::RealReadonlyArray2::F64(a), utils::RealReadonlyArray1::F64(b)) => {
             let default = IterativeConfig::<f64>::default_f64();
             let config = IterativeConfig {
-                tolerance:      tolerance.unwrap_or(default.tolerance),
+                tolerance: tolerance.unwrap_or(default.tolerance),
                 max_iterations: max_iterations.unwrap_or(default.max_iterations),
             };
             let mut output_arr = utils::output_array1::<f64>(output, "output", "float64")?;
@@ -192,7 +192,7 @@ pub fn conjugate_gradient_complex<'py>(
     ) {
         (utils::NumericReadonlyArray2::C64(a), utils::NumericReadonlyArray1::C64(b)) => {
             let config = IterativeConfig {
-                tolerance:      tolerance.unwrap_or(1e-10),
+                tolerance: tolerance.unwrap_or(1e-10),
                 max_iterations: max_iterations.unwrap_or(1000),
             };
             let result = nabled_ml::iterative::conjugate_gradient_complex_view(
@@ -222,7 +222,7 @@ pub fn conjugate_gradient_complex_into(
     ) {
         (utils::NumericReadonlyArray2::C64(a), utils::NumericReadonlyArray1::C64(b)) => {
             let config = IterativeConfig {
-                tolerance:      tolerance.unwrap_or(1e-10),
+                tolerance: tolerance.unwrap_or(1e-10),
                 max_iterations: max_iterations.unwrap_or(1000),
             };
             let mut output_arr = utils::output_array1::<Complex64>(output, "output", "complex128")?;
@@ -253,7 +253,7 @@ pub fn gmres_complex<'py>(
     ) {
         (utils::NumericReadonlyArray2::C64(a), utils::NumericReadonlyArray1::C64(b)) => {
             let config = IterativeConfig {
-                tolerance:      tolerance.unwrap_or(1e-10),
+                tolerance: tolerance.unwrap_or(1e-10),
                 max_iterations: max_iterations.unwrap_or(1000),
             };
             let result =
@@ -280,7 +280,7 @@ pub fn gmres_complex_into(
     ) {
         (utils::NumericReadonlyArray2::C64(a), utils::NumericReadonlyArray1::C64(b)) => {
             let config = IterativeConfig {
-                tolerance:      tolerance.unwrap_or(1e-10),
+                tolerance: tolerance.unwrap_or(1e-10),
                 max_iterations: max_iterations.unwrap_or(1000),
             };
             let mut output_arr = utils::output_array1::<Complex64>(output, "output", "complex128")?;

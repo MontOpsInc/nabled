@@ -51,6 +51,7 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 |---|---|
 | `chain::*` | `kinematics::chain` |
 | `fk::*` | `kinematics::fk` |
+| `tree::*`, `KinematicTreeModel` | `kinematics::tree` (URDF-origin tree FK/Jacobian) |
 | `jacobian::*` | `kinematics::jacobian` |
 | `ik::*`, `IkResult`, `IkWorkspace`, `JointLimits` | `kinematics::ik`, `kinematics::chain` |
 
@@ -59,6 +60,7 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 | Function | Owner |
 |---|---|
 | `joint::*`, `link::*`, `robot::*` | `nabled-model` |
+| `origin::*`, `tree_model::*` | `nabled-model` (URDF joint origins, tree trait impl) |
 | `dh::to_chain_spec` | `nabled-model::dh` |
 | `urdf::*`, `fixture::load_planar2r_json` | `nabled-model` |
 
@@ -80,8 +82,23 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 |---|---|
 | `kalman::*`, `ekf::EkModel`, `camera::PinholeIntrinsics`, `imu::strapdown_*` | `nabled-sensor` |
 
+### `pynabled` Physical AI (post-0.0.8)
+
+| Module | Rust source | Python surface |
+|---|---|---|
+| `pynabled.geometry` | `nabled::linalg::geometry` | quat, SO3, SE3, `Transform3` |
+| `pynabled.kinematics` | `nabled::kinematics` | FK, Jacobian, DLS IK |
+| `pynabled.model` | `nabled::model` | URDF ingest, fixtures, `to_chain_spec` |
+| `pynabled.dynamics` | `nabled::dynamics` | RNEA, mass matrix, forward dynamics |
+| `pynabled.control` | `nabled::control` | LQR, DARE, pole placement, observer |
+| `pynabled.sensor` | `nabled::sensor` | Kalman, EKF callbacks, camera, IMU |
+| `pynabled.signal` | `nabled::linalg::signal` | FFT/autocorr (feature `signal`) |
+
+Parity matrix: `docs/PYNABLED_PHYSICAL_AI_PARITY.md`.
+
 ### Deferred
 
 | Surface | Status |
 |---|---|
-| `pynabled` Physical AI bindings | deferred |
+| Branched-tree IK | deferred (serial chain extract only) |
+| `nabled-sim` orchestration | deferred (examples-first; no shared code >30%) |

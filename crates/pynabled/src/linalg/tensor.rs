@@ -72,11 +72,17 @@ fn output_arrayd<'py, T: Element>(
         .map_err(Into::into)
 }
 
-fn standard_array2<T>(array: Array2<T>) -> Array2<T> { array }
+fn standard_array2<T>(array: Array2<T>) -> Array2<T> {
+    array
+}
 
-fn standard_array3<T>(array: Array3<T>) -> Array3<T> { array }
+fn standard_array3<T>(array: Array3<T>) -> Array3<T> {
+    array
+}
 
-fn standard_arrayd<T>(array: ArrayD<T>) -> ArrayD<T> { array }
+fn standard_arrayd<T>(array: ArrayD<T>) -> ArrayD<T> {
+    array
+}
 
 pub(crate) fn real_scalar_to_f64<T: ToPrimitive>(value: T, name: &str) -> PyResult<f64> {
     value

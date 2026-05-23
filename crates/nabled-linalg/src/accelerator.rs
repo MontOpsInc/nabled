@@ -44,10 +44,13 @@ mod tests {
 
     #[test]
     fn chunking_visits_all_rows() {
-        let matrix = Array2::from_shape_vec((5, 2), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64, 7.0_f64, 8.0_f64, 9.0_f64,
-            10.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (5, 2),
+            vec![
+                1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64, 7.0_f64, 8.0_f64, 9.0_f64,
+                10.0_f64,
+            ],
+        )
         .unwrap();
 
         let mut seen_rows = 0_usize;
@@ -67,13 +70,15 @@ mod tests {
 
     #[test]
     fn serial_matmat_matches_expected() {
-        let left = Array2::from_shape_vec((2, 3), vec![
-            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64,
-        ])
+        let left = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64],
+        )
         .unwrap();
-        let right = Array2::from_shape_vec((3, 2), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64,
-        ])
+        let right = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64],
+        )
         .unwrap();
         let output = matmat_serial(&left, &right).unwrap();
         assert_eq!(output.dim(), (2, 2));
@@ -85,13 +90,15 @@ mod tests {
 
     #[test]
     fn backend_dispatch_selects_expected_kernel() {
-        let left = Array2::from_shape_vec((2, 3), vec![
-            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64,
-        ])
+        let left = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64],
+        )
         .unwrap();
-        let right = Array2::from_shape_vec((3, 2), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64,
-        ])
+        let right = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64],
+        )
         .unwrap();
 
         let serial = matmat_with_backend::<CpuBackend, f64>(&left, &right).unwrap();
@@ -105,9 +112,10 @@ mod tests {
 
     #[test]
     fn backend_dispatch_selects_expected_matvec_kernel() {
-        let matrix = Array2::from_shape_vec((2, 3), vec![
-            1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f64, 2.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64],
+        )
         .unwrap();
         let vector = Array1::from_vec(vec![1.0_f64, 2.0_f64, 3.0_f64]);
 
@@ -121,15 +129,21 @@ mod tests {
 
     #[test]
     fn backend_dispatch_selects_expected_batched_matmat_kernel() {
-        let left = Array3::from_shape_vec((2, 2, 2), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, // batch 0
-            5.0_f64, 6.0_f64, 7.0_f64, 8.0_f64, // batch 1
-        ])
+        let left = Array3::from_shape_vec(
+            (2, 2, 2),
+            vec![
+                1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, // batch 0
+                5.0_f64, 6.0_f64, 7.0_f64, 8.0_f64, // batch 1
+            ],
+        )
         .unwrap();
-        let right = Array3::from_shape_vec((2, 2, 2), vec![
-            1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, // identity
-            2.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
-        ])
+        let right = Array3::from_shape_vec(
+            (2, 2, 2),
+            vec![
+                1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, // identity
+                2.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
+            ],
+        )
         .unwrap();
 
         let cpu = batched_matmat_with_backend::<CpuBackend, f64>(&left, &right).unwrap();
@@ -154,13 +168,15 @@ mod tests {
 
     #[test]
     fn backend_dispatch_selects_expected_batched_row_matvec_kernel() {
-        let vectors = Array2::from_shape_vec((2, 3), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 0.5_f64, -1.0_f64, 1.0_f64,
-        ])
+        let vectors = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f64, 0.0_f64, 2.0_f64, 0.5_f64, -1.0_f64, 1.0_f64],
+        )
         .unwrap();
-        let matrix = Array2::from_shape_vec((2, 3), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 0.0_f64, 1.0_f64, 1.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f64, 2.0_f64, 3.0_f64, 0.0_f64, 1.0_f64, 1.0_f64],
+        )
         .unwrap();
 
         let cpu = batched_row_matvec_with_backend::<CpuBackend, f64>(&vectors, &matrix).unwrap();
@@ -264,25 +280,29 @@ mod tests {
         assert!((summed[[0]] - 3.0_f64).abs() < 1e-12_f64);
         assert!((summed[[1]] - 7.0_f64).abs() < 1e-12_f64);
 
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 3]), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64,
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]),
+            vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[3, 2]), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64,
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[3, 2]),
+            vec![1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64],
+        )
         .unwrap();
         let contracted =
             tensor_contract_axes_with_backend::<CpuBackend, f64>(&left, &right, 1, 0).unwrap();
         assert_eq!(contracted.shape(), &[2, 2]);
 
-        let batched_left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64, 7.0_f64, 8.0_f64,
-        ])
+        let batched_left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![1.0_f64, 2.0_f64, 3.0_f64, 4.0_f64, 5.0_f64, 6.0_f64, 7.0_f64, 8.0_f64],
+        )
         .unwrap();
-        let batched_right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 2.0_f64,
-        ])
+        let batched_right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![1.0_f64, 0.0_f64, 0.0_f64, 1.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 2.0_f64],
+        )
         .unwrap();
         let batched = tensor_batched_matmul_last_two_with_backend::<CpuBackend, f64>(
             &batched_left,
@@ -344,13 +364,15 @@ mod tests {
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
     fn gpu_matmat_matches_cpu() {
-        let left = Array2::from_shape_vec((2, 3), vec![
-            1.0_f32, 2.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32,
-        ])
+        let left = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f32, 2.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32],
+        )
         .unwrap();
-        let right = Array2::from_shape_vec((3, 2), vec![
-            1.0_f32, 0.0_f32, 2.0_f32, 1.0_f32, 1.0_f32, 3.0_f32,
-        ])
+        let right = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f32, 0.0_f32, 2.0_f32, 1.0_f32, 1.0_f32, 3.0_f32],
+        )
         .unwrap();
         let cpu = matmat_with_backend::<CpuBackend, f32>(&left, &right).unwrap();
         let gpu = matmat_with_backend::<GpuBackend, f32>(&left, &right).unwrap();
@@ -364,9 +386,10 @@ mod tests {
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
     fn gpu_matvec_matches_cpu() {
-        let matrix = Array2::from_shape_vec((2, 3), vec![
-            1.0_f32, 2.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f32, 2.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32],
+        )
         .unwrap();
         let vector = Array1::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32]);
         let cpu = matvec_with_backend::<CpuBackend, f32>(&matrix, &vector).unwrap();
@@ -379,15 +402,21 @@ mod tests {
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
     fn gpu_batched_matmat_matches_cpu() {
-        let left = Array3::from_shape_vec((2, 2, 2), vec![
-            1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, //
-            5.0_f32, 6.0_f32, 7.0_f32, 8.0_f32,
-        ])
+        let left = Array3::from_shape_vec(
+            (2, 2, 2),
+            vec![
+                1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, //
+                5.0_f32, 6.0_f32, 7.0_f32, 8.0_f32,
+            ],
+        )
         .unwrap();
-        let right = Array3::from_shape_vec((2, 2, 2), vec![
-            1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, //
-            2.0_f32, 1.0_f32, 1.0_f32, 2.0_f32,
-        ])
+        let right = Array3::from_shape_vec(
+            (2, 2, 2),
+            vec![
+                1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, //
+                2.0_f32, 1.0_f32, 1.0_f32, 2.0_f32,
+            ],
+        )
         .unwrap();
         let cpu = batched_matmat_with_backend::<CpuBackend, f32>(&left, &right).unwrap();
         let gpu = batched_matmat_with_backend::<GpuBackend, f32>(&left, &right).unwrap();
@@ -403,13 +432,15 @@ mod tests {
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
     fn gpu_batched_row_matvec_matches_cpu() {
-        let vectors = Array2::from_shape_vec((2, 3), vec![
-            1.0_f32, 0.0_f32, 2.0_f32, 0.5_f32, -1.0_f32, 1.0_f32,
-        ])
+        let vectors = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f32, 0.0_f32, 2.0_f32, 0.5_f32, -1.0_f32, 1.0_f32],
+        )
         .unwrap();
-        let matrix = Array2::from_shape_vec((2, 3), vec![
-            1.0_f32, 2.0_f32, 3.0_f32, 0.0_f32, 1.0_f32, 1.0_f32,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (2, 3),
+            vec![1.0_f32, 2.0_f32, 3.0_f32, 0.0_f32, 1.0_f32, 1.0_f32],
+        )
         .unwrap();
         let cpu = batched_row_matvec_with_backend::<CpuBackend, f32>(&vectors, &matrix).unwrap();
         let gpu = batched_row_matvec_with_backend::<GpuBackend, f32>(&vectors, &matrix).unwrap();
@@ -423,14 +454,19 @@ mod tests {
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
     fn gpu_sparse_kernels_match_cpu() {
-        let sparse = CsrMatrix::new(3, 3, vec![0, 2, 5, 7], vec![0, 1, 0, 1, 2, 1, 2], vec![
-            4.0_f32, 1.0_f32, 1.0_f32, 3.0_f32, 1.0_f32, 1.0_f32, 2.0_f32,
-        ])
+        let sparse = CsrMatrix::new(
+            3,
+            3,
+            vec![0, 2, 5, 7],
+            vec![0, 1, 0, 1, 2, 1, 2],
+            vec![4.0_f32, 1.0_f32, 1.0_f32, 3.0_f32, 1.0_f32, 1.0_f32, 2.0_f32],
+        )
         .unwrap();
         let vector = Array1::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32]);
-        let dense = Array2::from_shape_vec((3, 2), vec![
-            1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 2.0_f32, 1.0_f32,
-        ])
+        let dense = Array2::from_shape_vec(
+            (3, 2),
+            vec![1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 2.0_f32, 1.0_f32],
+        )
         .unwrap();
 
         let cpu_vec = sparse_matvec_with_backend::<CpuBackend, f32>(&sparse, &vector).unwrap();
@@ -484,15 +520,21 @@ mod tests {
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
     fn gpu_tensor_batched_matmul_matches_cpu() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, //
-            5.0_f32, 6.0_f32, 7.0_f32, 8.0_f32,
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![
+                1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, //
+                5.0_f32, 6.0_f32, 7.0_f32, 8.0_f32,
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, //
-            2.0_f32, 1.0_f32, 1.0_f32, 2.0_f32,
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![
+                1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, //
+                2.0_f32, 1.0_f32, 1.0_f32, 2.0_f32,
+            ],
+        )
         .unwrap();
         let cpu =
             tensor_batched_matmul_last_two_with_backend::<CpuBackend, f32>(&left, &right).unwrap();
@@ -537,27 +579,33 @@ mod tests {
     #[cfg(feature = "accelerator-wgpu")]
     #[test]
     fn gpu_complex_tensor_kernels_match_cpu() {
-        let left = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            Complex64::new(1.0, 0.5),
-            Complex64::new(2.0, -0.25),
-            Complex64::new(-1.5, 0.75),
-            Complex64::new(0.25, -1.0),
-            Complex64::new(0.5, 1.5),
-            Complex64::new(-0.75, -0.5),
-            Complex64::new(1.25, 0.0),
-            Complex64::new(2.0, -1.0),
-        ])
+        let left = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![
+                Complex64::new(1.0, 0.5),
+                Complex64::new(2.0, -0.25),
+                Complex64::new(-1.5, 0.75),
+                Complex64::new(0.25, -1.0),
+                Complex64::new(0.5, 1.5),
+                Complex64::new(-0.75, -0.5),
+                Complex64::new(1.25, 0.0),
+                Complex64::new(2.0, -1.0),
+            ],
+        )
         .unwrap();
-        let right = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![
-            Complex64::new(0.5, -1.0),
-            Complex64::new(1.5, 0.25),
-            Complex64::new(-0.5, 0.75),
-            Complex64::new(2.0, -0.25),
-            Complex64::new(1.25, 0.5),
-            Complex64::new(0.5, -1.25),
-            Complex64::new(-1.0, 0.0),
-            Complex64::new(0.75, 1.0),
-        ])
+        let right = ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]),
+            vec![
+                Complex64::new(0.5, -1.0),
+                Complex64::new(1.5, 0.25),
+                Complex64::new(-0.5, 0.75),
+                Complex64::new(2.0, -0.25),
+                Complex64::new(1.25, 0.5),
+                Complex64::new(0.5, -1.25),
+                Complex64::new(-1.0, 0.0),
+                Complex64::new(0.75, 1.0),
+            ],
+        )
         .unwrap();
 
         let tolerance = 1.0e-8_f64;
@@ -594,14 +642,18 @@ mod tests {
     #[cfg(feature = "accelerator-rayon")]
     #[test]
     fn accelerated_matmat_matches_serial() {
-        let left = Array2::from_shape_vec((3, 4), vec![
-            1.0_f64, 2.0_f64, 0.0_f64, 1.0_f64, 0.0_f64, 1.0_f64, 3.0_f64, 2.0_f64, 2.0_f64,
-            0.0_f64, 1.0_f64, -1.0_f64,
-        ])
+        let left = Array2::from_shape_vec(
+            (3, 4),
+            vec![
+                1.0_f64, 2.0_f64, 0.0_f64, 1.0_f64, 0.0_f64, 1.0_f64, 3.0_f64, 2.0_f64, 2.0_f64,
+                0.0_f64, 1.0_f64, -1.0_f64,
+            ],
+        )
         .unwrap();
-        let right = Array2::from_shape_vec((4, 2), vec![
-            1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, -1.0_f64, 2.0_f64,
-        ])
+        let right = Array2::from_shape_vec(
+            (4, 2),
+            vec![1.0_f64, 0.0_f64, 2.0_f64, 1.0_f64, 1.0_f64, 3.0_f64, -1.0_f64, 2.0_f64],
+        )
         .unwrap();
         let serial = matmat_serial(&left, &right).unwrap();
         let accelerated = matmat_accelerated(&left, &right).unwrap();

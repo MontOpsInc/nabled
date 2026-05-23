@@ -46,7 +46,9 @@ pub(crate) fn reset_magma_provider_call_count() {
 }
 
 #[cfg(test)]
-pub(crate) fn magma_provider_call_count() -> u64 { MAGMA_PROVIDER_CALLS.load(Ordering::Relaxed) }
+pub(crate) fn magma_provider_call_count() -> u64 {
+    MAGMA_PROVIDER_CALLS.load(Ordering::Relaxed)
+}
 
 #[link(name = "magma")]
 unsafe extern "C" {
@@ -831,10 +833,14 @@ fn ensure_magma_initialized() -> Result<(), &'static str> {
 }
 
 #[inline]
-fn callsite_func() -> *const c_char { CALLSITE_FUNC.as_ptr().cast() }
+fn callsite_func() -> *const c_char {
+    CALLSITE_FUNC.as_ptr().cast()
+}
 
 #[inline]
-fn callsite_file() -> *const c_char { CALLSITE_FILE.as_ptr().cast() }
+fn callsite_file() -> *const c_char {
+    CALLSITE_FILE.as_ptr().cast()
+}
 
 #[inline]
 fn magma_trace_alloc_enabled() -> bool {
@@ -882,7 +888,9 @@ impl MagmaQueueGuard {
     }
 
     #[inline]
-    fn as_raw(&self) -> MagmaQueue { self.raw }
+    fn as_raw(&self) -> MagmaQueue {
+        self.raw
+    }
 
     fn sync(&self) {
         // SAFETY: Queue handle is valid for lifetime of this guard.
@@ -904,7 +912,9 @@ struct MagmaDeviceMem {
 }
 
 impl MagmaDeviceMem {
-    fn alloc(bytes: usize) -> Result<Self, &'static str> { Self::alloc_labeled("unnamed", bytes) }
+    fn alloc(bytes: usize) -> Result<Self, &'static str> {
+        Self::alloc_labeled("unnamed", bytes)
+    }
 
     fn alloc_labeled(label: &str, bytes: usize) -> Result<Self, &'static str> {
         let requested = bytes.max(1);
@@ -924,7 +934,9 @@ impl MagmaDeviceMem {
     }
 
     #[inline]
-    fn as_ptr<T>(&self) -> *mut T { self.ptr.cast() }
+    fn as_ptr<T>(&self) -> *mut T {
+        self.ptr.cast()
+    }
 }
 
 impl Drop for MagmaDeviceMem {

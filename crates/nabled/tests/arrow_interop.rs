@@ -107,14 +107,14 @@ fn arrow_vector_workflows_cover_real_surface() {
 
 #[test]
 fn arrow_vector_workflows_cover_complex_batch_surface() {
-    let left = array![[Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)], [
-        Complex64::new(2.0, 0.0),
-        Complex64::new(0.0, 2.0)
-    ],];
-    let right = array![[Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)], [
-        Complex64::new(0.0, 2.0),
-        Complex64::new(2.0, 0.0)
-    ],];
+    let left = array![
+        [Complex64::new(1.0, 1.0), Complex64::new(0.0, 2.0)],
+        [Complex64::new(2.0, 0.0), Complex64::new(0.0, 2.0)],
+    ];
+    let right = array![
+        [Complex64::new(1.0, -1.0), Complex64::new(2.0, 0.0)],
+        [Complex64::new(0.0, 2.0), Complex64::new(2.0, 0.0)],
+    ];
 
     let left_arrow = array2_complex64_to_fixed_size_list(left.clone()).unwrap();
     let right_arrow = array2_complex64_to_fixed_size_list(right.clone()).unwrap();
@@ -503,16 +503,20 @@ fn arrow_optimization_work() {
     .unwrap();
     assert_abs_diff_eq!(gd.as_ndarray().unwrap()[0], 3.0_f64, epsilon = 1.0e-6);
 
-    let adam =
-        optimization::adam::<Float64Type, _, _>(&point, objective, gradient_fn, &AdamConfig {
-            learning_rate:  0.2,
-            beta1:          0.9,
-            beta2:          0.999,
-            epsilon:        1.0e-8,
+    let adam = optimization::adam::<Float64Type, _, _>(
+        &point,
+        objective,
+        gradient_fn,
+        &AdamConfig {
+            learning_rate: 0.2,
+            beta1: 0.9,
+            beta2: 0.999,
+            epsilon: 1.0e-8,
             max_iterations: 4096,
-            tolerance:      1.0e-6,
-        })
-        .unwrap();
+            tolerance: 1.0e-6,
+        },
+    )
+    .unwrap();
     assert_abs_diff_eq!(adam.as_ndarray().unwrap()[0], 3.0_f64, epsilon = 1.0e-3);
 
     let momentum = optimization::momentum_descent::<Float64Type, _, _>(
@@ -520,10 +524,10 @@ fn arrow_optimization_work() {
         objective,
         gradient_fn,
         &MomentumConfig {
-            learning_rate:  0.05,
-            momentum:       0.8,
+            learning_rate: 0.05,
+            momentum: 0.8,
             max_iterations: 256,
-            tolerance:      1.0e-8,
+            tolerance: 1.0e-8,
         },
     )
     .unwrap();
@@ -534,11 +538,11 @@ fn arrow_optimization_work() {
         objective,
         gradient_fn,
         &RMSPropConfig {
-            learning_rate:  0.1,
-            rho:            0.9,
-            epsilon:        1.0e-8,
+            learning_rate: 0.1,
+            rho: 0.9,
+            epsilon: 1.0e-8,
             max_iterations: 4096,
-            tolerance:      1.0e-6,
+            tolerance: 1.0e-6,
         },
     )
     .unwrap();
@@ -550,11 +554,7 @@ fn arrow_optimization_work() {
         gradient_fn,
         &Float64Array::from(vec![2.5]),
         &Float64Array::from(vec![3.5]),
-        &ProjectedGradientConfig {
-            learning_rate:  0.25,
-            max_iterations: 128,
-            tolerance:      1.0e-8,
-        },
+        &ProjectedGradientConfig { learning_rate: 0.25, max_iterations: 128, tolerance: 1.0e-8 },
     )
     .unwrap();
     assert_abs_diff_eq!(projected.as_ndarray().unwrap()[0], 3.0_f64, epsilon = 1.0e-6);
@@ -567,14 +567,18 @@ fn arrow_optimization_work() {
     .unwrap();
     assert_abs_diff_eq!(sgd.as_ndarray().unwrap()[0], 3.0_f64, epsilon = 1.0e-6);
 
-    let bfgs =
-        optimization::bfgs::<Float64Type, _, _>(&point, objective, gradient_fn, &BFGSConfig {
-            step_size:           0.5,
-            max_iterations:      64,
-            tolerance:           1.0e-8,
+    let bfgs = optimization::bfgs::<Float64Type, _, _>(
+        &point,
+        objective,
+        gradient_fn,
+        &BFGSConfig {
+            step_size: 0.5,
+            max_iterations: 64,
+            tolerance: 1.0e-8,
             curvature_tolerance: 1.0e-12,
-        })
-        .unwrap();
+        },
+    )
+    .unwrap();
     assert_abs_diff_eq!(bfgs.as_ndarray().unwrap()[0], 3.0_f64, epsilon = 1.0e-6);
 }
 
@@ -599,11 +603,14 @@ fn arrow_sparse_csr_columns_and_extension_work() {
     assert_abs_diff_eq!(matvec_columns_view[1], 4.0_f64, epsilon = 1.0e-12);
     assert_abs_diff_eq!(matvec_columns_view[2], 19.0_f64, epsilon = 1.0e-12);
 
-    let (field, extension) =
-        csr_to_extension_array("sparse", 4, vec![0_i32, 2, 3, 5], vec![0_u32, 2, 1, 0, 3], vec![
-            1.0_f64, 5.0, 2.0, 3.0, 4.0,
-        ])
-        .unwrap();
+    let (field, extension) = csr_to_extension_array(
+        "sparse",
+        4,
+        vec![0_i32, 2, 3, 5],
+        vec![0_u32, 2, 1, 0, 3],
+        vec![1.0_f64, 5.0, 2.0, 3.0, 4.0],
+    )
+    .unwrap();
     let dense = array![[1.0_f64, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, 1.0]];
     let dense_arrow = dense.into_arrow().unwrap();
 
@@ -617,11 +624,14 @@ fn arrow_sparse_csr_columns_and_extension_work() {
     assert_abs_diff_eq!(matmat_extension_view[[1, 1]], 2.0_f64, epsilon = 1.0e-12);
     assert_abs_diff_eq!(matmat_extension_view[[2, 0]], 11.0_f64, epsilon = 1.0e-12);
 
-    let (spd_field, spd_extension) =
-        csr_to_extension_array("spd", 2, vec![0_i32, 2, 4], vec![0_u32, 1, 0, 1], vec![
-            4.0_f64, 1.0, 1.0, 3.0,
-        ])
-        .unwrap();
+    let (spd_field, spd_extension) = csr_to_extension_array(
+        "spd",
+        2,
+        vec![0_i32, 2, 4],
+        vec![0_u32, 1, 0, 1],
+        vec![4.0_f64, 1.0, 1.0, 3.0],
+    )
+    .unwrap();
     let spd_rhs = Float64Array::from(vec![1.0, 2.0]);
 
     let sparse_lu =
@@ -702,9 +712,11 @@ fn arrow_tensor_workflows_cover_higher_rank_paths() {
     assert_eq!(permuted_view.shape(), &[2, 2, 2]);
     assert_abs_diff_eq!(permuted_view[[1, 0, 0]], 0.0_f64, epsilon = 1.0e-12);
 
-    let (contract_left_field, contract_left_array) = tensor_arrow_f64("left", &[2, 3, 2], vec![
-        1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 2.0, 1.0, 0.0, 1.0, 1.0, 0.0,
-    ]);
+    let (contract_left_field, contract_left_array) = tensor_arrow_f64(
+        "left",
+        &[2, 3, 2],
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 2.0, 1.0, 0.0, 1.0, 1.0, 0.0],
+    );
     let (contract_right_field, contract_right_array) =
         tensor_arrow_f64("right", &[2, 2, 2], vec![1.0, 0.0, 0.0, 1.0, 2.0, 1.0, 1.0, 2.0]);
     let (contracted_field, contracted_array) = tensor::contract_axes::<Float64Type>(
@@ -781,11 +793,14 @@ fn arrow_batched_decomposition_wrappers_work() {
 
 #[test]
 fn arrow_sparse_extended_factorization_and_reuse_workflows_work() {
-    let (field, extension) =
-        csr_to_extension_array("sparse", 4, vec![0_i32, 2, 3, 5], vec![0_u32, 2, 1, 0, 3], vec![
-            1.0_f64, 5.0, 2.0, 3.0, 4.0,
-        ])
-        .unwrap();
+    let (field, extension) = csr_to_extension_array(
+        "sparse",
+        4,
+        vec![0_i32, 2, 3, 5],
+        vec![0_u32, 2, 1, 0, 3],
+        vec![1.0_f64, 5.0, 2.0, 3.0, 4.0],
+    )
+    .unwrap();
     let transpose = sparse::transpose_csr_extension::<Float64Type>(&field, &extension).unwrap();
     assert_eq!(transpose.nrows, 4);
     assert_eq!(transpose.ncols, 3);
@@ -805,11 +820,14 @@ fn arrow_sparse_extended_factorization_and_reuse_workflows_work() {
 
     let spd_rhs = Float64Array::from(vec![1.0, 2.0]);
     let rhs_multi = array![[1.0_f64, 0.0], [2.0, 1.0]].into_arrow().unwrap();
-    let (spd_field, spd_extension) =
-        csr_to_extension_array("spd", 2, vec![0_i32, 2, 4], vec![0_u32, 1, 0, 1], vec![
-            4.0_f64, 1.0, 1.0, 3.0,
-        ])
-        .unwrap();
+    let (spd_field, spd_extension) = csr_to_extension_array(
+        "spd",
+        2,
+        vec![0_i32, 2, 4],
+        vec![0_u32, 1, 0, 1],
+        vec![4.0_f64, 1.0, 1.0, 3.0],
+    )
+    .unwrap();
     let jacobi =
         sparse::jacobi_preconditioner_csr_extension::<Float64Type>(&spd_field, &spd_extension)
             .unwrap();
@@ -1017,29 +1035,35 @@ fn arrow_variable_shape_tensor_workflows_cover_real_surface() {
 
 #[test]
 fn arrow_variable_shape_tensor_workflows_cover_complex_surface() {
-    let complex_left_a = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-        Complex64::new(1.0, 1.0),
-        Complex64::new(0.0, 2.0),
-        Complex64::new(2.0, 0.0),
-        Complex64::new(0.0, 1.0),
-    ])
+    let complex_left_a = ArrayD::from_shape_vec(
+        IxDyn(&[2, 2]),
+        vec![
+            Complex64::new(1.0, 1.0),
+            Complex64::new(0.0, 2.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, 1.0),
+        ],
+    )
     .unwrap();
-    let complex_left_b = ArrayD::from_shape_vec(IxDyn(&[1, 2]), vec![
-        Complex64::new(3.0, 4.0),
-        Complex64::new(0.0, 1.0),
-    ])
+    let complex_left_b = ArrayD::from_shape_vec(
+        IxDyn(&[1, 2]),
+        vec![Complex64::new(3.0, 4.0), Complex64::new(0.0, 1.0)],
+    )
     .unwrap();
-    let complex_right_a = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![
-        Complex64::new(1.0, -1.0),
-        Complex64::new(2.0, 0.0),
-        Complex64::new(0.0, 1.0),
-        Complex64::new(1.0, 0.0),
-    ])
+    let complex_right_a = ArrayD::from_shape_vec(
+        IxDyn(&[2, 2]),
+        vec![
+            Complex64::new(1.0, -1.0),
+            Complex64::new(2.0, 0.0),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+        ],
+    )
     .unwrap();
-    let complex_right_b = ArrayD::from_shape_vec(IxDyn(&[1, 2]), vec![
-        Complex64::new(1.0, 0.0),
-        Complex64::new(1.0, 0.0),
-    ])
+    let complex_right_b = ArrayD::from_shape_vec(
+        IxDyn(&[1, 2]),
+        vec![Complex64::new(1.0, 0.0), Complex64::new(1.0, 0.0)],
+    )
     .unwrap();
     let (complex_field, complex_array) = arrays_complex64_to_variable_shape_tensor(
         "complex_ragged",

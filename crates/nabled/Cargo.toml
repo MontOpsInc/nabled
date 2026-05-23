@@ -126,6 +126,22 @@ name = "arrow_extension_types"
 path = "examples/arrow_extension_types.rs"
 required-features = ["arrow"]
 
+[[example]]
+name = "physical_ai_planar2r_sim"
+path = "examples/physical_ai_planar2r_sim.rs"
+
+[[example]]
+name = "physical_ai_lqr_observer"
+path = "examples/physical_ai_lqr_observer.rs"
+
+[[example]]
+name = "physical_ai_ekf_fusion"
+path = "examples/physical_ai_ekf_fusion.rs"
+
+[[example]]
+name = "physical_ai_trajectory_ik"
+path = "examples/physical_ai_trajectory_ik.rs"
+
 [[bench]]
 name = "svd_benchmarks"
 harness = false

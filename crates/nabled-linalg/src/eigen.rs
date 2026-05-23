@@ -48,7 +48,7 @@ impl<T> EigenInternalScalar for T where T: NabledReal {}
 #[derive(Debug, Clone)]
 pub struct NdarrayEigenResult<T: NabledReal = f64> {
     /// Eigenvalues.
-    pub eigenvalues:  Array1<T>,
+    pub eigenvalues: Array1<T>,
     /// Eigenvectors by column.
     pub eigenvectors: Array2<T>,
 }
@@ -57,7 +57,7 @@ pub struct NdarrayEigenResult<T: NabledReal = f64> {
 #[derive(Debug, Clone)]
 pub struct NdarrayGeneralizedEigenResult<T: NabledReal = f64> {
     /// Eigenvalues.
-    pub eigenvalues:  Array1<T>,
+    pub eigenvalues: Array1<T>,
     /// Eigenvectors by column.
     pub eigenvectors: Array2<T>,
 }
@@ -66,7 +66,7 @@ pub struct NdarrayGeneralizedEigenResult<T: NabledReal = f64> {
 #[derive(Debug, Clone)]
 pub struct NdarrayNonsymmetricEigenResult<T: NabledReal = f64> {
     /// Eigenvalues.
-    pub eigenvalues:   Array1<Complex<T>>,
+    pub eigenvalues: Array1<Complex<T>>,
     /// Schur vectors by column.
     pub schur_vectors: Array2<Complex<T>>,
 }
@@ -75,34 +75,34 @@ pub struct NdarrayNonsymmetricEigenResult<T: NabledReal = f64> {
 #[derive(Debug, Clone)]
 pub struct NdarrayNonsymmetricBiEigenResult<T: NabledReal = f64> {
     /// Eigenvalues.
-    pub eigenvalues:        Array1<Complex<T>>,
+    pub eigenvalues: Array1<Complex<T>>,
     /// Right eigenvectors (by column) for the original unbalanced matrix.
     pub right_eigenvectors: Array2<Complex<T>>,
     /// Left eigenvectors (by column) for the original unbalanced matrix.
-    pub left_eigenvectors:  Array2<Complex<T>>,
+    pub left_eigenvectors: Array2<Complex<T>>,
     /// Balancing diagonal scales used before decomposition.
     pub balancing_diagonal: Array1<T>,
     /// Matrix used for eigendecomposition after optional balancing.
-    pub balanced_matrix:    Array2<T>,
+    pub balanced_matrix: Array2<T>,
 }
 
 /// Configuration for non-symmetric balancing and bi-eigen decomposition.
 #[derive(Debug, Clone, Copy)]
 pub struct NonsymmetricEigenConfig<T: NabledReal = f64> {
     /// Whether to apply Osborne balancing before eigendecomposition.
-    pub balance:                bool,
+    pub balance: bool,
     /// Maximum balancing sweeps.
     pub balance_max_iterations: usize,
     /// Relative improvement threshold for applying a balance update.
-    pub balance_tolerance:      T,
+    pub balance_tolerance: T,
 }
 
 impl<T: NabledReal> Default for NonsymmetricEigenConfig<T> {
     fn default() -> Self {
         Self {
-            balance:                true,
+            balance: true,
             balance_max_iterations: 32,
-            balance_tolerance:      T::from_f64(0.05).unwrap_or(T::epsilon()),
+            balance_tolerance: T::from_f64(0.05).unwrap_or(T::epsilon()),
         }
     }
 }
@@ -1289,12 +1289,15 @@ mod tests {
 
     #[test]
     fn nonsymmetric_complex_eigenvalues_match_diagonal() {
-        let diagonal = Array2::from_shape_vec((2, 2), vec![
-            Complex64::new(2.0_f64, 1.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(0.0_f64, 0.0_f64),
-            Complex64::new(-3.0_f64, 0.5_f64),
-        ])
+        let diagonal = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex64::new(2.0_f64, 1.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(0.0_f64, 0.0_f64),
+                Complex64::new(-3.0_f64, 0.5_f64),
+            ],
+        )
         .unwrap();
         let result = nonsymmetric_complex(&diagonal).unwrap();
         assert_eq!(result.eigenvalues.len(), 2);
@@ -1320,9 +1323,10 @@ mod tests {
 
     #[test]
     fn nonsymmetric_triangular_matrix_matches_diagonal_eigenvalues() {
-        let upper_triangular = Array2::from_shape_vec((3, 3), vec![
-            4.0_f64, 1.0_f64, 2.0_f64, 0.0_f64, -3.0_f64, 5.0_f64, 0.0_f64, 0.0_f64, 2.5_f64,
-        ])
+        let upper_triangular = Array2::from_shape_vec(
+            (3, 3),
+            vec![4.0_f64, 1.0_f64, 2.0_f64, 0.0_f64, -3.0_f64, 5.0_f64, 0.0_f64, 0.0_f64, 2.5_f64],
+        )
         .unwrap();
         let result = nonsymmetric(&upper_triangular).unwrap();
         assert_eq!(result.eigenvalues.len(), 3);
@@ -1336,11 +1340,14 @@ mod tests {
 
     #[test]
     fn balancing_changes_scale_but_preserves_shape() {
-        let matrix = Array2::from_shape_vec((3, 3), vec![
-            1.0_f64, 200.0_f64, 0.0_f64, //
-            0.001_f64, 2.0_f64, 30.0_f64, //
-            0.0_f64, 0.02_f64, 3.0_f64,
-        ])
+        let matrix = Array2::from_shape_vec(
+            (3, 3),
+            vec![
+                1.0_f64, 200.0_f64, 0.0_f64, //
+                0.001_f64, 2.0_f64, 30.0_f64, //
+                0.0_f64, 0.02_f64, 3.0_f64,
+            ],
+        )
         .unwrap();
         let config = NonsymmetricEigenConfig::default();
         let (balanced, diagonal) = balance_nonsymmetric(&matrix, &config).unwrap();

@@ -47,83 +47,83 @@ pub(crate) fn magma_sparse_provider_call_count() -> u64 {
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct MagmaDMatrix {
-    storage_type:            i32,
-    memory_location:         i32,
-    sym:                     i32,
-    diagorder_type:          i32,
-    fill_mode:               i32,
-    num_rows:                i32,
-    num_cols:                i32,
-    nnz:                     i32,
-    max_nnz_row:             i32,
-    diameter:                i32,
-    true_nnz:                i32,
-    ownership:               i32,
-    val:                     *mut c_void,
-    diag:                    *mut c_void,
-    row:                     *mut c_void,
-    rowidx:                  *mut c_void,
-    col:                     *mut c_void,
-    list:                    *mut c_void,
-    tile_ptr:                *mut c_void,
-    tile_desc:               *mut c_void,
-    tile_desc_offset_ptr:    *mut c_void,
-    tile_desc_offset:        *mut c_void,
-    calibrator:              *mut c_void,
-    blockinfo:               *mut c_void,
-    blocksize:               i32,
-    numblocks:               i32,
-    alignment:               i32,
-    csr5_sigma:              i32,
-    csr5_bit_y_offset:       i32,
+    storage_type: i32,
+    memory_location: i32,
+    sym: i32,
+    diagorder_type: i32,
+    fill_mode: i32,
+    num_rows: i32,
+    num_cols: i32,
+    nnz: i32,
+    max_nnz_row: i32,
+    diameter: i32,
+    true_nnz: i32,
+    ownership: i32,
+    val: *mut c_void,
+    diag: *mut c_void,
+    row: *mut c_void,
+    rowidx: *mut c_void,
+    col: *mut c_void,
+    list: *mut c_void,
+    tile_ptr: *mut c_void,
+    tile_desc: *mut c_void,
+    tile_desc_offset_ptr: *mut c_void,
+    tile_desc_offset: *mut c_void,
+    calibrator: *mut c_void,
+    blockinfo: *mut c_void,
+    blocksize: i32,
+    numblocks: i32,
+    alignment: i32,
+    csr5_sigma: i32,
+    csr5_bit_y_offset: i32,
     csr5_bit_scansum_offset: i32,
-    csr5_num_packets:        i32,
-    csr5_p:                  i32,
-    csr5_num_offsets:        i32,
-    csr5_tail_tile_start:    i32,
-    major:                   i32,
-    ld:                      i32,
+    csr5_num_packets: i32,
+    csr5_p: i32,
+    csr5_num_offsets: i32,
+    csr5_tail_tile_start: i32,
+    major: i32,
+    ld: i32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct MagmaSMatrix {
-    storage_type:            i32,
-    memory_location:         i32,
-    sym:                     i32,
-    diagorder_type:          i32,
-    fill_mode:               i32,
-    num_rows:                i32,
-    num_cols:                i32,
-    nnz:                     i32,
-    max_nnz_row:             i32,
-    diameter:                i32,
-    true_nnz:                i32,
-    ownership:               i32,
-    val:                     *mut c_void,
-    diag:                    *mut c_void,
-    row:                     *mut c_void,
-    rowidx:                  *mut c_void,
-    col:                     *mut c_void,
-    list:                    *mut c_void,
-    tile_ptr:                *mut c_void,
-    tile_desc:               *mut c_void,
-    tile_desc_offset_ptr:    *mut c_void,
-    tile_desc_offset:        *mut c_void,
-    calibrator:              *mut c_void,
-    blockinfo:               *mut c_void,
-    blocksize:               i32,
-    numblocks:               i32,
-    alignment:               i32,
-    csr5_sigma:              i32,
-    csr5_bit_y_offset:       i32,
+    storage_type: i32,
+    memory_location: i32,
+    sym: i32,
+    diagorder_type: i32,
+    fill_mode: i32,
+    num_rows: i32,
+    num_cols: i32,
+    nnz: i32,
+    max_nnz_row: i32,
+    diameter: i32,
+    true_nnz: i32,
+    ownership: i32,
+    val: *mut c_void,
+    diag: *mut c_void,
+    row: *mut c_void,
+    rowidx: *mut c_void,
+    col: *mut c_void,
+    list: *mut c_void,
+    tile_ptr: *mut c_void,
+    tile_desc: *mut c_void,
+    tile_desc_offset_ptr: *mut c_void,
+    tile_desc_offset: *mut c_void,
+    calibrator: *mut c_void,
+    blockinfo: *mut c_void,
+    blocksize: i32,
+    numblocks: i32,
+    alignment: i32,
+    csr5_sigma: i32,
+    csr5_bit_y_offset: i32,
     csr5_bit_scansum_offset: i32,
-    csr5_num_packets:        i32,
-    csr5_p:                  i32,
-    csr5_num_offsets:        i32,
-    csr5_tail_tile_start:    i32,
-    major:                   i32,
-    ld:                      i32,
+    csr5_num_packets: i32,
+    csr5_p: i32,
+    csr5_num_offsets: i32,
+    csr5_tail_tile_start: i32,
+    major: i32,
+    ld: i32,
 }
 
 #[link(name = "magma")]
@@ -221,8 +221,12 @@ unsafe extern "C" {
     fn magma_smfree(a: *mut MagmaSMatrix, queue: MagmaQueue) -> i32;
 }
 
-fn callsite_func() -> *const c_char { CALLSITE_FUNC.as_ptr().cast::<c_char>() }
-fn callsite_file() -> *const c_char { CALLSITE_FILE.as_ptr().cast::<c_char>() }
+fn callsite_func() -> *const c_char {
+    CALLSITE_FUNC.as_ptr().cast::<c_char>()
+}
+fn callsite_file() -> *const c_char {
+    CALLSITE_FILE.as_ptr().cast::<c_char>()
+}
 
 fn as_i32(value: usize) -> Result<i32, &'static str> {
     i32::try_from(value).map_err(|_| "invalid_dimensions")
@@ -267,7 +271,9 @@ impl MagmaQueueGuard {
         if queue.is_null() { Err("provider_init_failed") } else { Ok(Self { queue }) }
     }
 
-    fn as_raw(&self) -> MagmaQueue { self.queue }
+    fn as_raw(&self) -> MagmaQueue {
+        self.queue
+    }
 
     fn sync(&self) {
         // SAFETY: Queue is valid for the lifetime of this guard.
@@ -290,8 +296,8 @@ impl Drop for MagmaQueueGuard {
 }
 
 struct DMatrixHandle {
-    matrix:      MagmaDMatrix,
-    queue:       MagmaQueue,
+    matrix: MagmaDMatrix,
+    queue: MagmaQueue,
     initialized: bool,
 }
 
@@ -302,11 +308,17 @@ impl DMatrixHandle {
         Self { matrix, queue, initialized: false }
     }
 
-    fn as_mut_ptr(&mut self) -> *mut MagmaDMatrix { &raw mut self.matrix }
+    fn as_mut_ptr(&mut self) -> *mut MagmaDMatrix {
+        &raw mut self.matrix
+    }
 
-    fn value(&self) -> MagmaDMatrix { self.matrix }
+    fn value(&self) -> MagmaDMatrix {
+        self.matrix
+    }
 
-    fn mark_initialized(&mut self) { self.initialized = true; }
+    fn mark_initialized(&mut self) {
+        self.initialized = true;
+    }
 }
 
 impl Drop for DMatrixHandle {
@@ -322,8 +334,8 @@ impl Drop for DMatrixHandle {
 }
 
 struct SMatrixHandle {
-    matrix:      MagmaSMatrix,
-    queue:       MagmaQueue,
+    matrix: MagmaSMatrix,
+    queue: MagmaQueue,
     initialized: bool,
 }
 
@@ -334,11 +346,17 @@ impl SMatrixHandle {
         Self { matrix, queue, initialized: false }
     }
 
-    fn as_mut_ptr(&mut self) -> *mut MagmaSMatrix { &raw mut self.matrix }
+    fn as_mut_ptr(&mut self) -> *mut MagmaSMatrix {
+        &raw mut self.matrix
+    }
 
-    fn value(&self) -> MagmaSMatrix { self.matrix }
+    fn value(&self) -> MagmaSMatrix {
+        self.matrix
+    }
 
-    fn mark_initialized(&mut self) { self.initialized = true; }
+    fn mark_initialized(&mut self) {
+        self.initialized = true;
+    }
 }
 
 impl Drop for SMatrixHandle {

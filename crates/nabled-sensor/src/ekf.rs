@@ -10,15 +10,15 @@ use crate::kalman::KalmanState;
 /// Nonlinear EKF model callbacks.
 #[derive(Clone)]
 pub struct EkModel<T> {
-    pub predict_state:     fn(&ArrayView1<'_, T>) -> Array1<T>,
-    pub predict_jacobian:  fn(&ArrayView1<'_, T>) -> Array2<T>,
-    pub measure:           fn(&ArrayView1<'_, T>) -> Array1<T>,
-    pub measure_jacobian:  fn(&ArrayView1<'_, T>) -> Array2<T>,
+    pub predict_state: fn(&ArrayView1<'_, T>) -> Array1<T>,
+    pub predict_jacobian: fn(&ArrayView1<'_, T>) -> Array2<T>,
+    pub measure: fn(&ArrayView1<'_, T>) -> Array1<T>,
+    pub measure_jacobian: fn(&ArrayView1<'_, T>) -> Array2<T>,
 }
 
 #[derive(Debug, Clone)]
 pub struct EkConfig<T> {
-    pub process_noise:     Array2<T>,
+    pub process_noise: Array2<T>,
     pub measurement_noise: Array2<T>,
 }
 
@@ -103,7 +103,7 @@ mod tests {
         let state = KalmanState { mean: arr1(&[0.2_f64]), covariance: ndarray::arr2(&[[1.0]]) };
         let model = scalar_model();
         let config = EkConfig {
-            process_noise:     ndarray::arr2(&[[0.01]]),
+            process_noise: ndarray::arr2(&[[0.01]]),
             measurement_noise: ndarray::arr2(&[[0.05]]),
         };
         let updated = ekf_update(&state, &arr1(&[1.0]).view(), &model, &config).unwrap();

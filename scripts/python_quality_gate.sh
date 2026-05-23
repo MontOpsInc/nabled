@@ -207,6 +207,17 @@ main() {
         --cov-report= \
         --cov-fail-under=0 \
         -q
+
+    run_in_repo \
+        env VIRTUAL_ENV="${dev_venv}" PATH="${dev_venv}/bin:${PATH}" \
+        "${dev_venv}/bin/maturin" develop --features "arrow signal"
+    run_in_repo \
+        "${dev_venv}/bin/python" -m pytest python/tests/test_physical_ai_integration.py \
+        --cov=pynabled \
+        --cov-append \
+        --cov-report= \
+        --cov-fail-under=0 \
+        -q
     run_in_repo \
         "${dev_venv}/bin/python" -m coverage xml -o "${COVERAGE_DIR}/python-coverage.xml"
     run_in_repo "${dev_venv}/bin/python" -m coverage report \

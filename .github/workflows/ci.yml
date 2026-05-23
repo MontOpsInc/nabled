@@ -81,6 +81,9 @@ jobs:
     - name: Run clippy (arrow interop only)
       run: cargo +stable clippy --workspace --profile ci --no-default-features --features arrow --all-targets -- -D warnings
 
+    - name: Run clippy (signal / Physical AI S12–S14)
+      run: cargo +stable clippy --workspace --profile ci --no-default-features --features signal --all-targets -- -D warnings
+
     - name: Run clippy (accelerator-rayon only)
       run: cargo +stable clippy --workspace --profile ci --no-default-features --features accelerator-rayon --all-targets -- -D warnings
 
@@ -219,6 +222,10 @@ jobs:
       run: |
         cargo test -p nabled --profile ci --tests -- --nocapture --show-output
 
+    - name: Run Physical AI integration tests (signal scenarios S12–S14)
+      run: |
+        cargo test -p nabled --profile ci --test physical_ai_integration --features signal -- --nocapture --show-output
+
     - name: Run arrow integration tests
       run: |
         cargo test -p nabled --profile ci --no-default-features --features arrow --test arrow_interop -- --nocapture --show-output
@@ -226,6 +233,10 @@ jobs:
     - name: Run provider integration tests
       run: |
         cargo test -p nabled --profile ci --features openblas-system --tests -- --nocapture --show-output
+
+    - name: Run provider Physical AI integration tests (signal)
+      run: |
+        cargo test -p nabled --profile ci --features "openblas-system signal" --test physical_ai_integration -- --nocapture --show-output
 
     - name: Run provider arrow integration tests
       run: |
@@ -389,6 +400,42 @@ jobs:
       with:
         name: benchmark-smoke-${{ github.run_id }}
         path: coverage/benchmarks
+
+  benchmark-physical-ai:
+    name: Benchmark Physical AI (Advisory)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install just
+      uses: taiki-e/install-action@just
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}-${{ github.job }}
+
+    - name: Run Physical AI smoke benchmarks
+      run: just bench-smoke-physical-ai
 
   python-version-check:
     name: Python package version alignment

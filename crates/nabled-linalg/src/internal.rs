@@ -21,10 +21,14 @@ impl DenseKernelPolicy {
     pub(crate) const SCHUR_MIN_ITERATIONS: usize = 128;
 
     #[must_use]
-    pub(crate) fn rank_tolerance(requested: f64) -> f64 { requested.max(Self::BASE_TOLERANCE) }
+    pub(crate) fn rank_tolerance(requested: f64) -> f64 {
+        requested.max(Self::BASE_TOLERANCE)
+    }
 
     #[must_use]
-    pub(crate) fn taylor_tolerance(requested: f64) -> f64 { requested.max(Self::BASE_TOLERANCE) }
+    pub(crate) fn taylor_tolerance(requested: f64) -> f64 {
+        requested.max(Self::BASE_TOLERANCE)
+    }
 
     #[must_use]
     pub(crate) fn schur_iterations(requested: usize) -> usize {
@@ -33,7 +37,9 @@ impl DenseKernelPolicy {
 
     #[cfg(not(feature = "lapack-provider"))]
     #[must_use]
-    pub(crate) fn polar_convergence_tolerance() -> f64 { Self::BASE_TOLERANCE.sqrt() }
+    pub(crate) fn polar_convergence_tolerance() -> f64 {
+        Self::BASE_TOLERANCE.sqrt()
+    }
 }
 
 pub(crate) fn validate_square_non_empty<T>(matrix: &Array2<T>) -> Result<(), &'static str> {

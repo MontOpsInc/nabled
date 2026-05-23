@@ -42,7 +42,9 @@ impl MagmaProviderPolicy {
         })
     }
 
-    fn env_present(name: &str) -> bool { std::env::var_os(name).is_some() }
+    fn env_present(name: &str) -> bool {
+        std::env::var_os(name).is_some()
+    }
 
     #[must_use]
     pub(crate) fn strict_mode() -> bool {
@@ -65,7 +67,9 @@ impl MagmaProviderPolicy {
     }
 
     #[must_use]
-    pub(crate) fn fail_fast_mode() -> bool { Self::strict_mode() }
+    pub(crate) fn fail_fast_mode() -> bool {
+        Self::strict_mode()
+    }
 
     #[must_use]
     fn min_decomposition_dim() -> usize {

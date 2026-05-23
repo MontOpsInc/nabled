@@ -41,22 +41,22 @@ impl std::error::Error for OptimizationError {}
 #[derive(Debug, Clone, Copy)]
 pub struct LineSearchConfig<T: NabledReal = f64> {
     /// Initial step size.
-    pub initial_step:        T,
+    pub initial_step: T,
     /// Contraction factor in `(0, 1)`.
-    pub contraction:         T,
+    pub contraction: T,
     /// Armijo sufficient decrease coefficient in `(0, 1)`.
     pub sufficient_decrease: T,
     /// Maximum backtracking iterations.
-    pub max_iterations:      usize,
+    pub max_iterations: usize,
 }
 
 impl<T: NabledReal> Default for LineSearchConfig<T> {
     fn default() -> Self {
         Self {
-            initial_step:        T::one(),
-            contraction:         T::from_f64(0.5).unwrap_or(T::epsilon()),
+            initial_step: T::one(),
+            contraction: T::from_f64(0.5).unwrap_or(T::epsilon()),
             sufficient_decrease: T::from_f64(1e-4).unwrap_or(T::epsilon()),
-            max_iterations:      64,
+            max_iterations: 64,
         }
     }
 }
@@ -65,19 +65,19 @@ impl<T: NabledReal> Default for LineSearchConfig<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct SGDConfig<T: NabledReal = f64> {
     /// Fixed learning rate.
-    pub learning_rate:  T,
+    pub learning_rate: T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      T,
+    pub tolerance: T,
 }
 
 impl<T: NabledReal> Default for SGDConfig<T> {
     fn default() -> Self {
         Self {
-            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            learning_rate: T::from_f64(1e-2).unwrap_or(T::epsilon()),
             max_iterations: 10_000,
-            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            tolerance: T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
@@ -86,28 +86,28 @@ impl<T: NabledReal> Default for SGDConfig<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct AdamConfig<T: NabledReal = f64> {
     /// Base learning rate.
-    pub learning_rate:  T,
+    pub learning_rate: T,
     /// Exponential decay for first moment.
-    pub beta1:          T,
+    pub beta1: T,
     /// Exponential decay for second moment.
-    pub beta2:          T,
+    pub beta2: T,
     /// Numerical epsilon.
-    pub epsilon:        T,
+    pub epsilon: T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      T,
+    pub tolerance: T,
 }
 
 impl<T: NabledReal> Default for AdamConfig<T> {
     fn default() -> Self {
         Self {
-            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
-            beta1:          T::from_f64(0.9).unwrap_or(T::epsilon()),
-            beta2:          T::from_f64(0.999).unwrap_or(T::epsilon()),
-            epsilon:        T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            learning_rate: T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            beta1: T::from_f64(0.9).unwrap_or(T::epsilon()),
+            beta2: T::from_f64(0.999).unwrap_or(T::epsilon()),
+            epsilon: T::from_f64(1e-8).unwrap_or(T::epsilon()),
             max_iterations: 10_000,
-            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            tolerance: T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
@@ -116,22 +116,22 @@ impl<T: NabledReal> Default for AdamConfig<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct MomentumConfig<T: NabledReal = f64> {
     /// Base learning rate.
-    pub learning_rate:  T,
+    pub learning_rate: T,
     /// Momentum coefficient in `[0, 1)`.
-    pub momentum:       T,
+    pub momentum: T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      T,
+    pub tolerance: T,
 }
 
 impl<T: NabledReal> Default for MomentumConfig<T> {
     fn default() -> Self {
         Self {
-            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
-            momentum:       T::from_f64(0.9).unwrap_or(T::epsilon()),
+            learning_rate: T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            momentum: T::from_f64(0.9).unwrap_or(T::epsilon()),
             max_iterations: 10_000,
-            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            tolerance: T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
@@ -140,25 +140,25 @@ impl<T: NabledReal> Default for MomentumConfig<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct RMSPropConfig<T: NabledReal = f64> {
     /// Base learning rate.
-    pub learning_rate:  T,
+    pub learning_rate: T,
     /// Exponential decay factor for squared gradients in `[0, 1)`.
-    pub rho:            T,
+    pub rho: T,
     /// Numerical epsilon.
-    pub epsilon:        T,
+    pub epsilon: T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      T,
+    pub tolerance: T,
 }
 
 impl<T: NabledReal> Default for RMSPropConfig<T> {
     fn default() -> Self {
         Self {
-            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
-            rho:            T::from_f64(0.9).unwrap_or(T::epsilon()),
-            epsilon:        T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            learning_rate: T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            rho: T::from_f64(0.9).unwrap_or(T::epsilon()),
+            epsilon: T::from_f64(1e-8).unwrap_or(T::epsilon()),
             max_iterations: 10_000,
-            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            tolerance: T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
@@ -167,19 +167,19 @@ impl<T: NabledReal> Default for RMSPropConfig<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectedGradientConfig<T: NabledReal = f64> {
     /// Base learning rate.
-    pub learning_rate:  T,
+    pub learning_rate: T,
     /// Maximum optimization iterations.
     pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:      T,
+    pub tolerance: T,
 }
 
 impl<T: NabledReal> Default for ProjectedGradientConfig<T> {
     fn default() -> Self {
         Self {
-            learning_rate:  T::from_f64(1e-2).unwrap_or(T::epsilon()),
+            learning_rate: T::from_f64(1e-2).unwrap_or(T::epsilon()),
             max_iterations: 10_000,
-            tolerance:      T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            tolerance: T::from_f64(1e-8).unwrap_or(T::epsilon()),
         }
     }
 }
@@ -188,11 +188,11 @@ impl<T: NabledReal> Default for ProjectedGradientConfig<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct BFGSConfig<T: NabledReal = f64> {
     /// Initial step size multiplier.
-    pub step_size:           T,
+    pub step_size: T,
     /// Maximum optimization iterations.
-    pub max_iterations:      usize,
+    pub max_iterations: usize,
     /// Gradient norm tolerance for convergence.
-    pub tolerance:           T,
+    pub tolerance: T,
     /// Minimum curvature `s^T y` required for Hessian updates.
     pub curvature_tolerance: T,
 }
@@ -200,9 +200,9 @@ pub struct BFGSConfig<T: NabledReal = f64> {
 impl<T: NabledReal> Default for BFGSConfig<T> {
     fn default() -> Self {
         Self {
-            step_size:           T::one(),
-            max_iterations:      2_000,
-            tolerance:           T::from_f64(1e-8).unwrap_or(T::epsilon()),
+            step_size: T::one(),
+            max_iterations: 2_000,
+            tolerance: T::from_f64(1e-8).unwrap_or(T::epsilon()),
             curvature_tolerance: T::from_f64(1e-12).unwrap_or(T::epsilon()),
         }
     }
@@ -1222,7 +1222,9 @@ mod tests {
         delta * delta
     }
 
-    fn gradient(x: &Array1<f64>) -> Array1<f64> { arr1(&[2.0_f64 * (x[0] - 3.0_f64)]) }
+    fn gradient(x: &Array1<f64>) -> Array1<f64> {
+        arr1(&[2.0_f64 * (x[0] - 3.0_f64)])
+    }
 
     fn objective_complex(x: &Array1<Complex64>) -> f64 {
         let delta = x[0] - Complex64::new(3.0_f64, 2.0_f64);
@@ -1289,11 +1291,12 @@ mod tests {
         let gd_non_finite = gradient_descent(&x0, objective, bad_gradient, &SGDConfig::default());
         assert!(matches!(gd_non_finite, Err(OptimizationError::NonFiniteInput)));
 
-        let gd_stall = gradient_descent(&x0, objective, gradient, &SGDConfig {
-            learning_rate:  1e-12_f64,
-            max_iterations: 1,
-            tolerance:      0.0_f64,
-        });
+        let gd_stall = gradient_descent(
+            &x0,
+            objective,
+            gradient,
+            &SGDConfig { learning_rate: 1e-12_f64, max_iterations: 1, tolerance: 0.0_f64 },
+        );
         assert!(matches!(gd_stall, Err(OptimizationError::MaxIterationsExceeded)));
 
         let bad_adam = AdamConfig { beta1: 1.0_f64, ..AdamConfig::default() };
@@ -1350,11 +1353,7 @@ mod tests {
         let solution = stochastic_gradient_descent(
             &x0,
             |x, _iteration| arr1(&[2.0_f64 * (x[0] - 3.0_f64)]),
-            &SGDConfig {
-                learning_rate:  5e-2_f64,
-                max_iterations: 2_000,
-                tolerance:      1e-6_f64,
-            },
+            &SGDConfig { learning_rate: 5e-2_f64, max_iterations: 2_000, tolerance: 1e-6_f64 },
         )
         .unwrap();
         assert!((solution[0] - 3.0_f64).abs() < 1e-3_f64);
@@ -1386,10 +1385,12 @@ mod tests {
             stochastic_gradient_descent(&x0, |_x, _| arr1(&[f64::NAN]), &SGDConfig::default());
         assert!(matches!(sgd_non_finite, Err(OptimizationError::NonFiniteInput)));
 
-        let bfgs_invalid = bfgs(&x0, objective, gradient, &BFGSConfig {
-            step_size: 0.0_f64,
-            ..BFGSConfig::default()
-        });
+        let bfgs_invalid = bfgs(
+            &x0,
+            objective,
+            gradient,
+            &BFGSConfig { step_size: 0.0_f64, ..BFGSConfig::default() },
+        );
         assert!(matches!(bfgs_invalid, Err(OptimizationError::InvalidConfig)));
     }
 
@@ -1462,11 +1463,7 @@ mod tests {
                     * (point[0] - Complex64::new(3.0_f64, 2.0_f64));
                 arr1(&[grad_sample])
             },
-            &SGDConfig {
-                learning_rate:  5e-2_f64,
-                max_iterations: 2_000,
-                tolerance:      1e-6_f64,
-            },
+            &SGDConfig { learning_rate: 5e-2_f64, max_iterations: 2_000, tolerance: 1e-6_f64 },
         )
         .unwrap();
         assert!((stochastic[0] - Complex64::new(3.0_f64, 2.0_f64)).norm() < 1e-3_f64);
