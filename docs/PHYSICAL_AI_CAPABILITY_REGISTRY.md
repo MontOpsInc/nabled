@@ -52,7 +52,7 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 | `chain::*` | `kinematics::chain` |
 | `fk::*` | `kinematics::fk` |
 | `jacobian::*` | `kinematics::jacobian` |
-| `ik::*` | `kinematics::ik` |
+| `ik::*`, `IkResult`, `IkWorkspace`, `JointLimits` | `kinematics::ik`, `kinematics::chain` |
 
 ### `nabled-model`
 
@@ -60,25 +60,25 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 |---|---|
 | `joint::*`, `link::*`, `robot::*` | `nabled-model` |
 | `dh::to_chain_spec` | `nabled-model::dh` |
-| `urdf::*` | `nabled-model::urdf` |
+| `urdf::*`, `fixture::load_planar2r_json` | `nabled-model` |
 
 ### `nabled-dynamics`
 
 | Function | Owner |
 |---|---|
-| `spatial::*`, `rnea::*`, `crba::*`, `fd::*`, `id::*` | `nabled-dynamics` |
+| `spatial::*`, `config::DynamicsConfig`, `rnea::*`, `crba::*`, `fd::*`, `id::*` | `nabled-dynamics` |
 
 ### `nabled-control`
 
 | Function | Owner |
 |---|---|
-| `dare::*`, `lqr::*`, `gramian::*`, `pole::*`, `observer::*` | `nabled-control` |
+| `dare::dare_residual*`, `lqr::*`, `gramian::*`, `pole::*`, `observer::*` | `nabled-control` |
 
 ### `nabled-sensor`
 
 | Function | Owner |
 |---|---|
-| `kalman::*`, `ekf::*`, `camera::*`, `imu::*` | `nabled-sensor` |
+| `kalman::*`, `ekf::EkModel`, `camera::PinholeIntrinsics`, `imu::strapdown_*` | `nabled-sensor` |
 
 ### Deferred
 

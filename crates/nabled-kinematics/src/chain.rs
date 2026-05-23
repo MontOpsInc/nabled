@@ -19,6 +19,13 @@ pub enum JointType {
     Prismatic,
 }
 
+/// Position limits for a single joint (IK clipping).
+#[derive(Debug, Clone, PartialEq)]
+pub struct JointLimits<T> {
+    pub lower: T,
+    pub upper: T,
+}
+
 /// Serial chain DH specification.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChainSpec<T> {
@@ -28,6 +35,8 @@ pub struct ChainSpec<T> {
     pub alpha:        Array1<T>,
     pub d:            Array1<T>,
     pub theta_offset: Array1<T>,
+    /// End-effector joint index; `None` uses the last joint.
+    pub ee_index:     Option<usize>,
 }
 
 impl<T: NabledReal> ChainSpec<T> {
@@ -50,12 +59,18 @@ impl<T: NabledReal> ChainSpec<T> {
         if n == 0 {
             return Err(KinematicsError::EmptyChain);
         }
-        Ok(Self { convention, joint_types, a, alpha, d, theta_offset })
+        Ok(Self { convention, joint_types, a, alpha, d, theta_offset, ee_index: None })
     }
 
     /// Number of joints / DOF.
     #[must_use]
     pub fn num_joints(&self) -> usize { self.joint_types.len() }
+
+    /// End-effector joint index (defaults to last joint).
+    #[must_use]
+    pub fn ee_joint_index(&self) -> usize {
+        self.ee_index.unwrap_or_else(|| self.num_joints().saturating_sub(1))
+    }
 
     /// Validate chain parameters.
     ///
@@ -72,6 +87,13 @@ impl<T: NabledReal> ChainSpec<T> {
             || self.theta_offset.len() != n
         {
             return Err(KinematicsError::DimensionMismatch);
+        }
+        if let Some(ee) = self.ee_index {
+            if ee >= n {
+                return Err(KinematicsError::InvalidInput(format!(
+                    "ee_index {ee} out of range for {n} joints"
+                )));
+            }
         }
         Ok(())
     }
@@ -95,5 +117,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(chain.num_joints(), 2);
+        assert_eq!(chain.ee_joint_index(), 1);
+    }
+
+    #[test]
+    fn ee_index_selects_intermediate_frame() {
+        let mut chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Revolute, JointType::Revolute],
+            arr1(&[1.0_f64, 1.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+        )
+        .unwrap();
+        chain.ee_index = Some(0);
+        assert_eq!(chain.ee_joint_index(), 0);
+        chain.validate().unwrap();
     }
 }

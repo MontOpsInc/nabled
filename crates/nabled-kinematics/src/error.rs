@@ -10,6 +10,8 @@ pub enum KinematicsError {
     InvalidInput(String),
     ConvergenceFailed,
     NumericalInstability,
+    /// Joint index that violates configured limits.
+    JointLimitViolation(usize),
 }
 
 impl fmt::Display for KinematicsError {
@@ -20,6 +22,9 @@ impl fmt::Display for KinematicsError {
             KinematicsError::InvalidInput(message) => write!(f, "invalid input: {message}"),
             KinematicsError::ConvergenceFailed => write!(f, "IK iteration did not converge"),
             KinematicsError::NumericalInstability => write!(f, "numerical instability detected"),
+            KinematicsError::JointLimitViolation(joint) => {
+                write!(f, "joint limit violated at joint {joint}")
+            }
         }
     }
 }

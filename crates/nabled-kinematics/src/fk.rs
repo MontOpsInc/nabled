@@ -93,10 +93,14 @@ pub fn fk_view<T: NabledReal>(
         &Rotation3 { matrix: Array2::<T>::eye(3) },
         &Array1::<T>::zeros(3),
     );
+    let ee_joint = chain.ee_joint_index();
     for (i, &qi) in q.iter().enumerate() {
         let link = joint_transform(chain, qi, i);
         transform =
             se3::compose(&transform, &link).map_err(|_| KinematicsError::NumericalInstability)?;
+        if i >= ee_joint {
+            break;
+        }
     }
     Ok(transform)
 }

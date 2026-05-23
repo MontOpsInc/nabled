@@ -29,6 +29,12 @@ nabled-core.workspace = true
 nabled-kinematics.workspace = true
 nabled-linalg.workspace = true
 ndarray.workspace = true
+quick-xml.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+approx.workspace = true
 
 [lints]
 workspace = true

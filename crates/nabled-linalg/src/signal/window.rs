@@ -1,13 +1,59 @@
 //! Window functions for spectral analysis.
 
 use nabled_core::scalar::NabledReal;
-use ndarray::{Array1, ArrayBase, DataMut, Ix1};
+use ndarray::{Array1, ArrayBase, ArrayView1, DataMut, Ix1};
 
 use super::{SignalError, validate_output_len};
 
 fn scalar_pi<T: NabledReal>() -> T { T::from_f64(std::f64::consts::PI).unwrap_or(T::zero()) }
 
 fn scalar_two<T: NabledReal>() -> T { T::from_f64(2.0).unwrap_or(T::one() + T::one()) }
+
+/// Built-in window families for spectral analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowKind {
+    /// Hann (raised cosine) window.
+    Hann,
+    /// Hamming window.
+    Hamming,
+    /// Blackman window.
+    Blackman,
+}
+
+/// Generate a window of the given kind into `output`.
+pub fn window_into<T, S>(kind: WindowKind, output: &mut ArrayBase<S, Ix1>) -> Result<(), SignalError>
+where
+    T: NabledReal,
+    S: DataMut<Elem = T>,
+{
+    match kind {
+        WindowKind::Hann => hann_into(output.len(), output),
+        WindowKind::Hamming => hamming_into(output.len(), output),
+        WindowKind::Blackman => blackman_into(output.len(), output),
+    }
+}
+
+/// Element-wise multiply `signal` by a window, optionally normalizing the window to unit coherent gain.
+pub fn apply_window<T: NabledReal>(
+    signal: &ArrayView1<'_, T>,
+    kind: WindowKind,
+    normalize: bool,
+) -> Result<Array1<T>, SignalError> {
+    if signal.is_empty() {
+        return Err(SignalError::EmptyInput);
+    }
+    let n = signal.len();
+    let mut window = Array1::<T>::zeros(n);
+    window_into(kind, &mut window)?;
+    if normalize {
+        let sum = window.iter().copied().fold(T::zero(), |acc, v| acc + v);
+        if sum > T::epsilon() {
+            let scale = T::from_usize(n).unwrap_or(T::one()) / sum;
+            window.mapv_inplace(|value| value * scale);
+        }
+    }
+    Ok(signal * window)
+}
 
 /// Hann window of length `n`.
 #[must_use]

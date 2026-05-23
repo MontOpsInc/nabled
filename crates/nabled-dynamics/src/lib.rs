@@ -4,11 +4,14 @@
 
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 
+pub mod config;
 pub mod crba;
 pub mod fd;
 pub mod id;
 pub mod rnea;
 pub mod spatial;
+
+pub use config::DynamicsConfig;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DynamicsError {

@@ -10,7 +10,10 @@ Workspace migration for library domains is complete.
    `nabled-kinematics`, `nabled-model`, `nabled-dynamics`, `nabled-control`, and `nabled-sensor`
    (Phase 0–3 scaffolding landed on branch `build/multiple-crates-extending-nabled`; see
    `docs/PHYSICAL_AI_TRACKER.md`).
-2. `crates/nabled` is the facade package re-exporting workspace crates, including Physical AI modules
+2. Physical AI horizontal depth is **Real** (REFERENCE_RUBRIC Implemented): URDF v2 model, true DLS IK,
+   RealFft signal pipeline, control pole/observer/gramians, serial RNEA/CRBA/FD, EKF/camera/IMU; integration
+   scenarios S1–S21 pass (22 tests, 0 ignored with `--features signal`).
+3. `crates/nabled` is the facade package re-exporting workspace crates, including Physical AI modules
    (`kinematics`, `model`, `dynamics`, `control`, `sensor`) and horizontal layers `linalg::geometry` /
    `linalg::signal`.
 3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.

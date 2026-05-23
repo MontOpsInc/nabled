@@ -3,7 +3,16 @@
 use nabled_core::scalar::NabledReal;
 use ndarray::ArrayView1;
 
+#[cfg(feature = "signal")]
+use ndarray::Array1;
+
 use super::{SignalError, dot_segment};
+
+#[cfg(feature = "signal")]
+use super::fft::{RfftSpectrum, irfft, rfft};
+
+#[cfg(feature = "signal")]
+use num_complex::Complex;
 
 fn validate_lag(len: usize, lag: usize) -> Result<(), SignalError> {
     if len == 0 {
@@ -84,6 +93,25 @@ pub fn cross_correlation_at_lag_into<T: NabledReal>(
     Ok(())
 }
 
+/// Full linear autocorrelation for lags `0..n` via FFT convolution (requires `signal` feature).
+#[cfg(feature = "signal")]
+pub fn autocorrelation_full<T: NabledReal>(signal: &ArrayView1<'_, T>) -> Result<Array1<T>, SignalError> {
+    if signal.is_empty() {
+        return Err(SignalError::EmptyInput);
+    }
+    let n = signal.len();
+    let padded_len = n * 2;
+    let mut padded = Array1::<T>::zeros(padded_len);
+    padded.slice_mut(ndarray::s![..n]).assign(signal);
+    let spectrum = rfft(&padded.view())?;
+    let power = spectrum.power();
+    let power_spectrum = RfftSpectrum {
+        bins: power.mapv(|value| Complex::new(value, T::zero())),
+    };
+    let circular = irfft(&power_spectrum)?;
+    Ok(Array1::from_iter(circular.iter().take(n).copied()))
+}
+
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
@@ -95,5 +123,24 @@ mod tests {
         let signal = ndarray::arr1(&[1.0_f64, 2.0, 3.0]);
         let r0 = autocorrelation_at_lag(&signal.view(), 0).unwrap();
         assert_relative_eq!(r0, 14.0, epsilon = 1e-12);
+    }
+
+    #[cfg(feature = "signal")]
+    #[test]
+    fn autocorrelation_full_periodic_peak() {
+        let period = 8;
+        let n = 32;
+        let signal: Array1<f64> = Array1::from_iter(
+            (0..n).map(|i| (2.0 * std::f64::consts::PI * i as f64 / period as f64).sin()),
+        );
+        let acf = autocorrelation_full(&signal.view()).unwrap();
+        assert!(acf[0] >= acf[period]);
+        let (peak_lag, _) = acf
+            .iter()
+            .enumerate()
+            .skip(1)
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap();
+        assert_eq!(peak_lag, period);
     }
 }

@@ -34,11 +34,15 @@ pub fn jacobian_view<T: NabledReal>(
         return Err(KinematicsError::DimensionMismatch);
     }
     let transforms = link_transforms_view(chain, q)?;
-    let ee = transforms.last().unwrap();
+    let ee_joint = chain.ee_joint_index();
+    let ee = &transforms[ee_joint + 1];
     let p_e = origin(ee);
     let n = chain.num_joints();
     let mut j = Array2::<T>::zeros((6, n));
     for i in 0..n {
+        if i > ee_joint {
+            continue;
+        }
         let frame = &transforms[i];
         let z_i = z_axis(frame);
         let p_i = origin(frame);

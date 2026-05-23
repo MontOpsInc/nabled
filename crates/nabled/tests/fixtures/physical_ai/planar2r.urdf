@@ -1,14 +1,32 @@
 <?xml version="1.0"?>
 <robot name="planar2r">
   <link name="base"/>
+  <link name="link1">
+    <inertial>
+      <origin xyz="0.5 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+  <link name="link2">
+    <inertial>
+      <origin xyz="0.5 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
   <joint name="j1" type="revolute">
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="1 0 0" rpy="0 0 0"/>
     <parent link="base"/>
     <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1"/>
   </joint>
   <joint name="j2" type="revolute">
     <origin xyz="1 0 0" rpy="0 0 0"/>
     <parent link="link1"/>
     <child link="link2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1"/>
   </joint>
 </robot>

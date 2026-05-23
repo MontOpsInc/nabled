@@ -31,5 +31,8 @@ nabled-linalg.workspace = true
 nabled-model.workspace = true
 ndarray.workspace = true
 
+[dev-dependencies]
+approx.workspace = true
+
 [lints]
 workspace = true

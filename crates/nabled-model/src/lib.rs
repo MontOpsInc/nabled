@@ -5,6 +5,7 @@
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 
 pub mod dh;
+pub mod fixture;
 pub mod joint;
 pub mod link;
 pub mod robot;

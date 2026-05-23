@@ -16,10 +16,11 @@ pub mod fk;
 pub mod ik;
 pub mod jacobian;
 
-pub use chain::{ChainSpec, DhConvention, JointType};
+pub use chain::{ChainSpec, DhConvention, JointLimits, JointType};
 pub use error::KinematicsError;
 pub use ik::{
-    IkConfig, inverse_kinematics_dls, inverse_kinematics_dls_into, pose_error, pose_error_into,
+    IkConfig, IkResult, IkWorkspace, inverse_kinematics_dls, inverse_kinematics_dls_into,
+    inverse_kinematics_dls_with_limits, pose_error, pose_error_into,
 };
 
 impl IntoNabledError for KinematicsError {
@@ -30,6 +31,9 @@ impl IntoNabledError for KinematicsError {
             KinematicsError::InvalidInput(message) => NabledError::InvalidInput(message),
             KinematicsError::ConvergenceFailed => NabledError::ConvergenceFailed,
             KinematicsError::NumericalInstability => NabledError::NumericalInstability,
+            KinematicsError::JointLimitViolation(joint) => {
+                NabledError::InvalidInput(format!("joint limit violated at joint {joint}"))
+            }
         }
     }
 }

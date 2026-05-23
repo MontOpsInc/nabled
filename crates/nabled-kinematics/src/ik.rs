@@ -2,10 +2,10 @@
 
 use nabled_core::scalar::NabledReal;
 use nabled_linalg::geometry::{Transform3, se3};
-use nabled_ml::optimization;
-use ndarray::Array1;
+use nabled_linalg::lu::{self, LuProviderScalar};
+use ndarray::{Array1, Array2, ArrayView1};
 
-use crate::chain::ChainSpec;
+use crate::chain::{ChainSpec, JointLimits};
 use crate::error::KinematicsError;
 use crate::fk::fk_view;
 use crate::jacobian::jacobian_view;
@@ -26,6 +26,43 @@ impl<T: NabledReal> Default for IkConfig<T> {
             tolerance:      T::from_f64(1e-4).unwrap_or(T::zero()),
             damping:        T::from_f64(0.01).unwrap_or(T::zero()),
             step_scale:     T::one(),
+        }
+    }
+}
+
+/// Result of damped least-squares IK.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IkResult<T> {
+    pub q:            Array1<T>,
+    pub iterations:   usize,
+    pub final_error:  T,
+    pub converged:    bool,
+}
+
+/// Reusable workspace for DLS IK hot paths.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IkWorkspace<T> {
+    jacobian:  Array2<T>,
+    error:     Array1<T>,
+    task_error: Array1<T>,
+    jtj:       Array2<T>,
+    jte:       Array1<T>,
+    dq:        Array1<T>,
+    q:         Array1<T>,
+}
+
+impl<T: NabledReal> IkWorkspace<T> {
+    /// Allocate workspace buffers for a chain with `num_joints` DOF.
+    #[must_use]
+    pub fn new(num_joints: usize) -> Self {
+        Self {
+            jacobian: Array2::zeros((6, num_joints)),
+            error:    Array1::zeros(6),
+            task_error: Array1::zeros(6),
+            jtj:      Array2::zeros((num_joints, num_joints)),
+            jte:      Array1::zeros(num_joints),
+            dq:       Array1::zeros(num_joints),
+            q:        Array1::zeros(num_joints),
         }
     }
 }
@@ -54,90 +91,188 @@ pub fn pose_error_into<T: NabledReal>(
     Ok(())
 }
 
-/// Damped least-squares IK (Gauss-Newton with DLS step + gradient-descent polish).
-pub fn inverse_kinematics_dls<T: NabledReal>(
-    chain: &ChainSpec<T>,
-    q_init: &Array1<T>,
-    target: &Transform3<T>,
-    config: &IkConfig<T>,
-) -> Result<Array1<T>, KinematicsError> {
-    let chain = chain.clone();
-    let target = target.clone();
-    let objective = |q: &Array1<T>| -> T {
-        let current = fk_view(&chain, &q.view()).expect("fk");
-        let err = pose_error(&current, &target).expect("pose error");
-        err.iter().map(|v| *v * *v).fold(T::zero(), |a, b| a + b)
-    };
-    if objective(q_init) <= config.tolerance {
-        return Ok(q_init.clone());
-    }
-    let gradient = |q: &Array1<T>| -> Array1<T> {
-        let current = fk_view(&chain, &q.view()).expect("fk");
-        let err = pose_error(&current, &target).expect("pose error");
-        let two = T::from_f64(2.0).unwrap_or(T::one() + T::one());
-        jacobian_view(&chain, &q.view()).expect("jacobian").t().dot(&err).mapv(|v| v * two)
-    };
-    let bfgs_config = optimization::BFGSConfig {
-        max_iterations: config.max_iterations,
-        tolerance: config.tolerance,
-        ..optimization::BFGSConfig::default()
-    };
-    optimization::bfgs(q_init, objective, gradient, &bfgs_config)
-        .map_err(|_| KinematicsError::ConvergenceFailed)
+fn error_norm<T: NabledReal>(error: &Array1<T>) -> T {
+    error.iter().map(|v| *v * *v).fold(T::zero(), |acc, v| acc + v).sqrt()
 }
 
-/// DLS IK into caller buffer.
-pub fn inverse_kinematics_dls_into<T: NabledReal>(
-    chain: &ChainSpec<T>,
-    q_init: &Array1<T>,
-    target: &Transform3<T>,
-    config: &IkConfig<T>,
-    output: &mut Array1<T>,
-) -> Result<(), KinematicsError> {
-    let q = inverse_kinematics_dls(chain, q_init, target, config)?;
-    if output.len() != q.len() {
-        return Err(KinematicsError::DimensionMismatch);
+/// Map `se3::log` twist `[angular; translation]` to Jacobian task order `[linear; angular]`.
+fn task_error_for_jacobian<T: NabledReal>(error: &Array1<T>, output: &mut Array1<T>) {
+    for i in 0..3 {
+        output[i] = error[i + 3];
+        output[i + 3] = error[i];
     }
-    output.assign(&q);
+}
+
+fn validate_limits<T: PartialOrd>(
+    q: &ArrayView1<'_, T>,
+    limits: &[JointLimits<T>],
+) -> Result<(), KinematicsError> {
+    let n = q.len().min(limits.len());
+    for i in 0..n {
+        if q[i] < limits[i].lower || q[i] > limits[i].upper {
+            return Err(KinematicsError::JointLimitViolation(i));
+        }
+    }
     Ok(())
 }
 
-/// Optional BFGS IK using `nabled-ml`.
-pub fn inverse_kinematics_opt<T: NabledReal>(
+fn clip_to_limits<T: NabledReal>(q: &mut Array1<T>, limits: &[JointLimits<T>]) {
+    let n = q.len().min(limits.len());
+    for i in 0..n {
+        q[i] = q[i].max(limits[i].lower).min(limits[i].upper);
+    }
+}
+
+fn dls_step<T: NabledReal + LuProviderScalar>(
+    jacobian: &Array2<T>,
+    error: &Array1<T>,
+    damping: T,
+    jtj: &mut Array2<T>,
+    jte: &mut Array1<T>,
+    dq: &mut Array1<T>,
+) -> Result<(), KinematicsError> {
+    let n = jtj.nrows();
+    let jt = jacobian.t();
+    jtj.assign(&jt.dot(jacobian));
+    let lambda_sq = damping * damping;
+    for i in 0..n {
+        jtj[[i, i]] += lambda_sq;
+    }
+    jte.assign(&jt.dot(error));
+    *dq = lu::solve(jtj, jte).map_err(|_| KinematicsError::NumericalInstability)?;
+    Ok(())
+}
+
+/// Damped least-squares IK with optional joint limits.
+pub fn inverse_kinematics_dls_with_limits<T: NabledReal + LuProviderScalar>(
+    chain: &ChainSpec<T>,
+    q_init: &Array1<T>,
+    target: &Transform3<T>,
+    config: &IkConfig<T>,
+    limits: Option<&[JointLimits<T>]>,
+) -> Result<IkResult<T>, KinematicsError> {
+    let mut workspace = IkWorkspace::new(chain.num_joints());
+    let mut output = Array1::zeros(chain.num_joints());
+    inverse_kinematics_dls_into(chain, q_init, target, config, limits, &mut workspace, &mut output)
+}
+
+/// Damped least-squares IK returning joint configuration.
+pub fn inverse_kinematics_dls<T: NabledReal + LuProviderScalar>(
     chain: &ChainSpec<T>,
     q_init: &Array1<T>,
     target: &Transform3<T>,
     config: &IkConfig<T>,
 ) -> Result<Array1<T>, KinematicsError> {
-    let chain = chain.clone();
-    let target = target.clone();
-    let objective = |q: &Array1<T>| -> T {
-        let current = fk_view(&chain, &q.view()).expect("fk");
-        let err = pose_error(&current, &target).expect("pose error");
-        err.iter().map(|v| *v * *v).fold(T::zero(), |a, b| a + b)
-    };
-    let gradient = |q: &Array1<T>| -> Array1<T> {
-        let current = fk_view(&chain, &q.view()).expect("fk");
-        let err = pose_error(&current, &target).expect("pose error");
-        let two = T::from_f64(2.0).unwrap_or(T::one() + T::one());
-        jacobian_view(&chain, &q.view()).expect("jacobian").t().dot(&err).mapv(|v| v * two)
-    };
-    let bfgs_config = optimization::BFGSConfig {
-        max_iterations: config.max_iterations,
-        tolerance: config.tolerance,
-        ..optimization::BFGSConfig::default()
-    };
-    optimization::bfgs(q_init, objective, gradient, &bfgs_config)
-        .map_err(|_| KinematicsError::ConvergenceFailed)
+    inverse_kinematics_dls_with_limits(chain, q_init, target, config, None).map(|result| result.q)
+}
+
+/// DLS IK into caller buffers with reusable workspace.
+pub fn inverse_kinematics_dls_into<T: NabledReal + LuProviderScalar>(
+    chain: &ChainSpec<T>,
+    q_init: &Array1<T>,
+    target: &Transform3<T>,
+    config: &IkConfig<T>,
+    limits: Option<&[JointLimits<T>]>,
+    workspace: &mut IkWorkspace<T>,
+    output: &mut Array1<T>,
+) -> Result<IkResult<T>, KinematicsError> {
+    chain.validate()?;
+    let n = chain.num_joints();
+    if q_init.len() != n || output.len() != n {
+        return Err(KinematicsError::DimensionMismatch);
+    }
+    if workspace.jacobian.ncols() != n || workspace.jtj.nrows() != n {
+        *workspace = IkWorkspace::new(n);
+    }
+    if let Some(limits) = limits {
+        if limits.len() != n {
+            return Err(KinematicsError::DimensionMismatch);
+        }
+        validate_limits(&q_init.view(), limits)?;
+    }
+
+    workspace.q.assign(q_init);
+    let mut iterations = 0_usize;
+    let mut final_error = T::zero();
+    let mut converged = false;
+
+    for iter in 0..config.max_iterations {
+        iterations = iter + 1;
+        let current = fk_view(chain, &workspace.q.view())?;
+        pose_error_into(&current, target, &mut workspace.error)?;
+        final_error = error_norm(&workspace.error);
+        if final_error <= config.tolerance {
+            converged = true;
+            break;
+        }
+
+        let j = jacobian_view(chain, &workspace.q.view())?;
+        workspace.jacobian.assign(&j);
+        task_error_for_jacobian(&workspace.error, &mut workspace.task_error);
+        dls_step(
+            &workspace.jacobian,
+            &workspace.task_error,
+            config.damping,
+            &mut workspace.jtj,
+            &mut workspace.jte,
+            &mut workspace.dq,
+        )?;
+
+        for i in 0..n {
+            workspace.q[i] += config.step_scale * workspace.dq[i];
+        }
+        if let Some(limits) = limits {
+            clip_to_limits(&mut workspace.q, limits);
+        }
+    }
+
+    if !converged {
+        return Err(KinematicsError::ConvergenceFailed);
+    }
+
+    output.assign(&workspace.q);
+    Ok(IkResult { q: output.clone(), iterations, final_error, converged })
 }
 
 #[cfg(test)]
 mod tests {
+    use approx::assert_relative_eq;
     use nabled_linalg::geometry::Rotation3;
     use ndarray::{Array2, arr1};
 
     use super::*;
     use crate::chain::{ChainSpec, DhConvention, JointType};
+
+    fn six_dof_chain() -> ChainSpec<f64> {
+        ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Revolute; 6],
+            arr1(&[0.0, 0.4318, 0.0203, 0.0, 0.0, 0.0]),
+            arr1(&[
+                std::f64::consts::FRAC_PI_2,
+                0.0,
+                std::f64::consts::FRAC_PI_2,
+                -std::f64::consts::FRAC_PI_2,
+                std::f64::consts::FRAC_PI_2,
+                0.0,
+            ]),
+            arr1(&[0.089159, 0.0, 0.0, 0.43307, 0.0, 0.0]),
+            arr1(&[0.0; 6]),
+        )
+        .unwrap()
+    }
+
+    fn planar_2r_chain() -> ChainSpec<f64> {
+        ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Revolute, JointType::Revolute],
+            arr1(&[1.0_f64, 1.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+        )
+        .unwrap()
+    }
 
     #[test]
     fn pose_error_zero_at_same_pose() {
@@ -150,54 +285,141 @@ mod tests {
     }
 
     #[test]
-    fn objective_zero_at_target_configuration() {
-        let chain = ChainSpec::from_dh(
-            DhConvention::Standard,
-            vec![JointType::Revolute; 6],
-            arr1(&[0.0, 0.4318, 0.0203, 0.0, 0.0, 0.0]),
-            arr1(&[
-                std::f64::consts::FRAC_PI_2,
-                0.0,
-                std::f64::consts::FRAC_PI_2,
-                -std::f64::consts::FRAC_PI_2,
-                std::f64::consts::FRAC_PI_2,
-                0.0,
-            ]),
-            arr1(&[0.089159, 0.0, 0.0, 0.43307, 0.0, 0.0]),
-            arr1(&[0.0; 6]),
-        )
-        .unwrap();
+    fn dls_cold_start_six_dof() {
+        let chain = six_dof_chain();
         let q_target = arr1(&[0.2_f64, -0.3, 0.5, 0.1, -0.2, 0.4]);
         let target = fk_view(&chain, &q_target.view()).unwrap();
-        let achieved = fk_view(&chain, &q_target.view()).unwrap();
+        let q_init = arr1(&[0.0; 6]);
+        let config = IkConfig {
+            max_iterations: 200,
+            tolerance:      1e-3,
+            ..IkConfig::default()
+        };
+        let result =
+            inverse_kinematics_dls_with_limits(&chain, &q_init, &target, &config, None).unwrap();
+        let achieved = fk_view(&chain, &result.q.view()).unwrap();
         let err = pose_error(&achieved, &target).unwrap();
-        assert!(err.iter().map(|v| v * v).sum::<f64>().sqrt() < 1e-8);
+        assert!(result.converged);
+        assert!(error_norm(&err) < 1e-3);
     }
 
     #[test]
-    fn dls_recovers_six_dof_target() {
-        let chain = ChainSpec::from_dh(
-            DhConvention::Standard,
-            vec![JointType::Revolute; 6],
-            arr1(&[0.0, 0.4318, 0.0203, 0.0, 0.0, 0.0]),
-            arr1(&[
-                std::f64::consts::FRAC_PI_2,
-                0.0,
-                std::f64::consts::FRAC_PI_2,
-                -std::f64::consts::FRAC_PI_2,
-                std::f64::consts::FRAC_PI_2,
-                0.0,
-            ]),
-            arr1(&[0.089159, 0.0, 0.0, 0.43307, 0.0, 0.0]),
-            arr1(&[0.0; 6]),
-        )
-        .unwrap();
+    fn dls_recovers_six_dof_warm_start() {
+        let chain = six_dof_chain();
         let q_target = arr1(&[0.2_f64, -0.3, 0.5, 0.1, -0.2, 0.4]);
         let target = fk_view(&chain, &q_target.view()).unwrap();
-        let q_init = q_target.clone();
-        let q = inverse_kinematics_dls(&chain, &q_init, &target, &IkConfig::default()).unwrap();
+        let q = inverse_kinematics_dls(&chain, &q_target, &target, &IkConfig::default()).unwrap();
         let achieved = fk_view(&chain, &q.view()).unwrap();
         let err = pose_error(&achieved, &target).unwrap();
-        assert!(err.iter().map(|v| v * v).sum::<f64>().sqrt() < 1e-2);
+        assert!(error_norm(&err) < 1e-2);
+    }
+
+    #[test]
+    fn dls_step_aligns_with_pose_error_gradient() {
+        let chain = planar_2r_chain();
+        let q = arr1(&[0.3_f64, -0.4]);
+        let q_target = arr1(&[0.8_f64, 0.2]);
+        let target = fk_view(&chain, &q_target.view()).unwrap();
+        let current = fk_view(&chain, &q.view()).unwrap();
+        let err = pose_error(&current, &target).unwrap();
+        let j = jacobian_view(&chain, &q.view()).unwrap();
+        let mut task_err = Array1::zeros(6);
+        task_error_for_jacobian(&err, &mut task_err);
+        let mut jtj = Array2::zeros((2, 2));
+        let mut jte = Array1::zeros(2);
+        let mut dq = Array1::zeros(2);
+        dls_step(&j, &task_err, 0.05, &mut jtj, &mut jte, &mut dq).unwrap();
+        let two = 2.0;
+        let grad = j.t().dot(&task_err).mapv(|v| v * two);
+        assert!(dq.dot(&grad) > 0.0);
+    }
+
+    #[test]
+    fn planar_2r_reaches_target_with_limits() {
+        let chain = planar_2r_chain();
+        let q_target = arr1(&[0.5_f64, -0.3]);
+        let target = fk_view(&chain, &q_target.view()).unwrap();
+        let limits = vec![
+            JointLimits { lower: -3.0, upper: 3.0 },
+            JointLimits { lower: -3.0, upper: 3.0 },
+        ];
+        let result = inverse_kinematics_dls_with_limits(
+            &chain,
+            &arr1(&[0.0, 0.0]),
+            &target,
+            &IkConfig::default(),
+            Some(&limits),
+        )
+        .unwrap();
+        let achieved = fk_view(&chain, &result.q.view()).unwrap();
+        let err = pose_error(&achieved, &target).unwrap();
+        assert!(error_norm(&err) < 1e-3);
+    }
+
+    #[test]
+    fn rejects_initial_joint_limit_violation() {
+        let chain = planar_2r_chain();
+        let q_target = arr1(&[0.5_f64, -0.3]);
+        let target = fk_view(&chain, &q_target.view()).unwrap();
+        let limits = vec![
+            JointLimits { lower: -1.0, upper: 1.0 },
+            JointLimits { lower: -1.0, upper: 1.0 },
+        ];
+        let err = inverse_kinematics_dls_with_limits(
+            &chain,
+            &arr1(&[2.0, 0.0]),
+            &target,
+            &IkConfig::default(),
+            Some(&limits),
+        )
+        .unwrap_err();
+        assert_eq!(err, KinematicsError::JointLimitViolation(0));
+    }
+
+    #[test]
+    fn f32_smoke_on_planar_2r() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Revolute, JointType::Revolute],
+            arr1(&[1.0_f32, 1.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+        )
+        .unwrap();
+        let q_target = arr1(&[0.4_f32, 0.2]);
+        let target = fk_view(&chain, &q_target.view()).unwrap();
+        let result = inverse_kinematics_dls_with_limits(
+            &chain,
+            &arr1(&[0.0, 0.0]),
+            &target,
+            &IkConfig::default(),
+            None,
+        )
+        .unwrap();
+        let achieved = fk_view(&chain, &result.q.view()).unwrap();
+        let err = pose_error(&achieved, &target).unwrap();
+        let err_norm = err.iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>().sqrt();
+        assert!(err_norm < 1e-2);
+    }
+
+    #[test]
+    fn dls_into_reuses_workspace() {
+        let chain = planar_2r_chain();
+        let q_target = arr1(&[0.6_f64, 0.1]);
+        let target = fk_view(&chain, &q_target.view()).unwrap();
+        let mut workspace = IkWorkspace::new(2);
+        let mut output = arr1(&[0.0, 0.0]);
+        let result = inverse_kinematics_dls_into(
+            &chain,
+            &arr1(&[0.0, 0.0]),
+            &target,
+            &IkConfig::default(),
+            None,
+            &mut workspace,
+            &mut output,
+        )
+        .unwrap();
+        assert_relative_eq!(result.q.as_slice().unwrap(), output.as_slice().unwrap(), epsilon = 1e-12);
     }
 }

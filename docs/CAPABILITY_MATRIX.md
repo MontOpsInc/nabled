@@ -49,13 +49,13 @@ Objective production-readiness and domain done criteria live in `docs/REFERENCE_
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
 | Stats | means/centering/covariance/correlation | `nabled-ml::stats` | Implemented | No | |
 | Geometry (Physical AI) | quat/SO(3)/SE(3)/twist primitives | `nabled-linalg::geometry` | Implemented | No | Round 1 (M1) landed: quat/SO3/SE3/twist with view/into paths. |
-| Signal (Physical AI) | windows, correlation, FFT (feature `signal`) | `nabled-linalg::signal` | Partial | No | window/correlation Round 2 (M6) landed; FFT stub behind feature. |
+| Signal (Physical AI) | windows, correlation, FFT (feature `signal`) | `nabled-linalg::signal` | Implemented | No | RealFft round-trip, `RfftSpectrum`, `windowed_rfft`, `autocorrelation_full`; S12–S14 pass with `signal` feature. |
 | Stats streaming (Physical AI) | online/ewma/rolling/lag column ops | `nabled-ml::stats` | Implemented | No | online/ewma/rolling/lag landed Round 1 (M2); lag_view/shift only. |
-| Kinematics | chain spec, FK, Jacobian, IK | `nabled-kinematics` | Partial | No | FK/Jacobian Round 1 (M3), IK Round 2 (M4) landed; `ChainSpec` owner; `pose_error` → `geometry::se3::log`. |
-| Robot model | joints/links/URDF → `ChainSpec` | `nabled-model` | Partial | No | minimal URDF + DH→chain Round 2 (M5); depends on kinematics. |
-| Dynamics | RNEA/CRBA/forward dynamics | `nabled-dynamics` | Partial | No | scaffold Round 3 (M7); RNEA stub; FK via kinematics. |
-| Control | DARE/LQR/gramians/pole placement | `nabled-control` | Partial | No | DARE/LQR Round 3 (M8); gramians/pole stubs; no `dynamics` dep. |
-| Sensor fusion | Kalman/EKF/camera/IMU | `nabled-sensor` | Partial | No | linear Kalman Round 3 (M9); EKF/camera/IMU stubs; no `control` dep. |
+| Kinematics | chain spec, FK, Jacobian, IK | `nabled-kinematics` | Implemented | Yes | True DLS IK, `IkResult`, joint limits, cold-start S3; bench `kinematics`. |
+| Robot model | joints/links/URDF → `ChainSpec` | `nabled-model` | Implemented | No | quick-xml URDF v2, tree BFS, inertials/limits/axis, JSON fixture loader; S4 parity. |
+| Dynamics | RNEA/CRBA/forward dynamics | `nabled-dynamics` | Implemented | No | Serial RNEA + CRBA mass matrix + FD; `DynamicsConfig`; S5/S5b pass. |
+| Control | DARE/LQR/gramians/pole placement | `nabled-control` | Implemented | No | pole/observer/gramians/discrete gramians + `dare_residual`; S9/S10/S15/S16/S21 pass. |
+| Sensor fusion | Kalman/EKF/camera/IMU | `nabled-sensor` | Implemented | No | EKF predict/update, `PinholeIntrinsics`, strapdown IMU; S7/S11/S17–S19 pass. |
 
 ## Execution Axes Model
 
