@@ -1,6 +1,8 @@
 LOG := env('RUST_LOG', '')
 features := 'arrow blas lapack-provider openblas-system openblas-static netlib-system netlib-static accelerator-rayon accelerator-wgpu'
-provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
+# Resolve Homebrew OpenBLAS prefix (Apple Silicon vs Intel); fall back to common paths.
+openblas_prefix := `/usr/bin/env bash -lc 'brew --prefix openblas 2>/dev/null || { for p in /opt/homebrew/opt/openblas /usr/local/opt/openblas; do [ -d "$p/lib" ] && echo "$p" && exit 0; done; echo /opt/homebrew/opt/openblas; }'`
+provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=" + openblas_prefix + "/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=" + openblas_prefix + " LIBRARY_PATH=" + openblas_prefix + "/lib${LIBRARY_PATH:+:${LIBRARY_PATH}} DYLD_LIBRARY_PATH=" + openblas_prefix + "/lib${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}" } else { "env" }
 provider_features := env('NABLED_PROVIDER_FEATURES', 'openblas-system')
 provider_bench_features := env('NABLED_PROVIDER_BENCH_FEATURES', 'openblas-system')
 coverage_line_threshold := "90"
