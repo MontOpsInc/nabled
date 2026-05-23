@@ -1,0 +1,31 @@
+{
+  "description": "Planar 2R arm with unit link lengths (revolute about Z)",
+  "link_lengths": [1.0, 1.0],
+  "dh_convention": "standard",
+  "dh_params": [
+    [1.0, 0.0, 0.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0]
+  ],
+  "cases": [
+    {
+      "name": "home",
+      "q": [0.0, 0.0],
+      "ee_translation": [2.0, 0.0, 0.0],
+      "jacobian_translation": [
+        [0.0, 0.0],
+        [2.0, 1.0],
+        [0.0, 0.0]
+      ]
+    },
+    {
+      "name": "elbow_up",
+      "q": [1.5707963267948966, 0.0],
+      "ee_translation": [0.0, 2.0, 0.0],
+      "jacobian_translation": [
+        [-2.0, -1.0],
+        [0.0, 0.0],
+        [0.0, 0.0]
+      ]
+    }
+  ]
+}

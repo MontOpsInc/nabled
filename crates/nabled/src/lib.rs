@@ -6,8 +6,13 @@
 //! ## Crate Layout
 //!
 //! 1. [`core`] for shared error taxonomy, validation, and ndarray prelude exports.
-//! 2. [`linalg`] for linear algebra and decomposition domains.
+//! 2. [`linalg`] for linear algebra and decomposition domains (including `geometry` and `signal`).
 //! 3. [`ml`] for ML-oriented numerical routines.
+//! 4. [`kinematics`] for chain specification, FK, Jacobian, and IK.
+//! 5. [`model`] for robot model representation and URDF ingestion.
+//! 6. [`dynamics`] for rigid-body dynamics algorithms.
+//! 7. [`control`] for LTI control synthesis (DARE/LQR and related tools).
+//! 8. [`sensor`] for sensor fusion (Kalman/EKF and related models).
 //!
 //! ## Feature Flags
 //!
@@ -20,7 +25,8 @@
 //! 6. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths.
 //! 7. `accelerator-rayon`: enables parallel CPU kernels where implemented.
 //! 8. `accelerator-wgpu`: enables WGPU-backed kernel paths where implemented.
-//! 9. `arrow`: enables facade-only Arrow/ndarray interop adapters backed by `ndarrow`.
+//! 9. `signal`: enables `nabled-linalg::signal` FFT-backed routines.
+//! 10. `arrow`: enables facade-only Arrow/ndarray interop adapters backed by `ndarrow`.
 //!
 //! ## Execution Semantics
 //!
@@ -65,6 +71,31 @@ pub mod linalg {
 /// ML-oriented numerical domains built on ndarray-native primitives.
 pub mod ml {
     pub use nabled_ml::*;
+}
+
+/// Kinematics algorithms for Physical AI workloads.
+pub mod kinematics {
+    pub use nabled_kinematics::*;
+}
+
+/// Robot model representation for Physical AI workloads.
+pub mod model {
+    pub use nabled_model::*;
+}
+
+/// Rigid-body dynamics for Physical AI workloads.
+pub mod dynamics {
+    pub use nabled_dynamics::*;
+}
+
+/// Control algorithms for Physical AI workloads.
+pub mod control {
+    pub use nabled_control::*;
+}
+
+/// Sensor fusion for Physical AI workloads.
+pub mod sensor {
+    pub use nabled_sensor::*;
 }
 
 /// Optional Arrow/ndarray interop adapters that delegate into ndarray-native `nabled` domains.

@@ -1,13 +1,18 @@
 # Status Snapshot
 
-Last updated: 2026-04-25
+Last updated: 2026-05-23
 
 ## Summary
 
 Workspace migration for library domains is complete.
 
-1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`.
-2. `crates/nabled` is the facade package re-exporting workspace crates.
+1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`, plus Physical AI domain crates
+   `nabled-kinematics`, `nabled-model`, `nabled-dynamics`, `nabled-control`, and `nabled-sensor`
+   (Phase 0–3 scaffolding landed on branch `build/multiple-crates-extending-nabled`; see
+   `docs/PHYSICAL_AI_TRACKER.md`).
+2. `crates/nabled` is the facade package re-exporting workspace crates, including Physical AI modules
+   (`kinematics`, `model`, `dynamics`, `control`, `sensor`) and horizontal layers `linalg::geometry` /
+   `linalg::signal`.
 3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.
 4. Facade crate `nabled` exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; domain entrypoints exist broadly across dense, sparse, decomposition, tensor, batched, and ML/stat workflows, and checkpoint 2 is now complete under the concept-first standalone / `rows-of-X` contract.
 Branch note:

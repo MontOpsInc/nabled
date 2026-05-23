@@ -4,6 +4,11 @@ members = [
     "crates/nabled-core",
     "crates/nabled-linalg",
     "crates/nabled-ml",
+    "crates/nabled-kinematics",
+    "crates/nabled-model",
+    "crates/nabled-dynamics",
+    "crates/nabled-control",
+    "crates/nabled-sensor",
     "crates/pynabled",
 ]
 default-members = [
@@ -11,6 +16,11 @@ default-members = [
     "crates/nabled-core",
     "crates/nabled-linalg",
     "crates/nabled-ml",
+    "crates/nabled-kinematics",
+    "crates/nabled-model",
+    "crates/nabled-dynamics",
+    "crates/nabled-control",
+    "crates/nabled-sensor",
 ]
 resolver = "3"
 
@@ -30,6 +40,11 @@ nabled = { path = "crates/nabled", version = "=0.0.8" }
 nabled-core = { path = "crates/nabled-core", version = "=0.0.8" }
 nabled-linalg = { path = "crates/nabled-linalg", version = "=0.0.8" }
 nabled-ml = { path = "crates/nabled-ml", version = "=0.0.8" }
+nabled-kinematics = { path = "crates/nabled-kinematics", version = "=0.0.8" }
+nabled-model = { path = "crates/nabled-model", version = "=0.0.8" }
+nabled-dynamics = { path = "crates/nabled-dynamics", version = "=0.0.8" }
+nabled-control = { path = "crates/nabled-control", version = "=0.0.8" }
+nabled-sensor = { path = "crates/nabled-sensor", version = "=0.0.8" }
 
 approx = "0.5"
 arrow-array = "58"
@@ -44,6 +59,7 @@ num-complex = "0.4"
 num-traits = "0.2"
 rand = "0.10"
 rayon = "1.11"
+rustfft = "6.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

@@ -1,0 +1,38 @@
+[package]
+name = "nabled-kinematics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/nabled-kinematics"
+publish.workspace = true
+description = "Kinematics algorithms for the nabled Physical AI stack"
+readme = "README.md"
+keywords = ["robotics", "kinematics", "ndarray", "jacobian", "fk"]
+categories = ["mathematics", "science", "algorithms"]
+
+[features]
+default = []
+blas = ["nabled-linalg/blas", "nabled-ml/blas"]
+lapack-provider = ["nabled-linalg/lapack-provider"]
+openblas-system = ["blas", "lapack-provider", "nabled-linalg/openblas-system"]
+openblas-static = ["blas", "lapack-provider", "nabled-linalg/openblas-static"]
+netlib-system = ["blas", "lapack-provider", "nabled-linalg/netlib-system"]
+netlib-static = ["blas", "lapack-provider", "nabled-linalg/netlib-static"]
+magma-system = ["lapack-provider", "nabled-linalg/magma-system"]
+
+[dependencies]
+nabled-core.workspace = true
+nabled-linalg.workspace = true
+nabled-ml.workspace = true
+ndarray.workspace = true
+num-traits.workspace = true
+
+[dev-dependencies]
+approx.workspace = true
+
+[lints]
+workspace = true

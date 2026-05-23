@@ -1,0 +1,143 @@
+//! SE(3) rigid transform operations.
+
+use nabled_core::scalar::NabledReal;
+use ndarray::{Array1, Array2, ArrayView1};
+
+use super::{GeometryError, Rotation3, Transform3};
+use crate::geometry::so3;
+
+#[must_use]
+pub fn from_rotation_translation<T: NabledReal>(
+    rotation: &Rotation3<T>,
+    translation: &Array1<T>,
+) -> Transform3<T> {
+    Transform3 { rotation: rotation.clone(), translation: translation.clone() }
+}
+
+#[must_use]
+pub fn rotation<T: NabledReal>(transform: &Transform3<T>) -> &Rotation3<T> { &transform.rotation }
+
+#[must_use]
+pub fn translation<T: NabledReal>(transform: &Transform3<T>) -> &Array1<T> {
+    &transform.translation
+}
+
+pub fn compose<T: NabledReal>(
+    t1: &Transform3<T>,
+    t2: &Transform3<T>,
+) -> Result<Transform3<T>, GeometryError> {
+    let rotation = so3::compose(&t1.rotation, &t2.rotation)?;
+    let translated = so3::rotate_vector(&t1.rotation, &t2.translation.view());
+    let mut out_t = t1.translation.clone();
+    out_t[0] += translated[0];
+    out_t[1] += translated[1];
+    out_t[2] += translated[2];
+    Ok(Transform3 { rotation, translation: out_t })
+}
+
+#[must_use]
+pub fn inverse<T: NabledReal>(transform: &Transform3<T>) -> Transform3<T> {
+    let inv_r = so3::inverse(&transform.rotation);
+    let mut neg_translation = transform.translation.clone();
+    neg_translation.mapv_inplace(|value| -value);
+    let neg_t = so3::rotate_vector(&inv_r, &neg_translation.view());
+    Transform3 { rotation: inv_r, translation: neg_t }
+}
+
+#[must_use]
+pub fn transform_point<T: NabledReal>(
+    transform: &Transform3<T>,
+    point: &ArrayView1<'_, T>,
+) -> Array1<T> {
+    let mut out = so3::rotate_vector(&transform.rotation, point);
+    out[0] += transform.translation[0];
+    out[1] += transform.translation[1];
+    out[2] += transform.translation[2];
+    out
+}
+
+pub fn transform_point_into<T: NabledReal>(
+    transform: &Transform3<T>,
+    point: &ArrayView1<'_, T>,
+    output: &mut Array1<T>,
+) -> Result<(), GeometryError> {
+    if point.len() != 3 || output.len() != 3 {
+        return Err(GeometryError::DimensionMismatch);
+    }
+    output.assign(&transform_point(transform, point));
+    Ok(())
+}
+
+#[must_use]
+pub fn transform_vector<T: NabledReal>(
+    transform: &Transform3<T>,
+    vector: &ArrayView1<'_, T>,
+) -> Array1<T> {
+    so3::rotate_vector(&transform.rotation, vector)
+}
+
+#[must_use]
+pub fn adjoint<T: NabledReal>(transform: &Transform3<T>) -> Array2<T> {
+    let r = &transform.rotation.matrix;
+    let t = &transform.translation;
+    let tx = so3::hat(&ndarray::arr1(&[t[0], t[1], t[2]]).view());
+    let mut adj = Array2::<T>::zeros((6, 6));
+    for i in 0..3 {
+        for j in 0..3 {
+            adj[[i, j]] = r[[i, j]];
+            adj[[i + 3, j + 3]] = r[[i, j]];
+        }
+    }
+    let t_hat_r = tx.dot(r);
+    for i in 0..3 {
+        for j in 0..3 {
+            adj[[i, j + 3]] = t_hat_r[[i, j]];
+        }
+    }
+    adj
+}
+
+#[must_use]
+pub fn to_homogeneous<T: NabledReal>(transform: &Transform3<T>) -> Array2<T> {
+    let mut h = Array2::<T>::zeros((4, 4));
+    for i in 0..3 {
+        for j in 0..3 {
+            h[[i, j]] = transform.rotation.matrix[[i, j]];
+        }
+        h[[i, 3]] = transform.translation[i];
+    }
+    h[[3, 3]] = T::one();
+    h
+}
+
+pub fn from_homogeneous<T: NabledReal>(matrix: &Array2<T>) -> Result<Transform3<T>, GeometryError> {
+    if matrix.nrows() != 4 || matrix.ncols() != 4 {
+        return Err(GeometryError::DimensionMismatch);
+    }
+    let mut rotation = Array2::<T>::zeros((3, 3));
+    let mut translation = Array1::<T>::zeros(3);
+    for i in 0..3 {
+        for j in 0..3 {
+            rotation[[i, j]] = matrix[[i, j]];
+        }
+        translation[i] = matrix[[i, 3]];
+    }
+    Ok(Transform3 { rotation: Rotation3 { matrix: rotation }, translation })
+}
+
+pub fn log<T: NabledReal>(transform: &Transform3<T>) -> Result<Array1<T>, GeometryError> {
+    let omega = so3::log(&transform.rotation)?;
+    let mut twist = Array1::<T>::zeros(6);
+    twist.slice_mut(ndarray::s![0..3]).assign(&omega);
+    twist.slice_mut(ndarray::s![3..6]).assign(&transform.translation);
+    Ok(twist)
+}
+
+pub fn exp<T: NabledReal>(twist: &ArrayView1<'_, T>) -> Result<Transform3<T>, GeometryError> {
+    if twist.len() != 6 {
+        return Err(GeometryError::DimensionMismatch);
+    }
+    let rotation = so3::exp(&twist.slice(ndarray::s![0..3]).view())?;
+    let translation = twist.slice(ndarray::s![3..6]).to_owned();
+    Ok(from_rotation_translation(&rotation, &translation))
+}

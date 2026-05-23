@@ -18,13 +18,75 @@ categories = ["mathematics", "science", "algorithms"]
 default = []
 test-utils = []
 arrow = ["dep:arrow-array", "dep:arrow-buffer", "dep:arrow-schema", "dep:ndarrow"]
-blas = ["nabled-linalg/blas", "nabled-ml/blas"]
-lapack-provider = ["nabled-linalg/lapack-provider", "nabled-ml/lapack-provider"]
-openblas-system = ["blas", "nabled-linalg/openblas-system", "nabled-ml/openblas-system"]
-openblas-static = ["blas", "nabled-linalg/openblas-static", "nabled-ml/openblas-static"]
-netlib-system = ["blas", "nabled-linalg/netlib-system", "nabled-ml/netlib-system"]
-netlib-static = ["blas", "nabled-linalg/netlib-static", "nabled-ml/netlib-static"]
-magma-system = ["lapack-provider", "nabled-linalg/magma-system", "nabled-ml/magma-system"]
+blas = [
+    "nabled-linalg/blas",
+    "nabled-ml/blas",
+    "nabled-kinematics/blas",
+    "nabled-model/blas",
+    "nabled-dynamics/blas",
+    "nabled-control/blas",
+    "nabled-sensor/blas",
+]
+lapack-provider = [
+    "nabled-linalg/lapack-provider",
+    "nabled-ml/lapack-provider",
+    "nabled-kinematics/lapack-provider",
+    "nabled-model/lapack-provider",
+    "nabled-dynamics/lapack-provider",
+    "nabled-control/lapack-provider",
+    "nabled-sensor/lapack-provider",
+]
+openblas-system = [
+    "blas",
+    "nabled-linalg/openblas-system",
+    "nabled-ml/openblas-system",
+    "nabled-kinematics/openblas-system",
+    "nabled-model/openblas-system",
+    "nabled-dynamics/openblas-system",
+    "nabled-control/openblas-system",
+    "nabled-sensor/openblas-system",
+]
+openblas-static = [
+    "blas",
+    "nabled-linalg/openblas-static",
+    "nabled-ml/openblas-static",
+    "nabled-kinematics/openblas-static",
+    "nabled-model/openblas-static",
+    "nabled-dynamics/openblas-static",
+    "nabled-control/openblas-static",
+    "nabled-sensor/openblas-static",
+]
+netlib-system = [
+    "blas",
+    "nabled-linalg/netlib-system",
+    "nabled-ml/netlib-system",
+    "nabled-kinematics/netlib-system",
+    "nabled-model/netlib-system",
+    "nabled-dynamics/netlib-system",
+    "nabled-control/netlib-system",
+    "nabled-sensor/netlib-system",
+]
+netlib-static = [
+    "blas",
+    "nabled-linalg/netlib-static",
+    "nabled-ml/netlib-static",
+    "nabled-kinematics/netlib-static",
+    "nabled-model/netlib-static",
+    "nabled-dynamics/netlib-static",
+    "nabled-control/netlib-static",
+    "nabled-sensor/netlib-static",
+]
+magma-system = [
+    "lapack-provider",
+    "nabled-linalg/magma-system",
+    "nabled-ml/magma-system",
+    "nabled-kinematics/magma-system",
+    "nabled-model/magma-system",
+    "nabled-dynamics/magma-system",
+    "nabled-control/magma-system",
+    "nabled-sensor/magma-system",
+]
+signal = ["nabled-linalg/signal"]
 accelerator-rayon = ["nabled-linalg/accelerator-rayon"]
 accelerator-wgpu = ["nabled-linalg/accelerator-wgpu"]
 
@@ -34,9 +96,14 @@ arrow-buffer = { workspace = true, optional = true }
 arrow-schema = { workspace = true, optional = true }
 ndarray.workspace = true
 ndarrow = { workspace = true, optional = true }
+nabled-control.workspace = true
 nabled-core.workspace = true
+nabled-dynamics.workspace = true
+nabled-kinematics.workspace = true
 nabled-linalg.workspace = true
 nabled-ml.workspace = true
+nabled-model.workspace = true
+nabled-sensor.workspace = true
 num-complex.workspace = true
 num-traits.workspace = true
 serde.workspace = true

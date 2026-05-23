@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot name="planar2r">
+  <link name="base"/>
+  <joint name="j1" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="link1"/>
+  </joint>
+  <joint name="j2" type="revolute">
+    <origin xyz="1 0 0" rpy="0 0 0"/>
+    <parent link="link1"/>
+    <child link="link2"/>
+  </joint>
+</robot>

@@ -804,6 +804,326 @@ where
     correlation_matrix_complex_into_impl(matrix, output)
 }
 
+// --- Physical AI streaming / rolling extensions ---
+
+pub mod online {
+    #![allow(clippy::missing_errors_doc)]
+    use nabled_core::scalar::NabledReal;
+
+    /// Online mean accumulator (Welford-style count/mean).
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct OnlineMean<T> {
+        count: usize,
+        mean:  T,
+    }
+
+    impl<T: NabledReal> Default for OnlineMean<T> {
+        fn default() -> Self { Self { count: 0, mean: T::zero() } }
+    }
+
+    impl<T: NabledReal> OnlineMean<T> {
+        pub fn push(&mut self, value: T) {
+            self.count += 1;
+            let n = T::from_usize(self.count).unwrap_or(T::one());
+            self.mean += (value - self.mean) / n;
+        }
+
+        #[must_use]
+        pub fn mean(&self) -> T { self.mean }
+
+        pub fn reset(&mut self) {
+            self.count = 0;
+            self.mean = T::zero();
+        }
+    }
+
+    /// Online variance accumulator (Welford).
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct OnlineVariance<T> {
+        count: usize,
+        mean:  T,
+        m2:    T,
+    }
+
+    impl<T: NabledReal> Default for OnlineVariance<T> {
+        fn default() -> Self { Self { count: 0, mean: T::zero(), m2: T::zero() } }
+    }
+
+    impl<T: NabledReal> OnlineVariance<T> {
+        pub fn push(&mut self, value: T) {
+            self.count += 1;
+            let n = T::from_usize(self.count).unwrap_or(T::one());
+            let delta = value - self.mean;
+            self.mean += delta / n;
+            let delta2 = value - self.mean;
+            self.m2 += delta * delta2;
+        }
+
+        #[must_use]
+        pub fn mean(&self) -> T { self.mean }
+
+        #[must_use]
+        pub fn variance(&self) -> T {
+            if self.count < 2 {
+                return T::zero();
+            }
+            self.m2 / T::from_usize(self.count - 1).unwrap_or(T::one())
+        }
+
+        pub fn reset(&mut self) {
+            self.count = 0;
+            self.mean = T::zero();
+            self.m2 = T::zero();
+        }
+    }
+}
+
+pub mod ewma {
+    #![allow(clippy::missing_errors_doc)]
+    use nabled_core::scalar::NabledReal;
+    use ndarray::{Array1, ArrayBase, ArrayView1, DataMut, Ix1};
+
+    use super::StatsError;
+
+    /// Incremental EWMA state.
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct EwmaState<T> {
+        alpha: T,
+        value: Option<T>,
+    }
+
+    impl<T: NabledReal> EwmaState<T> {
+        pub fn new(alpha: T) -> Self { Self { alpha, value: None } }
+
+        pub fn push(&mut self, sample: T) -> T {
+            if let Some(prev) = self.value {
+                let next = self.alpha * sample + (T::one() - self.alpha) * prev;
+                self.value = Some(next);
+                next
+            } else {
+                self.value = Some(sample);
+                sample
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn ewma<T: NabledReal>(signal: &Array1<T>, alpha: T) -> Array1<T> {
+        ewma_view(&signal.view(), alpha)
+    }
+
+    #[must_use]
+    pub fn ewma_view<T: NabledReal>(signal: &ArrayView1<'_, T>, alpha: T) -> Array1<T> {
+        let mut out = Array1::<T>::zeros(signal.len());
+        drop(ewma_into(signal, alpha, &mut out));
+        out
+    }
+
+    pub fn ewma_into<T, S>(
+        signal: &ArrayView1<'_, T>,
+        alpha: T,
+        output: &mut ArrayBase<S, Ix1>,
+    ) -> Result<(), StatsError>
+    where
+        T: NabledReal,
+        S: DataMut<Elem = T>,
+    {
+        if output.len() != signal.len() {
+            return Err(StatsError::InvalidInput("ewma output length mismatch".to_string()));
+        }
+        let mut state = EwmaState::new(alpha);
+        for (i, &sample) in signal.iter().enumerate() {
+            output[i] = state.push(sample);
+        }
+        Ok(())
+    }
+}
+
+pub mod rolling {
+    #![allow(clippy::missing_errors_doc)]
+    use nabled_core::scalar::NabledReal;
+    use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, DataMut, Ix1, Ix2};
+
+    use super::StatsError;
+
+    #[must_use]
+    pub fn rolling_mean<T: NabledReal>(signal: &ArrayView1<'_, T>, window: usize) -> Array1<T> {
+        let mut out = Array1::<T>::zeros(signal.len());
+        drop(rolling_mean_into(signal, window, &mut out));
+        out
+    }
+
+    pub fn rolling_mean_view<T: NabledReal>(
+        signal: &ArrayView1<'_, T>,
+        window: usize,
+    ) -> Array1<T> {
+        rolling_mean(signal, window)
+    }
+
+    pub fn rolling_mean_into<T, S>(
+        signal: &ArrayView1<'_, T>,
+        window: usize,
+        output: &mut ArrayBase<S, Ix1>,
+    ) -> Result<(), StatsError>
+    where
+        T: NabledReal,
+        S: DataMut<Elem = T>,
+    {
+        if window == 0 {
+            return Err(StatsError::InvalidInput("window must be positive".to_string()));
+        }
+        if output.len() != signal.len() {
+            return Err(StatsError::InvalidInput(
+                "rolling_mean output length mismatch".to_string(),
+            ));
+        }
+        for i in 0..signal.len() {
+            let start = i.saturating_sub(window - 1);
+            let slice = signal.slice(ndarray::s![start..=i]);
+            let sum = slice.iter().fold(T::zero(), |acc, v| acc + *v);
+            let count = T::from_usize(slice.len()).unwrap_or(T::one());
+            output[i] = sum / count;
+        }
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn rolling_variance<T: NabledReal>(signal: &ArrayView1<'_, T>, window: usize) -> Array1<T> {
+        let mut out = Array1::<T>::zeros(signal.len());
+        drop(rolling_variance_into(signal, window, &mut out));
+        out
+    }
+
+    pub fn rolling_variance_into<T, S>(
+        signal: &ArrayView1<'_, T>,
+        window: usize,
+        output: &mut ArrayBase<S, Ix1>,
+    ) -> Result<(), StatsError>
+    where
+        T: NabledReal,
+        S: DataMut<Elem = T>,
+    {
+        if window == 0 {
+            return Err(StatsError::InvalidInput("window must be positive".to_string()));
+        }
+        if output.len() != signal.len() {
+            return Err(StatsError::InvalidInput(
+                "rolling_variance output length mismatch".to_string(),
+            ));
+        }
+        for i in 0..signal.len() {
+            let start = i.saturating_sub(window - 1);
+            let slice = signal.slice(ndarray::s![start..=i]);
+            let mean = slice.iter().fold(T::zero(), |acc, v| acc + *v)
+                / T::from_usize(slice.len()).unwrap_or(T::one());
+            let var = slice
+                .iter()
+                .map(|v| {
+                    let d = *v - mean;
+                    d * d
+                })
+                .fold(T::zero(), |acc, v| acc + v)
+                / T::from_usize(slice.len()).unwrap_or(T::one());
+            output[i] = var;
+        }
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn rolling_covariance<T: NabledReal>(
+        matrix: &ArrayView2<'_, T>,
+        window: usize,
+    ) -> Array2<T> {
+        let mut out = Array2::<T>::zeros((matrix.nrows(), matrix.ncols() * matrix.ncols()));
+        drop(rolling_covariance_into(matrix, window, &mut out));
+        out
+    }
+
+    pub fn rolling_covariance_view<T: NabledReal>(
+        matrix: &ArrayView2<'_, T>,
+        window: usize,
+    ) -> Array2<T> {
+        rolling_covariance(matrix, window)
+    }
+
+    pub fn rolling_covariance_into<T, S>(
+        matrix: &ArrayView2<'_, T>,
+        window: usize,
+        output: &mut ArrayBase<S, Ix2>,
+    ) -> Result<(), StatsError>
+    where
+        T: NabledReal,
+        S: DataMut<Elem = T>,
+    {
+        let cols = matrix.ncols();
+        if output.nrows() != matrix.nrows() || output.ncols() != cols * cols {
+            return Err(StatsError::InvalidInput(
+                "rolling_covariance output shape mismatch".to_string(),
+            ));
+        }
+        if window == 0 {
+            return Err(StatsError::InvalidInput("window must be positive".to_string()));
+        }
+        for row in 0..matrix.nrows() {
+            let start = row.saturating_sub(window - 1);
+            let block = matrix.slice(ndarray::s![start..=row, ..]);
+            let cov = if block.nrows() >= 2 {
+                super::covariance_matrix_view(&block)?
+            } else {
+                Array2::<T>::zeros((cols, cols))
+            };
+            for i in 0..cols {
+                for j in 0..cols {
+                    output[[row, i * cols + j]] = cov[[i, j]];
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+pub mod lag {
+    #![allow(clippy::missing_errors_doc)]
+    use nabled_core::scalar::NabledReal;
+    use ndarray::{Array2, ArrayView2};
+
+    use super::StatsError;
+
+    /// Zero-copy lag view: rows `[0..n-lag)` of `matrix` aligned with rows `[lag..n)`.
+    pub fn lag_view<'a, T>(
+        matrix: &'a ArrayView2<'_, T>,
+        lag: usize,
+    ) -> Result<ArrayView2<'a, T>, StatsError> {
+        if lag >= matrix.nrows() {
+            return Err(StatsError::InvalidInput(format!(
+                "lag {lag} must be less than row count {}",
+                matrix.nrows()
+            )));
+        }
+        Ok(matrix.slice(ndarray::s![..matrix.nrows() - lag, ..]))
+    }
+
+    /// Shift columns down by `lag` rows, filling top rows with zero.
+    pub fn shift_columns_into<T: NabledReal>(
+        matrix: &ArrayView2<'_, T>,
+        lag: usize,
+        output: &mut Array2<T>,
+    ) -> Result<(), StatsError> {
+        if output.dim() != matrix.dim() {
+            return Err(StatsError::InvalidInput(
+                "shift_columns_into output shape mismatch".to_string(),
+            ));
+        }
+        output.fill(T::zero());
+        if lag >= matrix.nrows() {
+            return Ok(());
+        }
+        let rows = matrix.nrows() - lag;
+        output.slice_mut(ndarray::s![lag.., ..]).assign(&matrix.slice(ndarray::s![..rows, ..]));
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ndarray::{Array1, Array2};
