@@ -140,4 +140,24 @@ mod tests {
         let norm = dare_residual_norm(&a, &b, &q, &r, &p).unwrap();
         assert!(norm < 1e-8, "residual norm {norm}");
     }
+
+    #[test]
+    fn dare_rejects_empty_and_mismatched_dimensions() {
+        let empty = arr2(&[[]]);
+        let a = arr2(&[[1.0, 0.0], [0.0, 1.0]]);
+        let b = arr2(&[[0.0], [1.0]]);
+        let q = arr2(&[[1.0, 0.0], [0.0, 1.0]]);
+        let r = arr2(&[[1.0]]);
+        assert!(matches!(dare_solve(&empty, &b, &q, &r), Err(ControlError::EmptyMatrix)));
+        assert!(matches!(
+            dare_solve(&a, &b, &arr2(&[[1.0]]), &r),
+            Err(ControlError::DimensionMismatch)
+        ));
+        let p = arr2(&[[1.0, 0.0], [0.0, 1.0]]);
+        assert!(matches!(
+            dare_residual(&a, &b, &q, &r, &arr2(&[[1.0]])),
+            Err(ControlError::DimensionMismatch)
+        ));
+        assert!(dare_residual_norm(&a, &b, &q, &r, &p).unwrap() >= 0.0);
+    }
 }

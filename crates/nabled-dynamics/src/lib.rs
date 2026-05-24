@@ -46,3 +46,47 @@ impl IntoNabledError for DynamicsError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
+
+    use super::*;
+
+    #[test]
+    fn dynamics_errors_display_and_map_to_shared_taxonomy() {
+        assert_eq!(
+            DynamicsError::EmptyModel.to_string(),
+            "dynamics model cannot be empty"
+        );
+        assert_eq!(
+            DynamicsError::DimensionMismatch.to_string(),
+            "input dimensions are incompatible"
+        );
+        assert_eq!(
+            DynamicsError::InvalidInput("bad q".to_string()).to_string(),
+            "invalid input: bad q"
+        );
+        assert_eq!(
+            DynamicsError::NotImplemented.to_string(),
+            "dynamics routine not yet implemented"
+        );
+
+        assert!(matches!(
+            DynamicsError::EmptyModel.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            DynamicsError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            DynamicsError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            DynamicsError::NotImplemented.into_nabled_error(),
+            NabledError::Other(_)
+        ));
+    }
+}

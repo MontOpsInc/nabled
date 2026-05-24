@@ -26,7 +26,7 @@ pub fn irfft_py<'py>(py: Python<'py>, spectrum: &Bound<'py, PyAny>) -> PyResult<
     match utils::numeric_array1(spectrum, "spectrum")? {
         utils::NumericReadonlyArray1::C64(arr) => {
             use nabled::linalg::signal::fft::RfftSpectrum;
-            let spec = RfftSpectrum { bins: arr.as_array().to_owned() };
+            let spec = RfftSpectrum { bins: arr.as_array().to_owned(), time_len: 0 };
             let reconstructed = irfft(&spec).map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, reconstructed))
         }
@@ -92,7 +92,7 @@ pub fn irfft_into_py(spectrum: &Bound<'_, PyAny>, output: &Bound<'_, PyAny>) -> 
     match utils::numeric_array1(spectrum, "spectrum")? {
         utils::NumericReadonlyArray1::C64(arr) => {
             use nabled::linalg::signal::fft::RfftSpectrum;
-            let spec = RfftSpectrum { bins: arr.as_array().to_owned() };
+            let spec = RfftSpectrum { bins: arr.as_array().to_owned(), time_len: 0 };
             let mut out = utils::output_array1::<f64>(output, "output", "float64")?;
             let mut buffer = out.as_array_mut().to_owned();
             irfft_into(&spec, &mut buffer).map_err(to_py_err)?;

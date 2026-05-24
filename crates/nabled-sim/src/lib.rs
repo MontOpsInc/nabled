@@ -93,3 +93,88 @@ impl From<nabled_sensor::SensorError> for SimError {
 impl From<nabled_ml::stats::StatsError> for SimError {
     fn from(value: nabled_ml::stats::StatsError) -> Self { Self::Stats(value) }
 }
+
+#[cfg(test)]
+mod tests {
+    use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
+    use std::error::Error;
+
+    use super::*;
+
+    #[test]
+    fn sim_error_display_source_from_and_into_nabled() {
+        assert_eq!(
+            SimError::DimensionMismatch.to_string(),
+            "input dimensions are incompatible"
+        );
+        assert_eq!(
+            SimError::InvalidInput("bad grid".to_string()).to_string(),
+            "invalid input: bad grid"
+        );
+        assert!(SimError::DimensionMismatch.source().is_none());
+        assert!(SimError::InvalidInput("x".to_string()).source().is_none());
+
+        let model_err = nabled_model::ModelError::EmptyModel;
+        let sim_model: SimError = model_err.clone().into();
+        assert!(matches!(sim_model, SimError::Model(_)));
+        assert_eq!(sim_model.to_string(), model_err.to_string());
+        assert!(sim_model.source().is_some());
+
+        let kin_err = nabled_kinematics::KinematicsError::EmptyChain;
+        let sim_kin: SimError = kin_err.into();
+        assert!(matches!(sim_kin, SimError::Kinematics(_)));
+        assert_eq!(sim_kin.to_string(), "kinematic chain cannot be empty");
+
+        let dyn_err = nabled_dynamics::DynamicsError::NotImplemented;
+        let sim_dyn: SimError = dyn_err.into();
+        assert!(matches!(sim_dyn, SimError::Dynamics(_)));
+
+        let ctrl_err = nabled_control::ControlError::SingularSystem;
+        let sim_ctrl: SimError = ctrl_err.into();
+        assert!(matches!(sim_ctrl, SimError::Control(_)));
+
+        let sensor_err = nabled_sensor::SensorError::NumericalInstability;
+        let sim_sensor: SimError = sensor_err.into();
+        assert!(matches!(sim_sensor, SimError::Sensor(_)));
+
+        let stats_err = nabled_ml::stats::StatsError::InsufficientSamples;
+        let sim_stats: SimError = stats_err.into();
+        assert!(matches!(sim_stats, SimError::Stats(_)));
+
+        assert!(matches!(
+            SimError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            SimError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            SimError::Model(nabled_model::ModelError::EmptyModel).into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            SimError::Kinematics(nabled_kinematics::KinematicsError::ConvergenceFailed)
+                .into_nabled_error(),
+            NabledError::ConvergenceFailed
+        ));
+        assert!(matches!(
+            SimError::Dynamics(nabled_dynamics::DynamicsError::DimensionMismatch)
+                .into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            SimError::Control(nabled_control::ControlError::SingularSystem).into_nabled_error(),
+            NabledError::SingularMatrix
+        ));
+        assert!(matches!(
+            SimError::Sensor(nabled_sensor::SensorError::EmptyInput).into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            SimError::Stats(nabled_ml::stats::StatsError::NumericalInstability)
+                .into_nabled_error(),
+            NabledError::NumericalInstability
+        ));
+    }
+}

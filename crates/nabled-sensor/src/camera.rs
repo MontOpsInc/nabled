@@ -35,7 +35,7 @@ pub fn pinhole_project<T: NabledReal>(
     if point.len() != 3 {
         return Err(SensorError::DimensionMismatch);
     }
-    if point[2].abs() <= T::from_f64(1e-12).unwrap_or(T::zero()) {
+    if point[2] <= T::from_f64(1e-12).unwrap_or(T::zero()) {
         return Err(SensorError::InvalidInput("point behind camera".to_string()));
     }
     let u = intrinsics.fx * point[0] / point[2] + intrinsics.cx;
@@ -67,7 +67,7 @@ pub fn pinhole_jacobian<T: NabledReal>(
         return Err(SensorError::DimensionMismatch);
     }
     let (x, y, z) = (point[0], point[1], point[2]);
-    if z.abs() <= T::from_f64(1e-12).unwrap_or(T::zero()) {
+    if z <= T::from_f64(1e-12).unwrap_or(T::zero()) {
         return Err(SensorError::InvalidInput("point behind camera".to_string()));
     }
     let z2 = z * z;
@@ -128,5 +128,44 @@ mod tests {
             assert_relative_eq!(j[[0, col]], deriv_u, epsilon = 1e-5);
             assert_relative_eq!(j[[1, col]], deriv_v, epsilon = 1e-5);
         }
+    }
+
+    #[test]
+    fn pinhole_rejects_degenerate_intrinsics_matrix() {
+        let point = ndarray::arr1(&[0.1_f64, 0.2, 1.0]);
+        let bad_k = ndarray::arr2(&[[500.0, 0.0], [0.0, 500.0]]);
+        assert_eq!(
+            pinhole_project_k(&point.view(), &bad_k),
+            Err(SensorError::DimensionMismatch)
+        );
+        assert_eq!(
+            pinhole_jacobian_k(&point.view(), &bad_k),
+            Err(SensorError::DimensionMismatch)
+        );
+    }
+
+    #[test]
+    fn pinhole_rejects_point_behind_camera() {
+        let k = PinholeIntrinsics { fx: 500.0, fy: 500.0, cx: 320.0, cy: 240.0 };
+        let on_plane = ndarray::arr1(&[0.1_f64, 0.2, 0.0]);
+        let near_plane = ndarray::arr1(&[0.1_f64, 0.2, 1e-15]);
+        let err = SensorError::InvalidInput("point behind camera".to_string());
+        assert_eq!(pinhole_project(&on_plane.view(), &k), Err(err.clone()));
+        assert_eq!(pinhole_jacobian(&on_plane.view(), &k), Err(err.clone()));
+        assert_eq!(pinhole_project(&near_plane.view(), &k), Err(err));
+    }
+
+    #[test]
+    fn pinhole_rejects_wrong_point_dimension() {
+        let k = PinholeIntrinsics { fx: 500.0, fy: 500.0, cx: 320.0, cy: 240.0 };
+        let point = ndarray::arr1(&[1.0_f64, 2.0]);
+        assert_eq!(
+            pinhole_project(&point.view(), &k),
+            Err(SensorError::DimensionMismatch)
+        );
+        assert_eq!(
+            pinhole_jacobian(&point.view(), &k),
+            Err(SensorError::DimensionMismatch)
+        );
     }
 }

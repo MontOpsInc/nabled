@@ -76,4 +76,32 @@ mod tests {
             assert!(mag < 1.0, "eigenvalue magnitude {mag} >= 1");
         }
     }
+
+    #[test]
+    fn lqr_view_and_into_match_allocating() {
+        let a = arr2(&[[1.0_f64, 0.1], [0.0, 1.0]]);
+        let b = arr2(&[[0.0], [0.1]]);
+        let q = arr2(&[[1.0, 0.0], [0.0, 1.0]]);
+        let r = arr2(&[[0.05]]);
+        let result = discrete_lqr_view(&a.view(), &b.view(), &q.view(), &r.view()).unwrap();
+        let mut gain = arr2(&[[0.0, 0.0]]);
+        let mut riccati = arr2(&[[0.0, 0.0], [0.0, 0.0]]);
+        discrete_lqr_into(&a, &b, &q, &r, &mut gain, &mut riccati).unwrap();
+        assert_eq!(result.gain, gain);
+        assert_eq!(result.riccati, riccati);
+    }
+
+    #[test]
+    fn lqr_into_rejects_buffer_dimension_mismatch() {
+        let a = arr2(&[[1.0_f64, 0.1], [0.0, 1.0]]);
+        let b = arr2(&[[0.0], [0.1]]);
+        let q = arr2(&[[1.0, 0.0], [0.0, 1.0]]);
+        let r = arr2(&[[0.05]]);
+        let mut gain = arr2(&[[0.0, 0.0]]);
+        let mut riccati = arr2(&[[0.0]]);
+        assert!(matches!(
+            discrete_lqr_into(&a, &b, &q, &r, &mut gain, &mut riccati),
+            Err(ControlError::DimensionMismatch)
+        ));
+    }
 }

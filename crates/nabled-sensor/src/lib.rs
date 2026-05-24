@@ -40,3 +40,44 @@ impl IntoNabledError for SensorError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
+
+    use super::*;
+
+    #[test]
+    fn sensor_errors_display_and_map_to_shared_taxonomy() {
+        assert_eq!(SensorError::EmptyInput.to_string(), "input cannot be empty");
+        assert_eq!(
+            SensorError::DimensionMismatch.to_string(),
+            "input dimensions are incompatible"
+        );
+        assert_eq!(
+            SensorError::InvalidInput("bad z".to_string()).to_string(),
+            "invalid input: bad z"
+        );
+        assert_eq!(
+            SensorError::NumericalInstability.to_string(),
+            "numerical instability detected"
+        );
+
+        assert!(matches!(
+            SensorError::EmptyInput.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            SensorError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            SensorError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            SensorError::NumericalInstability.into_nabled_error(),
+            NabledError::NumericalInstability
+        ));
+    }
+}

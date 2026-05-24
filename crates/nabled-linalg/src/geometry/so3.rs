@@ -83,3 +83,61 @@ pub fn angle_between<T: NabledReal>(r1: &Rotation3<T>, r2: &Rotation3<T>) -> T {
     let cos_angle = ((trace - T::one()) / scalar_two::<T>()).clamp(-T::one(), T::one());
     cos_angle.acos()
 }
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_relative_eq;
+    use ndarray::Array2;
+
+    use super::*;
+
+    fn identity_rotation() -> Rotation3<f64> {
+        Rotation3 { matrix: Array2::eye(3) }
+    }
+
+    #[test]
+    fn compose_with_identity_preserves_rotation() {
+        let id = identity_rotation();
+        let omega = ndarray::arr1(&[0.0_f64, 0.0, 0.5]);
+        let r = exp(&omega.view()).unwrap();
+        let composed = compose(&id, &r).unwrap();
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_relative_eq!(composed.matrix[[i, j]], r.matrix[[i, j]], epsilon = 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn exp_log_round_trip() {
+        let omega = ndarray::arr1(&[0.05_f64, -0.1, 0.2]);
+        let r = exp(&omega.view()).unwrap();
+        let recovered = log(&r).unwrap();
+        for i in 0..3 {
+            assert_relative_eq!(recovered[i], omega[i], epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn inverse_composition_is_identity() {
+        let omega = ndarray::arr1(&[0.1_f64, 0.2, 0.3]);
+        let r = exp(&omega.view()).unwrap();
+        let composed = compose(&r, &inverse(&r)).unwrap();
+        let id = identity_rotation();
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_relative_eq!(composed.matrix[[i, j]], id.matrix[[i, j]], epsilon = 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn rotate_vector_identity_leaves_vector_unchanged() {
+        let id = identity_rotation();
+        let vector = ndarray::arr1(&[1.0_f64, -2.0, 3.5]);
+        let rotated = rotate_vector(&id, &vector.view());
+        for i in 0..3 {
+            assert_relative_eq!(rotated[i], vector[i], epsilon = 1e-12);
+        }
+    }
+}

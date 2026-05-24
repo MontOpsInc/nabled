@@ -211,3 +211,78 @@ pub fn mul_into<T: NabledReal>(a: &Quat<T>, b: &Quat<T>, out: &mut Quat<T>) { *o
 pub fn slerp_into<T: NabledReal>(a: &Quat<T>, b: &Quat<T>, t: T, out: &mut Quat<T>) {
     *out = slerp(a, b, t);
 }
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_relative_eq;
+
+    use super::*;
+    use crate::geometry::{AxisAngle, GeometryError};
+
+    #[test]
+    fn identity_is_unit_and_yields_identity_matrix() {
+        let q = identity::<f64>();
+        assert_relative_eq!(norm(&q), 1.0, epsilon = 1e-12);
+        let rot = to_rotation_matrix(&q);
+        for i in 0..3 {
+            for j in 0..3 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert_relative_eq!(rot.matrix[[i, j]], expected, epsilon = 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn exp_log_round_trip() {
+        let omega = ndarray::arr1(&[0.1_f64, 0.2, -0.15]);
+        let q = exp(&omega.view());
+        let recovered = log(&q);
+        for i in 0..3 {
+            assert_relative_eq!(recovered[i], omega[i], epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn composition_matches_rotation_matrix_product() {
+        let q1 = from_axis_angle(&AxisAngle { axis: [0.0, 0.0, 1.0], angle: 0.3 });
+        let q2 = from_axis_angle(&AxisAngle { axis: [0.0, 1.0, 0.0], angle: 0.5 });
+        let composed = mul(&q1, &q2);
+        let r_composed = to_rotation_matrix(&composed).matrix;
+        let expected = to_rotation_matrix(&q1).matrix.dot(&to_rotation_matrix(&q2).matrix);
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_relative_eq!(r_composed[[i, j]], expected[[i, j]], epsilon = 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn from_rotation_matrix_round_trip() {
+        let q = from_axis_angle(&AxisAngle { axis: [1.0, 2.0, 3.0], angle: 0.4 });
+        let qn = normalize(&q);
+        let rot = to_rotation_matrix(&qn);
+        let recovered = from_rotation_matrix(&rot).unwrap();
+        let recovered_rot = to_rotation_matrix(&recovered).matrix;
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_relative_eq!(rot.matrix[[i, j]], recovered_rot[[i, j]], epsilon = 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn normalize_into_zero_quaternion_errors() {
+        let mut q = Quat { w: 0.0, x: 0.0, y: 0.0, z: 0.0 };
+        assert_eq!(normalize_into(&mut q), Err(GeometryError::ZeroNorm));
+    }
+
+    #[test]
+    fn inverse_times_original_is_identity() {
+        let q = normalize(&from_axis_angle(&AxisAngle { axis: [0.3, 0.4, 0.5], angle: 0.7 }));
+        let product = mul(&q, &inverse(&q));
+        assert_relative_eq!(product.w, 1.0, epsilon = 1e-10);
+        assert_relative_eq!(product.x, 0.0, epsilon = 1e-10);
+        assert_relative_eq!(product.y, 0.0, epsilon = 1e-10);
+        assert_relative_eq!(product.z, 0.0, epsilon = 1e-10);
+    }
+}

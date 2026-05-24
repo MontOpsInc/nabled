@@ -466,4 +466,98 @@ mod tests {
         assert_relative_eq!(limits.velocity, 3.0, epsilon = 1e-12);
         assert_relative_eq!(limits.effort, 4.0, epsilon = 1e-12);
     }
+
+    #[test]
+    fn rejects_missing_joints() {
+        let err = from_urdf_str::<f64>("<robot name=\"empty\"/>").unwrap_err();
+        assert!(matches!(err, ModelError::ParseError(message) if message.contains("no joints")));
+    }
+
+    #[test]
+    fn rejects_unknown_joint_type() {
+        let urdf = r#"
+<robot name="bad">
+  <link name="base"/>
+  <link name="l1"/>
+  <joint name="j1" type="floating">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="l1"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+</robot>
+"#;
+        let err = from_urdf_str::<f64>(urdf).unwrap_err();
+        assert!(matches!(err, ModelError::ParseError(message) if message.contains("unsupported joint type")));
+    }
+
+    #[test]
+    fn rejects_malformed_origin_xyz() {
+        let urdf = r#"
+<robot name="bad">
+  <link name="base"/>
+  <link name="l1"/>
+  <joint name="j1" type="revolute">
+    <origin xyz="1 2" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="l1"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+</robot>
+"#;
+        let err = from_urdf_str::<f64>(urdf).unwrap_err();
+        assert!(matches!(err, ModelError::ParseError(_)));
+    }
+
+    #[test]
+    fn rejects_duplicate_child_link() {
+        let urdf = r#"
+<robot name="dup">
+  <link name="base"/>
+  <link name="a"/>
+  <link name="b"/>
+  <joint name="j1" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="a"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <joint name="j2" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="a"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+</robot>
+"#;
+        let err = from_urdf_str::<f64>(urdf).unwrap_err();
+        assert!(matches!(
+            err,
+            ModelError::ParseError(message) if message.contains("duplicate child link")
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_mass_attribute() {
+        let urdf = r#"
+<robot name="bad_mass">
+  <link name="base"/>
+  <link name="l1">
+    <inertial>
+      <origin xyz="0 0 0"/>
+      <mass value="not_a_number"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+  <joint name="j1" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="l1"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+</robot>
+"#;
+        let err = from_urdf_str::<f64>(urdf).unwrap_err();
+        assert!(matches!(err, ModelError::ParseError(message) if message.contains("invalid mass")));
+    }
 }

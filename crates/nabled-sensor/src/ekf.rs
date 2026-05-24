@@ -85,6 +85,7 @@ pub fn ekf_update_into<T: NabledReal + LuProviderScalar>(
 
 #[cfg(test)]
 mod tests {
+    use approx::assert_relative_eq;
     use ndarray::arr1;
 
     use super::*;
@@ -109,5 +110,83 @@ mod tests {
         };
         let updated = ekf_update(&state, &arr1(&[1.0]).view(), &model, &config).unwrap();
         assert!(updated.mean[0] > state.mean[0]);
+    }
+
+    #[test]
+    fn ekf_predict_advances_nonlinear_mean() {
+        let state =
+            KalmanState { mean: arr1(&[0.2_f64]), covariance: ndarray::arr2(&[[1.0]]) };
+        let model = scalar_model();
+        let config = EkConfig {
+            process_noise:     ndarray::arr2(&[[0.01]]),
+            measurement_noise: ndarray::arr2(&[[0.05]]),
+        };
+        let predicted = ekf_predict(&state, &model, &config).unwrap();
+        assert_relative_eq!(predicted.mean[0], state.mean[0].sin(), epsilon = 1e-12);
+        assert!(predicted.covariance[[0, 0]].is_finite());
+        assert!(predicted.covariance[[0, 0]] >= 0.0);
+    }
+
+    #[test]
+    fn ekf_predict_into_reuses_output_buffers() {
+        let state =
+            KalmanState { mean: arr1(&[0.1_f64]), covariance: ndarray::arr2(&[[0.5]]) };
+        let model = scalar_model();
+        let config = EkConfig {
+            process_noise:     ndarray::arr2(&[[0.01]]),
+            measurement_noise: ndarray::arr2(&[[0.05]]),
+        };
+        let mut mean = arr1(&[0.0]);
+        let mut covariance = ndarray::arr2(&[[0.0]]);
+        ekf_predict_into(&state, &model, &config, &mut mean, &mut covariance).unwrap();
+        assert_relative_eq!(mean[0], state.mean[0].sin(), epsilon = 1e-12);
+    }
+
+    #[test]
+    fn ekf_predict_into_rejects_output_dimension_mismatch() {
+        let state =
+            KalmanState { mean: arr1(&[0.1_f64]), covariance: ndarray::arr2(&[[0.5]]) };
+        let model = scalar_model();
+        let config = EkConfig {
+            process_noise:     ndarray::arr2(&[[0.01]]),
+            measurement_noise: ndarray::arr2(&[[0.05]]),
+        };
+        let mut mean = arr1(&[0.0, 0.0]);
+        let mut covariance = ndarray::arr2(&[[0.0]]);
+        assert_eq!(
+            ekf_predict_into(&state, &model, &config, &mut mean, &mut covariance),
+            Err(SensorError::DimensionMismatch)
+        );
+    }
+
+    #[test]
+    fn ekf_update_into_reuses_output_buffers() {
+        let state =
+            KalmanState { mean: arr1(&[0.2_f64]), covariance: ndarray::arr2(&[[1.0]]) };
+        let model = scalar_model();
+        let config = EkConfig {
+            process_noise:     ndarray::arr2(&[[0.01]]),
+            measurement_noise: ndarray::arr2(&[[0.05]]),
+        };
+        let mut mean = state.mean.clone();
+        let mut covariance = state.covariance.clone();
+        ekf_update_into(&state, &arr1(&[1.0]).view(), &model, &config, &mut mean, &mut covariance)
+            .unwrap();
+        assert!(mean[0] > state.mean[0]);
+    }
+
+    #[test]
+    fn ekf_update_rejects_singular_innovation_covariance() {
+        let state =
+            KalmanState { mean: arr1(&[0.0_f64]), covariance: ndarray::arr2(&[[0.0]]) };
+        let model = scalar_model();
+        let config = EkConfig {
+            process_noise:     ndarray::arr2(&[[0.0]]),
+            measurement_noise: ndarray::arr2(&[[0.0]]),
+        };
+        assert_eq!(
+            ekf_update(&state, &arr1(&[1.0]).view(), &model, &config),
+            Err(SensorError::NumericalInstability)
+        );
     }
 }

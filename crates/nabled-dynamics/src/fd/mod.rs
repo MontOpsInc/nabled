@@ -67,7 +67,7 @@ pub fn forward_dynamics_into<T: NabledReal + Default + lu::LuProviderScalar>(
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
-    use nabled_model::fixture::Planar2rFixture;
+    use nabled_model::fixture::load_planar2r_json;
     use ndarray::arr1;
 
     use super::*;
@@ -76,11 +76,7 @@ mod tests {
 
     #[test]
     fn forward_dynamics_round_trip() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../nabled/tests/fixtures/physical_ai/2r_planar.json"
-        );
-        let fixture = Planar2rFixture::from_file(path).unwrap();
+        let fixture = load_planar2r_json().unwrap();
         let model = fixture.to_robot_model().unwrap();
         let chain = fixture.to_chain_spec().unwrap();
         let config = DynamicsConfig::default();
@@ -103,11 +99,7 @@ mod tests {
 
     #[test]
     fn aba_matches_crba_lu_on_planar2r() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../nabled/tests/fixtures/physical_ai/2r_planar.json"
-        );
-        let fixture = Planar2rFixture::from_file(path).unwrap();
+        let fixture = load_planar2r_json().unwrap();
         let model = fixture.to_robot_model().unwrap();
         let chain = fixture.to_chain_spec().unwrap();
         let gravity: [f64; 3] = fixture.gravity.unwrap_or([0.0, -9.81, 0.0]);
@@ -138,5 +130,34 @@ mod tests {
         .unwrap();
         assert_relative_eq!(aba, lu, epsilon = 1e-6);
         assert_relative_eq!(aba, qdd, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn forward_dynamics_view_and_into_match_allocating() {
+        let fixture = load_planar2r_json().unwrap();
+        let model = fixture.to_robot_model().unwrap();
+        let chain = fixture.to_chain_spec().unwrap();
+        let q = arr1(&[0.2_f64, 0.3]);
+        let qd = arr1(&[0.1_f64, -0.2]);
+        let tau = arr1(&[0.5_f64, 0.25]);
+        let qdd = forward_dynamics_view(&model, &chain, &q.view(), &qd.view(), &tau.view()).unwrap();
+        let mut buf = arr1(&[0.0, 0.0]);
+        forward_dynamics_into(&model, &chain, &q.view(), &qd.view(), &tau.view(), &mut buf).unwrap();
+        assert_relative_eq!(qdd, buf, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn forward_dynamics_into_rejects_output_dimension_mismatch() {
+        let fixture = load_planar2r_json().unwrap();
+        let model = fixture.to_robot_model().unwrap();
+        let chain = fixture.to_chain_spec().unwrap();
+        let q = arr1(&[0.2_f64, 0.3]);
+        let qd = arr1(&[0.1_f64, -0.2]);
+        let tau = arr1(&[0.5_f64, 0.25]);
+        let mut buf = arr1(&[0.0]);
+        assert!(matches!(
+            forward_dynamics_into(&model, &chain, &q.view(), &qd.view(), &tau.view(), &mut buf),
+            Err(DynamicsError::DimensionMismatch)
+        ));
     }
 }

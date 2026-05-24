@@ -14,6 +14,10 @@ use super::{SignalError, validate_output_len};
 pub struct RfftSpectrum<T: NabledReal> {
     /// Complex frequency bins (DC through Nyquist when `n` is even).
     pub bins: Array1<Complex<T>>,
+    /// Original time-domain length used for the forward transform.
+    ///
+    /// When zero, inverse transforms assume an even length of `2 * (bins.len() - 1)`.
+    pub time_len: usize,
 }
 
 impl<T: NabledReal> RfftSpectrum<T> {
@@ -98,7 +102,10 @@ pub fn rfft<T: NabledReal>(signal: &ArrayView1<'_, T>) -> Result<RfftSpectrum<T>
     }
     let signal_f64: Vec<f64> = signal.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
     let (spectrum, _) = rfft_f64(&signal_f64)?;
-    Ok(RfftSpectrum { bins: Array1::from_iter(spectrum.into_iter().map(complex_from_f64::<T>)) })
+    Ok(RfftSpectrum {
+        bins: Array1::from_iter(spectrum.into_iter().map(complex_from_f64::<T>)),
+        time_len: signal.len(),
+    })
 }
 
 /// Magnitude spectrum (`|X[k]|`) for each half-complex bin.
@@ -111,7 +118,11 @@ pub fn irfft<T: NabledReal>(spectrum: &RfftSpectrum<T>) -> Result<Array1<T>, Sig
     if spectrum.is_empty() {
         return Err(SignalError::EmptyInput);
     }
-    let n = (spectrum.len() - 1) * 2;
+    let n = if spectrum.time_len > 0 {
+        spectrum.time_len
+    } else {
+        (spectrum.bins.len().saturating_sub(1)) * 2
+    };
     let spectrum_f64: Vec<Complex<f64>> =
         spectrum.bins.iter().copied().map(complex_to_f64).collect();
     let output = irfft_f64(&spectrum_f64, n)?;
@@ -242,5 +253,41 @@ mod tests {
         let signal = ndarray::arr1(&[1.0_f64, 0.5, -0.5, -1.0]);
         let spectrum = windowed_rfft(&signal.view(), WindowKind::Hann, true).unwrap();
         assert_eq!(spectrum.len(), 3);
+    }
+
+    #[test]
+    fn rfft_empty_input_errors() {
+        let empty = ndarray::arr1::<f64>(&[]);
+        assert_eq!(rfft(&empty.view()), Err(SignalError::EmptyInput));
+        assert_eq!(windowed_rfft(&empty.view(), WindowKind::Hann, false), Err(SignalError::EmptyInput));
+    }
+
+    #[test]
+    fn irfft_empty_spectrum_errors() {
+        let empty = RfftSpectrum::<f64> { bins: ndarray::arr1(&[]), time_len: 0 };
+        assert_eq!(irfft(&empty), Err(SignalError::EmptyInput));
+    }
+
+    #[test]
+    fn irfft_rfft_round_trip_odd_length() {
+        let mut rng = rand::rng();
+        let n = 127;
+        let signal: Array1<f64> = Array1::from_iter((0..n).map(|_| rng.random_range(-1.0..1.0)));
+        let spectrum = rfft(&signal.view()).unwrap();
+        assert_eq!(spectrum.len(), n / 2 + 1);
+        let reconstructed = irfft(&spectrum).unwrap();
+        for (orig, recon) in signal.iter().zip(reconstructed.iter()) {
+            assert_relative_eq!(orig, recon, epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn irfft_rfft_round_trip_fixed_odd_vector() {
+        let signal = ndarray::arr1(&[0.2_f64, -0.5, 1.0, 0.0, -1.0, 0.3, 0.7]);
+        let spectrum = rfft(&signal.view()).unwrap();
+        let reconstructed = irfft(&spectrum).unwrap();
+        for (orig, recon) in signal.iter().zip(reconstructed.iter()) {
+            assert_relative_eq!(orig, recon, epsilon = 1e-10);
+        }
     }
 }

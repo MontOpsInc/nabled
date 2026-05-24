@@ -192,7 +192,7 @@ main() {
     run_in_repo env VIRTUAL_ENV="${dev_venv}" PATH="${dev_venv}/bin:${PATH}" "${dev_venv}/bin/maturin" develop
     run_in_repo \
         "${dev_venv}/bin/python" -m pytest python/tests \
-        --cov=pynabled \
+        --cov=python/pynabled \
         --cov-report= \
         --cov-fail-under=0 \
         -q
@@ -202,7 +202,7 @@ main() {
         "${dev_venv}/bin/maturin" develop --features arrow
     run_in_repo \
         "${dev_venv}/bin/python" -m pytest python/tests/test_arrow.py \
-        --cov=pynabled \
+        --cov=python/pynabled \
         --cov-append \
         --cov-report= \
         --cov-fail-under=0 \
@@ -213,13 +213,13 @@ main() {
         "${dev_venv}/bin/maturin" develop --features "arrow signal"
     run_in_repo \
         "${dev_venv}/bin/python" -m pytest python/tests/test_physical_ai_integration.py \
-        --cov=pynabled \
+        --cov=python/pynabled \
         --cov-append \
         --cov-report= \
         --cov-fail-under=0 \
         -q
     run_in_repo "${dev_venv}/bin/python" -m coverage report \
-        --include='pynabled/geometry.py','pynabled/kinematics.py','pynabled/model.py','pynabled/dynamics.py','pynabled/control.py','pynabled/sensor.py','pynabled/signal.py' \
+        --include='python/pynabled/geometry.py','python/pynabled/kinematics.py','python/pynabled/model.py','python/pynabled/dynamics.py','python/pynabled/control.py','python/pynabled/sensor.py','python/pynabled/signal.py' \
         --show-missing --fail-under="${COVERAGE_THRESHOLD}"
     run_in_repo \
         "${dev_venv}/bin/python" -m coverage xml -o "${COVERAGE_DIR}/python-coverage.xml"

@@ -45,3 +45,30 @@ impl IntoNabledError for ModelError {
         }
     }
 }
+
+#[cfg(test)]
+mod error_mapping {
+    use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
+
+    use crate::ModelError;
+
+    #[test]
+    fn into_nabled_error_covers_all_variants() {
+        assert!(matches!(
+            ModelError::EmptyModel.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            ModelError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            ModelError::InvalidInput("bad".into()).into_nabled_error(),
+            NabledError::InvalidInput(message) if message == "bad"
+        ));
+        assert!(matches!(
+            ModelError::ParseError("xml".into()).into_nabled_error(),
+            NabledError::InvalidInput(message) if message == "xml"
+        ));
+    }
+}

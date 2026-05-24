@@ -227,4 +227,99 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn rnea_rejects_dimension_mismatch() {
+        let fixture = load_fixture();
+        let model = fixture.to_robot_model().unwrap();
+        let chain = fixture.to_chain_spec().unwrap();
+        let q = arr1(&[0.0_f64, 0.0]);
+        let qd = arr1(&[0.0_f64]);
+        let qdd = arr1(&[0.0_f64, 0.0]);
+        assert!(matches!(
+            rnea(&model, &chain, &q.view(), &qd.view(), &qdd.view()),
+            Err(DynamicsError::DimensionMismatch)
+        ));
+    }
+
+    #[test]
+    fn prismatic_joint_gravity_force() {
+        let mut model = RobotModel::<f64>::new();
+        let body = BodySpec {
+            link:         nabled_model::link::LinkSpec { name: "slide".to_string() },
+            parent_link:  "base".to_string(),
+            joint_type:   ModelJointType::Prismatic,
+            axis:         JointAxis::Z,
+            limits:       None,
+            inertial:     Some(nabled_model::link::InertialSpec {
+                mass:    1.0,
+                com:     [0.0, 0.0, 0.0],
+                inertia: Array2::<f64>::zeros((3, 3)),
+            }),
+            joint_origin: nabled_model::origin::identity_transform(),
+            dh_a:         0.0,
+            dh_alpha:     0.0,
+            dh_d:         0.0,
+            dh_theta:     0.0,
+        };
+        let _ = model.add_body(None, body);
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Prismatic],
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+        )
+        .unwrap();
+        let q = arr1(&[0.0_f64]);
+        let zeros = arr1(&[0.0]);
+        let config = DynamicsConfig { gravity: [0.0, 0.0, -9.81], ..DynamicsConfig::default() };
+        let tau =
+            rnea_with_config(&model, &chain, &q.view(), &zeros.view(), &zeros.view(), &config)
+                .unwrap();
+        assert!(tau[0].abs() > 0.1, "expected gravity force on prismatic joint, got {}", tau[0]);
+    }
+
+    #[test]
+    fn rnea_into_writes_output_buffer() {
+        let fixture = load_fixture();
+        let model = fixture.to_robot_model().unwrap();
+        let chain = fixture.to_chain_spec().unwrap();
+        let q = arr1(&[0.3_f64, 0.5]);
+        let zeros = arr1(&[0.0, 0.0]);
+        let mut output = arr1(&[0.0, 0.0]);
+        rnea_into(
+            &model,
+            &chain,
+            &q.view(),
+            &zeros.view(),
+            &zeros.view(),
+            &mut output,
+        )
+        .unwrap();
+        let tau = rnea_view(&model, &chain, &q.view(), &zeros.view(), &zeros.view()).unwrap();
+        assert_relative_eq!(output, tau, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn rnea_into_rejects_output_dimension_mismatch() {
+        let fixture = load_fixture();
+        let model = fixture.to_robot_model().unwrap();
+        let chain = fixture.to_chain_spec().unwrap();
+        let q = arr1(&[0.3_f64, 0.5]);
+        let zeros = arr1(&[0.0, 0.0]);
+        let mut output = arr1(&[0.0]);
+        assert!(matches!(
+            rnea_into(
+                &model,
+                &chain,
+                &q.view(),
+                &zeros.view(),
+                &zeros.view(),
+                &mut output
+            ),
+            Err(DynamicsError::DimensionMismatch)
+        ));
+    }
 }

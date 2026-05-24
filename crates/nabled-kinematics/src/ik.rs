@@ -345,6 +345,8 @@ mod tests {
 
     use super::*;
     use crate::chain::{ChainSpec, DhConvention, JointType};
+    use crate::tree::y_branch_fixture::YBranchModel;
+    use crate::tree::end_effector_pose_tree;
 
     fn six_dof_chain() -> ChainSpec<f64> {
         ChainSpec::from_dh(
@@ -520,5 +522,127 @@ mod tests {
             output.as_slice().unwrap(),
             epsilon = 1e-12
         );
+    }
+
+    #[test]
+    fn prismatic_chain_reaches_z_target() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Prismatic],
+            arr1(&[0.0_f64]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+        )
+        .unwrap();
+        let q_target = arr1(&[0.75_f64]);
+        let target = fk_view(&chain, &q_target.view()).unwrap();
+        let result = inverse_kinematics_dls_with_limits(
+            &chain,
+            &arr1(&[0.0]),
+            &target,
+            &IkConfig::default(),
+            None,
+        )
+        .unwrap();
+        assert_relative_eq!(result.q[0], 0.75, epsilon = 1e-3);
+    }
+
+    #[test]
+    fn y_branch_tree_ik_reaches_target() {
+        let model = YBranchModel;
+        let q_target = arr1(&[0.3_f64, 0.5, -0.2]);
+        let target = end_effector_pose_tree(&model, "base", "left_ee", &q_target).expect("target fk");
+        let q_init = arr1(&[0.0_f64, 0.0, 0.0]);
+        let config = IkConfig { max_iterations: 300, tolerance: 1e-3, ..IkConfig::default() };
+        let q = inverse_kinematics_tree_dls(&model, "base", "left_ee", &q_init, &target, &config)
+            .expect("tree ik");
+        assert_eq!(q.len(), model.dof());
+        let achieved = end_effector_pose_tree(&model, "base", "left_ee", &q).expect("achieved fk");
+        let err = pose_error(&achieved, &target).unwrap();
+        assert!(error_norm(&err) < 1e-3);
+    }
+
+    #[test]
+    fn tree_ik_with_model_limits_rejects_initial_violation() {
+        let model = YBranchModel;
+        let q_target = arr1(&[0.3_f64, 0.5, -0.2]);
+        let target = end_effector_pose_tree(&model, "base", "left_ee", &q_target).unwrap();
+        let err = inverse_kinematics_tree_dls_with_limits(
+            &model,
+            "base",
+            "left_ee",
+            &arr1(&[4.0, 0.0, 0.0]),
+            &target,
+            &IkConfig::default(),
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(err, KinematicsError::JointLimitViolation(0));
+    }
+
+    #[test]
+    fn rejects_q_init_dimension_mismatch() {
+        let chain = planar_2r_chain();
+        let target = fk_view(&chain, &arr1(&[0.0, 0.0]).view()).unwrap();
+        let err = inverse_kinematics_dls_with_limits(
+            &chain,
+            &arr1(&[0.0]),
+            &target,
+            &IkConfig::default(),
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(err, KinematicsError::DimensionMismatch);
+    }
+
+    #[test]
+    fn rejects_limits_length_mismatch() {
+        let chain = planar_2r_chain();
+        let target = fk_view(&chain, &arr1(&[0.0, 0.0]).view()).unwrap();
+        let limits = vec![JointLimits { lower: -1.0, upper: 1.0 }];
+        let err = inverse_kinematics_dls_with_limits(
+            &chain,
+            &arr1(&[0.0, 0.0]),
+            &target,
+            &IkConfig::default(),
+            Some(&limits),
+        )
+        .unwrap_err();
+        assert_eq!(err, KinematicsError::DimensionMismatch);
+    }
+
+    #[test]
+    fn fails_when_not_converged_within_iteration_budget() {
+        let chain = planar_2r_chain();
+        let q_target = arr1(&[1.5_f64, -1.0]);
+        let target = fk_view(&chain, &q_target.view()).unwrap();
+        let config = IkConfig { max_iterations: 1, tolerance: 1e-12, ..IkConfig::default() };
+        let err = inverse_kinematics_dls_with_limits(
+            &chain,
+            &arr1(&[0.0, 0.0]),
+            &target,
+            &config,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(err, KinematicsError::ConvergenceFailed);
+    }
+
+    #[test]
+    fn tree_ik_rejects_wrong_q_dimension() {
+        let model = YBranchModel;
+        let target = end_effector_pose_tree(&model, "base", "left_ee", &arr1(&[0.0, 0.0, 0.0]))
+            .unwrap();
+        let err = inverse_kinematics_tree_dls(
+            &model,
+            "base",
+            "left_ee",
+            &arr1(&[0.0, 0.0]),
+            &target,
+            &IkConfig::default(),
+        )
+        .unwrap_err();
+        assert_eq!(err, KinematicsError::DimensionMismatch);
     }
 }

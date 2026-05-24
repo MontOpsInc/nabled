@@ -30,3 +30,42 @@ impl fmt::Display for KinematicsError {
 }
 
 impl std::error::Error for KinematicsError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_messages_are_stable() {
+        assert_eq!(
+            KinematicsError::EmptyChain.to_string(),
+            "kinematic chain cannot be empty"
+        );
+        assert_eq!(
+            KinematicsError::DimensionMismatch.to_string(),
+            "input dimensions are incompatible"
+        );
+        assert_eq!(
+            KinematicsError::InvalidInput("bad link".into()).to_string(),
+            "invalid input: bad link"
+        );
+        assert_eq!(
+            KinematicsError::ConvergenceFailed.to_string(),
+            "IK iteration did not converge"
+        );
+        assert_eq!(
+            KinematicsError::NumericalInstability.to_string(),
+            "numerical instability detected"
+        );
+        assert_eq!(
+            KinematicsError::JointLimitViolation(2).to_string(),
+            "joint limit violated at joint 2"
+        );
+    }
+
+    #[test]
+    fn variants_are_clone_and_eq() {
+        let err = KinematicsError::JointLimitViolation(1);
+        assert_eq!(err.clone(), err);
+    }
+}

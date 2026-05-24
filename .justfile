@@ -6,7 +6,7 @@ provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=" + openblas_pr
 provider_features := env('NABLED_PROVIDER_FEATURES', 'openblas-system')
 provider_bench_features := env('NABLED_PROVIDER_BENCH_FEATURES', 'openblas-system')
 coverage_line_threshold := "90"
-coverage_ignore_regex := "crates/nabled-linalg/src/accelerator/gpu.rs"
+coverage_ignore_regex := "crates/nabled-linalg/src/accelerator/gpu.rs|crates/nabled/src/bin/[^/]+\\.rs"
 gpu_remote_user := env('NABLED_GPU_REMOTE_USER', 'root')
 gpu_remote_port := env('NABLED_GPU_REMOTE_PORT', '40637')
 gpu_remote_key := env('NABLED_GPU_REMOTE_KEY', '${HOME}/.ssh/nabled_vast_4090')
@@ -70,39 +70,51 @@ coverage:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    cargo llvm-cov report -vv --html --output-dir coverage --open --ignore-filename-regex {{ coverage_ignore_regex }}
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} signal" --no-report
+    cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
+    cargo llvm-cov report -vv --html --output-dir coverage --open --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
 coverage-json:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    cargo llvm-cov report --json --output-path coverage/cov.json --ignore-filename-regex {{ coverage_ignore_regex }}
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} signal" --no-report
+    cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
+    cargo llvm-cov report --json --output-path coverage/cov.json --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
 coverage-lcov:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    cargo llvm-cov report --lcov --output-path coverage/lcov.info --ignore-filename-regex {{ coverage_ignore_regex }}
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} signal" --no-report
+    cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
+    cargo llvm-cov report --lcov --output-path coverage/lcov.info --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
 coverage-check:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }} --ignore-filename-regex {{ coverage_ignore_regex }}
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} signal" --no-report
+    cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
+    cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }} --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
 # Per-crate Physical AI line coverage (informational; workspace gate remains coverage-check).
 coverage-physical-ai-report:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "=== Physical AI crate coverage (lib only) ==="
+    provider_env_prefix='{{ provider_env_prefix }}'
+    provider_features='{{ provider_features }}'
+    ignore_regex='{{ coverage_ignore_regex }}'
+    threshold='{{ coverage_line_threshold }}'
+    echo "=== Physical AI crate coverage (lib + tests) ==="
     for pkg in nabled-kinematics nabled-model nabled-dynamics nabled-control nabled-sensor nabled-sim; do
         echo "--- ${pkg} ---"
-        cargo llvm-cov -p "${pkg}" --lib --summary-only --ignore-filename-regex {{ coverage_ignore_regex }} || true
+        cargo llvm-cov -p "${pkg}" --lib --tests --summary-only --fail-under-lines "${threshold}" --ignore-filename-regex "${ignore_regex}" || true
     done
-    echo "--- nabled-linalg (signal) ---"
-    cargo llvm-cov -p nabled-linalg --lib --features signal --summary-only --ignore-filename-regex {{ coverage_ignore_regex }} || true
-    echo "--- nabled integration (informational) ---"
-    cargo llvm-cov -p nabled --test physical_ai_integration --features signal --summary-only --ignore-filename-regex {{ coverage_ignore_regex }} || true
+    echo "--- nabled-linalg (signal, lib + tests) ---"
+    cargo llvm-cov -p nabled-linalg --lib --tests --features signal --summary-only --fail-under-lines "${threshold}" --ignore-filename-regex "${ignore_regex}" || true
+    echo "--- nabled physical_ai_integration (merged profile leg) ---"
+    ${provider_env_prefix} cargo llvm-cov -p nabled --test physical_ai_integration --features "${provider_features} signal" --summary-only --ignore-filename-regex "${ignore_regex}" || true
 
 python-quality:
     {{ provider_env_prefix }} bash scripts/python_quality_gate.sh

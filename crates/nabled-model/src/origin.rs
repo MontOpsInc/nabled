@@ -61,4 +61,30 @@ mod tests {
         let tf = transform_from_xyz_rpy([1.0_f64, 0.0, 0.0], [0.0, 0.0, 0.0]).unwrap();
         assert_relative_eq!(tf.translation[0], 1.0, epsilon = 1e-12);
     }
+
+    #[test]
+    fn identity_transform_is_identity() {
+        let tf = identity_transform::<f64>();
+        assert_relative_eq!(tf.translation[0], 0.0, epsilon = 1e-12);
+        assert_relative_eq!(tf.rotation.matrix[[0, 0]], 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn joint_origin_from_dh_scalars_matches_translation() {
+        let tf = joint_origin_from_dh_scalars(1.0_f64, 0.0, 0.5, 0.0).unwrap();
+        assert_relative_eq!(tf.translation[0], 1.0, epsilon = 1e-12);
+        assert_relative_eq!(tf.translation[2], 0.5, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn yaw_rotation_rotates_x_into_y() {
+        let tf = transform_from_xyz_rpy([0.0_f64, 0.0, 0.0], [0.0, 0.0, std::f64::consts::FRAC_PI_2])
+            .unwrap();
+        let point = nabled_linalg::geometry::se3::transform_point(
+            &tf,
+            &ndarray::arr1(&[1.0_f64, 0.0, 0.0]).view(),
+        );
+        assert_relative_eq!(point[0], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(point[1], 1.0, epsilon = 1e-10);
+    }
 }

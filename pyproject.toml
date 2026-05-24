@@ -63,7 +63,8 @@ include = [
 
 [tool.coverage.run]
 branch = true
-source = ["pynabled"]
+source = ["python/pynabled"]
+relative_files = true
 
 [tool.coverage.report]
 fail_under = 90

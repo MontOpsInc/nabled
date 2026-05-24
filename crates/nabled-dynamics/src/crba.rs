@@ -60,6 +60,7 @@ mod tests {
 
     use super::*;
     use crate::config::DynamicsConfig;
+    use crate::DynamicsError;
 
     #[test]
     fn mass_matrix_is_symmetric_positive_diagonal() {
@@ -76,5 +77,22 @@ mod tests {
         assert!(m[[0, 0]] > 0.0);
         assert!(m[[1, 1]] > 0.0);
         assert!((m[[0, 1]] - m[[1, 0]]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn mass_matrix_rejects_dimension_mismatch() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../nabled/tests/fixtures/physical_ai/2r_planar.json"
+        );
+        let fixture = Planar2rFixture::from_file(path).unwrap();
+        let model = fixture.to_robot_model().unwrap();
+        let chain = fixture.to_chain_spec().unwrap();
+        let q = arr1(&[0.3_f64]);
+        let config = DynamicsConfig::default();
+        assert!(matches!(
+            mass_matrix(&model, &chain, &q.view(), &config),
+            Err(DynamicsError::DimensionMismatch)
+        ));
     }
 }

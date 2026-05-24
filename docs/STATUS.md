@@ -1,10 +1,12 @@
 # Status Snapshot
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 ## Summary
 
 Workspace migration for library domains is complete.
+
+**Physical AI coverage (2026-05-24):** `just coverage-check` passes at **90.88%** line with merged profile (workspace lib+tests, OpenBLAS provider leg, `physical_ai_integration` + `signal`, and `nabled-linalg --features signal`). Per-crate PAI lib+tests line coverage: kinematics 90.06%, model 93.35%, dynamics 90.06%, control 92.38%, sensor 93.75%, sim 94.80%, signal aggregate 90.31% (`fft.rs` 82.7% tail). See `docs/PHYSICAL_AI_TRACKER.md` Coverage Snapshot.
 
 1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`, plus Physical AI domain crates
    `nabled-kinematics`, `nabled-model`, `nabled-dynamics`, `nabled-control`, and `nabled-sensor`

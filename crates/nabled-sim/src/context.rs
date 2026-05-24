@@ -89,4 +89,61 @@ mod tests {
         let ctx = RobotContext::new(model, chain, config);
         assert_eq!(ctx.validate(), Err(SimError::DimensionMismatch));
     }
+
+    #[test]
+    fn rejects_malformed_chain() {
+        let fixture = load_planar2r_json().expect("fixture");
+        let model = fixture.to_robot_model::<f64>().expect("model");
+        let chain = ChainSpec {
+            convention:   nabled_kinematics::chain::DhConvention::Standard,
+            joint_types:  vec![
+                nabled_kinematics::chain::JointType::Revolute,
+                nabled_kinematics::chain::JointType::Revolute,
+            ],
+            a:            arr1(&[1.0]),
+            alpha:        arr1(&[0.0, 0.0]),
+            d:            arr1(&[0.0, 0.0]),
+            theta_offset: arr1(&[0.0, 0.0]),
+            ee_index:     None,
+        };
+        let config = DynamicsConfig { gravity: [0.0, -9.81, 0.0], ..DynamicsConfig::default() };
+        let ctx = RobotContext::new(model, chain, config);
+        assert!(matches!(
+            ctx.validate(),
+            Err(SimError::Kinematics(nabled_kinematics::KinematicsError::DimensionMismatch))
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_model() {
+        use nabled_model::joint::JointAxis;
+        use nabled_model::link::LinkSpec;
+        use nabled_model::robot::{BodySpec, RobotModel};
+
+        let fixture = load_planar2r_json().expect("fixture");
+        let chain = fixture.to_chain_spec::<f64>().expect("chain");
+        let body = |name: &str, parent: &str| BodySpec {
+            link:         LinkSpec { name: name.to_string() },
+            parent_link:  parent.to_string(),
+            joint_type:   nabled_model::joint::JointType::Revolute,
+            axis:         JointAxis::Z,
+            limits:       None,
+            inertial:     None,
+            joint_origin: nabled_model::origin::transform_from_xyz_rpy([1.0, 0.0, 0.0], [0.0, 0.0, 0.0])
+                .expect("origin"),
+            dh_a:         1.0,
+            dh_alpha:     0.0,
+            dh_d:         0.0,
+            dh_theta:     0.0,
+        };
+        let mut model = RobotModel::new();
+        let _ = model.add_body(None, body("link0", "base"));
+        let _ = model.add_body(Some(99), body("link1", "link0"));
+        let config = DynamicsConfig { gravity: [0.0, -9.81, 0.0], ..DynamicsConfig::default() };
+        let ctx = RobotContext::new(model, chain, config);
+        assert!(matches!(
+            ctx.validate(),
+            Err(SimError::Model(nabled_model::ModelError::InvalidInput(_)))
+        ));
+    }
 }

@@ -104,7 +104,10 @@ pub fn autocorrelation_full<T: NabledReal>(
     padded.slice_mut(ndarray::s![..n]).assign(signal);
     let spectrum = rfft(&padded.view())?;
     let power = spectrum.power();
-    let power_spectrum = RfftSpectrum { bins: power.mapv(|value| Complex::new(value, T::zero())) };
+    let power_spectrum = RfftSpectrum {
+        bins: power.mapv(|value| Complex::new(value, T::zero())),
+        time_len: padded_len,
+    };
     let circular = irfft(&power_spectrum)?;
     Ok(Array1::from_iter(circular.iter().take(n).copied()))
 }
@@ -139,5 +142,73 @@ mod tests {
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap();
         assert_eq!(peak_lag, usize::from(period));
+    }
+
+    #[cfg(feature = "signal")]
+    #[test]
+    fn autocorrelation_full_empty_input_errors() {
+        let empty = ndarray::arr1::<f64>(&[]);
+        assert_eq!(autocorrelation_full(&empty.view()), Err(SignalError::EmptyInput));
+    }
+
+    #[test]
+    fn cross_correlation_at_lag_known_values() {
+        let a = ndarray::arr1(&[1.0_f64, 2.0, 3.0, 4.0]);
+        let b = ndarray::arr1(&[4.0_f64, 3.0, 2.0, 1.0]);
+        let r0 = cross_correlation_at_lag(&a.view(), &b.view(), 0).unwrap();
+        assert_relative_eq!(r0, 20.0, epsilon = 1e-12);
+        let r1 = cross_correlation_at_lag(&a.view(), &b.view(), 1).unwrap();
+        assert_relative_eq!(r1, 10.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn cross_correlation_at_lag_into_writes_output() {
+        let a = ndarray::arr1(&[1.0_f64, 2.0, 3.0]);
+        let b = ndarray::arr1(&[3.0_f64, 2.0, 1.0]);
+        let mut out = 0.0_f64;
+        cross_correlation_at_lag_into(&a.view(), &b.view(), 0, &mut out).unwrap();
+        assert_relative_eq!(out, 10.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn cross_correlation_error_paths() {
+        let empty = ndarray::arr1::<f64>(&[]);
+        let signal = ndarray::arr1(&[1.0_f64, 2.0, 3.0]);
+        assert_eq!(
+            cross_correlation_at_lag(&empty.view(), &signal.view(), 0),
+            Err(SignalError::EmptyInput)
+        );
+        assert_eq!(
+            cross_correlation_at_lag(&signal.view(), &empty.view(), 0),
+            Err(SignalError::EmptyInput)
+        );
+
+        let shorter = ndarray::arr1(&[1.0_f64, 2.0]);
+        assert_eq!(
+            cross_correlation_at_lag(&signal.view(), &shorter.view(), 0),
+            Err(SignalError::InvalidInput(
+                "signals must have equal length for cross-correlation".to_string()
+            ))
+        );
+
+        assert_eq!(
+            cross_correlation_at_lag(&signal.view(), &signal.view(), 3),
+            Err(SignalError::InvalidInput("lag 3 must be less than signal length 3".to_string()))
+        );
+    }
+
+    #[test]
+    fn autocorrelation_at_lag_error_paths() {
+        let empty = ndarray::arr1::<f64>(&[]);
+        assert_eq!(
+            autocorrelation_at_lag(&empty.view(), 0),
+            Err(SignalError::EmptyInput)
+        );
+
+        let signal = ndarray::arr1(&[1.0_f64, 2.0, 3.0]);
+        assert_eq!(
+            autocorrelation_at_lag(&signal.view(), 3),
+            Err(SignalError::InvalidInput("lag 3 must be less than signal length 3".to_string()))
+        );
     }
 }

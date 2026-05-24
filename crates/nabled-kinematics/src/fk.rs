@@ -192,4 +192,72 @@ mod tests {
         assert_relative_eq!(pose.translation[0], 2.0, epsilon = 1e-10);
         assert_relative_eq!(pose.translation[1], 0.0, epsilon = 1e-10);
     }
+
+    #[test]
+    fn prismatic_fk_translates_along_z() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Prismatic],
+            arr1(&[0.0_f64]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+        )
+        .unwrap();
+        let q = arr1(&[0.5_f64]);
+        let pose = fk(&chain, &q).unwrap();
+        assert_relative_eq!(pose.translation[2], 0.5, epsilon = 1e-10);
+        assert_relative_eq!(pose.translation[0], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(pose.translation[1], 0.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn rejects_dimension_mismatch() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Revolute, JointType::Revolute],
+            arr1(&[1.0_f64, 1.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+        )
+        .unwrap();
+        let err = fk(&chain, &arr1(&[0.0])).unwrap_err();
+        assert_eq!(err, KinematicsError::DimensionMismatch);
+    }
+
+    #[test]
+    fn modified_dh_convention_fk() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Modified,
+            vec![JointType::Revolute],
+            arr1(&[1.0_f64]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+        )
+        .unwrap();
+        let q = arr1(&[0.0_f64]);
+        let pose = fk(&chain, &q).unwrap();
+        assert_relative_eq!(pose.translation[0], 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn fk_view_matches_fk_allocating() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Revolute, JointType::Revolute],
+            arr1(&[1.0_f64, 1.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+        )
+        .unwrap();
+        let q = arr1(&[0.3_f64, 0.2]);
+        let owned = fk(&chain, &q).unwrap();
+        let viewed = fk_view(&chain, &q.view()).unwrap();
+        for i in 0..3 {
+            assert_relative_eq!(owned.translation[i], viewed.translation[i], epsilon = 1e-12);
+        }
+    }
 }

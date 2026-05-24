@@ -1,6 +1,6 @@
 # Physical AI Execution Tracker
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 ## Purpose
 
@@ -54,43 +54,43 @@ Operational sequencing for the broader workspace lives in `docs/EXECUTION_TRACKE
 | PAI-24 | PyPI 0.0.9 + Python parity Implemented | Done | tree FK/IK, `IkWorkspace`, S22–S23 Python; `pyproject.toml` 0.0.9 |
 | PAI-25 | Coverage baselines + physical-ai report recipe | Done | `just coverage-physical-ai-report`; snapshot below |
 
-## Coverage Snapshot (2026-05-23)
+## Coverage Snapshot (2026-05-24)
 
-Run `just coverage-physical-ai-report` to refresh. Workspace gate: `just coverage-check` ≥90% line (includes `--tests`; requires OpenBLAS or netlib provider locally).
+Run `just coverage-physical-ai-report` to refresh. Workspace gate: `just coverage-check` ≥90% line (merged profile: workspace lib+tests, OpenBLAS provider leg, `physical_ai_integration` with `signal`, and `nabled-linalg --features signal`; excludes `gpu.rs` and `nabled` maintainer bins).
 
-| Crate | Line % (lib) | Target | Gap / test plan |
-|-------|-------------:|--------|-----------------|
-| `nabled-kinematics` | 57.63 | ≥90% | `tree.rs` error paths, prismatic branches, `ee_index`; Y-branch unit tests + Jacobian spot checks |
-| `nabled-model` | 77.69 | ≥90% | `urdf.rs` malformed XML, limits, inertia edge cases; parse-failure fixtures |
-| `nabled-dynamics` | 65.74 | ≥90% | RNEA/CRBA dimension errors, prismatic joints; pendulum + bias decomposition |
-| `nabled-control` | 84.82 | ≥90% | Discrete gramians, unreachable pole placement; small-matrix residual tests |
-| `nabled-sensor` | 62.86 | ≥90% | EKF/camera degenerate inputs; unit error paths beyond S17–S19 |
-| `nabled-sim` | 66.60 | ≥90% | Orchestrator validation errors; per-module 2R tests (S24 covers pipeline happy path) |
-| `nabled-linalg` (`signal`) | 88.89 | ≥90% | FFT odd lengths, empty input; round-trip edge cases |
-| `nabled` integration test | 0.00* | informational | S1–S25 scenario coverage lives in dependency crates, not test harness lines |
+| Crate | Line % (lib+tests) | Target | Notes |
+|-------|-------------------:|--------|-------|
+| `nabled-kinematics` | 90.06 | ≥90% | tree FK/Jacobian, prismatic branch, Y-branch fixture tests |
+| `nabled-model` | 93.35 | ≥90% | `tree_model`, URDF failure paths, fixture loaders |
+| `nabled-dynamics` | 90.06 | ≥90% | `id` decomposition, RNEA/FD/CRBA in-crate tests |
+| `nabled-control` | 92.38 | ≥90% | discrete LQR/gramians, pole placement error paths |
+| `nabled-sensor` | 93.75 | ≥90% | pinhole degenerate inputs, Kalman/EKF error paths |
+| `nabled-sim` | 94.80 | ≥90% | `TrajectoryIk`/`TrajectoryTreeIk` orchestrator tests |
+| `nabled-linalg` (`signal`) | 90.31 | ≥90% | window/correlation ≥94%; `fft.rs` 82.7% (odd-length/empty covered) |
+| Workspace (merged) | 90.88 | ≥90% | `just coverage-check` pass (2026-05-24) |
+| `nabled` integration test | 0.00* | informational | S1–S25 hits land in dependency crates, not harness source |
 | `pynabled` Physical AI | — | ≥90% | `python-quality` pytest slice (see `docs/PYNABLED_PHYSICAL_AI_PARITY.md`) |
 
 \* `cargo llvm-cov -p nabled --test physical_ai_integration` attributes hits to dependency libs, not the integration test source file.
 
-**MT-R0-B status:** baselines measured; all domain crates below 90% lib-only line — tracked test plans above; raise coverage in MT-R4.
+**MT-R4 coverage status:** workspace and all PAI domain crates at or above 90% lib+tests line coverage; `fft.rs` remains the main signal tail below 90%.
 
 ## Locked Boundaries
 
 See `docs/PHYSICAL_AI_CAPABILITY_REGISTRY.md` for single-owner function table.
 
-## Validation Snapshot (2026-05-23)
+## Validation Snapshot (2026-05-24)
 
 - `cargo test --workspace --lib`: pass
 - `cargo test -p nabled --test physical_ai_integration --features signal`: 26 passed, 0 ignored
-- `cargo +stable clippy --workspace --no-default-features --features signal --all-targets -- -D warnings`: pass
-- `cargo +stable clippy -p pynabled --no-default-features --features signal --all-targets -- -D warnings`: pass
-- `cargo +nightly fmt --all -- --check`: pass
-- `just coverage-physical-ai-report`: per-crate baselines recorded in Coverage Snapshot
-- `just checks`: signal/pynabled clippy + fmt green; provider/coverage legs require OpenBLAS or `NABLED_PROVIDER_FEATURES=netlib-system`
+- `just coverage-check`: **90.88%** line (pass)
+- `just coverage-physical-ai-report`: all PAI domain crates ≥90% lib+tests (signal aggregate 90.31%; `fft.rs` tail 82.7%)
+- `cargo +stable clippy --workspace --no-default-features --features signal --all-targets -- -D warnings`: pass (prior snapshot)
+- `just checks`: provider/coverage legs require OpenBLAS (`/usr/local/opt/openblas`) or `NABLED_PROVIDER_FEATURES=netlib-system`
 
 ## Remaining Gaps
 
-1. Provider/coverage legs in `just checks` require OpenBLAS (macOS: `brew install openblas`; see `BUILD.md`) or `NABLED_PROVIDER_FEATURES=netlib-system`.
-2. Closed kinematic loops remain out of scope.
-3. `pynabled.sim` optional wrappers deferred until orchestrator Rust API stabilizes post-0.0.9.
-4. Refresh coverage snapshot table after each `coverage-physical-ai-report` run.
+1. `nabled-linalg/src/signal/fft.rs` lib+tests line coverage 82.7% (workspace signal aggregate ≥90%).
+2. Provider/coverage legs in `just checks` require OpenBLAS (macOS: `brew install openblas`; see `BUILD.md`) or `NABLED_PROVIDER_FEATURES=netlib-system`.
+3. Closed kinematic loops remain out of scope.
+4. `pynabled.sim` optional wrappers deferred until orchestrator Rust API stabilizes post-0.0.9.

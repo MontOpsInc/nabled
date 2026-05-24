@@ -141,3 +141,87 @@ pub fn exp<T: NabledReal>(twist: &ArrayView1<'_, T>) -> Result<Transform3<T>, Ge
     let translation = twist.slice(ndarray::s![3..6]).to_owned();
     Ok(from_rotation_translation(&rotation, &translation))
 }
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_relative_eq;
+    use ndarray::{Array1, Array2};
+
+    use super::*;
+    use crate::geometry::{GeometryError, Rotation3};
+
+    fn identity_transform() -> Transform3<f64> {
+        Transform3 {
+            rotation:    Rotation3 { matrix: Array2::eye(3) },
+            translation: Array1::zeros(3),
+        }
+    }
+
+    #[test]
+    fn compose_with_identity_preserves_transform() {
+        let id = identity_transform();
+        let omega = ndarray::arr1(&[0.0_f64, 0.0, 0.3]);
+        let rotation = so3::exp(&omega.view()).unwrap();
+        let translation = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        let transform = from_rotation_translation(&rotation, &translation);
+        let composed = compose(&id, &transform).unwrap();
+        for i in 0..3 {
+            assert_relative_eq!(composed.translation[i], translation[i], epsilon = 1e-10);
+        }
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_relative_eq!(
+                    composed.rotation.matrix[[i, j]],
+                    rotation.matrix[[i, j]],
+                    epsilon = 1e-10
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn exp_log_round_trip() {
+        let twist = ndarray::arr1(&[0.1_f64, 0.0, 0.0, 0.5, -0.2, 1.0]);
+        let transform = exp(&twist.view()).unwrap();
+        let recovered = log(&transform).unwrap();
+        for i in 0..6 {
+            assert_relative_eq!(recovered[i], twist[i], epsilon = 1e-9);
+        }
+    }
+
+    #[test]
+    fn inverse_composition_is_identity_transform() {
+        let twist = ndarray::arr1(&[0.0_f64, 0.2, 0.0, 1.0, -0.5, 2.0]);
+        let transform = exp(&twist.view()).unwrap();
+        let composed = compose(&transform, &inverse(&transform)).unwrap();
+        let id = identity_transform();
+        for i in 0..3 {
+            assert_relative_eq!(composed.translation[i], id.translation[i], epsilon = 1e-10);
+        }
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_relative_eq!(
+                    composed.rotation.matrix[[i, j]],
+                    id.rotation.matrix[[i, j]],
+                    epsilon = 1e-10
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn transform_point_identity_leaves_point_unchanged() {
+        let id = identity_transform();
+        let point = ndarray::arr1(&[1.0_f64, -2.0, 3.5]);
+        let transformed = transform_point(&id, &point.view());
+        for i in 0..3 {
+            assert_relative_eq!(transformed[i], point[i], epsilon = 1e-12);
+        }
+    }
+
+    #[test]
+    fn exp_dimension_mismatch_errors() {
+        let bad_twist = ndarray::arr1(&[0.0_f64; 5]);
+        assert_eq!(exp(&bad_twist.view()), Err(GeometryError::DimensionMismatch));
+    }
+}

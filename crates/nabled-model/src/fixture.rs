@@ -232,4 +232,38 @@ mod tests {
         let chain = fixture.to_chain_spec::<f64>().unwrap();
         assert_eq!(chain.num_joints(), 6);
     }
+
+    #[test]
+    fn load_y_branch_fixture_from_repo() {
+        let fixture = load_y_branch_json().unwrap();
+        assert_eq!(fixture.cases.len(), 2);
+        assert_eq!(fixture.cases[0].q.len(), 3);
+        assert_eq!(fixture.cases[0].left_ee_translation.len(), 3);
+        assert_eq!(fixture.cases[0].right_ee_translation.len(), 3);
+    }
+
+    #[test]
+    fn planar2r_to_robot_model_has_inertials() {
+        let fixture = load_planar2r_json().unwrap();
+        let model = fixture.to_robot_model::<f64>().unwrap();
+        assert_eq!(model.dof(), 2);
+        let body = model.joint(0).unwrap();
+        assert!(body.inertial.is_some());
+    }
+
+    #[test]
+    fn from_file_reports_missing_path() {
+        let err = Planar2rFixture::from_file("/no/such/fixture.json").unwrap_err();
+        assert!(matches!(err, ModelError::ParseError(message) if message.contains("failed to read")));
+    }
+
+    #[test]
+    fn to_chain_spec_rejects_unknown_dh_convention() {
+        let mut fixture = load_planar2r_json().unwrap();
+        fixture.dh_convention = "bogus".to_string();
+        assert!(matches!(
+            fixture.to_chain_spec::<f64>(),
+            Err(ModelError::InvalidInput(_))
+        ));
+    }
 }

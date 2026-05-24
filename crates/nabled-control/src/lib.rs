@@ -46,3 +46,49 @@ impl IntoNabledError for ControlError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
+
+    use super::*;
+
+    #[test]
+    fn control_errors_display_and_map_to_shared_taxonomy() {
+        assert_eq!(ControlError::EmptyMatrix.to_string(), "matrix cannot be empty");
+        assert_eq!(
+            ControlError::DimensionMismatch.to_string(),
+            "input dimensions are incompatible"
+        );
+        assert_eq!(
+            ControlError::InvalidInput("bad poles".to_string()).to_string(),
+            "invalid input: bad poles"
+        );
+        assert_eq!(
+            ControlError::ConvergenceFailed.to_string(),
+            "control iteration did not converge"
+        );
+        assert_eq!(ControlError::SingularSystem.to_string(), "singular control system");
+
+        assert!(matches!(
+            ControlError::EmptyMatrix.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            ControlError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            ControlError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            ControlError::ConvergenceFailed.into_nabled_error(),
+            NabledError::ConvergenceFailed
+        ));
+        assert!(matches!(
+            ControlError::SingularSystem.into_nabled_error(),
+            NabledError::SingularMatrix
+        ));
+    }
+}

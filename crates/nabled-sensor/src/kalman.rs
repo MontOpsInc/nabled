@@ -85,4 +85,42 @@ mod tests {
         assert!(updated.mean[0] > 0.5);
         assert!(updated.covariance[[0, 0]] < 1.0);
     }
+
+    #[test]
+    fn predict_rejects_state_transition_dimension_mismatch() {
+        let state = KalmanState {
+            mean:       ndarray::arr1(&[0.0_f64, 1.0]),
+            covariance: arr2(&[[1.0, 0.0], [0.0, 1.0]]),
+        };
+        let f = arr2(&[[1.0]]);
+        let q = arr2(&[[0.01]]);
+        assert_eq!(predict(&state, &f.view(), &q.view()), Err(SensorError::DimensionMismatch));
+    }
+
+    #[test]
+    fn predict_and_update_into_reuse_buffers() {
+        let mut state =
+            KalmanState { mean: ndarray::arr1(&[0.0_f64]), covariance: arr2(&[[1.0]]) };
+        let f = arr2(&[[1.0]]);
+        let q = arr2(&[[0.01]]);
+        predict_into(&mut state, &f.view(), &q.view()).unwrap();
+        let h = arr2(&[[1.0]]);
+        let r = arr2(&[[0.1]]);
+        let z = ndarray::arr1(&[1.0]);
+        update_into(&mut state, &z.view(), &h.view(), &r.view()).unwrap();
+        assert!(state.mean[0] > 0.5);
+    }
+
+    #[test]
+    fn update_rejects_singular_innovation_covariance() {
+        let state =
+            KalmanState { mean: ndarray::arr1(&[0.0_f64]), covariance: arr2(&[[0.0]]) };
+        let h = arr2(&[[1.0]]);
+        let r = arr2(&[[0.0]]);
+        let z = ndarray::arr1(&[1.0]);
+        assert_eq!(
+            update(&state, &z.view(), &h.view(), &r.view()),
+            Err(SensorError::NumericalInstability)
+        );
+    }
 }

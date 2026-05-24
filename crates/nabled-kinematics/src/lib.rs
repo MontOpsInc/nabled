@@ -39,3 +39,38 @@ impl IntoNabledError for KinematicsError {
         }
     }
 }
+
+#[cfg(test)]
+mod error_mapping {
+    use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
+
+    use crate::KinematicsError;
+
+    #[test]
+    fn into_nabled_error_covers_all_variants() {
+        assert!(matches!(
+            KinematicsError::EmptyChain.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            KinematicsError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            KinematicsError::InvalidInput("x".into()).into_nabled_error(),
+            NabledError::InvalidInput(message) if message == "x"
+        ));
+        assert!(matches!(
+            KinematicsError::ConvergenceFailed.into_nabled_error(),
+            NabledError::ConvergenceFailed
+        ));
+        assert!(matches!(
+            KinematicsError::NumericalInstability.into_nabled_error(),
+            NabledError::NumericalInstability
+        ));
+        assert!(matches!(
+            KinematicsError::JointLimitViolation(0).into_nabled_error(),
+            NabledError::InvalidInput(message) if message.contains("joint 0")
+        ));
+    }
+}

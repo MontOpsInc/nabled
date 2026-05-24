@@ -154,6 +154,7 @@ mod tests {
     use approx::assert_relative_eq;
 
     use super::*;
+    use crate::signal::SignalError;
 
     #[test]
     fn hann_endpoints_are_zero_for_n_gt_1() {
@@ -161,5 +162,65 @@ mod tests {
         assert_relative_eq!(w[0], 0.0, epsilon = 1e-12);
         assert_relative_eq!(w[7], 0.0, epsilon = 1e-12);
         assert!(w[4] > 0.9);
+    }
+
+    #[test]
+    fn all_window_kinds_are_finite_and_positive_peak() {
+        let n = 16;
+        for kind in [WindowKind::Hann, WindowKind::Hamming, WindowKind::Blackman] {
+            let mut buf = Array1::<f64>::zeros(n);
+            window_into(kind, &mut buf).unwrap();
+            assert!(buf.iter().all(|value| value.is_finite()));
+            assert!(buf.iter().copied().fold(0.0_f64, f64::max) > 0.0);
+        }
+    }
+
+    #[test]
+    fn window_into_matches_dedicated_generators() {
+        let n = 12;
+        let mut hann_buf = Array1::<f64>::zeros(n);
+        window_into(WindowKind::Hann, &mut hann_buf).unwrap();
+        for (value, expected) in hann_buf.iter().zip(hann(n).iter()) {
+            assert_relative_eq!(value, expected, epsilon = 1e-12);
+        }
+
+        let mut hamming_buf = Array1::<f64>::zeros(n);
+        window_into(WindowKind::Hamming, &mut hamming_buf).unwrap();
+        for (value, expected) in hamming_buf.iter().zip(hamming(n).iter()) {
+            assert_relative_eq!(value, expected, epsilon = 1e-12);
+        }
+
+        let mut blackman_buf = Array1::<f64>::zeros(n);
+        window_into(WindowKind::Blackman, &mut blackman_buf).unwrap();
+        for (value, expected) in blackman_buf.iter().zip(blackman(n).iter()) {
+            assert_relative_eq!(value, expected, epsilon = 1e-12);
+        }
+    }
+
+    #[test]
+    fn apply_window_empty_input_errors() {
+        let empty = ndarray::arr1::<f64>(&[]);
+        assert_eq!(
+            apply_window(&empty.view(), WindowKind::Hann, false),
+            Err(SignalError::EmptyInput)
+        );
+    }
+
+    #[test]
+    fn apply_window_normalized_has_unit_coherent_gain() {
+        let signal = ndarray::arr1(&[1.0_f64; 8]);
+        let windowed = apply_window(&signal.view(), WindowKind::Hann, true).unwrap();
+        let sum: f64 = windowed.iter().sum();
+        assert_relative_eq!(sum, 8.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn apply_window_unnormalized_scales_by_window_shape() {
+        let signal = ndarray::arr1(&[2.0_f64; 4]);
+        let windowed = apply_window(&signal.view(), WindowKind::Hamming, false).unwrap();
+        let reference = hamming::<f64>(4);
+        for (value, coeff) in windowed.iter().zip(reference.iter()) {
+            assert_relative_eq!(value, &(2.0 * coeff), epsilon = 1e-12);
+        }
     }
 }

@@ -230,7 +230,9 @@ impl<T: NabledReal + LuProviderScalar> TrajectoryTreeIk<T> {
 
 #[cfg(test)]
 mod tests {
-    use nabled_model::fixture::load_six_dof_dh_json;
+    use nabled_kinematics::fk::{end_effector_pose, fk_view};
+    use nabled_model::fixture::{load_planar2r_json, load_six_dof_dh_json, load_y_branch_json};
+    use nabled_model::urdf::from_urdf_file;
     use ndarray::arr1;
 
     use super::*;
@@ -251,5 +253,158 @@ mod tests {
         let result = trajectory.solve(&chain, &config).expect("solve");
         assert_eq!(result.steps.len(), 6);
         assert!(result.max_error < 1e-2);
+    }
+
+    #[test]
+    fn trajectory_ik_rejects_empty_time_grid() {
+        let fixture = load_six_dof_dh_json().expect("fixture");
+        let chain = fixture.to_chain_spec::<f64>().expect("chain");
+        let trajectory = TrajectoryIk {
+            times:   vec![],
+            q_start: arr1(&[0.0; 6]),
+            q_end:   arr1(&[0.1; 6]),
+        };
+        let config = TrajectoryIkConfig::default();
+        assert_eq!(
+            trajectory.solve(&chain, &config),
+            Err(SimError::InvalidInput("time grid cannot be empty".to_string()))
+        );
+    }
+
+    #[test]
+    fn trajectory_ik_rejects_zero_duration() {
+        let fixture = load_six_dof_dh_json().expect("fixture");
+        let chain = fixture.to_chain_spec::<f64>().expect("chain");
+        let trajectory = TrajectoryIk {
+            times:   vec![0.0, 0.0],
+            q_start: arr1(&[0.0; 6]),
+            q_end:   arr1(&[0.1; 6]),
+        };
+        let config = TrajectoryIkConfig::default();
+        assert_eq!(
+            trajectory.solve(&chain, &config),
+            Err(SimError::InvalidInput("time grid duration must be positive".to_string()))
+        );
+    }
+
+    #[test]
+    fn trajectory_ik_rejects_dof_mismatch() {
+        let fixture = load_six_dof_dh_json().expect("fixture");
+        let chain = fixture.to_chain_spec::<f64>().expect("chain");
+        let trajectory = TrajectoryIk {
+            times:   vec![0.0, 1.0],
+            q_start: arr1(&[0.0; 5]),
+            q_end:   arr1(&[0.1; 6]),
+        };
+        let config = TrajectoryIkConfig::default();
+        assert_eq!(trajectory.solve(&chain, &config), Err(SimError::DimensionMismatch));
+    }
+
+    #[test]
+    fn trajectory_ik_solve_targets_on_planar2r() {
+        let fixture = load_planar2r_json().expect("fixture");
+        let chain = fixture.to_chain_spec::<f64>().expect("chain");
+        let q_a = arr1(&[0.0_f64, 0.0]);
+        let q_b = arr1(&[0.5, -0.3]);
+        let targets = [&q_a, &q_b]
+            .iter()
+            .map(|q| end_effector_pose(&chain, *q).expect("fk"))
+            .collect::<Vec<_>>();
+        let times = [0.0_f64, 1.0];
+        let config = TrajectoryIkConfig {
+            ik_config: IkConfig { max_iterations: 200, tolerance: 1e-3, ..IkConfig::default() },
+            limits:    None,
+        };
+        let result = TrajectoryIk::solve_targets(
+            &times,
+            &chain,
+            &q_a.view(),
+            &targets,
+            &config,
+        )
+        .expect("solve targets");
+        assert_eq!(result.steps.len(), 2);
+        assert!(result.max_error < 1e-2);
+    }
+
+    #[test]
+    fn trajectory_ik_solve_targets_on_six_dof() {
+        let fixture = load_six_dof_dh_json().expect("fixture");
+        let chain = fixture.to_chain_spec::<f64>().expect("chain");
+        let q_init = arr1(&[0.0, -0.3, 0.5, 0.2, -0.1, 0.4]);
+        let q_goal = arr1(&[0.3, -0.2, 0.4, 0.1, 0.0, 0.5]);
+        let targets = [q_init.view(), q_goal.view()]
+            .iter()
+            .map(|q| fk_view(&chain, q).expect("fk"))
+            .collect::<Vec<_>>();
+        let times = [0.0_f64, 1.0];
+        let config = TrajectoryIkConfig {
+            ik_config: IkConfig { max_iterations: 200, tolerance: 1e-3, ..IkConfig::default() },
+            limits:    None,
+        };
+        let result =
+            TrajectoryIk::solve_targets(&times, &chain, &q_init.view(), &targets, &config)
+                .expect("solve targets");
+        assert_eq!(result.steps.len(), 2);
+        assert!(result.max_error < 1e-2);
+    }
+
+    #[test]
+    fn trajectory_ik_solve_targets_rejects_mismatched_grid() {
+        let fixture = load_planar2r_json().expect("fixture");
+        let chain = fixture.to_chain_spec::<f64>().expect("chain");
+        let q = arr1(&[0.0_f64, 0.0]);
+        let target = end_effector_pose(&chain, &q).expect("fk");
+        let config = TrajectoryIkConfig::default();
+        assert_eq!(
+            TrajectoryIk::solve_targets(&[0.0, 1.0], &chain, &q.view(), &[target], &config),
+            Err(SimError::DimensionMismatch)
+        );
+    }
+
+    #[test]
+    fn trajectory_tree_ik_on_y_branch() {
+        let fixture = load_y_branch_json().expect("fixture");
+        let urdf_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../nabled/tests/fixtures/physical_ai/Y_branch.urdf"
+        );
+        let model = from_urdf_file::<f64>(urdf_path).expect("urdf");
+        let case = &fixture.cases[0];
+        let trajectory = TrajectoryTreeIk {
+            times:     vec![0.0_f64, 0.5, 1.0],
+            q_start:   arr1(&case.q),
+            q_end:     arr1(&[0.3, 0.5, -0.2]),
+            base_link: "base".to_string(),
+            ee_link:   "left_ee".to_string(),
+        };
+        let config = TrajectoryIkConfig {
+            ik_config: IkConfig { max_iterations: 300, tolerance: 1e-3, ..IkConfig::default() },
+            limits:    None,
+        };
+        let result = trajectory.solve(&model, &config).expect("tree ik");
+        assert_eq!(result.steps.len(), 3);
+        assert!(result.max_error < 1e-2);
+    }
+
+    #[test]
+    fn trajectory_tree_ik_rejects_empty_time_grid() {
+        let urdf_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../nabled/tests/fixtures/physical_ai/Y_branch.urdf"
+        );
+        let model = from_urdf_file::<f64>(urdf_path).expect("urdf");
+        let trajectory = TrajectoryTreeIk {
+            times:     vec![],
+            q_start:   arr1(&[0.0; 3]),
+            q_end:     arr1(&[0.1; 3]),
+            base_link: "base".to_string(),
+            ee_link:   "right_ee".to_string(),
+        };
+        let config = TrajectoryIkConfig::default();
+        assert_eq!(
+            trajectory.solve(&model, &config),
+            Err(SimError::InvalidInput("time grid cannot be empty".to_string()))
+        );
     }
 }

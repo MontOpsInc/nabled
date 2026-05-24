@@ -108,4 +108,27 @@ mod tests {
         let bad = JointLimits { lower: 1.0, upper: -1.0, velocity: 2.0, effort: 10.0 };
         assert!(validate_limits(&bad).is_err());
     }
+
+    #[test]
+    fn from_xyz_maps_cardinal_axes() {
+        assert_eq!(JointAxis::from_xyz(1.0, 0.0, 0.0), JointAxis::X);
+        assert_eq!(JointAxis::from_xyz(0.0, 1.0, 0.0), JointAxis::Y);
+        assert_eq!(JointAxis::from_xyz(0.0, 0.0, 1.0), JointAxis::Z);
+    }
+
+    #[test]
+    fn zero_axis_falls_back_to_z() {
+        let axis = JointAxis::from_xyz(0.0, 0.0, 0.0);
+        assert_eq!(axis, JointAxis::Z);
+        let v = axis.unit_vector::<f64>();
+        assert_relative_eq!(v[2], 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn custom_axis_normalizes_non_unit_input() {
+        let axis = JointAxis::Custom([3.0, 0.0, 4.0]);
+        let v = axis.unit_vector::<f64>();
+        assert_relative_eq!(v[0], 0.6, epsilon = 1e-12);
+        assert_relative_eq!(v[2], 0.8, epsilon = 1e-12);
+    }
 }

@@ -191,4 +191,26 @@ mod tests {
         let err = place_poles(&a, &b, &poles).unwrap_err();
         assert!(matches!(err, ControlError::InvalidInput(_) | ControlError::SingularSystem));
     }
+
+    #[test]
+    fn place_poles_rejects_empty_and_mismatched_dimensions() {
+        let empty = arr2(&[[]]);
+        let b = arr2(&[[0.0], [1.0]]);
+        let poles = [-1.0, -2.0];
+        assert!(matches!(
+            place_poles(&empty, &b, &poles),
+            Err(ControlError::EmptyMatrix)
+        ));
+        let a = arr2(&[[0.0, 1.0], [0.0, 0.0]]);
+        let bad_b = arr2(&[[0.0, 1.0], [0.0, 0.0]]);
+        assert!(matches!(
+            place_poles(&a, &bad_b, &poles),
+            Err(ControlError::DimensionMismatch)
+        ));
+        let mut into_buf = arr2(&[[0.0]]);
+        assert!(matches!(
+            place_poles_into(&a, &b, &poles, &mut into_buf),
+            Err(ControlError::DimensionMismatch)
+        ));
+    }
 }

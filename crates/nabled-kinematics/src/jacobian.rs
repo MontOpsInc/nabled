@@ -137,4 +137,55 @@ mod tests {
         assert_relative_eq!(j[[0, 1]], 0.0, epsilon = 1e-10);
         assert_relative_eq!(j[[1, 1]], 1.0, epsilon = 1e-10);
     }
+
+    #[test]
+    fn prismatic_jacobian_linear_block_is_joint_axis() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Prismatic],
+            arr1(&[0.0_f64]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+            arr1(&[0.0]),
+        )
+        .unwrap();
+        let q = arr1(&[0.25_f64]);
+        let j = jacobian(&chain, &q).unwrap();
+        assert_relative_eq!(j[[0, 0]], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(j[[1, 0]], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(j[[2, 0]], 1.0, epsilon = 1e-10);
+        assert_relative_eq!(j[[3, 0]], 0.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn rejects_dimension_mismatch() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Revolute, JointType::Revolute],
+            arr1(&[1.0_f64, 1.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+        )
+        .unwrap();
+        let err = jacobian(&chain, &arr1(&[0.0])).unwrap_err();
+        assert_eq!(err, KinematicsError::DimensionMismatch);
+    }
+
+    #[test]
+    fn jacobian_view_matches_allocating() {
+        let chain = ChainSpec::from_dh(
+            DhConvention::Standard,
+            vec![JointType::Revolute, JointType::Revolute],
+            arr1(&[1.0_f64, 1.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+            arr1(&[0.0, 0.0]),
+        )
+        .unwrap();
+        let q = arr1(&[0.2_f64, 0.1]);
+        let owned = jacobian(&chain, &q).unwrap();
+        let viewed = jacobian_view(&chain, &q.view()).unwrap();
+        assert_relative_eq!(owned, viewed, epsilon = 1e-12);
+    }
 }
