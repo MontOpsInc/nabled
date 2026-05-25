@@ -21,8 +21,19 @@ Important! Nabled is under active development right now, so the only way to be s
 
 ```toml
 [dependencies]
+# Default (slim): just linear algebra.
 nabled = "0.0.8"
+
+# Or opt into the full Physical AI vertical (kinematics / dynamics /
+# control / sensor / sim / model / ml / signal / geometry):
+# nabled = { version = "0.0.8", features = ["physical-ai"] }
 ```
+
+> Pre-1.0 modularization: starting with this revision the `nabled` facade
+> defaults to `["linalg"]` only. Pick the per-domain features you need
+> (`kinematics`, `dynamics`, `control`, …) or the `physical-ai` umbrella.
+> See [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) for the full map
+> and a migration note for `0.0.x` users.
 
 ## Implemented Domains
 
@@ -35,6 +46,11 @@ This list is ever-changing, consult the Rust Docs for the source of truth.
 5. Numerical Jacobian/gradient/Hessian
 6. Statistics utilities
 7. Vector primitives (dot/norm/cosine/pairwise/batched)
+8. Physical AI (`physical-ai` feature): URDF model, kinematic tree FK /
+   Jacobian / DLS IK, serial + branch-routed tree dynamics (RNEA / CRBA /
+   FD), control (LQR / DARE / pole placement / observer / gramians),
+   sensor fusion (Kalman / EKF / camera / IMU), and a `nabled-sim`
+   orchestrator that ties them together.
 
 ## Quick Example
 

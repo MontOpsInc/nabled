@@ -90,7 +90,15 @@ pub fn jacobian_translation<T: NabledReal>(
     chain: &ChainSpec<T>,
     q: &Array1<T>,
 ) -> Result<Array2<T>, KinematicsError> {
-    let j = jacobian(chain, q)?;
+    jacobian_translation_view(chain, &q.view())
+}
+
+/// Translation-only 3×n Jacobian block from joint view.
+pub fn jacobian_translation_view<T: NabledReal>(
+    chain: &ChainSpec<T>,
+    q: &ArrayView1<'_, T>,
+) -> Result<Array2<T>, KinematicsError> {
+    let j = jacobian_view(chain, q)?;
     Ok(j.slice(ndarray::s![0..3, ..]).to_owned())
 }
 
@@ -99,7 +107,15 @@ pub fn jacobian_rotation<T: NabledReal>(
     chain: &ChainSpec<T>,
     q: &Array1<T>,
 ) -> Result<Array2<T>, KinematicsError> {
-    let j = jacobian(chain, q)?;
+    jacobian_rotation_view(chain, &q.view())
+}
+
+/// Rotation-only 3×n Jacobian block from joint view.
+pub fn jacobian_rotation_view<T: NabledReal>(
+    chain: &ChainSpec<T>,
+    q: &ArrayView1<'_, T>,
+) -> Result<Array2<T>, KinematicsError> {
+    let j = jacobian_view(chain, q)?;
     Ok(j.slice(ndarray::s![3..6, ..]).to_owned())
 }
 

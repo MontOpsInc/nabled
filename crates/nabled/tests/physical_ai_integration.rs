@@ -1,7 +1,8 @@
-//! Physical AI integration scenarios S1–S25.
+//! Physical AI integration scenarios S1–S27.
 
+#![cfg(feature = "physical-ai")]
 #![expect(clippy::many_single_char_names)]
-#![allow(clippy::cast_precision_loss, clippy::cast_lossless)]
+#![allow(clippy::cast_precision_loss, clippy::cast_lossless, clippy::float_cmp)]
 
 use approx::assert_relative_eq;
 use nabled::control::dare::{dare_residual_norm, dare_solve};
@@ -122,26 +123,56 @@ fn s3_dls_ik_to_target_pose() {
     assert!(err.iter().map(|v| v * v).sum::<f64>().sqrt() < 1e-3);
 }
 
-/// S4: URDF minimal → model → FK.
+/// S4: URDF minimal → model → tree FK (no silent DH shortcut).
+///
+/// URDF-derived models must use tree FK because their joint origins are
+/// `xyz`/`rpy` transforms — not Denavit-Hartenberg parameters. Phase C makes
+/// calling [`to_chain_spec`] / [`extract_chain_spec`] / [`extract_chain_spec_for_dynamics`]
+/// on a URDF-loaded model return [`nabled::model::ModelError::InvalidInput`].
+///
+/// The planar2r URDF and the planar2r DH JSON fixture do NOT define the same
+/// kinematics (URDF places joint axes at `xyz=(1,0,0)` *before* applying the
+/// joint rotation, whereas standard DH bakes link length `a` into the rotated
+/// transform). We therefore verify URDF tree FK only against poses for which
+/// both conventions agree (the home pose), plus a hand-computed URDF pose to
+/// confirm the tree path is exercised end-to-end.
 #[test]
-fn s4_urdf_model_fk() {
-    let fixture = load_planar2r_json().expect("fixture");
+fn s4_urdf_model_tree_fk() {
     let urdf_path =
         concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/physical_ai/planar2r.urdf");
     let model = from_urdf_file::<f64>(urdf_path).expect("urdf");
-    let chain = to_chain_spec(&model).expect("chain");
+    assert_eq!(model.dof(), 2);
 
-    for case in &fixture.cases {
-        if case.ee_translation.as_ref().is_none_or(|t| t.len() != 3) {
-            continue;
-        }
-        let ee = case.ee_translation.as_ref().expect("ee");
-        let q = arr1(&case.q);
-        let pose = end_effector_pose(&chain, &q).expect("fk");
-        assert_relative_eq!(pose.translation[0], ee[0], epsilon = 1e-10);
-        assert_relative_eq!(pose.translation[1], ee[1], epsilon = 1e-10);
-        assert_relative_eq!(pose.translation[2], ee[2], epsilon = 1e-10);
-    }
+    let err = to_chain_spec(&model).expect_err("URDF→chain conversion must fail");
+    assert!(
+        matches!(err, nabled::model::ModelError::InvalidInput(_)),
+        "expected InvalidInput for URDF→chain, got {err:?}",
+    );
+    assert!(matches!(
+        extract_chain_spec(&model, "base", "link2"),
+        Err(nabled::model::ModelError::InvalidInput(_)),
+    ));
+    assert!(matches!(
+        extract_chain_spec_for_dynamics(&model, "base", "link2"),
+        Err(nabled::model::ModelError::InvalidInput(_)),
+    ));
+
+    let base_link = "base";
+    let ee_link = "link2";
+
+    // Home pose: both conventions place the EE at (2, 0, 0).
+    let q_home = arr1(&[0.0_f64, 0.0]);
+    let pose_home = end_effector_pose_tree(&model, base_link, ee_link, &q_home).expect("home fk");
+    assert_relative_eq!(pose_home.translation[0], 2.0, epsilon = 1e-10);
+    assert_relative_eq!(pose_home.translation[1], 0.0, epsilon = 1e-10);
+    assert_relative_eq!(pose_home.translation[2], 0.0, epsilon = 1e-10);
+
+    // URDF-specific pose: at q = (π/2, 0) the URDF expects (1, 1, 0).
+    let q_bent = arr1(&[std::f64::consts::FRAC_PI_2, 0.0]);
+    let pose_bent = end_effector_pose_tree(&model, base_link, ee_link, &q_bent).expect("bent fk");
+    assert_relative_eq!(pose_bent.translation[0], 1.0, epsilon = 1e-10);
+    assert_relative_eq!(pose_bent.translation[1], 1.0, epsilon = 1e-10);
+    assert_relative_eq!(pose_bent.translation[2], 0.0, epsilon = 1e-10);
 }
 
 /// S5: RNEA τ vs forward-dynamics round-trip on planar 2R fixture.
@@ -442,7 +473,11 @@ fn s20_rolling_covariance_innovations() {
     assert!(cov[[4, 3]] > 0.0);
 }
 
-/// S22: Branched-tree FK/Jacobian vs Y-branch fixture; serial extract for dynamics.
+/// S22: Branched-tree FK/Jacobian vs Y-branch fixture (URDF-loaded model).
+///
+/// Serial chain extraction is intentionally *not* exercised here: URDF-derived
+/// models do not carry DH parameters (Phase C lockdown). Branch extraction for
+/// dynamics is covered by S26/S27 with a DH-equipped Y-branch model.
 #[test]
 fn s22_y_branch_tree_fk() {
     let fixture = load_y_branch_json().expect("fixture");
@@ -480,17 +515,13 @@ fn s22_y_branch_tree_fk() {
         }
     }
 
-    let left_chain = extract_chain_spec(&model, "base", "left_ee").expect("left chain");
-    assert_eq!(left_chain.num_joints(), 2);
-    let q = arr1(&fixture.cases[0].q);
-    let q_chain = arr1(&[q[0], q[1]]);
-    let serial_pose = end_effector_pose(&left_chain, &q_chain).expect("serial fk");
-    let tree_pose = end_effector_pose_tree(&model, "base", "left_ee", &q).expect("tree fk");
-    assert_relative_eq!(serial_pose.translation, tree_pose.translation, epsilon = 1e-10);
-
-    let branch = extract_chain_spec_for_dynamics(&model, "base", "left_ee").expect("branch");
-    let q_branch = branch.branch_q(&model, &q).expect("branch q");
-    assert_relative_eq!(q_branch, q_chain, epsilon = 1e-10);
+    // Confirm Phase C lockdown: URDF→ChainSpec fails for both flat and dynamics
+    // extraction paths.
+    let err = extract_chain_spec(&model, "base", "left_ee").expect_err("URDF→chain must fail");
+    assert!(matches!(err, nabled::model::ModelError::InvalidInput(_)));
+    let err = extract_chain_spec_for_dynamics(&model, "base", "left_ee")
+        .expect_err("URDF→dynamics branch must fail");
+    assert!(matches!(err, nabled::model::ModelError::InvalidInput(_)));
 }
 
 /// S23: Tree DLS IK on Y-branch left end effector.
@@ -573,4 +604,111 @@ fn s25_closed_loop_orchestrator() {
     let err = (&state.x - &state.x_hat).mapv(|v: f64| v * v).sum().sqrt();
     assert!(err < 1e-2, "observer error {err}");
     assert!(state.x[0].abs() < 0.15, "state should regulate toward zero");
+}
+
+/// S26: tree RNEA / mass matrix on a programmatic DH-equipped Y-branch tree.
+///
+/// Each branch reduces to a serial 2R sub-chain; the scattered torque vector
+/// is non-zero only on the branch's actuated indices.
+#[test]
+fn s26_rnea_mass_matrix_tree_y_branch() {
+    use nabled::dynamics::tree::{mass_matrix_tree, rnea_tree};
+    use nabled::model::joint::{JointAxis, JointType as ModelJointType};
+    use nabled::model::link::{InertialSpec, LinkSpec};
+    use nabled::model::origin::joint_origin_from_dh_scalars;
+    use nabled::model::robot::{BodySpec, DhParams, RobotModel};
+    use ndarray::Array2;
+
+    let mut model = RobotModel::<f64>::new();
+    let make_body = |name: &str, parent: &str, a: f64, alpha: f64, d: f64, theta: f64| BodySpec {
+        link:         LinkSpec { name: name.to_string() },
+        parent_link:  parent.to_string(),
+        joint_type:   ModelJointType::Revolute,
+        axis:         JointAxis::Z,
+        limits:       None,
+        inertial:     Some(InertialSpec {
+            mass:    1.0,
+            com:     [0.5, 0.0, 0.0],
+            inertia: Array2::<f64>::eye(3) * 0.01,
+        }),
+        joint_origin: joint_origin_from_dh_scalars(a, alpha, d, theta).expect("origin"),
+        dh_params:    Some(DhParams { a, alpha, d, theta_offset: theta }),
+    };
+    let trunk = model.add_body(None, make_body("trunk", "base", 1.0, 0.0, 0.0, 0.0));
+    let _left = model.add_body(Some(trunk), make_body("left_ee", "trunk", 1.0, 0.0, 0.0, 0.0));
+    let _right = model.add_body(
+        Some(trunk),
+        make_body("right_ee", "trunk", 1.0, 0.0, 0.0, std::f64::consts::FRAC_PI_2),
+    );
+
+    let q = arr1(&[0.2_f64, 0.3, -0.1]);
+    let zeros = arr1(&[0.0_f64, 0.0, 0.0]);
+    let config = DynamicsConfig { gravity: [0.0, -9.81, 0.0], ..DynamicsConfig::default() };
+    let tau_left =
+        rnea_tree(&model, "base", "left_ee", &q.view(), &zeros.view(), &zeros.view(), &config)
+            .expect("rnea_tree left");
+    assert_eq!(tau_left.len(), model.dof());
+    assert!(tau_left[0].abs() > 0.0);
+    assert!(tau_left[1].abs() > 0.0);
+    assert_eq!(tau_left[2], 0.0);
+
+    let mass = mass_matrix_tree(&model, "base", "left_ee", &q.view(), &config).expect("mass left");
+    assert_eq!(mass.dim(), (3, 3));
+    assert!(mass[[0, 0]] > 0.0);
+    assert!(mass[[1, 1]] > 0.0);
+    assert_eq!(mass[[2, 2]], 0.0);
+}
+
+/// S27: forward dynamics tree round-trips through RNEA on the same model.
+#[test]
+fn s27_forward_dynamics_tree_round_trip() {
+    use nabled::dynamics::tree::{forward_dynamics_tree, rnea_tree};
+    use nabled::model::joint::{JointAxis, JointType as ModelJointType};
+    use nabled::model::link::{InertialSpec, LinkSpec};
+    use nabled::model::origin::joint_origin_from_dh_scalars;
+    use nabled::model::robot::{BodySpec, DhParams, RobotModel};
+    use ndarray::Array2;
+
+    let mut model = RobotModel::<f64>::new();
+    let make_body = |name: &str, parent: &str, a: f64, alpha: f64, d: f64, theta: f64| BodySpec {
+        link:         LinkSpec { name: name.to_string() },
+        parent_link:  parent.to_string(),
+        joint_type:   ModelJointType::Revolute,
+        axis:         JointAxis::Z,
+        limits:       None,
+        inertial:     Some(InertialSpec {
+            mass:    1.0,
+            com:     [0.5, 0.0, 0.0],
+            inertia: Array2::<f64>::eye(3) * 0.01,
+        }),
+        joint_origin: joint_origin_from_dh_scalars(a, alpha, d, theta).expect("origin"),
+        dh_params:    Some(DhParams { a, alpha, d, theta_offset: theta }),
+    };
+    let trunk = model.add_body(None, make_body("trunk", "base", 1.0, 0.0, 0.0, 0.0));
+    let _left = model.add_body(Some(trunk), make_body("left_ee", "trunk", 1.0, 0.0, 0.0, 0.0));
+    let _right = model.add_body(
+        Some(trunk),
+        make_body("right_ee", "trunk", 1.0, 0.0, 0.0, std::f64::consts::FRAC_PI_2),
+    );
+
+    let q = arr1(&[0.15_f64, 0.25, -0.05]);
+    let qd = arr1(&[0.05_f64, -0.1, 0.07]);
+    let qdd_target = arr1(&[0.4_f64, 0.2, 0.0]);
+    let config = DynamicsConfig::default();
+    let tau =
+        rnea_tree(&model, "base", "left_ee", &q.view(), &qd.view(), &qdd_target.view(), &config)
+            .expect("rnea_tree");
+    let qdd = forward_dynamics_tree(
+        &model,
+        "base",
+        "left_ee",
+        &q.view(),
+        &qd.view(),
+        &tau.view(),
+        &config,
+    )
+    .expect("forward dynamics tree");
+    assert_relative_eq!(qdd[0], qdd_target[0], epsilon = 1e-6);
+    assert_relative_eq!(qdd[1], qdd_target[1], epsilon = 1e-6);
+    assert_eq!(qdd[2], 0.0);
 }

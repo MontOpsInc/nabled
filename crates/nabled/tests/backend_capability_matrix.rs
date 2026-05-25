@@ -1,5 +1,7 @@
 //! Backend capability matrix tests for ndarray-first APIs.
 
+#![cfg(feature = "linalg")]
+
 #[cfg(any(
     feature = "openblas-system",
     feature = "openblas-static",

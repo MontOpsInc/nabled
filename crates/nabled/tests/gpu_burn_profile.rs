@@ -4,7 +4,7 @@
 //! `WGPU_BACKEND=vulkan cargo +stable test -p nabled --test gpu_burn_profile --no-default-features
 //! --features accelerator-wgpu -- --ignored --nocapture`
 
-#![cfg(feature = "accelerator-wgpu")]
+#![cfg(all(feature = "accelerator-wgpu", feature = "linalg"))]
 
 use std::time::Instant;
 

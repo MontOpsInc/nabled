@@ -71,6 +71,7 @@ Single-owner registry for Physical AI public APIs. Domain crates orchestrate; sh
 | Function | Owner |
 |---|---|
 | `spatial::*`, `config::DynamicsConfig`, `rnea::*`, `crba::*`, `fd::*`, `id::*` | `nabled-dynamics` |
+| `tree::{rnea_tree, mass_matrix_tree, forward_dynamics_tree}` (+ `_into`) | `nabled-dynamics::tree` (branch-routed via `extract_chain_spec_for_dynamics`; whole-tree RNEA still out of scope) |
 
 ### `nabled-control`
 
@@ -120,4 +121,14 @@ Parity matrix: `docs/PYNABLED_PHYSICAL_AI_PARITY.md`.
 |---|---|---|
 | Tree FK/Jacobian | implemented | `kinematics::tree::*`, URDF-origin models |
 | Branched-tree IK | implemented | `inverse_kinematics_tree_dls*`; `q` in `actuated_indices()` order |
-| Whole-tree RNEA | out of scope | use `extract_chain_spec_for_dynamics` + branch `q` slice |
+| Branch-routed tree RNEA / mass / FD | implemented | `dynamics::tree::{rnea_tree, mass_matrix_tree, forward_dynamics_tree}` (+ `_into`); per-branch via serial RNEA/CRBA/FD with scatter to full-model actuated ordering. See `D-MOD-3`. |
+| Whole-tree coupled RNEA | out of scope | compose multiple branch calls or use `extract_chain_spec_for_dynamics` + branch `q` slice directly |
+
+### URDF / DH ingestion
+
+| Surface | Status | Notes |
+|---|---|---|
+| URDF parsing | implemented | `model::urdf::from_urdf_*`; never synthesizes DH parameters. `BodySpec::dh_params = None` for URDF-derived bodies. |
+| URDF → tree FK / Jacobian / IK | supported | use `kinematics::tree::*` and `kinematics::ik::inverse_kinematics_tree_dls*`. |
+| URDF → DH `ChainSpec` | not supported | `model::dh::to_chain_spec` / `extract_chain_spec` / `extract_chain_spec_for_dynamics` fail loudly when DH parameters are missing on the requested branch. See `D-MOD-2`. |
+| Programmatic DH builders | supported | callers can set `BodySpec::dh_params = Some(DhParams { … })` to opt into DH-based serial dynamics. |

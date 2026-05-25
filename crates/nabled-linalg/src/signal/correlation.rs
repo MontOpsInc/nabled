@@ -105,7 +105,7 @@ pub fn autocorrelation_full<T: NabledReal>(
     let spectrum = rfft(&padded.view())?;
     let power = spectrum.power();
     let power_spectrum = RfftSpectrum {
-        bins: power.mapv(|value| Complex::new(value, T::zero())),
+        bins:     power.mapv(|value| Complex::new(value, T::zero())),
         time_len: padded_len,
     };
     let circular = irfft(&power_spectrum)?;
@@ -200,10 +200,7 @@ mod tests {
     #[test]
     fn autocorrelation_at_lag_error_paths() {
         let empty = ndarray::arr1::<f64>(&[]);
-        assert_eq!(
-            autocorrelation_at_lag(&empty.view(), 0),
-            Err(SignalError::EmptyInput)
-        );
+        assert_eq!(autocorrelation_at_lag(&empty.view(), 0), Err(SignalError::EmptyInput));
 
         let signal = ndarray::arr1(&[1.0_f64, 2.0, 3.0]);
         assert_eq!(

@@ -76,16 +76,16 @@ def test_s3_dls_ik_to_target_pose():
 
 
 def test_s4_urdf_model_fk():
-    fixture_data = json.loads((FIXTURES / "2r_planar.json").read_text())
+    """URDF-loaded models route through tree FK; ``to_chain_spec`` fails loudly."""
     robot = model.from_urdf_file(str(FIXTURES / "planar2r.urdf"))
-    chain = model.to_chain_spec(robot)
-    for case in fixture_data["cases"]:
-        ee = case.get("ee_translation")
-        if ee is None or len(ee) != 3:
-            continue
-        q = np.array(case["q"])
-        pose = kinematics.end_effector_pose(chain, q)
-        np.testing.assert_allclose(pose.translation, ee, rtol=0, atol=1e-10)
+    with pytest.raises(Exception):
+        model.to_chain_spec(robot)
+    pose_home = kinematics.end_effector_pose_tree(robot, "base", "link2", np.zeros(2))
+    np.testing.assert_allclose(pose_home.translation, [2.0, 0.0, 0.0], rtol=0, atol=1e-10)
+    pose_bent = kinematics.end_effector_pose_tree(
+        robot, "base", "link2", np.array([np.pi / 2.0, 0.0])
+    )
+    np.testing.assert_allclose(pose_bent.translation, [1.0, 1.0, 0.0], rtol=0, atol=1e-10)
 
 
 def test_s5_rnea_tau():
@@ -358,13 +358,9 @@ def test_s22_y_branch_tree_fk():
             np.testing.assert_allclose(j_left[0, col], deriv_x, rtol=0, atol=1e-5)
             np.testing.assert_allclose(j_left[1, col], deriv_y, rtol=0, atol=1e-5)
 
-    left_chain = model.extract_chain_spec(robot, "base", "left_ee")
-    assert left_chain.num_joints == 2
-    q = np.array(fixture_data["cases"][0]["q"])
-    q_chain = np.array([q[0], q[1]])
-    serial_pose = kinematics.end_effector_pose(left_chain, q_chain)
-    tree_pose = kinematics.end_effector_pose_tree(robot, "base", "left_ee", q)
-    np.testing.assert_allclose(serial_pose.translation, tree_pose.translation, rtol=0, atol=1e-10)
+    # Phase C lockdown: URDF-derived models cannot be converted to a DH ChainSpec.
+    with pytest.raises(Exception):
+        model.extract_chain_spec(robot, "base", "left_ee")
 
 
 def test_s23_y_branch_tree_ik():
@@ -380,3 +376,131 @@ def test_s23_y_branch_tree_ik():
     achieved = kinematics.end_effector_pose_tree(robot, "base", "left_ee", result.q)
     err = kinematics.pose_error(achieved, target)
     assert np.linalg.norm(err) < 1e-3
+
+
+def test_s26_rnea_tree_matches_serial_rnea_on_planar2r():
+    """S26 parity (Python): branch RNEA equals serial RNEA on a serial chain.
+
+    The planar 2R fixture is a degenerate tree (single branch); ``rnea_tree``
+    routed through ``base`` → ``link1`` must agree with the serial ``rnea``.
+    """
+    fixture = model.load_planar2r_fixture(str(FIXTURES / "2r_planar.json"))
+    robot = fixture.to_robot_model()
+    chain = fixture.to_chain_spec()
+    gravity = tuple(fixture.gravity or (0.0, -9.81, 0.0))
+    config = dynamics.DynamicsConfig(gravity=gravity)
+    q = np.array([0.3, 0.5])
+    qd = np.array([0.1, -0.2])
+    qdd = np.array([0.4, -0.3])
+    tau_serial = dynamics.rnea(robot, chain, q, qd, qdd, config=config)
+    tau_branch = dynamics.rnea_tree(robot, "base", "link1", q, qd, qdd, config=config)
+    np.testing.assert_allclose(tau_branch, tau_serial, rtol=0, atol=1e-9)
+    tau_out = np.zeros_like(tau_branch)
+    dynamics.rnea_tree(robot, "base", "link1", q, qd, qdd, config=config, out=tau_out)
+    np.testing.assert_allclose(tau_out, tau_branch, rtol=0, atol=1e-12)
+    m_branch = dynamics.mass_matrix_tree(robot, "base", "link1", q, config=config)
+    assert m_branch.shape == (2, 2)
+    out = np.zeros((2, 2))
+    dynamics.mass_matrix_tree(robot, "base", "link1", q, config=config, out=out)
+    np.testing.assert_allclose(out, m_branch, rtol=0, atol=1e-12)
+
+
+def test_s_out_paths_exercised_for_all_physical_ai_into_variants():
+    """Exercise every ``out=`` / ``_into`` Python wrapper on PAI hot paths.
+
+    This is the gate-coverage backstop for the view-first / in-place ingress
+    contract (D-MOD-4): every ``_into`` Python wrapper must be reachable
+    from a documented test so coverage tooling can verify the alloc-free
+    egress path stays compiled and importable.
+    """
+    fixture = model.load_planar2r_fixture(str(FIXTURES / "2r_planar.json"))
+    robot = fixture.to_robot_model()
+    chain = fixture.to_chain_spec()
+    config = dynamics.DynamicsConfig()
+    q = np.array([0.2, 0.3])
+    qd = np.array([0.1, -0.1])
+    qdd = np.array([0.05, 0.02])
+
+    tau = np.zeros(2)
+    dynamics.rnea(robot, chain, q, qd, qdd, config=config, out=tau)
+    m = np.zeros((2, 2))
+    dynamics.mass_matrix(robot, chain, q, out=m)
+    qdd_out = np.zeros(2)
+    dynamics.forward_dynamics(robot, chain, q, qd, tau, config=config, out=qdd_out)
+    assert np.all(np.isfinite(tau))
+    assert m.shape == (2, 2)
+    assert np.all(np.isfinite(qdd_out))
+
+    achieved = kinematics.end_effector_pose(chain, q)
+    target = kinematics.end_effector_pose(chain, q + 0.01)
+    err = np.zeros(6)
+    kinematics.pose_error(achieved, target, out=err)
+    j = np.zeros((6, 2))
+    kinematics.jacobian(chain, q, out=j)
+    jt = np.zeros((3, 2))
+    kinematics.jacobian_translation(chain, q, out=jt)
+
+    a = np.array([[1.0, 0.1], [0.0, 1.0]])
+    b = np.array([[0.0], [0.1]])
+    qmat = np.eye(2)
+    rmat = np.array([[1.0]])
+    lqr_out = control.discrete_lqr(a, b, qmat, rmat)
+    control.discrete_lqr(a, b, qmat, rmat, out=lqr_out)
+    assert lqr_out.gain.shape == (1, 2)
+
+    quat = np.array([1.0, 0.0, 0.0, 0.0])
+    state_cov = np.eye(7) * 0.1
+    state = sensor.KalmanState(np.concatenate([quat, np.zeros(3)]), state_cov)
+    transition = np.eye(7)
+    process_cov = np.eye(7) * 0.01
+    sensor.kalman_predict(state, transition, process_cov, out=state)
+    measurement = np.zeros(3)
+    observation = np.zeros((3, 7))
+    observation[:, :3] = np.eye(3)
+    measurement_cov = np.eye(3) * 0.05
+    sensor.kalman_update(state, measurement, observation, measurement_cov, out=state)
+    new_quat = np.zeros(4)
+    sensor.strapdown_predict(quat, np.array([0.1, 0.0, 0.0]), 0.01, out=new_quat)
+    assert np.isfinite(new_quat).all()
+
+    left = geometry.Transform3(np.eye(3), np.zeros(3))
+    right = geometry.Transform3(np.eye(3), np.array([1.0, 0.0, 0.0]))
+    composed = geometry.Transform3(np.eye(3), np.zeros(3))
+    geometry.se3_compose(left, right, out=composed)
+    log_out = np.zeros(6)
+    geometry.se3_log(composed, out=log_out)
+    so_out = np.zeros((3, 3))
+    geometry.so3_compose(np.eye(3), np.eye(3), out=so_out)
+
+    try:
+        from pynabled import signal as _signal_mod
+    except ImportError:
+        return
+    sig = np.sin(np.linspace(0.0, 2 * np.pi, 16))
+    spec_out = np.zeros(9, dtype=np.complex128)
+    _signal_mod.rfft(sig, out=spec_out)
+    time_out = np.zeros(16)
+    _signal_mod.irfft(spec_out, out=time_out)
+    auto_ref = _signal_mod.autocorrelation_full(sig)
+    auto_out = np.zeros_like(auto_ref)
+    _signal_mod.autocorrelation_full(sig, out=auto_out)
+
+
+def test_s27_forward_dynamics_tree_round_trip_planar2r():
+    """S27 parity (Python): branch FD round-trips through branch RNEA."""
+    fixture = model.load_planar2r_fixture(str(FIXTURES / "2r_planar.json"))
+    robot = fixture.to_robot_model()
+    config = dynamics.DynamicsConfig()
+    q = np.array([0.2, 0.3])
+    qd = np.array([0.1, -0.2])
+    qdd_target = np.array([0.5, 0.25])
+    tau = dynamics.rnea_tree(robot, "base", "link1", q, qd, qdd_target, config=config)
+    qdd = dynamics.forward_dynamics_tree(
+        robot, "base", "link1", q, qd, tau, config=config
+    )
+    np.testing.assert_allclose(qdd, qdd_target, rtol=0, atol=1e-6)
+    out = np.zeros(2)
+    dynamics.forward_dynamics_tree(
+        robot, "base", "link1", q, qd, tau, config=config, out=out
+    )
+    np.testing.assert_allclose(out, qdd_target, rtol=0, atol=1e-6)

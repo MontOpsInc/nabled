@@ -210,7 +210,7 @@ main() {
 
     run_in_repo \
         env VIRTUAL_ENV="${dev_venv}" PATH="${dev_venv}/bin:${PATH}" \
-        "${dev_venv}/bin/maturin" develop --features "arrow signal"
+        "${dev_venv}/bin/maturin" develop --features "arrow signal physical-ai"
     run_in_repo \
         "${dev_venv}/bin/python" -m pytest python/tests/test_physical_ai_integration.py \
         --cov=python/pynabled \

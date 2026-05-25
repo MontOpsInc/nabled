@@ -13,7 +13,7 @@ use super::{SignalError, validate_output_len};
 #[derive(Debug, Clone, PartialEq)]
 pub struct RfftSpectrum<T: NabledReal> {
     /// Complex frequency bins (DC through Nyquist when `n` is even).
-    pub bins: Array1<Complex<T>>,
+    pub bins:     Array1<Complex<T>>,
     /// Original time-domain length used for the forward transform.
     ///
     /// When zero, inverse transforms assume an even length of `2 * (bins.len() - 1)`.
@@ -103,7 +103,7 @@ pub fn rfft<T: NabledReal>(signal: &ArrayView1<'_, T>) -> Result<RfftSpectrum<T>
     let signal_f64: Vec<f64> = signal.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
     let (spectrum, _) = rfft_f64(&signal_f64)?;
     Ok(RfftSpectrum {
-        bins: Array1::from_iter(spectrum.into_iter().map(complex_from_f64::<T>)),
+        bins:     Array1::from_iter(spectrum.into_iter().map(complex_from_f64::<T>)),
         time_len: signal.len(),
     })
 }
@@ -259,7 +259,10 @@ mod tests {
     fn rfft_empty_input_errors() {
         let empty = ndarray::arr1::<f64>(&[]);
         assert_eq!(rfft(&empty.view()), Err(SignalError::EmptyInput));
-        assert_eq!(windowed_rfft(&empty.view(), WindowKind::Hann, false), Err(SignalError::EmptyInput));
+        assert_eq!(
+            windowed_rfft(&empty.view(), WindowKind::Hann, false),
+            Err(SignalError::EmptyInput)
+        );
     }
 
     #[test]

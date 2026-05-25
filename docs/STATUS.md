@@ -1,12 +1,31 @@
 # Status Snapshot
 
-Last updated: 2026-05-24
+Last updated: 2026-05-25
 
 ## Summary
 
-Workspace migration for library domains is complete.
+Workspace migration for library domains is complete. Modularization wave 1
+(`N-MOD-1..N-MOD-5`) is in: the facade is feature-gated, URDF / DH
+ingestion is locked down, branch-routed tree dynamics shipped (`rnea_tree`
+/ `mass_matrix_tree` / `forward_dynamics_tree` + Python parity), and the
+Python `physical_ai` layer is fully view-first on every entry point that
+has a Rust `_view` variant. See `docs/FEATURE_MATRIX.md`, `D-MOD-1..4` in
+`docs/DECISIONS.md`, and the `N-MOD-*` entries in
+`docs/EXECUTION_TRACKER.md`.
 
-**Physical AI coverage (2026-05-24):** `just coverage-check` passes at **90.88%** line with merged profile (workspace lib+tests, OpenBLAS provider leg, `physical_ai_integration` + `signal`, and `nabled-linalg --features signal`). Per-crate PAI lib+tests line coverage: kinematics 90.06%, model 93.35%, dynamics 90.06%, control 92.38%, sensor 93.75%, sim 94.80%, signal aggregate 90.31% (`fft.rs` 82.7% tail). See `docs/PHYSICAL_AI_TRACKER.md` Coverage Snapshot.
+**Physical AI coverage (2026-05-25):** `just coverage-check` passes at
+**90.93%** line with merged profile (workspace lib+tests, OpenBLAS
+provider leg, `physical_ai_integration` + `signal` + `physical-ai`, and
+`nabled-linalg --features signal`). `nabled-dynamics/src/tree.rs`
+(modularization wave 1, branch-routed tree dynamics) lands at **96.80%**
+line. Per-crate PAI lib+tests line coverage stays at or above the previous
+baselines.
+
+**Python PAI parity coverage (2026-05-25):** `python_quality_gate.sh`
+PAI-subset coverage is now at **93%** line (`control` / `dynamics` /
+`sensor` / `signal` at ≥96%; `kinematics` at 90%; `geometry` at 79% — the
+remaining gap is in `quat_*` view-only helpers without `out=` siblings).
+Total Python coverage across the package is **91%**.
 
 1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`, plus Physical AI domain crates
    `nabled-kinematics`, `nabled-model`, `nabled-dynamics`, `nabled-control`, and `nabled-sensor`

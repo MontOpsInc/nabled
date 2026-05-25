@@ -96,17 +96,15 @@ impl From<nabled_ml::stats::StatsError> for SimError {
 
 #[cfg(test)]
 mod tests {
-    use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
     use std::error::Error;
+
+    use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 
     use super::*;
 
     #[test]
     fn sim_error_display_source_from_and_into_nabled() {
-        assert_eq!(
-            SimError::DimensionMismatch.to_string(),
-            "input dimensions are incompatible"
-        );
+        assert_eq!(SimError::DimensionMismatch.to_string(), "input dimensions are incompatible");
         assert_eq!(
             SimError::InvalidInput("bad grid".to_string()).to_string(),
             "invalid input: bad grid"
@@ -172,8 +170,7 @@ mod tests {
             NabledError::Shape(ShapeError::EmptyInput)
         ));
         assert!(matches!(
-            SimError::Stats(nabled_ml::stats::StatsError::NumericalInstability)
-                .into_nabled_error(),
+            SimError::Stats(nabled_ml::stats::StatsError::NumericalInstability).into_nabled_error(),
             NabledError::NumericalInstability
         ));
     }

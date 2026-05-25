@@ -59,8 +59,8 @@ mod tests {
     use ndarray::arr1;
 
     use super::*;
-    use crate::config::DynamicsConfig;
     use crate::DynamicsError;
+    use crate::config::DynamicsConfig;
 
     #[test]
     fn mass_matrix_is_symmetric_positive_diagonal() {

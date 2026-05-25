@@ -50,18 +50,12 @@ mod tests {
     #[test]
     fn sensor_errors_display_and_map_to_shared_taxonomy() {
         assert_eq!(SensorError::EmptyInput.to_string(), "input cannot be empty");
-        assert_eq!(
-            SensorError::DimensionMismatch.to_string(),
-            "input dimensions are incompatible"
-        );
+        assert_eq!(SensorError::DimensionMismatch.to_string(), "input dimensions are incompatible");
         assert_eq!(
             SensorError::InvalidInput("bad z".to_string()).to_string(),
             "invalid input: bad z"
         );
-        assert_eq!(
-            SensorError::NumericalInstability.to_string(),
-            "numerical instability detected"
-        );
+        assert_eq!(SensorError::NumericalInstability.to_string(), "numerical instability detected");
 
         assert!(matches!(
             SensorError::EmptyInput.into_nabled_error(),

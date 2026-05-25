@@ -324,10 +324,11 @@ fn body_from_joint<T: NabledReal + Default>(
         limits,
         inertial: inertial_spec,
         joint_origin: transform_from_xyz_rpy(xyz, rpy)?,
-        dh_a: xyz[0],
-        dh_alpha: rpy[0],
-        dh_d: xyz[2],
-        dh_theta: rpy[1],
+        // URDF ingestion does not synthesize DH parameters from joint origins.
+        // Serial DH-based pipelines (`dh::to_chain_spec`, `dh::extract_chain_spec`) will
+        // fail loudly on URDF-derived models; use the tree FK/Jacobian/IK surfaces or load
+        // a fixture with explicit DH.
+        dh_params: None,
     })
 }
 
@@ -369,6 +370,7 @@ mod tests {
     use approx::assert_relative_eq;
 
     use super::*;
+    use crate::ModelError;
     use crate::dh::{extract_chain_spec, to_chain_spec};
     use crate::joint::validate_limits;
 
@@ -413,10 +415,11 @@ mod tests {
         assert_eq!(model.dof(), 2);
         assert_eq!(model.topological_order(), vec![0, 1]);
 
-        let chain = to_chain_spec(&model).unwrap();
-        assert_eq!(chain.num_joints(), 2);
-        assert_relative_eq!(chain.a[0], 1.0, epsilon = 1e-10);
-        assert_relative_eq!(chain.a[1], 1.0, epsilon = 1e-10);
+        // URDF ingestion no longer synthesizes DH parameters; bodies carry `dh_params: None`.
+        for index in 0..model.dof() {
+            let body = model.joint(index).expect("body");
+            assert!(body.dh_params.is_none(), "URDF-derived body {index} must not have DH params");
+        }
 
         let limits = model.limits_for_joint(0).unwrap();
         validate_limits(limits).unwrap();
@@ -428,8 +431,11 @@ mod tests {
         assert_relative_eq!(inertial.com[0], 0.5, epsilon = 1e-10);
         assert_relative_eq!(inertial.inertia[[0, 1]], inertial.inertia[[1, 0]], epsilon = 1e-12);
 
-        let extracted = extract_chain_spec(&model, "base", "link2").unwrap();
-        assert_eq!(extracted.a, chain.a);
+        let err = to_chain_spec(&model).expect_err("URDF must not collapse to DH chain");
+        assert!(matches!(err, ModelError::InvalidInput(_)));
+        let err = extract_chain_spec(&model, "base", "link2")
+            .expect_err("URDF must not collapse to DH chain");
+        assert!(matches!(err, ModelError::InvalidInput(_)));
     }
 
     #[test]
@@ -488,7 +494,9 @@ mod tests {
 </robot>
 "#;
         let err = from_urdf_str::<f64>(urdf).unwrap_err();
-        assert!(matches!(err, ModelError::ParseError(message) if message.contains("unsupported joint type")));
+        assert!(
+            matches!(err, ModelError::ParseError(message) if message.contains("unsupported joint type"))
+        );
     }
 
     #[test]

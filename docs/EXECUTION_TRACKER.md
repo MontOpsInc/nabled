@@ -1,6 +1,16 @@
 # Execution Tracker
 
-Last updated: 2026-04-25
+Last updated: 2026-05-25
+
+## Modularization wave 1 (`N-MOD-*`, 2026-05-25)
+
+| ID | Status | Description |
+| --- | --- | --- |
+| `N-MOD-1` | Done | Drop dead `nabled-ml` dependency edges from `nabled-kinematics`, `nabled-control`, and `nabled-sensor`. |
+| `N-MOD-2` | Done | Facade feature gates: `nabled` defaults to `["linalg"]`; per-domain features `linalg`/`geometry`/`signal`/`ml`/`model`/`kinematics`/`dynamics`/`control`/`sensor`/`sim` plus the `physical-ai` umbrella. Modules in `crates/nabled/src/lib.rs` are `#[cfg(feature = …)]`-gated; examples and integration tests carry matching `required-features` / `#![cfg(feature = …)]`. See `docs/FEATURE_MATRIX.md`. |
+| `N-MOD-3` | Done | URDF / DH lockdown: `BodySpec::dh_params: Option<DhParams<T>>`. URDF leaves `dh_params: None`. `model::dh::to_chain_spec` and friends fail loudly when DH parameters are absent. `s4_urdf_model_tree_fk` rerouted to URDF-native tree FK; Python S4 parity follows. |
+| `N-MOD-4` | Done | Tree dynamics (lite): `nabled::dynamics::tree::{rnea_tree, mass_matrix_tree, forward_dynamics_tree}` (+ `_into`). Branch-routed via `extract_chain_spec_for_dynamics` and serial RNEA/CRBA/FD; results scattered back into full-model actuated ordering. Integration tests S26 / S27 added in Rust and Python; Python bindings expose `out=` kwargs. |
+| `N-MOD-5` | Done | Python `physical_ai` ingress is view-first: every entry point with a Rust `_view` variant is wired to `PyReadonlyArrayN::as_array()` (no `.to_owned()`) and every entry point with a Rust `_into` variant exposes an `out=` kwarg. New `_view` siblings added where missing: `jacobian_translation_view`, `jacobian_rotation_view`, `end_effector_pose_tree_view`, `dare_residual_norm_view`, `strapdown_predict_view`, `strapdown_predict_view_into`. |
 
 ## Purpose
 

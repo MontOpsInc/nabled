@@ -78,12 +78,10 @@ mod tests {
 
     #[test]
     fn yaw_rotation_rotates_x_into_y() {
-        let tf = transform_from_xyz_rpy([0.0_f64, 0.0, 0.0], [0.0, 0.0, std::f64::consts::FRAC_PI_2])
-            .unwrap();
-        let point = nabled_linalg::geometry::se3::transform_point(
-            &tf,
-            &ndarray::arr1(&[1.0_f64, 0.0, 0.0]).view(),
-        );
+        let tf =
+            transform_from_xyz_rpy([0.0_f64, 0.0, 0.0], [0.0, 0.0, std::f64::consts::FRAC_PI_2])
+                .unwrap();
+        let point = se3::transform_point(&tf, &arr1(&[1.0_f64, 0.0, 0.0]).view());
         assert_relative_eq!(point[0], 0.0, epsilon = 1e-10);
         assert_relative_eq!(point[1], 1.0, epsilon = 1e-10);
     }

@@ -118,7 +118,7 @@ mod tests {
     fn rejects_invalid_model() {
         use nabled_model::joint::JointAxis;
         use nabled_model::link::LinkSpec;
-        use nabled_model::robot::{BodySpec, RobotModel};
+        use nabled_model::robot::{BodySpec, DhParams, RobotModel};
 
         let fixture = load_planar2r_json().expect("fixture");
         let chain = fixture.to_chain_spec::<f64>().expect("chain");
@@ -129,12 +129,16 @@ mod tests {
             axis:         JointAxis::Z,
             limits:       None,
             inertial:     None,
-            joint_origin: nabled_model::origin::transform_from_xyz_rpy([1.0, 0.0, 0.0], [0.0, 0.0, 0.0])
-                .expect("origin"),
-            dh_a:         1.0,
-            dh_alpha:     0.0,
-            dh_d:         0.0,
-            dh_theta:     0.0,
+            joint_origin: nabled_model::origin::transform_from_xyz_rpy([1.0, 0.0, 0.0], [
+                0.0, 0.0, 0.0,
+            ])
+            .expect("origin"),
+            dh_params:    Some(DhParams {
+                a:            1.0,
+                alpha:        0.0,
+                d:            0.0,
+                theta_offset: 0.0,
+            }),
         };
         let mut model = RobotModel::new();
         let _ = model.add_body(None, body("link0", "base"));

@@ -18,7 +18,7 @@ name = "_pynabled"
 crate-type = ["cdylib"]
 
 [features]
-default = ["arrow"]
+default = ["arrow", "physical-ai"]
 openblas-system = ["nabled/openblas-system"]
 openblas-static = ["nabled/openblas-static"]
 netlib-system = ["nabled/netlib-system"]
@@ -34,9 +34,10 @@ arrow = [
     "dep:arrow-schema",
 ]
 signal = ["nabled/signal"]
+physical-ai = ["nabled/physical-ai"]
 
 [dependencies]
-nabled.workspace = true
+nabled = { workspace = true, features = ["linalg", "ml"] }
 nabled-core.workspace = true
 nabled-linalg.workspace = true
 nabled-ml.workspace = true

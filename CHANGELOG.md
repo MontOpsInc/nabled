@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking — facade modularization (`D-MOD-1`)
+
+- `nabled` is now a thin facade with per-domain opt-in features. The default
+  feature set is `["linalg"]`. Previously the default pulled in the full
+  Physical AI vertical (kinematics, dynamics, control, sensor, sim, ml,
+  model). Downstream consumers of `nabled = "0.0.x"` that relied on default
+  features must opt back in:
+
+  ```toml
+  # Restore the previous behaviour.
+  nabled = { version = "0.1", features = ["physical-ai"] }
+
+  # Or pick only what you actually use.
+  nabled = { version = "0.1", features = ["kinematics", "dynamics"] }
+  ```
+
+  See `docs/FEATURE_MATRIX.md` for the full feature → module map.
+
+- Per-domain features added: `linalg`, `geometry`, `signal`, `ml`, `model`,
+  `kinematics`, `dynamics`, `control`, `sensor`, `sim`. `physical-ai` is the
+  umbrella that re-enables all of them.
+
+### Breaking — URDF / DH boundary (`D-MOD-2`)
+
+- `BodySpec` now exposes DH parameters through `Option<DhParams<T>>` instead
+  of bare `dh_a` / `dh_alpha` / `dh_d` / `dh_theta` scalars.
+- URDF-loaded `RobotModel`s no longer silently synthesize DH parameters
+  (`dh_params: None`). `model::dh::to_chain_spec`,
+  `model::dh::extract_chain_spec`, and
+  `model::dh::extract_chain_spec_for_dynamics` now fail loudly with
+  `ModelError::InvalidInput` when any body on the requested branch is
+  missing DH parameters. Use the tree FK / Jacobian / IK and tree dynamics
+  APIs (`kinematics::tree::*`, `dynamics::tree::*`) for URDF models.
+
+### Added
+
+- `dynamics::tree::{rnea_tree, mass_matrix_tree, forward_dynamics_tree}` and
+  their `_into` siblings for branch-routed dynamics on tree models. They
+  internally extract a serial sub-chain, run existing RNEA/CRBA/FD on a
+  constructed sub-`RobotModel`, and scatter results back into full-model
+  actuated ordering (`D-MOD-3`).
+- Python parity: `pynabled.dynamics.rnea_tree`,
+  `mass_matrix_tree`, `forward_dynamics_tree` with `out=` numpy buffer
+  kwargs.
+- Integration tests S26 (`rnea_tree` + `mass_matrix_tree` on Y-branch) and
+  S27 (`forward_dynamics_tree` round-trip) in both Rust and Python.
+- View-first ingress for the Python physical_ai layer: every Rust
+  `_view` variant is now called directly from `pynabled` via
+  `PyReadonlyArrayN::as_array()` without intermediate `.to_owned()`
+  (`D-MOD-4`).
+
 ### Bug Fixes
 
 - Implements ndarrow 0.0.4 changes ([d7c3271](https://github.com/MontOpsInc/nabled/commit/d7c3271654ef03dcd3c7c4303cb39ccaf29d2639))

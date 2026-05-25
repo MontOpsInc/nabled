@@ -1,13 +1,15 @@
 //! Kinematics bindings (FK, Jacobian, IK).
 
 use nabled::kinematics::chain::{ChainSpec, DhConvention, JointType};
-use nabled::kinematics::fk::{end_effector_pose, fk_view};
+use nabled::kinematics::fk::fk_view;
 use nabled::kinematics::ik::{
     IkConfig, IkResult, IkWorkspace, inverse_kinematics_dls_into,
     inverse_kinematics_dls_with_limits, inverse_kinematics_tree_dls_with_limits, pose_error,
 };
-use nabled::kinematics::jacobian::{jacobian, jacobian_translation};
-use nabled::kinematics::tree::{end_effector_pose_tree, jacobian_tree, link_transforms_tree};
+use nabled::kinematics::jacobian::{jacobian_translation_view, jacobian_view};
+use nabled::kinematics::tree::{
+    end_effector_pose_tree_view, jacobian_tree_view, link_transforms_tree_view,
+};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
 
@@ -140,8 +142,7 @@ fn ik_result_to_py(py: Python<'_>, result: IkResult<f64>) -> PyResult<PyIkResult
 pub fn end_effector_pose_py(chain: &PyChainSpec, q: &Bound<'_, PyAny>) -> PyResult<PyTransform3> {
     match utils::real_array1(q, "q")? {
         utils::RealReadonlyArray1::F64(arr) => {
-            let pose =
-                end_effector_pose(&chain.inner, &arr.as_array().to_owned()).map_err(to_py_err)?;
+            let pose = fk_view(&chain.inner, &arr.as_array()).map_err(to_py_err)?;
             Ok(PyTransform3 { inner: pose })
         }
         _ => Err(utils::matching_real_dtype_error(&["q"])),
@@ -176,7 +177,7 @@ pub fn jacobian_py<'py>(
 ) -> PyResult<Py<PyAny>> {
     match utils::real_array1(q, "q")? {
         utils::RealReadonlyArray1::F64(arr) => {
-            let j = jacobian(&chain.inner, &arr.as_array().to_owned()).map_err(to_py_err)?;
+            let j = jacobian_view(&chain.inner, &arr.as_array()).map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, j))
         }
         _ => Err(utils::matching_real_dtype_error(&["q"])),
@@ -192,8 +193,7 @@ pub fn jacobian_translation_py<'py>(
 ) -> PyResult<Py<PyAny>> {
     match utils::real_array1(q, "q")? {
         utils::RealReadonlyArray1::F64(arr) => {
-            let j = jacobian_translation(&chain.inner, &arr.as_array().to_owned())
-                .map_err(to_py_err)?;
+            let j = jacobian_translation_view(&chain.inner, &arr.as_array()).map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, j))
         }
         _ => Err(utils::matching_real_dtype_error(&["q"])),
@@ -237,13 +237,9 @@ pub fn end_effector_pose_tree_py(
 ) -> PyResult<PyTransform3> {
     match utils::real_array1(q, "q")? {
         utils::RealReadonlyArray1::F64(arr) => {
-            let pose = end_effector_pose_tree(
-                &model.inner,
-                base_link,
-                ee_link,
-                &arr.as_array().to_owned(),
-            )
-            .map_err(to_py_err)?;
+            let pose =
+                end_effector_pose_tree_view(&model.inner, base_link, ee_link, &arr.as_array())
+                    .map_err(to_py_err)?;
             Ok(PyTransform3 { inner: pose })
         }
         _ => Err(utils::matching_real_dtype_error(&["q"])),
@@ -261,7 +257,7 @@ pub fn jacobian_tree_py<'py>(
 ) -> PyResult<Py<PyAny>> {
     match utils::real_array1(q, "q")? {
         utils::RealReadonlyArray1::F64(arr) => {
-            let j = jacobian_tree(&model.inner, base_link, ee_link, &arr.as_array().to_owned())
+            let j = jacobian_tree_view(&model.inner, base_link, ee_link, &arr.as_array())
                 .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, j))
         }
@@ -278,8 +274,8 @@ pub fn link_transforms_tree_py<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     match utils::real_array1(q, "q")? {
         utils::RealReadonlyArray1::F64(arr) => {
-            let transforms = link_transforms_tree(&model.inner, &arr.as_array().to_owned())
-                .map_err(to_py_err)?;
+            let transforms =
+                link_transforms_tree_view(&model.inner, &arr.as_array()).map_err(to_py_err)?;
             let dict = PyDict::new(py);
             for (link, transform) in transforms {
                 dict.set_item(link, PyTransform3 { inner: transform })?;

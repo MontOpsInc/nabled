@@ -1,4 +1,11 @@
-//! DH conversion to kinematic chain.
+//! DH-based serial chain conversion.
+//!
+//! These conversions require bodies that already carry explicit DH parameters
+//! (see [`crate::robot::DhParams`] on [`crate::robot::BodySpec`]). URDF-loaded models
+//! intentionally leave `dh_params == None`; the URDF surface routes through the tree
+//! FK / Jacobian / IK APIs in `nabled-kinematics::tree` instead of being silently
+//! collapsed to a DH chain. This module returns
+//! [`ModelError::InvalidInput`] when the source model lacks DH parameters.
 
 use std::collections::HashMap;
 
@@ -25,15 +32,23 @@ fn chain_spec_from_indices<T: NabledReal + Default>(
         if matches!(body.joint_type, JointType::Fixed) {
             continue;
         }
+        let dh = body.dh_params.ok_or_else(|| {
+            ModelError::InvalidInput(format!(
+                "body {} (link '{}') has no DH parameters; URDF-derived models must use \
+                 nabled-kinematics::tree (tree FK/Jacobian/IK) or be loaded via a fixture that \
+                 provides explicit DH parameters",
+                index, body.link.name
+            ))
+        })?;
         joint_types.push(match body.joint_type {
             JointType::Revolute => KinJointType::Revolute,
             JointType::Prismatic => KinJointType::Prismatic,
             JointType::Fixed => unreachable!(),
         });
-        a.push(body.dh_a);
-        alpha.push(body.dh_alpha);
-        d.push(body.dh_d);
-        theta_offset.push(body.dh_theta);
+        a.push(dh.a);
+        alpha.push(dh.alpha);
+        d.push(dh.d);
+        theta_offset.push(dh.theta_offset);
     }
     ChainSpec::from_dh(
         DhConvention::Standard,
@@ -47,6 +62,12 @@ fn chain_spec_from_indices<T: NabledReal + Default>(
 }
 
 /// Convert serial robot model to `ChainSpec` using full topological order.
+///
+/// # Errors
+///
+/// Returns [`ModelError::InvalidInput`] when any actuated body lacks DH parameters
+/// (URDF-derived models). Use `nabled-kinematics::tree` for those models, or load a
+/// fixture that provides explicit DH parameters.
 pub fn to_chain_spec<T: NabledReal + Default>(
     model: &RobotModel<T>,
 ) -> Result<ChainSpec<T>, ModelError> {
@@ -55,6 +76,11 @@ pub fn to_chain_spec<T: NabledReal + Default>(
 }
 
 /// Extract a serial `ChainSpec` between `base_link` and `ee_link`.
+///
+/// # Errors
+///
+/// Returns [`ModelError::InvalidInput`] when any branch body lacks DH parameters
+/// (URDF-derived models). Use `nabled-kinematics::tree` for those models.
 pub fn extract_chain_spec<T: NabledReal + Default>(
     model: &RobotModel<T>,
     base_link: &str,
@@ -67,12 +93,17 @@ pub fn extract_chain_spec<T: NabledReal + Default>(
 /// Serial branch extracted for RNEA/forward dynamics on a tree model.
 ///
 /// Whole-tree RNEA remains out of scope; extract a branch and slice `q` with
-/// [`DynamicsBranchSpec::branch_q`].
+/// [`DynamicsBranchSpec::branch_q`]. The branch's body indices are kept on
+/// [`DynamicsBranchSpec::body_indices`] so callers can re-build a serial sub-model
+/// from the original body specs (used by `nabled-dynamics::tree`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DynamicsBranchSpec<T> {
-    pub chain:     ChainSpec<T>,
+    pub chain:        ChainSpec<T>,
     /// Indices into full model `q` (actuated ordering) for each joint of `chain`.
-    pub q_indices: Vec<usize>,
+    pub q_indices:    Vec<usize>,
+    /// Body indices (in serial base→ee order) into the original model, including
+    /// any fixed joints that were skipped from `q_indices`.
+    pub body_indices: Vec<usize>,
 }
 
 impl<T: Clone> DynamicsBranchSpec<T> {
@@ -99,6 +130,13 @@ impl<T: Clone> DynamicsBranchSpec<T> {
 ///
 /// Joint coordinates follow full-model actuated ordering; use [`DynamicsBranchSpec::branch_q`]
 /// to obtain the serial `q` expected by RNEA/FD.
+///
+/// # Errors
+///
+/// Returns [`ModelError::InvalidInput`] when any branch body lacks DH parameters
+/// (URDF-derived models). Whole-tree dynamics is out of scope; use
+/// `nabled-dynamics::tree` which composes this branch extraction with the serial
+/// RNEA/CRBA/FD APIs.
 pub fn extract_chain_spec_for_dynamics<T: NabledReal + Default>(
     model: &RobotModel<T>,
     base_link: &str,
@@ -129,7 +167,7 @@ pub fn extract_chain_spec_for_dynamics<T: NabledReal + Default>(
         return Err(ModelError::DimensionMismatch);
     }
 
-    Ok(DynamicsBranchSpec { chain, q_indices })
+    Ok(DynamicsBranchSpec { chain, q_indices, body_indices: indices })
 }
 
 #[cfg(test)]
@@ -141,7 +179,7 @@ mod tests {
     use crate::joint::JointAxis;
     use crate::link::LinkSpec;
     use crate::origin::joint_origin_from_dh_scalars;
-    use crate::robot::BodySpec;
+    use crate::robot::{BodySpec, DhParams};
 
     fn sample_body(name: &str, parent_link: &str) -> BodySpec<f64> {
         BodySpec {
@@ -152,11 +190,19 @@ mod tests {
             limits:       None,
             inertial:     None,
             joint_origin: joint_origin_from_dh_scalars(1.0, 0.0, 0.0, 0.0).unwrap(),
-            dh_a:         1.0,
-            dh_alpha:     0.0,
-            dh_d:         0.0,
-            dh_theta:     0.0,
+            dh_params:    Some(DhParams {
+                a:            1.0,
+                alpha:        0.0,
+                d:            0.0,
+                theta_offset: 0.0,
+            }),
         }
+    }
+
+    fn sample_body_without_dh(name: &str, parent_link: &str) -> BodySpec<f64> {
+        let mut body = sample_body(name, parent_link);
+        body.dh_params = None;
+        body
     }
 
     #[test]
@@ -191,5 +237,30 @@ mod tests {
         let branch = extract_chain_spec_for_dynamics(&model, "base", "link2").unwrap();
         let q = arr1(&[0.2]);
         assert!(branch.branch_q(&model, &q).is_err());
+    }
+
+    #[test]
+    fn dynamics_branch_carries_body_indices() {
+        let mut model = RobotModel::new();
+        let root = model.add_body(None, sample_body("link1", "base"));
+        let _ = model.add_body(Some(root), sample_body("link2", "link1"));
+        let branch = extract_chain_spec_for_dynamics(&model, "base", "link2").unwrap();
+        assert_eq!(branch.body_indices, vec![0, 1]);
+    }
+
+    #[test]
+    fn to_chain_spec_rejects_bodies_without_dh_params() {
+        let mut model = RobotModel::new();
+        let root = model.add_body(None, sample_body_without_dh("link1", "base"));
+        let _ = model.add_body(Some(root), sample_body_without_dh("link2", "link1"));
+        let err = to_chain_spec(&model).expect_err("no DH params -> error");
+        assert!(
+            matches!(err, ModelError::InvalidInput(message) if message.contains("no DH parameters"))
+        );
+        let err = extract_chain_spec(&model, "base", "link2").expect_err("no DH params -> error");
+        assert!(matches!(err, ModelError::InvalidInput(_)));
+        let err = extract_chain_spec_for_dynamics(&model, "base", "link2")
+            .expect_err("no DH params -> error");
+        assert!(matches!(err, ModelError::InvalidInput(_)));
     }
 }

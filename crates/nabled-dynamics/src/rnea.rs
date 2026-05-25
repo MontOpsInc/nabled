@@ -151,7 +151,7 @@ mod tests {
     use nabled_kinematics::chain::{ChainSpec, DhConvention, JointType};
     use nabled_model::fixture::Planar2rFixture;
     use nabled_model::joint::{JointAxis, JointType as ModelJointType};
-    use nabled_model::robot::BodySpec;
+    use nabled_model::robot::{BodySpec, DhParams};
     use ndarray::arr1;
 
     use super::*;
@@ -179,10 +179,12 @@ mod tests {
                 inertia: Array2::<f64>::zeros((3, 3)),
             }),
             joint_origin: nabled_model::origin::identity_transform(),
-            dh_a:         0.0,
-            dh_alpha:     0.0,
-            dh_d:         0.0,
-            dh_theta:     0.0,
+            dh_params:    Some(DhParams {
+                a:            0.0,
+                alpha:        0.0,
+                d:            0.0,
+                theta_offset: 0.0,
+            }),
         };
         let _ = model.add_body(None, body);
         let chain = ChainSpec::from_dh(
@@ -257,10 +259,12 @@ mod tests {
                 inertia: Array2::<f64>::zeros((3, 3)),
             }),
             joint_origin: nabled_model::origin::identity_transform(),
-            dh_a:         0.0,
-            dh_alpha:     0.0,
-            dh_d:         0.0,
-            dh_theta:     0.0,
+            dh_params:    Some(DhParams {
+                a:            0.0,
+                alpha:        0.0,
+                d:            0.0,
+                theta_offset: 0.0,
+            }),
         };
         let _ = model.add_body(None, body);
         let chain = ChainSpec::from_dh(
@@ -289,15 +293,7 @@ mod tests {
         let q = arr1(&[0.3_f64, 0.5]);
         let zeros = arr1(&[0.0, 0.0]);
         let mut output = arr1(&[0.0, 0.0]);
-        rnea_into(
-            &model,
-            &chain,
-            &q.view(),
-            &zeros.view(),
-            &zeros.view(),
-            &mut output,
-        )
-        .unwrap();
+        rnea_into(&model, &chain, &q.view(), &zeros.view(), &zeros.view(), &mut output).unwrap();
         let tau = rnea_view(&model, &chain, &q.view(), &zeros.view(), &zeros.view()).unwrap();
         assert_relative_eq!(output, tau, epsilon = 1e-12);
     }
@@ -311,14 +307,7 @@ mod tests {
         let zeros = arr1(&[0.0, 0.0]);
         let mut output = arr1(&[0.0]);
         assert!(matches!(
-            rnea_into(
-                &model,
-                &chain,
-                &q.view(),
-                &zeros.view(),
-                &zeros.view(),
-                &mut output
-            ),
+            rnea_into(&model, &chain, &q.view(), &zeros.view(), &zeros.view(), &mut output),
             Err(DynamicsError::DimensionMismatch)
         ));
     }

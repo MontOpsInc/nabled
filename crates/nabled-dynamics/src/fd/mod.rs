@@ -140,9 +140,11 @@ mod tests {
         let q = arr1(&[0.2_f64, 0.3]);
         let qd = arr1(&[0.1_f64, -0.2]);
         let tau = arr1(&[0.5_f64, 0.25]);
-        let qdd = forward_dynamics_view(&model, &chain, &q.view(), &qd.view(), &tau.view()).unwrap();
+        let qdd =
+            forward_dynamics_view(&model, &chain, &q.view(), &qd.view(), &tau.view()).unwrap();
         let mut buf = arr1(&[0.0, 0.0]);
-        forward_dynamics_into(&model, &chain, &q.view(), &qd.view(), &tau.view(), &mut buf).unwrap();
+        forward_dynamics_into(&model, &chain, &q.view(), &qd.view(), &tau.view(), &mut buf)
+            .unwrap();
         assert_relative_eq!(qdd, buf, epsilon = 1e-12);
     }
 

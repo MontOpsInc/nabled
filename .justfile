@@ -45,7 +45,7 @@ test:
 
 test-provider:
     {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test --workspace --lib --features {{ provider_features }} -- --nocapture --show-output
-    {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test -p nabled --features {{ provider_features }} --tests -- --nocapture --show-output
+    {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test -p nabled --features "{{ provider_features }} physical-ai ml signal" --tests -- --nocapture --show-output
 
 test-unit:
     RUST_LOG={{ LOG }} cargo test --workspace --lib -- --nocapture --show-output
@@ -60,17 +60,17 @@ test-integration test_name:
     RUST_LOG={{ LOG }} cargo test -p nabled --test "{{ test_name }}" -- --nocapture --show-output
 
 test-integration-all:
-    RUST_LOG={{ LOG }} cargo test -p nabled --tests -- --nocapture --show-output
+    RUST_LOG={{ LOG }} cargo test -p nabled --tests --features physical-ai -- --nocapture --show-output
     just -f {{ justfile() }} test-physical-ai-integration
 
 test-physical-ai-integration:
-    RUST_LOG={{ LOG }} cargo test -p nabled --test physical_ai_integration --features signal -- --nocapture --show-output
+    RUST_LOG={{ LOG }} cargo test -p nabled --test physical_ai_integration --features "physical-ai signal" -- --nocapture --show-output
 
 coverage:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} signal" --no-report
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} physical-ai signal" --no-report
     cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
     cargo llvm-cov report -vv --html --output-dir coverage --open --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
@@ -78,7 +78,7 @@ coverage-json:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} signal" --no-report
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} physical-ai signal" --no-report
     cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
     cargo llvm-cov report --json --output-path coverage/cov.json --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
@@ -86,7 +86,7 @@ coverage-lcov:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} signal" --no-report
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} physical-ai signal" --no-report
     cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
     cargo llvm-cov report --lcov --output-path coverage/lcov.info --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
@@ -94,7 +94,7 @@ coverage-check:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} signal" --no-report
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} physical-ai signal" --no-report
     cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
     cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }} --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
@@ -114,7 +114,7 @@ coverage-physical-ai-report:
     echo "--- nabled-linalg (signal, lib + tests) ---"
     cargo llvm-cov -p nabled-linalg --lib --tests --features signal --summary-only --fail-under-lines "${threshold}" --ignore-filename-regex "${ignore_regex}" || true
     echo "--- nabled physical_ai_integration (merged profile leg) ---"
-    ${provider_env_prefix} cargo llvm-cov -p nabled --test physical_ai_integration --features "${provider_features} signal" --summary-only --ignore-filename-regex "${ignore_regex}" || true
+    ${provider_env_prefix} cargo llvm-cov -p nabled --test physical_ai_integration --features "${provider_features} physical-ai signal" --summary-only --ignore-filename-regex "${ignore_regex}" || true
 
 python-quality:
     {{ provider_env_prefix }} bash scripts/python_quality_gate.sh

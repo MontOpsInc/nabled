@@ -12,6 +12,8 @@ KNOWN_BUILD_FEATURES = {
     "netlib-system",
     "openblas-static",
     "openblas-system",
+    "physical-ai",
+    "signal",
 }
 
 

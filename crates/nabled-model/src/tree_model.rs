@@ -62,9 +62,8 @@ mod tests {
     use approx::assert_relative_eq;
     use nabled_kinematics::tree::{KinematicTreeModel, TreeJointType};
 
-    use crate::urdf::from_urdf_file;
-
     use super::*;
+    use crate::urdf::from_urdf_file;
 
     fn y_branch_model() -> RobotModel<f64> {
         let urdf_path = concat!(
@@ -115,7 +114,7 @@ mod tests {
     #[test]
     fn trait_accessors_exercise_all_body_fields() {
         let model = y_branch_model();
-        for &body_index in model.actuated_indices().iter() {
+        for &body_index in &model.actuated_indices() {
             assert!(!model.parent_link(body_index).is_empty());
             assert!(!model.child_link(body_index).is_empty());
             assert!(matches!(
@@ -125,8 +124,7 @@ mod tests {
             let origin = model.joint_origin(body_index);
             assert!(origin.translation.iter().all(|v| v.is_finite()));
             let axis = model.joint_axis(body_index);
-            let axis_len =
-                (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+            let axis_len = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
             assert_relative_eq!(axis_len, 1.0, epsilon = 1e-6);
         }
     }

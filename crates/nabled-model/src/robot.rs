@@ -8,6 +8,20 @@ use crate::ModelError;
 use crate::joint::{JointLimits, JointType};
 use crate::link::{InertialSpec, LinkSpec};
 
+/// Standard Denavit–Hartenberg parameters for a serial chain joint.
+///
+/// Only present on bodies whose source pipeline carries explicit DH parameters
+/// (for example JSON fixtures or explicit `BodySpec` construction). URDF ingestion
+/// does not synthesize DH parameters from joint origins; URDF-derived models stay
+/// `dh_params == None`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DhParams<T> {
+    pub a:            T,
+    pub alpha:        T,
+    pub d:            T,
+    pub theta_offset: T,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BodySpec<T> {
     pub link:         LinkSpec,
@@ -18,10 +32,11 @@ pub struct BodySpec<T> {
     pub inertial:     Option<InertialSpec<T>>,
     /// Static URDF `<origin>` transform from parent link to joint frame.
     pub joint_origin: Transform3<T>,
-    pub dh_a:         T,
-    pub dh_alpha:     T,
-    pub dh_d:         T,
-    pub dh_theta:     T,
+    /// Explicit DH parameters, present only when the source pipeline carries them
+    /// (`fixture::Planar2rFixture`, `fixture::SixDofDhFixture`, or callers constructing
+    /// `BodySpec` directly with known DH). URDF-loaded bodies leave this `None` so
+    /// `dh::to_chain_spec` fails loudly instead of silently treating URDF origins as DH.
+    pub dh_params:    Option<DhParams<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -214,10 +229,12 @@ mod tests {
             inertial:     None,
             joint_origin: crate::origin::transform_from_xyz_rpy([1.0, 0.0, 0.0], [0.0, 0.0, 0.0])
                 .expect("valid origin"),
-            dh_a:         1.0,
-            dh_alpha:     0.0,
-            dh_d:         0.0,
-            dh_theta:     0.0,
+            dh_params:    Some(DhParams {
+                a:            1.0,
+                alpha:        0.0,
+                d:            0.0,
+                theta_offset: 0.0,
+            }),
         }
     }
 

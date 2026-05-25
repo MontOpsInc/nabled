@@ -92,7 +92,18 @@ pub fn dare_residual_norm<T: LuProviderScalar>(
     r: &Array2<T>,
     p: &Array2<T>,
 ) -> Result<f64, ControlError> {
-    let residual = dare_residual(a, b, q, r, p)?;
+    dare_residual_norm_view(&a.view(), &b.view(), &q.view(), &r.view(), &p.view())
+}
+
+/// Frobenius norm of the DARE algebraic residual from matrix views.
+pub fn dare_residual_norm_view<T: LuProviderScalar>(
+    a: &ArrayView2<'_, T>,
+    b: &ArrayView2<'_, T>,
+    q: &ArrayView2<'_, T>,
+    r: &ArrayView2<'_, T>,
+    p: &ArrayView2<'_, T>,
+) -> Result<f64, ControlError> {
+    let residual = dare_residual_view(a, b, q, r, p)?;
     Ok(residual.mapv(|value| (value * value).to_f64().unwrap_or(0.0)).sum().sqrt())
 }
 

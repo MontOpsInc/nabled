@@ -2,7 +2,7 @@
 
 use nabled_core::scalar::NabledReal;
 use nabled_linalg::geometry::{Quat, quat};
-use ndarray::Array1;
+use ndarray::{Array1, ArrayView1};
 
 use crate::SensorError;
 
@@ -12,14 +12,33 @@ pub fn strapdown_predict<T: NabledReal>(
     gyro: &Array1<T>,
     dt: T,
 ) -> Result<Array1<T>, SensorError> {
-    let mut out = orientation.clone();
-    strapdown_predict_into(orientation, gyro, dt, &mut out)?;
+    strapdown_predict_view(&orientation.view(), &gyro.view(), dt)
+}
+
+/// Integrate orientation with gyro from joint views (no copy on input).
+pub fn strapdown_predict_view<T: NabledReal>(
+    orientation: &ArrayView1<'_, T>,
+    gyro: &ArrayView1<'_, T>,
+    dt: T,
+) -> Result<Array1<T>, SensorError> {
+    let mut out = orientation.to_owned();
+    strapdown_predict_view_into(orientation, gyro, dt, &mut out)?;
     Ok(out)
 }
 
 pub fn strapdown_predict_into<T: NabledReal>(
     orientation: &Array1<T>,
     gyro: &Array1<T>,
+    dt: T,
+    output: &mut Array1<T>,
+) -> Result<(), SensorError> {
+    strapdown_predict_view_into(&orientation.view(), &gyro.view(), dt, output)
+}
+
+/// Integrate orientation in-place from joint views and write to `output`.
+pub fn strapdown_predict_view_into<T: NabledReal>(
+    orientation: &ArrayView1<'_, T>,
+    gyro: &ArrayView1<'_, T>,
     dt: T,
     output: &mut Array1<T>,
 ) -> Result<(), SensorError> {

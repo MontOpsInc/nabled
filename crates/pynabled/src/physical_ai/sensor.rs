@@ -2,7 +2,7 @@
 
 use nabled::linalg::lu;
 use nabled::sensor::camera::{PinholeIntrinsics, pinhole_project};
-use nabled::sensor::imu::strapdown_predict;
+use nabled::sensor::imu::{strapdown_predict_view, strapdown_predict_view_into};
 use nabled::sensor::kalman::{KalmanState, predict, update};
 use ndarray::{Array1, Array2, ArrayView1};
 use pyo3::prelude::*;
@@ -207,8 +207,7 @@ pub fn strapdown_predict_py<'py>(
 ) -> PyResult<Py<PyAny>> {
     match (utils::real_array1(quaternion, "quaternion")?, utils::real_array1(gyro, "gyro")?) {
         (utils::RealReadonlyArray1::F64(q), utils::RealReadonlyArray1::F64(g)) => {
-            let q1 = strapdown_predict(&q.as_array().to_owned(), &g.as_array().to_owned(), dt)
-                .map_err(to_py_err)?;
+            let q1 = strapdown_predict_view(&q.as_array(), &g.as_array(), dt).map_err(to_py_err)?;
             Ok(utils::pyarray1_from_owned(py, q1))
         }
         _ => Err(utils::matching_real_dtype_error(&["quaternion", "gyro"])),
@@ -276,10 +275,12 @@ pub fn strapdown_predict_into(
 ) -> PyResult<()> {
     match (utils::real_array1(quaternion, "quaternion")?, utils::real_array1(gyro, "gyro")?) {
         (utils::RealReadonlyArray1::F64(q), utils::RealReadonlyArray1::F64(g)) => {
-            let q1 = strapdown_predict(&q.as_array().to_owned(), &g.as_array().to_owned(), dt)
-                .map_err(to_py_err)?;
             let mut out = utils::output_array1::<f64>(output, "output", "float64")?;
-            out.as_array_mut().assign(&q1);
+            let mut out_view = out.as_array_mut();
+            let mut owned = Array1::<f64>::zeros(out_view.len());
+            strapdown_predict_view_into(&q.as_array(), &g.as_array(), dt, &mut owned)
+                .map_err(to_py_err)?;
+            out_view.assign(&owned);
             Ok(())
         }
         _ => Err(utils::matching_real_dtype_error(&["quaternion", "gyro", "output"])),

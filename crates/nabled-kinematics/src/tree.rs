@@ -115,7 +115,21 @@ where
     M: KinematicTreeModel<T>,
     T: NabledReal,
 {
-    let transforms = link_transforms_tree(model, q)?;
+    end_effector_pose_tree_view(model, base_link, ee_link, &q.view())
+}
+
+/// End-effector pose of `ee_link` relative to `base_link`, view-only `q`.
+pub fn end_effector_pose_tree_view<M, T>(
+    model: &M,
+    base_link: &str,
+    ee_link: &str,
+    q: &ArrayView1<'_, T>,
+) -> Result<Transform3<T>, KinematicsError>
+where
+    M: KinematicTreeModel<T>,
+    T: NabledReal,
+{
+    let transforms = link_transforms_tree_view(model, q)?;
     let base = transforms.get(base_link).cloned().unwrap_or_else(|| {
         se3::from_rotation_translation(
             &Rotation3 { matrix: Array2::<T>::eye(3) },
@@ -292,7 +306,11 @@ pub(crate) mod y_branch_fixture {
                 right_ee_translation: [1.0, 1.0, 0.0],
             },
             YBranchCase {
-                q:                    [0.0, std::f64::consts::FRAC_PI_2, -std::f64::consts::FRAC_PI_2],
+                q:                    [
+                    0.0,
+                    std::f64::consts::FRAC_PI_2,
+                    -std::f64::consts::FRAC_PI_2,
+                ],
                 left_ee_translation:  [2.0, 0.0, 0.0],
                 right_ee_translation: [1.0, 1.0, 0.0],
             },
@@ -372,7 +390,9 @@ pub(crate) mod y_branch_fixture {
             ee_link: &str,
         ) -> Result<Vec<usize>, KinematicsError> {
             if base_link != "base" {
-                return Err(KinematicsError::InvalidInput(format!("unknown base link {base_link}")));
+                return Err(KinematicsError::InvalidInput(format!(
+                    "unknown base link {base_link}"
+                )));
             }
             match ee_link {
                 "left_ee" => Ok(vec![0, 1]),
@@ -382,11 +402,7 @@ pub(crate) mod y_branch_fixture {
         }
 
         fn joint_limits(&self, joint_index: usize) -> Option<(f64, f64)> {
-            if joint_index < 3 {
-                Some((-std::f64::consts::PI, std::f64::consts::PI))
-            } else {
-                None
-            }
+            if joint_index < 3 { Some((-std::f64::consts::PI, std::f64::consts::PI)) } else { None }
         }
     }
 }
@@ -409,9 +425,21 @@ mod tests {
             assert_relative_eq!(left.translation[0], case.left_ee_translation[0], epsilon = 1e-10);
             assert_relative_eq!(left.translation[1], case.left_ee_translation[1], epsilon = 1e-10);
             assert_relative_eq!(left.translation[2], case.left_ee_translation[2], epsilon = 1e-10);
-            assert_relative_eq!(right.translation[0], case.right_ee_translation[0], epsilon = 1e-10);
-            assert_relative_eq!(right.translation[1], case.right_ee_translation[1], epsilon = 1e-10);
-            assert_relative_eq!(right.translation[2], case.right_ee_translation[2], epsilon = 1e-10);
+            assert_relative_eq!(
+                right.translation[0],
+                case.right_ee_translation[0],
+                epsilon = 1e-10
+            );
+            assert_relative_eq!(
+                right.translation[1],
+                case.right_ee_translation[1],
+                epsilon = 1e-10
+            );
+            assert_relative_eq!(
+                right.translation[2],
+                case.right_ee_translation[2],
+                epsilon = 1e-10
+            );
         }
     }
 
@@ -456,7 +484,8 @@ mod tests {
     #[test]
     fn rejects_disconnected_chain_indices() {
         let model = YBranchModel;
-        let err = jacobian_tree(&model, "left_ee", "right_ee", &arr1(&[0.0, 0.0, 0.0])).unwrap_err();
+        let err =
+            jacobian_tree(&model, "left_ee", "right_ee", &arr1(&[0.0, 0.0, 0.0])).unwrap_err();
         assert!(matches!(err, KinematicsError::InvalidInput(_)));
     }
 
@@ -467,13 +496,21 @@ mod tests {
             fn validate_tree(&self) -> Result<(), KinematicsError> {
                 Err(KinematicsError::InvalidInput("bad tree".into()))
             }
+
             fn dof(&self) -> usize { 0 }
+
             fn actuated_indices(&self) -> Vec<usize> { vec![] }
+
             fn topological_order(&self) -> Vec<usize> { vec![] }
+
             fn body_index_for_link(&self, _: &str) -> Option<usize> { None }
-            fn parent_link(&self, _: usize) -> &str { "base" }
-            fn child_link(&self, _: usize) -> &str { "base" }
+
+            fn parent_link(&self, _: usize) -> &'static str { "base" }
+
+            fn child_link(&self, _: usize) -> &'static str { "base" }
+
             fn joint_type(&self, _: usize) -> TreeJointType { TreeJointType::Fixed }
+
             fn joint_origin(&self, _: usize) -> &Transform3<f64> {
                 static ID: std::sync::OnceLock<Transform3<f64>> = std::sync::OnceLock::new();
                 ID.get_or_init(|| {
@@ -483,7 +520,9 @@ mod tests {
                     )
                 })
             }
+
             fn joint_axis(&self, _: usize) -> [f64; 3] { [0.0, 0.0, 1.0] }
+
             fn chain_indices(&self, _: &str, _: &str) -> Result<Vec<usize>, KinematicsError> {
                 Ok(vec![])
             }
@@ -497,15 +536,23 @@ mod tests {
         struct PrismaticModel;
         impl KinematicTreeModel<f64> for PrismaticModel {
             fn validate_tree(&self) -> Result<(), KinematicsError> { Ok(()) }
+
             fn dof(&self) -> usize { 1 }
+
             fn actuated_indices(&self) -> Vec<usize> { vec![0] }
+
             fn topological_order(&self) -> Vec<usize> { vec![0] }
+
             fn body_index_for_link(&self, link: &str) -> Option<usize> {
                 if link == "ee" { Some(0) } else { None }
             }
-            fn parent_link(&self, _: usize) -> &str { "base" }
-            fn child_link(&self, _: usize) -> &str { "ee" }
+
+            fn parent_link(&self, _: usize) -> &'static str { "base" }
+
+            fn child_link(&self, _: usize) -> &'static str { "ee" }
+
             fn joint_type(&self, _: usize) -> TreeJointType { TreeJointType::Prismatic }
+
             fn joint_origin(&self, _: usize) -> &Transform3<f64> {
                 static ORIGIN: std::sync::OnceLock<Transform3<f64>> = std::sync::OnceLock::new();
                 ORIGIN.get_or_init(|| {
@@ -515,7 +562,9 @@ mod tests {
                     )
                 })
             }
+
             fn joint_axis(&self, _: usize) -> [f64; 3] { [0.0, 0.0, 1.0] }
+
             fn chain_indices(&self, _: &str, _: &str) -> Result<Vec<usize>, KinematicsError> {
                 Ok(vec![0])
             }

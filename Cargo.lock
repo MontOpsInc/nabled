@@ -1644,7 +1644,6 @@ dependencies = [
  "approx",
  "nabled-core",
  "nabled-linalg",
- "nabled-ml",
  "ndarray",
  "num-complex",
  "num-traits",
@@ -1682,7 +1681,6 @@ dependencies = [
  "criterion",
  "nabled-core",
  "nabled-linalg",
- "nabled-ml",
  "ndarray",
  "num-traits",
 ]
@@ -1742,7 +1740,6 @@ dependencies = [
  "approx",
  "nabled-core",
  "nabled-linalg",
- "nabled-ml",
  "ndarray",
 ]
 

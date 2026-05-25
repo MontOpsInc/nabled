@@ -9,7 +9,7 @@ use crate::ModelError;
 use crate::joint::JointType;
 use crate::link::InertialSpec;
 use crate::origin::joint_origin_from_dh_scalars;
-use crate::robot::{BodySpec, RobotModel};
+use crate::robot::{BodySpec, DhParams, RobotModel};
 
 #[derive(Debug, Deserialize)]
 pub struct Planar2rFixture {
@@ -72,10 +72,12 @@ impl Planar2rFixture {
                     parse_scalar::<T>(params[2])?,
                     parse_scalar::<T>(params[3])?,
                 )?,
-                dh_a: parse_scalar::<T>(params[0])?,
-                dh_alpha: parse_scalar::<T>(params[1])?,
-                dh_d: parse_scalar::<T>(params[2])?,
-                dh_theta: parse_scalar::<T>(params[3])?,
+                dh_params: Some(DhParams {
+                    a:            parse_scalar::<T>(params[0])?,
+                    alpha:        parse_scalar::<T>(params[1])?,
+                    d:            parse_scalar::<T>(params[2])?,
+                    theta_offset: parse_scalar::<T>(params[3])?,
+                }),
             };
             let index = model.add_body(parent, body);
             parent = Some(index);
@@ -254,16 +256,15 @@ mod tests {
     #[test]
     fn from_file_reports_missing_path() {
         let err = Planar2rFixture::from_file("/no/such/fixture.json").unwrap_err();
-        assert!(matches!(err, ModelError::ParseError(message) if message.contains("failed to read")));
+        assert!(
+            matches!(err, ModelError::ParseError(message) if message.contains("failed to read"))
+        );
     }
 
     #[test]
     fn to_chain_spec_rejects_unknown_dh_convention() {
         let mut fixture = load_planar2r_json().unwrap();
         fixture.dh_convention = "bogus".to_string();
-        assert!(matches!(
-            fixture.to_chain_spec::<f64>(),
-            Err(ModelError::InvalidInput(_))
-        ));
+        assert!(matches!(fixture.to_chain_spec::<f64>(), Err(ModelError::InvalidInput(_))));
     }
 }

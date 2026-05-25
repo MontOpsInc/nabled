@@ -1,10 +1,10 @@
 //! Control bindings (LQR, DARE, pole placement, observer, gramian).
 
-use nabled::control::dare::{dare_residual_norm, dare_solve};
-use nabled::control::gramian::controllability_gramian;
-use nabled::control::lqr::{LqrResult, discrete_lqr};
-use nabled::control::observer::luenberger_gain;
-use nabled::control::pole::place_poles;
+use nabled::control::dare::{dare_residual_norm_view, dare_solve_view};
+use nabled::control::gramian::controllability_gramian_view;
+use nabled::control::lqr::{LqrResult, discrete_lqr_view};
+use nabled::control::observer::luenberger_gain_view;
+use nabled::control::pole::place_poles_view;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
@@ -48,11 +48,11 @@ pub fn discrete_lqr_py<'py>(
             utils::RealReadonlyArray2::F64(q_arr),
             utils::RealReadonlyArray2::F64(r_arr),
         ) => {
-            let result = discrete_lqr(
-                &a_arr.as_array().to_owned(),
-                &b_arr.as_array().to_owned(),
-                &q_arr.as_array().to_owned(),
-                &r_arr.as_array().to_owned(),
+            let result = discrete_lqr_view(
+                &a_arr.as_array(),
+                &b_arr.as_array(),
+                &q_arr.as_array(),
+                &r_arr.as_array(),
             )
             .map_err(to_py_err)?;
             lqr_result_to_py(py, result)
@@ -82,11 +82,11 @@ pub fn dare_solve_py<'py>(
             utils::RealReadonlyArray2::F64(q_arr),
             utils::RealReadonlyArray2::F64(r_arr),
         ) => {
-            let p = dare_solve(
-                &a_arr.as_array().to_owned(),
-                &b_arr.as_array().to_owned(),
-                &q_arr.as_array().to_owned(),
-                &r_arr.as_array().to_owned(),
+            let p = dare_solve_view(
+                &a_arr.as_array(),
+                &b_arr.as_array(),
+                &q_arr.as_array(),
+                &r_arr.as_array(),
             )
             .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, p))
@@ -117,12 +117,12 @@ pub fn dare_residual_norm_py(
             utils::RealReadonlyArray2::F64(q_arr),
             utils::RealReadonlyArray2::F64(r_arr),
             utils::RealReadonlyArray2::F64(p_arr),
-        ) => dare_residual_norm(
-            &a_arr.as_array().to_owned(),
-            &b_arr.as_array().to_owned(),
-            &q_arr.as_array().to_owned(),
-            &r_arr.as_array().to_owned(),
-            &p_arr.as_array().to_owned(),
+        ) => dare_residual_norm_view(
+            &a_arr.as_array(),
+            &b_arr.as_array(),
+            &q_arr.as_array(),
+            &r_arr.as_array(),
+            &p_arr.as_array(),
         )
         .map_err(to_py_err),
         _ => Err(utils::matching_real_dtype_error(&["a", "b", "q", "r", "p"])),
@@ -138,9 +138,8 @@ pub fn controllability_gramian_py<'py>(
 ) -> PyResult<Py<PyAny>> {
     match (utils::real_array2(a, "a")?, utils::real_array2(b, "b")?) {
         (utils::RealReadonlyArray2::F64(a_arr), utils::RealReadonlyArray2::F64(b_arr)) => {
-            let w =
-                controllability_gramian(&a_arr.as_array().to_owned(), &b_arr.as_array().to_owned())
-                    .map_err(to_py_err)?;
+            let w = controllability_gramian_view(&a_arr.as_array(), &b_arr.as_array())
+                .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, w))
         }
         _ => Err(utils::matching_real_dtype_error(&["a", "b"])),
@@ -157,7 +156,7 @@ pub fn place_poles_py<'py>(
 ) -> PyResult<Py<PyAny>> {
     match (utils::real_array2(a, "a")?, utils::real_array2(b, "b")?) {
         (utils::RealReadonlyArray2::F64(a_arr), utils::RealReadonlyArray2::F64(b_arr)) => {
-            let k = place_poles(&a_arr.as_array().to_owned(), &b_arr.as_array().to_owned(), &poles)
+            let k = place_poles_view(&a_arr.as_array(), &b_arr.as_array(), &poles)
                 .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, k))
         }
@@ -175,9 +174,8 @@ pub fn luenberger_gain_py<'py>(
 ) -> PyResult<Py<PyAny>> {
     match (utils::real_array2(a, "a")?, utils::real_array2(c, "c")?) {
         (utils::RealReadonlyArray2::F64(a_arr), utils::RealReadonlyArray2::F64(c_arr)) => {
-            let l =
-                luenberger_gain(&a_arr.as_array().to_owned(), &c_arr.as_array().to_owned(), &poles)
-                    .map_err(to_py_err)?;
+            let l = luenberger_gain_view(&a_arr.as_array(), &c_arr.as_array(), &poles)
+                .map_err(to_py_err)?;
             Ok(utils::pyarray2_from_owned(py, l))
         }
         _ => Err(utils::matching_real_dtype_error(&["a", "c"])),
@@ -206,11 +204,11 @@ pub fn discrete_lqr_into(
             utils::RealReadonlyArray2::F64(q_arr),
             utils::RealReadonlyArray2::F64(r_arr),
         ) => {
-            let result = discrete_lqr(
-                &a_arr.as_array().to_owned(),
-                &b_arr.as_array().to_owned(),
-                &q_arr.as_array().to_owned(),
-                &r_arr.as_array().to_owned(),
+            let result = discrete_lqr_view(
+                &a_arr.as_array(),
+                &b_arr.as_array(),
+                &q_arr.as_array(),
+                &r_arr.as_array(),
             )
             .map_err(to_py_err)?;
             let mut gain_arr = utils::output_array2::<f64>(gain, "gain", "float64")?;

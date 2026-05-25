@@ -1,6 +1,6 @@
 //! Robot dynamics.
 
-#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_errors_doc, clippy::too_many_arguments, clippy::similar_names)]
 
 use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 
@@ -10,6 +10,7 @@ pub mod fd;
 pub mod id;
 pub mod rnea;
 pub mod spatial;
+pub mod tree;
 
 pub use config::{DynamicsConfig, ForwardDynamicsMethod};
 
@@ -55,10 +56,7 @@ mod tests {
 
     #[test]
     fn dynamics_errors_display_and_map_to_shared_taxonomy() {
-        assert_eq!(
-            DynamicsError::EmptyModel.to_string(),
-            "dynamics model cannot be empty"
-        );
+        assert_eq!(DynamicsError::EmptyModel.to_string(), "dynamics model cannot be empty");
         assert_eq!(
             DynamicsError::DimensionMismatch.to_string(),
             "input dimensions are incompatible"
@@ -84,9 +82,6 @@ mod tests {
             DynamicsError::InvalidInput("x".to_string()).into_nabled_error(),
             NabledError::InvalidInput(_)
         ));
-        assert!(matches!(
-            DynamicsError::NotImplemented.into_nabled_error(),
-            NabledError::Other(_)
-        ));
+        assert!(matches!(DynamicsError::NotImplemented.into_nabled_error(), NabledError::Other(_)));
     }
 }

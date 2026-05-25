@@ -18,17 +18,35 @@
 //!
 //! ## Feature Flags
 //!
+//! Per-domain opt-in features gate which sub-crate facades are re-exported. The
+//! default is `["linalg"]`; enable additional features as needed. See
+//! `docs/FEATURE_MATRIX.md` for the full matrix.
+//!
+//! Domain features:
+//!
+//! 1. `linalg`: re-exports [`crate::linalg`] (`nabled-linalg`). Default.
+//! 2. `geometry`: re-exports [`crate::linalg::geometry`] (implied by `linalg`).
+//! 3. `signal`: enables `nabled-linalg::signal` FFT-backed routines and propagates to `nabled-sim`
+//!    when enabled.
+//! 4. `ml`: re-exports [`crate::ml`] (`nabled-ml`).
+//! 5. `model`: re-exports [`crate::model`] (`nabled-model`).
+//! 6. `kinematics`: re-exports [`crate::kinematics`] (implies `model`).
+//! 7. `dynamics`: re-exports [`crate::dynamics`] (implies `kinematics` + `model`).
+//! 8. `control`: re-exports [`crate::control`] (`nabled-control`).
+//! 9. `sensor`: re-exports [`crate::sensor`] (`nabled-sensor`).
+//! 10. `sim`: re-exports [`crate::sim`] orchestration (implies `kinematics + dynamics + control +
+//!     sensor + ml + model + geometry`).
+//! 11. `physical-ai`: umbrella enabling every Physical AI domain feature.
+//!
+//! BLAS/LAPACK provider features:
+//!
 //! 1. `blas`: enables `ndarray/blas` in lower crates.
-//! 2. `openblas-system`: enables provider-backed `LAPACK` paths via system `OpenBLAS`.
-//! 3. `openblas-static`: enables provider-backed `LAPACK` paths via statically linked `OpenBLAS`.
-//! 4. `netlib-system`: enables provider-backed `LAPACK` paths via system `Netlib` `LAPACK`.
-//! 5. `netlib-static`: enables provider-backed `LAPACK` paths via statically linked `Netlib`
-//!    `LAPACK`.
-//! 6. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths.
-//! 7. `accelerator-rayon`: enables parallel CPU kernels where implemented.
-//! 8. `accelerator-wgpu`: enables WGPU-backed kernel paths where implemented.
-//! 9. `signal`: enables `nabled-linalg::signal` FFT-backed routines.
-//! 10. `arrow`: enables facade-only Arrow/ndarray interop adapters backed by `ndarrow`.
+//! 2. `openblas-system`/`openblas-static`/`netlib-system`/`netlib-static`: provider-backed `LAPACK`
+//!    paths.
+//! 3. `magma-system`: NVIDIA MAGMA provider-backed decomposition paths.
+//! 4. `accelerator-rayon`: enables parallel CPU kernels where implemented.
+//! 5. `accelerator-wgpu`: enables WGPU-backed kernel paths where implemented.
+//! 6. `arrow`: facade-only Arrow/ndarray interop adapters backed by `ndarrow`.
 //!
 //! ## Execution Semantics
 //!
@@ -66,41 +84,49 @@ pub mod core {
 }
 
 /// Ndarray-native linear algebra domains.
+#[cfg(feature = "linalg")]
 pub mod linalg {
     pub use nabled_linalg::*;
 }
 
 /// ML-oriented numerical domains built on ndarray-native primitives.
+#[cfg(feature = "ml")]
 pub mod ml {
     pub use nabled_ml::*;
 }
 
 /// Kinematics algorithms for Physical AI workloads.
+#[cfg(feature = "kinematics")]
 pub mod kinematics {
     pub use nabled_kinematics::*;
 }
 
 /// Robot model representation for Physical AI workloads.
+#[cfg(feature = "model")]
 pub mod model {
     pub use nabled_model::*;
 }
 
 /// Rigid-body dynamics for Physical AI workloads.
+#[cfg(feature = "dynamics")]
 pub mod dynamics {
     pub use nabled_dynamics::*;
 }
 
 /// Control algorithms for Physical AI workloads.
+#[cfg(feature = "control")]
 pub mod control {
     pub use nabled_control::*;
 }
 
 /// Sensor fusion for Physical AI workloads.
+#[cfg(feature = "sensor")]
 pub mod sensor {
     pub use nabled_sensor::*;
 }
 
 /// Physical AI orchestration (simulation, manipulation, control, estimation pipelines).
+#[cfg(feature = "sim")]
 pub mod sim {
     pub use nabled_sim::*;
 }

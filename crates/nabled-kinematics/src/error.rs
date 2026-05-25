@@ -37,10 +37,7 @@ mod tests {
 
     #[test]
     fn display_messages_are_stable() {
-        assert_eq!(
-            KinematicsError::EmptyChain.to_string(),
-            "kinematic chain cannot be empty"
-        );
+        assert_eq!(KinematicsError::EmptyChain.to_string(), "kinematic chain cannot be empty");
         assert_eq!(
             KinematicsError::DimensionMismatch.to_string(),
             "input dimensions are incompatible"
@@ -49,10 +46,7 @@ mod tests {
             KinematicsError::InvalidInput("bad link".into()).to_string(),
             "invalid input: bad link"
         );
-        assert_eq!(
-            KinematicsError::ConvergenceFailed.to_string(),
-            "IK iteration did not converge"
-        );
+        assert_eq!(KinematicsError::ConvergenceFailed.to_string(), "IK iteration did not converge");
         assert_eq!(
             KinematicsError::NumericalInstability.to_string(),
             "numerical instability detected"

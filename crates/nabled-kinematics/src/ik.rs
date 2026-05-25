@@ -345,8 +345,8 @@ mod tests {
 
     use super::*;
     use crate::chain::{ChainSpec, DhConvention, JointType};
-    use crate::tree::y_branch_fixture::YBranchModel;
     use crate::tree::end_effector_pose_tree;
+    use crate::tree::y_branch_fixture::YBranchModel;
 
     fn six_dof_chain() -> ChainSpec<f64> {
         ChainSpec::from_dh(
@@ -552,7 +552,8 @@ mod tests {
     fn y_branch_tree_ik_reaches_target() {
         let model = YBranchModel;
         let q_target = arr1(&[0.3_f64, 0.5, -0.2]);
-        let target = end_effector_pose_tree(&model, "base", "left_ee", &q_target).expect("target fk");
+        let target =
+            end_effector_pose_tree(&model, "base", "left_ee", &q_target).expect("target fk");
         let q_init = arr1(&[0.0_f64, 0.0, 0.0]);
         let config = IkConfig { max_iterations: 300, tolerance: 1e-3, ..IkConfig::default() };
         let q = inverse_kinematics_tree_dls(&model, "base", "left_ee", &q_init, &target, &config)
@@ -618,22 +619,17 @@ mod tests {
         let q_target = arr1(&[1.5_f64, -1.0]);
         let target = fk_view(&chain, &q_target.view()).unwrap();
         let config = IkConfig { max_iterations: 1, tolerance: 1e-12, ..IkConfig::default() };
-        let err = inverse_kinematics_dls_with_limits(
-            &chain,
-            &arr1(&[0.0, 0.0]),
-            &target,
-            &config,
-            None,
-        )
-        .unwrap_err();
+        let err =
+            inverse_kinematics_dls_with_limits(&chain, &arr1(&[0.0, 0.0]), &target, &config, None)
+                .unwrap_err();
         assert_eq!(err, KinematicsError::ConvergenceFailed);
     }
 
     #[test]
     fn tree_ik_rejects_wrong_q_dimension() {
         let model = YBranchModel;
-        let target = end_effector_pose_tree(&model, "base", "left_ee", &arr1(&[0.0, 0.0, 0.0]))
-            .unwrap();
+        let target =
+            end_effector_pose_tree(&model, "base", "left_ee", &arr1(&[0.0, 0.0, 0.0])).unwrap();
         let err = inverse_kinematics_tree_dls(
             &model,
             "base",

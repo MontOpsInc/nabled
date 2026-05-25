@@ -91,9 +91,7 @@ mod tests {
 
     use super::*;
 
-    fn identity_rotation() -> Rotation3<f64> {
-        Rotation3 { matrix: Array2::eye(3) }
-    }
+    fn identity_rotation() -> Rotation3<f64> { Rotation3 { matrix: Array2::eye(3) } }
 
     #[test]
     fn compose_with_identity_preserves_rotation() {

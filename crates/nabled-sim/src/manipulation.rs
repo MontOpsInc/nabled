@@ -259,11 +259,8 @@ mod tests {
     fn trajectory_ik_rejects_empty_time_grid() {
         let fixture = load_six_dof_dh_json().expect("fixture");
         let chain = fixture.to_chain_spec::<f64>().expect("chain");
-        let trajectory = TrajectoryIk {
-            times:   vec![],
-            q_start: arr1(&[0.0; 6]),
-            q_end:   arr1(&[0.1; 6]),
-        };
+        let trajectory =
+            TrajectoryIk { times: vec![], q_start: arr1(&[0.0; 6]), q_end: arr1(&[0.1; 6]) };
         let config = TrajectoryIkConfig::default();
         assert_eq!(
             trajectory.solve(&chain, &config),
@@ -315,14 +312,8 @@ mod tests {
             ik_config: IkConfig { max_iterations: 200, tolerance: 1e-3, ..IkConfig::default() },
             limits:    None,
         };
-        let result = TrajectoryIk::solve_targets(
-            &times,
-            &chain,
-            &q_a.view(),
-            &targets,
-            &config,
-        )
-        .expect("solve targets");
+        let result = TrajectoryIk::solve_targets(&times, &chain, &q_a.view(), &targets, &config)
+            .expect("solve targets");
         assert_eq!(result.steps.len(), 2);
         assert!(result.max_error < 1e-2);
     }
@@ -342,9 +333,8 @@ mod tests {
             ik_config: IkConfig { max_iterations: 200, tolerance: 1e-3, ..IkConfig::default() },
             limits:    None,
         };
-        let result =
-            TrajectoryIk::solve_targets(&times, &chain, &q_init.view(), &targets, &config)
-                .expect("solve targets");
+        let result = TrajectoryIk::solve_targets(&times, &chain, &q_init.view(), &targets, &config)
+            .expect("solve targets");
         assert_eq!(result.steps.len(), 2);
         assert!(result.max_error < 1e-2);
     }

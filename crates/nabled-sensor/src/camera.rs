@@ -134,14 +134,8 @@ mod tests {
     fn pinhole_rejects_degenerate_intrinsics_matrix() {
         let point = ndarray::arr1(&[0.1_f64, 0.2, 1.0]);
         let bad_k = ndarray::arr2(&[[500.0, 0.0], [0.0, 500.0]]);
-        assert_eq!(
-            pinhole_project_k(&point.view(), &bad_k),
-            Err(SensorError::DimensionMismatch)
-        );
-        assert_eq!(
-            pinhole_jacobian_k(&point.view(), &bad_k),
-            Err(SensorError::DimensionMismatch)
-        );
+        assert_eq!(pinhole_project_k(&point.view(), &bad_k), Err(SensorError::DimensionMismatch));
+        assert_eq!(pinhole_jacobian_k(&point.view(), &bad_k), Err(SensorError::DimensionMismatch));
     }
 
     #[test]
@@ -159,13 +153,7 @@ mod tests {
     fn pinhole_rejects_wrong_point_dimension() {
         let k = PinholeIntrinsics { fx: 500.0, fy: 500.0, cx: 320.0, cy: 240.0 };
         let point = ndarray::arr1(&[1.0_f64, 2.0]);
-        assert_eq!(
-            pinhole_project(&point.view(), &k),
-            Err(SensorError::DimensionMismatch)
-        );
-        assert_eq!(
-            pinhole_jacobian(&point.view(), &k),
-            Err(SensorError::DimensionMismatch)
-        );
+        assert_eq!(pinhole_project(&point.view(), &k), Err(SensorError::DimensionMismatch));
+        assert_eq!(pinhole_jacobian(&point.view(), &k), Err(SensorError::DimensionMismatch));
     }
 }

@@ -52,12 +52,13 @@ Objective production-readiness and domain done criteria live in `docs/REFERENCE_
 | Signal (Physical AI) | windows, correlation, FFT (feature `signal`) | `nabled-linalg::signal` | Implemented | No | RealFft round-trip, `RfftSpectrum`, `windowed_rfft`, `autocorrelation_full`; S12–S14 pass with `signal` feature. |
 | Stats streaming (Physical AI) | online/ewma/rolling/lag column ops | `nabled-ml::stats` | Implemented | No | online/ewma/rolling/lag landed Round 1 (M2); lag_view/shift only. |
 | Kinematics | chain spec, FK, Jacobian, IK | `nabled-kinematics` | Implemented | Yes | True DLS IK, `IkResult`, joint limits, cold-start S3; bench `kinematics`. |
-| Tree FK | branched URDF-origin FK/Jacobian | `nabled-kinematics::tree` | Implemented | No | `link_transforms_tree`, `jacobian_tree`, S22 Y-branch fixture; dynamics still uses serial `ChainSpec`. |
-| Robot model | joints/links/URDF → `ChainSpec` | `nabled-model` | Implemented | No | quick-xml URDF v2, tree BFS, inertials/limits/axis, JSON fixture loader; S4 parity. |
-| Dynamics | RNEA/CRBA/forward dynamics | `nabled-dynamics` | Implemented | No | Serial RNEA + CRBA mass matrix + FD; `DynamicsConfig`; S5/S5b pass. |
-| Control | DARE/LQR/gramians/pole placement | `nabled-control` | Implemented | No | pole/observer/gramians/discrete gramians + `dare_residual`; S9/S10/S15/S16/S21 pass. |
-| Sensor fusion | Kalman/EKF/camera/IMU | `nabled-sensor` | Implemented | No | EKF predict/update, `PinholeIntrinsics`, strapdown IMU; S7/S11/S17–S19 pass. |
-| pynabled Physical AI | geometry/kinematics/model/dynamics/control/sensor/signal | `pynabled.physical_ai` | Implemented | No | Tree FK/Jacobian + `IkWorkspace` + S22 Python parity; `0.0.9` release after PyPI 0.0.8 observation. |
+| Tree FK | branched URDF-origin FK/Jacobian | `nabled-kinematics::tree` | Implemented | No | `link_transforms_tree`, `jacobian_tree`, S22 Y-branch fixture. URDF models go straight to tree FK; serial `ChainSpec` only when `DhParams` is explicit (D-MOD-2). |
+| Robot model | joints/links/URDF → `ChainSpec` | `nabled-model` | Implemented | No | quick-xml URDF v2, tree BFS, inertials/limits/axis, JSON fixture loader. `BodySpec::dh_params: Option<DhParams>`; URDF leaves it `None`; `to_chain_spec` fails loudly when DH is absent (D-MOD-2). |
+| Dynamics | RNEA/CRBA/forward dynamics | `nabled-dynamics` | Implemented | No | Serial RNEA + CRBA mass matrix + FD; `DynamicsConfig`; S5/S5b pass. Tree-branch variants `rnea_tree`/`mass_matrix_tree`/`forward_dynamics_tree` (+ `_into`) ship S26/S27 parity (D-MOD-3). |
+| Control | DARE/LQR/gramians/pole placement | `nabled-control` | Implemented | No | pole/observer/gramians/discrete gramians + `dare_residual`/`dare_residual_norm_view`; S9/S10/S15/S16/S21 pass. |
+| Sensor fusion | Kalman/EKF/camera/IMU | `nabled-sensor` | Implemented | No | EKF predict/update, `PinholeIntrinsics`, strapdown IMU + `strapdown_predict_view`/`_into`; S7/S11/S17–S19 pass. |
+| Facade gating | per-domain Cargo features | `nabled` | Implemented | No | `default = ["linalg"]`. Per-domain features + `physical-ai` umbrella. See `docs/FEATURE_MATRIX.md` (D-MOD-1). |
+| pynabled Physical AI | geometry/kinematics/model/dynamics/control/sensor/signal | `pynabled.physical_ai` | Implemented | No | View-first ingress on every Rust `_view` path; `out=` kwargs on every `_into` path. Tree FK/Jacobian + `IkWorkspace` + S22–S27 Python parity (D-MOD-4). |
 
 ## Execution Axes Model
 

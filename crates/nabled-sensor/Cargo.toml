@@ -16,18 +16,17 @@ categories = ["mathematics", "science", "algorithms"]
 
 [features]
 default = []
-blas = ["nabled-linalg/blas", "nabled-ml/blas"]
-lapack-provider = ["nabled-linalg/lapack-provider", "nabled-ml/lapack-provider"]
-openblas-system = ["blas", "lapack-provider", "nabled-linalg/openblas-system", "nabled-ml/openblas-system"]
-openblas-static = ["blas", "lapack-provider", "nabled-linalg/openblas-static", "nabled-ml/openblas-static"]
-netlib-system = ["blas", "lapack-provider", "nabled-linalg/netlib-system", "nabled-ml/netlib-system"]
-netlib-static = ["blas", "lapack-provider", "nabled-linalg/netlib-static", "nabled-ml/netlib-static"]
-magma-system = ["lapack-provider", "nabled-linalg/magma-system", "nabled-ml/magma-system"]
+blas = ["nabled-linalg/blas"]
+lapack-provider = ["nabled-linalg/lapack-provider"]
+openblas-system = ["blas", "lapack-provider", "nabled-linalg/openblas-system"]
+openblas-static = ["blas", "lapack-provider", "nabled-linalg/openblas-static"]
+netlib-system = ["blas", "lapack-provider", "nabled-linalg/netlib-system"]
+netlib-static = ["blas", "lapack-provider", "nabled-linalg/netlib-static"]
+magma-system = ["lapack-provider", "nabled-linalg/magma-system"]
 
 [dependencies]
 nabled-core.workspace = true
 nabled-linalg.workspace = true
-nabled-ml.workspace = true
 ndarray.workspace = true
 
 [dev-dependencies]
