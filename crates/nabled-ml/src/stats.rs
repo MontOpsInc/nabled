@@ -1508,4 +1508,158 @@ mod tests {
             Err(StatsError::InvalidInput(_))
         ));
     }
+
+    fn approx_eq(a: f64, b: f64) -> bool {
+        num_traits::Float::abs(a - b) < 1e-10
+    }
+
+    #[test]
+    fn online_mean_and_variance_track_batch_statistics() {
+        let mut mean = online::OnlineMean::<f64>::default();
+        let mut variance = online::OnlineVariance::<f64>::default();
+        for value in [1.0, 2.0, 3.0, 4.0, 5.0] {
+            mean.push(value);
+            variance.push(value);
+        }
+        assert!(approx_eq(mean.mean(), 3.0));
+        assert!(approx_eq(variance.mean(), 3.0));
+        assert!(approx_eq(variance.variance(), 2.5));
+    }
+
+    #[test]
+    fn online_accumulators_reset_to_initial_state() {
+        let mut mean = online::OnlineMean::<f64>::default();
+        let mut variance = online::OnlineVariance::<f64>::default();
+        mean.push(4.0);
+        variance.push(4.0);
+        mean.reset();
+        variance.reset();
+        assert!(approx_eq(mean.mean(), 0.0));
+        assert!(approx_eq(variance.mean(), 0.0));
+        assert!(approx_eq(variance.variance(), 0.0));
+    }
+
+    #[test]
+    fn online_variance_is_zero_with_fewer_than_two_samples() {
+        let mut variance = online::OnlineVariance::<f64>::default();
+        variance.push(2.0);
+        assert!(approx_eq(variance.variance(), 0.0));
+    }
+
+    #[test]
+    fn ewma_state_and_vector_apis_match_expected_smoothing() {
+        let signal = Array1::from_vec(vec![10.0_f64, 0.0]);
+        let alpha = 0.5;
+        let mut state = ewma::EwmaState::new(alpha);
+        assert!(approx_eq(state.push(10.0), 10.0));
+        assert!(approx_eq(state.push(0.0), 5.0));
+
+        let owned = ewma::ewma(&signal, alpha);
+        let viewed = ewma::ewma_view(&signal.view(), alpha);
+        assert!(approx_eq(owned[0], 10.0));
+        assert!(approx_eq(owned[1], 5.0));
+        assert_eq!(owned, viewed);
+
+        let mut output = Array1::<f64>::zeros(2);
+        ewma::ewma_into(&signal.view(), alpha, &mut output).unwrap();
+        assert_eq!(output, owned);
+
+        let mut bad_output = Array1::<f64>::zeros(3);
+        assert!(matches!(
+            ewma::ewma_into(&signal.view(), alpha, &mut bad_output),
+            Err(StatsError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn rolling_mean_and_variance_match_manual_windows() {
+        let signal = Array1::from_vec(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0]);
+        let window = 3;
+        let mean = rolling::rolling_mean(&signal.view(), window);
+        let mean_view = rolling::rolling_mean_view(&signal.view(), window);
+        assert_eq!(mean, mean_view);
+        assert!(approx_eq(mean[0], 1.0));
+        assert!(approx_eq(mean[2], 2.0));
+        assert!(approx_eq(mean[4], 4.0));
+
+        let variance = rolling::rolling_variance(&signal.view(), window);
+        assert!(approx_eq(variance[2], 2.0 / 3.0));
+
+        let mut mean_out = Array1::<f64>::zeros(signal.len());
+        rolling::rolling_mean_into(&signal.view(), window, &mut mean_out).unwrap();
+        assert_eq!(mean_out, mean);
+
+        let mut variance_out = Array1::<f64>::zeros(signal.len());
+        rolling::rolling_variance_into(&signal.view(), window, &mut variance_out).unwrap();
+        assert_eq!(variance_out, variance);
+
+        assert!(matches!(
+            rolling::rolling_mean_into(&signal.view(), 0, &mut mean_out),
+            Err(StatsError::InvalidInput(_))
+        ));
+        let mut bad_mean_out = Array1::<f64>::zeros(signal.len() + 1);
+        assert!(matches!(
+            rolling::rolling_mean_into(&signal.view(), window, &mut bad_mean_out),
+            Err(StatsError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            rolling::rolling_variance_into(&signal.view(), 0, &mut variance_out),
+            Err(StatsError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn rolling_covariance_into_handles_valid_and_invalid_inputs() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![1.0_f64, 2.0, 2.0, 3.0, 3.0, 4.0]).unwrap();
+        let window = 2;
+        let cov = rolling::rolling_covariance(&matrix.view(), window);
+        let cov_view = rolling::rolling_covariance_view(&matrix.view(), window);
+        assert_eq!(cov, cov_view);
+        assert!(approx_eq(cov[[0, 0]], 0.0));
+
+        let mut output = Array2::<f64>::zeros((3, 4));
+        rolling::rolling_covariance_into(&matrix.view(), window, &mut output).unwrap();
+        assert_eq!(output, cov);
+
+        let mut bad_shape = Array2::<f64>::zeros((3, 3));
+        assert!(matches!(
+            rolling::rolling_covariance_into(&matrix.view(), window, &mut bad_shape),
+            Err(StatsError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            rolling::rolling_covariance_into(&matrix.view(), 0, &mut output),
+            Err(StatsError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn lag_view_and_shift_columns_into_cover_alignment_paths() {
+        let matrix = Array2::from_shape_vec((3, 2), vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let view = matrix.view();
+        let lagged = lag::lag_view(&view, 1).unwrap();
+        assert_eq!(lagged.dim(), (2, 2));
+        assert!(approx_eq(lagged[[0, 0]], 1.0));
+        assert!(approx_eq(lagged[[1, 1]], 4.0));
+
+        let mut shifted = Array2::<f64>::zeros((3, 2));
+        lag::shift_columns_into(&view, 1, &mut shifted).unwrap();
+        assert!(approx_eq(shifted[[0, 0]], 0.0));
+        assert!(approx_eq(shifted[[1, 0]], 1.0));
+        assert!(approx_eq(shifted[[2, 1]], 4.0));
+
+        assert!(matches!(
+            lag::lag_view(&view, matrix.nrows()),
+            Err(StatsError::InvalidInput(_))
+        ));
+
+        let mut bad_output = Array2::<f64>::zeros((2, 2));
+        assert!(matches!(
+            lag::shift_columns_into(&view, 1, &mut bad_output),
+            Err(StatsError::InvalidInput(_))
+        ));
+
+        let mut zeroed = Array2::<f64>::ones((3, 2));
+        lag::shift_columns_into(&view, matrix.nrows(), &mut zeroed).unwrap();
+        assert!(zeroed.iter().all(|value| approx_eq(*value, 0.0)));
+    }
 }
