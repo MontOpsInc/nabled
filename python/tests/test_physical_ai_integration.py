@@ -472,18 +472,15 @@ def test_s_out_paths_exercised_for_all_physical_ai_into_variants():
     so_out = np.zeros((3, 3))
     geometry.so3_compose(np.eye(3), np.eye(3), out=so_out)
 
-    try:
-        from pynabled import signal as _signal_mod
-    except ImportError:
-        return
-    sig = np.sin(np.linspace(0.0, 2 * np.pi, 16))
-    spec_out = np.zeros(9, dtype=np.complex128)
-    _signal_mod.rfft(sig, out=spec_out)
-    time_out = np.zeros(16)
-    _signal_mod.irfft(spec_out, out=time_out)
-    auto_ref = _signal_mod.autocorrelation_full(sig)
-    auto_out = np.zeros_like(auto_ref)
-    _signal_mod.autocorrelation_full(sig, out=auto_out)
+    if pynabled.signal is not None:
+        sig = np.sin(np.linspace(0.0, 2 * np.pi, 16))
+        spec_out = np.zeros(9, dtype=np.complex128)
+        pynabled.signal.rfft(sig, out=spec_out)
+        time_out = np.zeros(16)
+        pynabled.signal.irfft(spec_out, out=time_out)
+        auto_ref = pynabled.signal.autocorrelation_full(sig)
+        auto_out = np.zeros_like(auto_ref)
+        pynabled.signal.autocorrelation_full(sig, out=auto_out)
 
 
 def test_s27_forward_dynamics_tree_round_trip_planar2r():
