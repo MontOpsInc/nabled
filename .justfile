@@ -163,7 +163,7 @@ bench-smoke:
     cargo bench -p nabled --no-default-features --features "linalg,accelerator-wgpu" --bench accelerator_benchmarks -- --quick
     cargo bench -p nabled --bench schur_benchmarks -- --quick
     cargo bench -p nabled --bench sylvester_benchmarks -- --quick
-    cargo bench -p nabled --bench optimization_benchmarks -- --quick
+    cargo bench -p nabled --features ml --bench optimization_benchmarks -- --quick
     cargo bench -p nabled --bench polar_benchmarks -- --quick
     cargo bench -p nabled --bench orthogonalization_benchmarks -- --quick
 
@@ -183,7 +183,7 @@ bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench accelerator_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench schur_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sylvester_benchmarks -- --quick
-    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench optimization_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features "{{ provider_bench_features }} ml" --bench optimization_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench polar_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench orthogonalization_benchmarks -- --quick
 
