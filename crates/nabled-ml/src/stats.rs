@@ -1509,9 +1509,7 @@ mod tests {
         ));
     }
 
-    fn approx_eq(a: f64, b: f64) -> bool {
-        num_traits::Float::abs(a - b) < 1e-10
-    }
+    fn approx_eq(a: f64, b: f64) -> bool { num_traits::Float::abs(a - b) < 1e-10 }
 
     #[test]
     fn online_mean_and_variance_track_batch_statistics() {
@@ -1610,7 +1608,8 @@ mod tests {
 
     #[test]
     fn rolling_covariance_into_handles_valid_and_invalid_inputs() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![1.0_f64, 2.0, 2.0, 3.0, 3.0, 4.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((3, 2), vec![1.0_f64, 2.0, 2.0, 3.0, 3.0, 4.0]).unwrap();
         let window = 2;
         let cov = rolling::rolling_covariance(&matrix.view(), window);
         let cov_view = rolling::rolling_covariance_view(&matrix.view(), window);
@@ -1634,7 +1633,8 @@ mod tests {
 
     #[test]
     fn lag_view_and_shift_columns_into_cover_alignment_paths() {
-        let matrix = Array2::from_shape_vec((3, 2), vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let matrix =
+            Array2::from_shape_vec((3, 2), vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
         let view = matrix.view();
         let lagged = lag::lag_view(&view, 1).unwrap();
         assert_eq!(lagged.dim(), (2, 2));
@@ -1647,10 +1647,7 @@ mod tests {
         assert!(approx_eq(shifted[[1, 0]], 1.0));
         assert!(approx_eq(shifted[[2, 1]], 4.0));
 
-        assert!(matches!(
-            lag::lag_view(&view, matrix.nrows()),
-            Err(StatsError::InvalidInput(_))
-        ));
+        assert!(matches!(lag::lag_view(&view, matrix.nrows()), Err(StatsError::InvalidInput(_))));
 
         let mut bad_output = Array2::<f64>::zeros((2, 2));
         assert!(matches!(
