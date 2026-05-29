@@ -160,7 +160,7 @@ bench-smoke:
     cargo bench -p nabled --bench sparse_benchmarks -- --quick
     cargo bench -p nabled --bench tensor_benchmarks -- --quick
     cargo bench -p nabled --bench accelerator_benchmarks -- --quick
-    cargo bench -p nabled --no-default-features --features accelerator-wgpu --bench accelerator_benchmarks -- --quick
+    cargo bench -p nabled --no-default-features --features "linalg,accelerator-wgpu" --bench accelerator_benchmarks -- --quick
     cargo bench -p nabled --bench schur_benchmarks -- --quick
     cargo bench -p nabled --bench sylvester_benchmarks -- --quick
     cargo bench -p nabled --bench optimization_benchmarks -- --quick

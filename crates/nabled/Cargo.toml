@@ -275,6 +275,7 @@ harness = false
 [[bench]]
 name = "accelerator_benchmarks"
 harness = false
+required-features = ["linalg"]
 
 [[bench]]
 name = "schur_benchmarks"
