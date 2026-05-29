@@ -441,6 +441,36 @@ mod tests {
             AcceleratorError::FeatureNotEnabled.into_nabled_error(),
             NabledError::Other(_)
         ));
+
+        assert!(matches!(
+            GeometryError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            GeometryError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            GeometryError::ZeroNorm.into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            GeometryError::NumericalInstability.into_nabled_error(),
+            NabledError::NumericalInstability
+        ));
+
+        assert!(matches!(
+            SignalError::EmptyInput.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            SignalError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            SignalError::NumericalInstability.into_nabled_error(),
+            NabledError::NumericalInstability
+        ));
     }
 
     #[test]

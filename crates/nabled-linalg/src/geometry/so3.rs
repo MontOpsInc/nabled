@@ -138,4 +138,41 @@ mod tests {
             assert_relative_eq!(rotated[i], vector[i], epsilon = 1e-12);
         }
     }
+
+    #[test]
+    fn hat_vee_round_trip_and_relative_rotation_metrics() {
+        let omega = ndarray::arr1(&[0.1_f64, -0.2, 0.3]);
+        let skew = hat(&omega.view());
+        let recovered = vee(&skew.view());
+        for i in 0..3 {
+            assert_relative_eq!(recovered[i], omega[i], epsilon = 1e-12);
+        }
+
+        let id = identity_rotation();
+        let r = exp(&omega.view()).unwrap();
+        let rel = relative_rotation(&id, &r);
+        assert_relative_eq!(rel.matrix[[0, 0]], r.matrix[[0, 0]], epsilon = 1e-10);
+        assert_relative_eq!(angle_between(&id, &id), 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn compose_rotate_into_and_exp_reject_invalid_inputs() {
+        let id = identity_rotation();
+        let bad = Rotation3 { matrix: Array2::zeros((3, 2)) };
+        assert_eq!(compose(&id, &bad), Err(GeometryError::DimensionMismatch));
+
+        let vector = ndarray::arr1(&[1.0_f64, 2.0, 3.0]);
+        let mut out = Array1::zeros(2);
+        assert_eq!(
+            rotate_vector_into(&id, &vector.view(), &mut out),
+            Err(GeometryError::DimensionMismatch)
+        );
+
+        let mut valid_out = Array1::zeros(3);
+        rotate_vector_into(&id, &vector.view(), &mut valid_out).unwrap();
+        assert_relative_eq!(valid_out[0], vector[0], epsilon = 1e-12);
+
+        let bad_omega = ndarray::arr1(&[f64::NAN, 0.0, 0.0]);
+        assert_eq!(exp(&bad_omega.view()), Err(GeometryError::NumericalInstability));
+    }
 }

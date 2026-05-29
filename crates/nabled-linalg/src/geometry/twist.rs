@@ -50,3 +50,31 @@ pub fn adjoint_force<T: NabledReal>(
 fn cross3<T: NabledReal>(a: &ArrayView1<'_, T>, b: &ArrayView1<'_, T>) -> Array1<T> {
     so3::hat(a).dot(b)
 }
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_relative_eq;
+    use ndarray::Array2;
+
+    use super::*;
+
+    #[test]
+    fn motion_and_force_cross_products_have_expected_shape() {
+        let a = ndarray::arr1(&[1.0_f64, 0.0, 0.0, 0.0, 1.0, 0.0]);
+        let b = ndarray::arr1(&[0.0_f64, 1.0, 0.0, 1.0, 0.0, 0.0]);
+        let motion = motion_cross(&a.view(), &b.view());
+        let force = force_cross(&a.view(), &b.view());
+        assert_eq!(motion.len(), 6);
+        assert_eq!(force.len(), 6);
+        assert_relative_eq!(motion[2], 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn adjoint_motion_and_force_preserve_identity_action() {
+        let adj = Array2::<f64>::eye(6);
+        let twist = ndarray::arr1(&[1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let wrench = ndarray::arr1(&[0.5_f64, -1.0, 2.0, 3.0, 4.0, -2.0]);
+        assert_eq!(adjoint_motion(&adj, &twist.view()), twist);
+        assert_eq!(adjoint_force(&adj, &wrench.view()), wrench);
+    }
+}

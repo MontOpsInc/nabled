@@ -224,4 +224,47 @@ mod tests {
         let bad_twist = ndarray::arr1(&[0.0_f64; 5]);
         assert_eq!(exp(&bad_twist.view()), Err(GeometryError::DimensionMismatch));
     }
+
+    #[test]
+    fn accessors_homogeneous_adjoint_and_into_paths() {
+        let twist = ndarray::arr1(&[0.0_f64, 0.2, 0.0, 1.0, -0.5, 2.0]);
+        let transform = exp(&twist.view()).unwrap();
+        assert_eq!(rotation(&transform).matrix.dim(), (3, 3));
+        assert_eq!(translation(&transform).len(), 3);
+
+        let homogeneous = to_homogeneous(&transform);
+        let recovered = from_homogeneous(&homogeneous).unwrap();
+        for i in 0..3 {
+            assert_relative_eq!(
+                recovered.translation[i],
+                transform.translation[i],
+                epsilon = 1e-10
+            );
+        }
+
+        let adj = adjoint(&transform);
+        assert_eq!(adj.dim(), (6, 6));
+
+        let point = ndarray::arr1(&[1.0_f64, -2.0, 3.5]);
+        let mut out = Array1::zeros(3);
+        transform_point_into(&transform, &point.view(), &mut out).unwrap();
+        assert_relative_eq!(out[0], transform_point(&transform, &point.view())[0], epsilon = 1e-12);
+
+        let vector = transform_vector(&transform, &point.view());
+        assert_eq!(vector.len(), 3);
+    }
+
+    #[test]
+    fn homogeneous_and_transform_point_into_reject_bad_shapes() {
+        let transform = identity_transform();
+        let bad_homogeneous = Array2::<f64>::zeros((3, 4));
+        assert_eq!(from_homogeneous(&bad_homogeneous), Err(GeometryError::DimensionMismatch));
+
+        let bad_point = ndarray::arr1(&[1.0_f64, 2.0]);
+        let mut out = Array1::zeros(3);
+        assert_eq!(
+            transform_point_into(&transform, &bad_point.view(), &mut out),
+            Err(GeometryError::DimensionMismatch)
+        );
+    }
 }

@@ -285,4 +285,73 @@ mod tests {
         assert_relative_eq!(product.y, 0.0, epsilon = 1e-10);
         assert_relative_eq!(product.z, 0.0, epsilon = 1e-10);
     }
+
+    #[test]
+    fn from_rotation_matrix_covers_trace_branch_variants() {
+        use std::f64::consts::PI;
+
+        let cases = [
+            AxisAngle { axis: [0.0, 0.0, 1.0], angle: 0.2 },
+            AxisAngle { axis: [1.0, 0.0, 0.0], angle: PI },
+            AxisAngle { axis: [0.0, 1.0, 0.0], angle: PI },
+            AxisAngle { axis: [0.0, 0.0, 1.0], angle: PI },
+        ];
+        for axis_angle in cases {
+            let q = normalize(&from_axis_angle(&axis_angle));
+            let rot = to_rotation_matrix(&q);
+            let recovered = from_rotation_matrix(&rot).unwrap();
+            let recovered_rot = to_rotation_matrix(&recovered).matrix;
+            for i in 0..3 {
+                for j in 0..3 {
+                    assert_relative_eq!(rot.matrix[[i, j]], recovered_rot[[i, j]], epsilon = 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn slerp_helpers_and_degenerate_inputs() {
+        let q1 = identity::<f64>();
+        let q2 = from_axis_angle(&AxisAngle { axis: [0.0, 0.0, 1.0], angle: 0.5 });
+        assert_relative_eq!(dot(&q1, &q2), q2.w, epsilon = 1e-12);
+
+        let conjugated = conjugate(&q2);
+        assert_relative_eq!(conjugated.x, -q2.x, epsilon = 1e-12);
+
+        let opposite = Quat { w: -q2.w, x: -q2.x, y: -q2.y, z: -q2.z };
+        let flipped = slerp(&q1, &opposite, 0.5);
+        assert_relative_eq!(norm(&flipped), 1.0, epsilon = 1e-6);
+
+        let nearly_parallel = from_axis_angle(&AxisAngle { axis: [1.0, 0.0, 0.0], angle: 1e-8 });
+        let near_parallel_interp = slerp(&q1, &nearly_parallel, 0.5);
+        assert_relative_eq!(norm(&near_parallel_interp), 1.0, epsilon = 1e-6);
+
+        let blended = nlerp(&q1, &q2, 0.5);
+        assert_relative_eq!(norm(&blended), 1.0, epsilon = 1e-6);
+
+        let mut product = identity();
+        mul_into(&q1, &q2, &mut product);
+        assert_relative_eq!(product.w, q2.w, epsilon = 1e-10);
+
+        let mut slerp_out = identity();
+        slerp_into(&q1, &q2, 0.25, &mut slerp_out);
+        assert_relative_eq!(norm(&slerp_out), 1.0, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn exp_log_and_normalize_handle_zero_inputs() {
+        let zero_omega = ndarray::arr1(&[0.0_f64, 0.0, 0.0]);
+        let q_id = exp(&zero_omega.view());
+        assert_relative_eq!(q_id.w, 1.0, epsilon = 1e-12);
+
+        let id_log = log(&identity::<f64>());
+        assert_relative_eq!(id_log.sum(), 0.0, epsilon = 1e-12);
+
+        let axis_angle = to_axis_angle(&identity::<f64>());
+        assert_relative_eq!(axis_angle.angle, 0.0, epsilon = 1e-12);
+
+        let zero_q = Quat { w: 0.0, x: 0.0, y: 0.0, z: 0.0 };
+        let normalized = normalize(&zero_q);
+        assert_relative_eq!(normalized.w, 1.0, epsilon = 1e-12);
+    }
 }
