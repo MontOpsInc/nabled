@@ -22,11 +22,11 @@ Important! Nabled is under active development right now, so the only way to be s
 ```toml
 [dependencies]
 # Default (slim): just linear algebra.
-nabled = "0.0.8"
+nabled = "0.0.10"
 
 # Or opt into the full Physical AI vertical (kinematics / dynamics /
 # control / sensor / sim / model / ml / signal / geometry):
-# nabled = { version = "0.0.8", features = ["physical-ai"] }
+# nabled = { version = "0.0.10", features = ["physical-ai"] }
 ```
 
 > Pre-1.0 modularization: starting with this revision the `nabled` facade
@@ -195,12 +195,12 @@ To publish **pynabled** wheels to PyPI (tags, CI, TestPyPI), see [docs/PYPI_PUBL
 
 ```toml
 [dependencies]
-nabled = { version = "0.0.8", features = ["openblas-system"] }
+nabled = { version = "0.0.10", features = ["openblas-system"] }
 ```
 
 ```toml
 [dependencies]
-nabled = { version = "0.0.8", features = ["arrow"] }
+nabled = { version = "0.0.10", features = ["arrow"] }
 ```
 
 Arrow interop notes:

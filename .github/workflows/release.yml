@@ -31,6 +31,36 @@ on:
         default: false
         required: false
         type: boolean
+      skip_kinematics:
+        description: 'Skip publishing nabled-kinematics'
+        default: false
+        required: false
+        type: boolean
+      skip_model:
+        description: 'Skip publishing nabled-model'
+        default: false
+        required: false
+        type: boolean
+      skip_dynamics:
+        description: 'Skip publishing nabled-dynamics'
+        default: false
+        required: false
+        type: boolean
+      skip_control:
+        description: 'Skip publishing nabled-control'
+        default: false
+        required: false
+        type: boolean
+      skip_sensor:
+        description: 'Skip publishing nabled-sensor'
+        default: false
+        required: false
+        type: boolean
+      skip_sim:
+        description: 'Skip publishing nabled-sim'
+        default: false
+        required: false
+        type: boolean
       skip_facade:
         description: 'Skip publishing nabled facade crate'
         default: false
@@ -55,8 +85,11 @@ env:
   RUSTFLAGS: '-C debuginfo=line-tables-only -C incremental=false'
 
 jobs:
-  release:
+  release-publish:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.verify_version.outputs.version }}
+      publish_ok: ${{ steps.publish_all.outputs.publish_ok }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -66,27 +99,24 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Verify version consistency
+        id: verify_version
         run: |
-          # Determine version based on trigger type
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ -n "${{ inputs.version }}" ]; then
-              # Use provided version input
               VERSION="${{ inputs.version }}"
               echo "Using provided version: $VERSION"
             else
-              # Extract version from [workspace.package] in Cargo.toml
               VERSION=$(awk '/^\[workspace\.package\]/ {in_workspace_package=1; next} in_workspace_package && /^version = / {gsub(/"/,"",$3); print $3; exit}' Cargo.toml)
               echo "Using version from Cargo.toml: $VERSION"
             fi
           else
-            # Extract version from tag (push trigger)
             VERSION=${GITHUB_REF#refs/tags/v}
             echo "Using version from tag: $VERSION"
           fi
 
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          # Check that [workspace.package] version matches expected version.
           CARGO_VERSION=$(awk '/^\[workspace\.package\]/ {in_workspace_package=1; next} in_workspace_package && /^version = / {gsub(/"/,"",$3); print $3; exit}' Cargo.toml)
           if [ -z "$CARGO_VERSION" ]; then
             echo "Error: could not read [workspace.package] version from Cargo.toml"
@@ -94,75 +124,193 @@ jobs:
           fi
           if [ "$CARGO_VERSION" != "$VERSION" ]; then
             echo "Error: workspace version ($CARGO_VERSION) does not match expected version ($VERSION)"
-            echo "Please ensure versions are consistent"
             exit 1
           fi
 
       - name: Verify publish
-        if: ${{ inputs.skip_publish != true && inputs.verify_publish == true }}
+        if: ${{ (github.event_name == 'push' || inputs.skip_publish != true) && inputs.verify_publish == true }}
         run: |
-          cargo publish --dry-run -p nabled-core --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          cargo publish --dry-run -p nabled-core --no-verify --token "${CARGO_REGISTRY_TOKEN}"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Publish nabled-core to crates.io
-        if: ${{ inputs.skip_publish != true && inputs.skip_core != true }}
-        run: |
-          cargo publish -p nabled-core --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          sleep 30
+      - name: Publish workspace crates to crates.io
+        id: publish_all
+        if: ${{ github.event_name == 'push' || inputs.skip_publish != true }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          SKIP_CORE: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_core == true }}
+          SKIP_LINALG: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_linalg == true }}
+          SKIP_ML: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_ml == true }}
+          SKIP_PHYSICAL_AI: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_physical_ai == true }}
+          SKIP_KINEMATICS: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_kinematics == true }}
+          SKIP_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_model == true }}
+          SKIP_DYNAMICS: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_dynamics == true }}
+          SKIP_CONTROL: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_control == true }}
+          SKIP_SENSOR: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_sensor == true }}
+          SKIP_SIM: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_sim == true }}
+          SKIP_FACADE: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_facade == true }}
+        run: |
+          set -uo pipefail
+          NEW_CRATE_COUNT=0
+          PUBLISH_OK=true
 
-      - name: Publish nabled-linalg to crates.io
-        if: ${{ inputs.skip_publish != true && inputs.skip_linalg != true }}
-        run: |
-          cargo publish -p nabled-linalg --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          sleep 30
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          should_skip() {
+            case "$1" in
+              core) [ "${SKIP_CORE}" = "true" ] ;;
+              linalg) [ "${SKIP_LINALG}" = "true" ] ;;
+              ml) [ "${SKIP_ML}" = "true" ] ;;
+              physical_ai) [ "${SKIP_PHYSICAL_AI}" = "true" ] ;;
+              kinematics) [ "${SKIP_PHYSICAL_AI}" = "true" ] || [ "${SKIP_KINEMATICS}" = "true" ] ;;
+              model) [ "${SKIP_PHYSICAL_AI}" = "true" ] || [ "${SKIP_MODEL}" = "true" ] ;;
+              dynamics) [ "${SKIP_PHYSICAL_AI}" = "true" ] || [ "${SKIP_DYNAMICS}" = "true" ] ;;
+              control) [ "${SKIP_PHYSICAL_AI}" = "true" ] || [ "${SKIP_CONTROL}" = "true" ] ;;
+              sensor) [ "${SKIP_PHYSICAL_AI}" = "true" ] || [ "${SKIP_SENSOR}" = "true" ] ;;
+              sim) [ "${SKIP_PHYSICAL_AI}" = "true" ] || [ "${SKIP_SIM}" = "true" ] ;;
+              facade) [ "${SKIP_FACADE}" = "true" ] ;;
+              *) return 1 ;;
+            esac
+          }
 
-      - name: Publish nabled-ml to crates.io
-        if: ${{ inputs.skip_publish != true && inputs.skip_ml != true }}
-        run: |
-          cargo publish -p nabled-ml --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          sleep 30
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          crate_exists() {
+            local pkg="$1"
+            if cargo search "${pkg}" --limit 1 --token "${CARGO_REGISTRY_TOKEN}" 2>/dev/null | grep -q "^${pkg} = "; then
+              return 0
+            fi
+            return 1
+          }
 
-      - name: Publish Physical AI domain crates to crates.io
-        if: ${{ inputs.skip_publish != true && inputs.skip_physical_ai != true }}
-        run: |
-          for pkg in nabled-kinematics nabled-model nabled-dynamics nabled-control nabled-sensor nabled-sim; do
-            cargo publish -p "${pkg}" --no-verify --token "${CARGO_REGISTRY_TOKEN}"
-            sleep 30
-          done
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          pace_after_publish() {
+            local pkg="$1"
+            local is_new="$2"
+            if [ "${is_new}" = "yes" ]; then
+              NEW_CRATE_COUNT=$((NEW_CRATE_COUNT + 1))
+              if [ "${NEW_CRATE_COUNT}" -gt 5 ]; then
+                echo "Pacing 600s after new crate #${NEW_CRATE_COUNT} (${pkg})..."
+                sleep 600
+              else
+                echo "Pacing 65s after new crate #${NEW_CRATE_COUNT} (${pkg})..."
+                sleep 65
+              fi
+            else
+              echo "Pacing 65s after version bump (${pkg})..."
+              sleep 65
+            fi
+          }
 
-      - name: Publish nabled facade to crates.io
-        if: ${{ inputs.skip_publish != true && inputs.skip_facade != true }}
-        run: |
-          cargo publish -p nabled --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          publish_crate() {
+            local pkg="$1"
+            local is_new="unknown"
+
+            if crate_exists "${pkg}"; then
+              is_new="no"
+            else
+              is_new="yes"
+            fi
+
+            echo "Publishing ${pkg} (new=${is_new})..."
+            local output=""
+            local status=0
+            output="$(cargo publish -p "${pkg}" --no-verify --token "${CARGO_REGISTRY_TOKEN}" 2>&1)" || status=$?
+
+            if [ "${status}" -eq 0 ]; then
+              echo "${output}"
+              pace_after_publish "${pkg}" "${is_new}"
+              return 0
+            fi
+
+            echo "${output}" >&2
+
+            if echo "${output}" | grep -qi "already exists"; then
+              echo "Skip: ${pkg} version already published"
+              pace_after_publish "${pkg}" "${is_new}"
+              return 0
+            fi
+
+            if echo "${output}" | grep -qi "429 Too Many Requests"; then
+              echo "Rate limited on ${pkg}; waiting and retrying once..."
+              local wait_seconds=65
+              if echo "${output}" | grep -Eo 'try again after [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' >/dev/null; then
+                local retry_at
+                retry_at="$(echo "${output}" | grep -Eo 'try again after [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | head -1 | sed 's/try again after //')"
+                local retry_epoch now_epoch
+                retry_epoch="$(date -u -d "${retry_at} GMT" +%s 2>/dev/null || date -u -j -f "%Y-%m-%d %H:%M:%S" "${retry_at}" +%s 2>/dev/null || echo 0)"
+                now_epoch="$(date -u +%s)"
+                if [ "${retry_epoch}" -gt "${now_epoch}" ]; then
+                  wait_seconds=$((retry_epoch - now_epoch + 5))
+                fi
+              fi
+              echo "Sleeping ${wait_seconds}s before retry..."
+              sleep "${wait_seconds}"
+              if cargo publish -p "${pkg}" --no-verify --token "${CARGO_REGISTRY_TOKEN}"; then
+                pace_after_publish "${pkg}" "${is_new}"
+                return 0
+              fi
+              echo "Retry failed for ${pkg}" >&2
+              PUBLISH_OK=false
+              return 1
+            fi
+
+            echo "Publish failed for ${pkg}" >&2
+            PUBLISH_OK=false
+            return 1
+          }
+
+          publish_if_enabled() {
+            local skip_key="$1"
+            local pkg="$2"
+            if should_skip "${skip_key}"; then
+              echo "Skip flag set for ${pkg}"
+              return 0
+            fi
+            publish_crate "${pkg}"
+          }
+
+          set -e
+          publish_if_enabled core nabled-core
+          publish_if_enabled linalg nabled-linalg
+          publish_if_enabled ml nabled-ml
+          publish_if_enabled kinematics nabled-kinematics
+          publish_if_enabled model nabled-model
+          publish_if_enabled dynamics nabled-dynamics
+          publish_if_enabled control nabled-control
+          publish_if_enabled sensor nabled-sensor
+          publish_if_enabled sim nabled-sim
+          publish_if_enabled facade nabled
+
+          if [ "${PUBLISH_OK}" = "true" ]; then
+            echo "publish_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_ok=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+  github-release:
+    runs-on: ubuntu-latest
+    needs: release-publish
+    if: always() && needs.release-publish.result != 'cancelled'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Extract release notes
         run: |
-          # Check if RELEASE_NOTES.md exists (from the PR)
+          VERSION="${{ needs.release-publish.outputs.version }}"
           if [ -f "RELEASE_NOTES.md" ]; then
             cp RELEASE_NOTES.md release_notes_for_tag.md
           else
-            # Generate release notes for this tag if not present
-            echo "# Release v$VERSION" > release_notes_for_tag.md
+            echo "# Release v${VERSION}" > release_notes_for_tag.md
             echo "" >> release_notes_for_tag.md
-            echo "This release was published from tag v$VERSION" >> release_notes_for_tag.md
+            echo "This release was published from tag v${VERSION}" >> release_notes_for_tag.md
           fi
 
       - name: Create GitHub Release
+        if: needs.release-publish.outputs.publish_ok == 'true'
         uses: softprops/action-gh-release@v2
         with:
           body_path: release_notes_for_tag.md
           draft: false
-          prerelease: ${{ contains(env.VERSION, '-rc') || contains(env.VERSION, '-beta') || contains(env.VERSION, '-alpha') }}
-          tag_name: v${{ env.VERSION }}
-          name: Release v${{ env.VERSION }}
+          prerelease: ${{ contains(needs.release-publish.outputs.version, '-rc') || contains(needs.release-publish.outputs.version, '-beta') || contains(needs.release-publish.outputs.version, '-alpha') }}
+          tag_name: v${{ needs.release-publish.outputs.version }}
+          name: Release v${{ needs.release-publish.outputs.version }}
