@@ -440,9 +440,9 @@ init-dev:
     @echo "✅ Development tools installed!"
     @echo ""
     @echo "Next steps:"
-    @echo "1. Get your crates.io API token from https://crates.io/settings/tokens"
-    @echo "2. Add it as CARGO_REGISTRY_TOKEN in GitHub repo settings → Secrets"
-    @echo "3. Use 'just prepare-release <X.Y.Z>' to prepare release PRs"
+    @echo "1. Ensure CARGO_REGISTRY_TOKEN is set at MontOpsInc org (or repo) Actions secrets"
+    @echo "2. After first Physical AI publish, run Actions → crates.io add owner (workflow_dispatch)"
+    @echo "3. Use 'just prepare-release <X.Y.Z>' to prepare release PRs (see docs/PUBLISH_CHECKLIST.md)"
     @echo ""
     @echo "Useful commands:"
     @echo "  just release-dry 0.1.0  # Preview what would happen"
@@ -485,12 +485,21 @@ prepare-release version:
     sed -i '' "s/^nabled-core = { path = \"crates\\/nabled-core\", version = \"=[^\"]*\" }/nabled-core = { path = \"crates\\/nabled-core\", version = \"={{ version }}\" }/" Cargo.toml
     sed -i '' "s/^nabled-linalg = { path = \"crates\\/nabled-linalg\", version = \"=[^\"]*\" }/nabled-linalg = { path = \"crates\\/nabled-linalg\", version = \"={{ version }}\" }/" Cargo.toml
     sed -i '' "s/^nabled-ml = { path = \"crates\\/nabled-ml\", version = \"=[^\"]*\" }/nabled-ml = { path = \"crates\\/nabled-ml\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-kinematics = { path = \"crates\\/nabled-kinematics\", version = \"=[^\"]*\" }/nabled-kinematics = { path = \"crates\\/nabled-kinematics\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-model = { path = \"crates\\/nabled-model\", version = \"=[^\"]*\" }/nabled-model = { path = \"crates\\/nabled-model\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-dynamics = { path = \"crates\\/nabled-dynamics\", version = \"=[^\"]*\" }/nabled-dynamics = { path = \"crates\\/nabled-dynamics\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-control = { path = \"crates\\/nabled-control\", version = \"=[^\"]*\" }/nabled-control = { path = \"crates\\/nabled-control\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-sensor = { path = \"crates\\/nabled-sensor\", version = \"=[^\"]*\" }/nabled-sensor = { path = \"crates\\/nabled-sensor\", version = \"={{ version }}\" }/" Cargo.toml
+    sed -i '' "s/^nabled-sim = { path = \"crates\\/nabled-sim\", version = \"=[^\"]*\" }/nabled-sim = { path = \"crates\\/nabled-sim\", version = \"={{ version }}\" }/" Cargo.toml
 
     # Update nabled crate version references in README files (if they exist).
     # Look for patterns like: nabled = "0.1.1" or nabled = { version = "0.1.1" }.
-    for readme in README.md crates/nabled-core/README.md crates/nabled-linalg/README.md crates/nabled-ml/README.md; do
+    physical_ai_deps="nabled-kinematics nabled-model nabled-dynamics nabled-control nabled-sensor nabled-sim"
+    for readme in README.md crates/nabled-core/README.md crates/nabled-linalg/README.md crates/nabled-ml/README.md \
+        crates/nabled-kinematics/README.md crates/nabled-model/README.md crates/nabled-dynamics/README.md \
+        crates/nabled-control/README.md crates/nabled-sensor/README.md crates/nabled-sim/README.md; do
         if [ -f "$readme" ]; then
-            for dep in nabled nabled-core nabled-linalg nabled-ml; do
+            for dep in nabled nabled-core nabled-linalg nabled-ml $physical_ai_deps; do
                 # Update simple dependency format
                 sed -i '' "s/$dep = \"[0-9]*\.[0-9]*\.[0-9]*\"/$dep = \"{{ version }}\"/" "$readme" || true
                 # Update version field in dependency table format
@@ -522,7 +531,9 @@ prepare-release version:
         git add Cargo.lock
     fi
     # Also add README files if they were modified
-    git add README.md crates/nabled-core/README.md crates/nabled-linalg/README.md crates/nabled-ml/README.md 2>/dev/null || true
+    git add README.md crates/nabled-core/README.md crates/nabled-linalg/README.md crates/nabled-ml/README.md \
+        crates/nabled-kinematics/README.md crates/nabled-model/README.md crates/nabled-dynamics/README.md \
+        crates/nabled-control/README.md crates/nabled-sensor/README.md crates/nabled-sim/README.md 2>/dev/null || true
 
     # Commit
     git commit -m "chore: prepare release v{{ version }}"
@@ -611,7 +622,7 @@ tag-pypi-release:
     fi
     awk -v ver="$CARGO_VERSION" '
       /^\[project\]$/ { in_proj=1; print; next }
-      /^\[/ && !/^\\[project/ { in_proj=0 }
+      /^\[/ && !/^\[project\]/ { in_proj=0 }
       in_proj && /^version = / { print "version = \"" ver "\""; next }
       { print }
     ' pyproject.toml > pyproject.toml.tmp && mv pyproject.toml.tmp pyproject.toml

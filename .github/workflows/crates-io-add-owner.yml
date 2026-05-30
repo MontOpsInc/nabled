@@ -1,0 +1,66 @@
+name: crates.io add owner
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: 'crates.io username to add as owner'
+        default: 'NiklausParcell'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  add-owner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add co-owner to workspace crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          USER: ${{ inputs.username }}
+        run: |
+          set -uo pipefail
+
+          add_owner() {
+            local pkg="$1"
+            echo "Adding owner ${USER} to ${pkg}..."
+            if cargo owner --add "${USER}" -p "${pkg}" --token "${CARGO_REGISTRY_TOKEN}" 2>&1; then
+              echo "OK: ${pkg}"
+              return 0
+            fi
+            local status=$?
+            if cargo owner --list -p "${pkg}" --token "${CARGO_REGISTRY_TOKEN}" 2>&1 | grep -Fq "${USER}"; then
+              echo "Skip: ${USER} is already an owner of ${pkg}"
+              return 0
+            fi
+            echo "Warning: could not add owner to ${pkg} (exit ${status}); crate may not exist yet"
+            return 0
+          }
+
+          for pkg in \
+            nabled-kinematics \
+            nabled-model \
+            nabled-dynamics \
+            nabled-control \
+            nabled-sensor \
+            nabled-sim \
+            nabled \
+            nabled-core \
+            nabled-linalg \
+            nabled-ml
+          do
+            add_owner "${pkg}"
+          done
+
+          echo ""
+          echo "Done. Verify Owners on crates.io for: ${USER}"

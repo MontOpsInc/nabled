@@ -148,6 +148,8 @@ just test-physical-ai-integration
 
 `just test-integration-all` and `just test` include the signal-gated Physical AI suite.
 
+For Rust crates.io releases (publish order, rate limits, co-ownership), see [docs/PUBLISH_CHECKLIST.md](docs/PUBLISH_CHECKLIST.md).
+
 ## Optional dependencies
 
 - `dev`: pytest, pytest-cov, and pyarrow for local testing/development
