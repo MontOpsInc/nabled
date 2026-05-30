@@ -1,6 +1,6 @@
 # Benchmark Tracker
 
-Last updated: 2026-03-09
+Last updated: 2026-05-23
 
 ## Purpose
 
@@ -493,6 +493,20 @@ Summary:
 2. LTO proof-pack pass is green (`rc=0`) with `persistent_regression_count = 0`.
 3. LTO run-level medians (`overlay/baseline`) are stable and near parity: `1.008`, `1.008`, `1.010`.
 4. Remaining top slowdowns are all below persistent effect-size gate (`delta_ns <= 5000`), so no new optimization patch is opened in this pass.
+
+### K-005 Monitor Checklist (Scheduled Sweep, 2026-05-23)
+
+| Check | Status | Notes |
+|---|---|---|
+| Remote script available | Yes | `scripts/gpu_remote.sh one <host> magma-k005-monitor` |
+| SSH key present (`~/.ssh/nabled_vast_4090`) | No | Key not found on maintainer machine |
+| Remote host reachable | No | `ssh9.vast.ai:18800` connect timeout |
+| Remote monitor run this pass | Skipped | Preconditions not met; no new stability artifact |
+| Last known green monitor | Yes | `stability-20260309T135201Z.json`, `REPEATS=5`, `rc=0` |
+| `persistent_regression_count` | 0 | Last confirmed 2026-03-09 lock-confirmation pass |
+| Optimization patch opened | No | Monitor-only; reopen only if ratio >`1.03x` and delta >`5000ns` persist in >=4/5 runs |
+
+Action: rerun `scripts/gpu_remote.sh one <host> magma-k005-monitor` when SSH key and host are available; refresh this checklist and artifact paths on success.
 
 ## Optimization Handoff Notes (Cholesky, 2026-03-03)
 

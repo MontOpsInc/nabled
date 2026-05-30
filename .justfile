@@ -1,10 +1,12 @@
 LOG := env('RUST_LOG', '')
 features := 'arrow blas lapack-provider openblas-system openblas-static netlib-system netlib-static accelerator-rayon accelerator-wgpu'
-provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=/opt/homebrew/opt/openblas" } else { "env" }
+# Resolve Homebrew OpenBLAS prefix (Apple Silicon vs Intel); fall back to common paths.
+openblas_prefix := `/usr/bin/env bash -lc 'brew --prefix openblas 2>/dev/null || { for p in /opt/homebrew/opt/openblas /usr/local/opt/openblas; do [ -d "$p/lib" ] && echo "$p" && exit 0; done; echo /opt/homebrew/opt/openblas; }'`
+provider_env_prefix := if os() == "macos" { "env PKG_CONFIG_PATH=" + openblas_prefix + "/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}} OPENBLAS_DIR=" + openblas_prefix + " LIBRARY_PATH=" + openblas_prefix + "/lib${LIBRARY_PATH:+:${LIBRARY_PATH}} DYLD_LIBRARY_PATH=" + openblas_prefix + "/lib${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}" } else { "env" }
 provider_features := env('NABLED_PROVIDER_FEATURES', 'openblas-system')
 provider_bench_features := env('NABLED_PROVIDER_BENCH_FEATURES', 'openblas-system')
 coverage_line_threshold := "90"
-coverage_ignore_regex := "crates/nabled-linalg/src/accelerator/gpu.rs"
+coverage_ignore_regex := "crates/nabled-linalg/src/accelerator/gpu.rs|crates/nabled/src/bin/[^/]+\\.rs"
 gpu_remote_user := env('NABLED_GPU_REMOTE_USER', 'root')
 gpu_remote_port := env('NABLED_GPU_REMOTE_PORT', '40637')
 gpu_remote_key := env('NABLED_GPU_REMOTE_KEY', '${HOME}/.ssh/nabled_vast_4090')
@@ -43,7 +45,7 @@ test:
 
 test-provider:
     {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test --workspace --lib --features {{ provider_features }} -- --nocapture --show-output
-    {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test -p nabled --features {{ provider_features }} --tests -- --nocapture --show-output
+    {{ provider_env_prefix }} RUST_LOG={{ LOG }} cargo test -p nabled --features "{{ provider_features }} physical-ai ml signal" --tests -- --nocapture --show-output
 
 test-unit:
     RUST_LOG={{ LOG }} cargo test --workspace --lib -- --nocapture --show-output
@@ -58,31 +60,61 @@ test-integration test_name:
     RUST_LOG={{ LOG }} cargo test -p nabled --test "{{ test_name }}" -- --nocapture --show-output
 
 test-integration-all:
-    RUST_LOG={{ LOG }} cargo test -p nabled --tests -- --nocapture --show-output
+    RUST_LOG={{ LOG }} cargo test -p nabled --tests --features physical-ai -- --nocapture --show-output
+    just -f {{ justfile() }} test-physical-ai-integration
+
+test-physical-ai-integration:
+    RUST_LOG={{ LOG }} cargo test -p nabled --test physical_ai_integration --features "physical-ai signal" -- --nocapture --show-output
 
 coverage:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    cargo llvm-cov report -vv --html --output-dir coverage --open --ignore-filename-regex {{ coverage_ignore_regex }}
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} physical-ai signal" --no-report
+    cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
+    cargo llvm-cov report -vv --html --output-dir coverage --open --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
 coverage-json:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    cargo llvm-cov report --json --output-path coverage/cov.json --ignore-filename-regex {{ coverage_ignore_regex }}
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} physical-ai signal" --no-report
+    cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
+    cargo llvm-cov report --json --output-path coverage/cov.json --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
 coverage-lcov:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    cargo llvm-cov report --lcov --output-path coverage/lcov.info --ignore-filename-regex {{ coverage_ignore_regex }}
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} physical-ai signal" --no-report
+    cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
+    cargo llvm-cov report --lcov --output-path coverage/lcov.info --ignore-filename-regex '{{ coverage_ignore_regex }}'
 
 coverage-check:
     cargo llvm-cov clean --workspace
     cargo llvm-cov --workspace --lib --tests --no-default-features --no-report --exclude 'nabled' --exclude 'pynabled'
     {{ provider_env_prefix }} cargo llvm-cov --workspace --lib --tests --no-default-features --features {{ provider_features }} --no-report --exclude 'nabled' --exclude 'pynabled'
-    cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }} --ignore-filename-regex {{ coverage_ignore_regex }}
+    {{ provider_env_prefix }} cargo llvm-cov -p nabled --test physical_ai_integration --features "{{ provider_features }} physical-ai signal" --no-report
+    cargo llvm-cov -p nabled-linalg --lib --features signal --no-report
+    cargo llvm-cov report --summary-only --fail-under-lines {{ coverage_line_threshold }} --ignore-filename-regex '{{ coverage_ignore_regex }}'
+
+# Per-crate Physical AI line coverage (informational; workspace gate remains coverage-check).
+coverage-physical-ai-report:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    provider_env_prefix='{{ provider_env_prefix }}'
+    provider_features='{{ provider_features }}'
+    ignore_regex='{{ coverage_ignore_regex }}'
+    threshold='{{ coverage_line_threshold }}'
+    echo "=== Physical AI crate coverage (lib + tests) ==="
+    for pkg in nabled-kinematics nabled-model nabled-dynamics nabled-control nabled-sensor nabled-sim; do
+        echo "--- ${pkg} ---"
+        cargo llvm-cov -p "${pkg}" --lib --tests --summary-only --fail-under-lines "${threshold}" --ignore-filename-regex "${ignore_regex}" || true
+    done
+    echo "--- nabled-linalg (signal, lib + tests) ---"
+    cargo llvm-cov -p nabled-linalg --lib --tests --features signal --summary-only --fail-under-lines "${threshold}" --ignore-filename-regex "${ignore_regex}" || true
+    echo "--- nabled physical_ai_integration (merged profile leg) ---"
+    ${provider_env_prefix} cargo llvm-cov -p nabled --test physical_ai_integration --features "${provider_features} physical-ai signal" --summary-only --ignore-filename-regex "${ignore_regex}" || true
 
 python-quality:
     {{ provider_env_prefix }} bash scripts/python_quality_gate.sh
@@ -128,10 +160,10 @@ bench-smoke:
     cargo bench -p nabled --bench sparse_benchmarks -- --quick
     cargo bench -p nabled --bench tensor_benchmarks -- --quick
     cargo bench -p nabled --bench accelerator_benchmarks -- --quick
-    cargo bench -p nabled --no-default-features --features accelerator-wgpu --bench accelerator_benchmarks -- --quick
+    cargo bench -p nabled --no-default-features --features "linalg,accelerator-wgpu" --bench accelerator_benchmarks -- --quick
     cargo bench -p nabled --bench schur_benchmarks -- --quick
     cargo bench -p nabled --bench sylvester_benchmarks -- --quick
-    cargo bench -p nabled --bench optimization_benchmarks -- --quick
+    cargo bench -p nabled --features ml --bench optimization_benchmarks -- --quick
     cargo bench -p nabled --bench polar_benchmarks -- --quick
     cargo bench -p nabled --bench orthogonalization_benchmarks -- --quick
 
@@ -151,7 +183,7 @@ bench-smoke-provider:
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench accelerator_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench schur_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench sylvester_benchmarks -- --quick
-    {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench optimization_benchmarks -- --quick
+    {{ provider_env_prefix }} cargo bench -p nabled --features "{{ provider_bench_features }} ml" --bench optimization_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench polar_benchmarks -- --quick
     {{ provider_env_prefix }} cargo bench -p nabled --features {{ provider_bench_features }} --bench orthogonalization_benchmarks -- --quick
 
@@ -210,6 +242,10 @@ bench-smoke-report-provider-decomposition:
 bench-smoke-report-provider-decomposition-lto:
     just -f {{ justfile() }} bench-smoke-provider-decomposition-lto
     just -f {{ justfile() }} bench-report
+
+bench-smoke-physical-ai:
+    cargo bench -p nabled-kinematics --bench kinematics -- --quick
+    cargo bench -p nabled-dynamics --bench dynamics -- --quick
 
 bench-smoke-check:
     just -f {{ justfile() }} bench-smoke
@@ -317,10 +353,12 @@ checks:
     cargo +nightly clippy --workspace --no-default-features --all-targets -- -D warnings
     cargo +nightly clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
     cargo +nightly clippy --workspace --no-default-features --features arrow --all-targets -- -D warnings
+    cargo +nightly clippy --workspace --no-default-features --features signal --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +nightly clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features lapack-provider --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features arrow --all-targets -- -D warnings
+    cargo +stable clippy --workspace --no-default-features --features signal --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features accelerator-rayon --all-targets -- -D warnings
     cargo +stable clippy --workspace --no-default-features --features accelerator-wgpu --all-targets -- -D warnings
     {{ provider_env_prefix }} cargo +stable clippy --workspace --no-default-features --features "{{ provider_features }} accelerator-rayon accelerator-wgpu" --all-targets -- -D warnings
@@ -384,6 +422,11 @@ test-accelerator:
 test-arrow:
     cargo +stable test -p nabled --no-default-features --features arrow --test arrow_interop -- --nocapture --show-output
     {{ provider_env_prefix }} cargo +stable test -p nabled --no-default-features --features "{{ provider_features }} arrow" --test arrow_interop -- --nocapture --show-output
+
+# Verify Physical AI integration scenarios (S1–S21; S12–S14 require signal).
+check-signal:
+    cargo +stable clippy --workspace --no-default-features --features signal --all-targets -- -D warnings
+    cargo +stable check --workspace --no-default-features --features signal --all-targets
 
 # Initialize development environment for maintainers
 init-dev:

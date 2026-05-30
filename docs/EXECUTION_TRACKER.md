@@ -1,6 +1,16 @@
 # Execution Tracker
 
-Last updated: 2026-04-25
+Last updated: 2026-05-25
+
+## Modularization wave 1 (`N-MOD-*`, 2026-05-25)
+
+| ID | Status | Description |
+| --- | --- | --- |
+| `N-MOD-1` | Done | Drop dead `nabled-ml` dependency edges from `nabled-kinematics`, `nabled-control`, and `nabled-sensor`. |
+| `N-MOD-2` | Done | Facade feature gates: `nabled` defaults to `["linalg"]`; per-domain features `linalg`/`geometry`/`signal`/`ml`/`model`/`kinematics`/`dynamics`/`control`/`sensor`/`sim` plus the `physical-ai` umbrella. Modules in `crates/nabled/src/lib.rs` are `#[cfg(feature = …)]`-gated; examples and integration tests carry matching `required-features` / `#![cfg(feature = …)]`. See `docs/FEATURE_MATRIX.md`. |
+| `N-MOD-3` | Done | URDF / DH lockdown: `BodySpec::dh_params: Option<DhParams<T>>`. URDF leaves `dh_params: None`. `model::dh::to_chain_spec` and friends fail loudly when DH parameters are absent. `s4_urdf_model_tree_fk` rerouted to URDF-native tree FK; Python S4 parity follows. |
+| `N-MOD-4` | Done | Tree dynamics (lite): `nabled::dynamics::tree::{rnea_tree, mass_matrix_tree, forward_dynamics_tree}` (+ `_into`). Branch-routed via `extract_chain_spec_for_dynamics` and serial RNEA/CRBA/FD; results scattered back into full-model actuated ordering. Integration tests S26 / S27 added in Rust and Python; Python bindings expose `out=` kwargs. |
+| `N-MOD-5` | Done | Python `physical_ai` ingress is view-first: every entry point with a Rust `_view` variant is wired to `PyReadonlyArrayN::as_array()` (no `.to_owned()`) and every entry point with a Rust `_into` variant exposes an `out=` kwarg. New `_view` siblings added where missing: `jacobian_translation_view`, `jacobian_rotation_view`, `end_effector_pose_tree_view`, `dare_residual_norm_view`, `strapdown_predict_view`, `strapdown_predict_view_into`. |
 
 ## Purpose
 
@@ -316,10 +326,24 @@ Audit reference: `docs/PYNABLED_GAPS_AUDIT.md` (2026-04-03).
 252. `D-252`: `N-PY-007` closeout is complete on `feat/pynabled-bindings`: the remaining callback-driven convenience crossings are now explicitly classified and documented as unavoidable convenience-path carrier materializations rather than open hidden-copy regressions. `crates/pynabled/src/ml/callbacks.rs` now documents the Python-owned lifetime reason those transient NumPy/PyArrow callback carriers exist, `docs/PERFORMANCE_CONTRACTS.md` lists them under unavoidable internal materializations, and the public architecture/readme docs now state that callback-driven Jacobian/optimization helpers trade per-evaluation carrier materialization for Python callable ergonomics. With that explicit boundary truth in place, no remaining hidden hot-path copy/layout regressions are open for the current `pynabled` release target, and the merge gate advances to `N-PY-008`. No new validation was required beyond the full `D-251` gate set because this closeout only updates source comments and documentation.
 253. `D-253`: `N-PY-008` release hardening is complete on `feat/pynabled-bindings`: PyPI publishing now uses Trusted Publishing / GitHub OIDC through `pypa/gh-action-pypi-publish@v1.14.0` instead of long-lived tokens, the release build path pins `PyO3/maturin-action@v1.51.0` plus `maturin v1.13.1`, wheel builds use `--locked`, Dependabot now tracks Python package metadata from `pyproject.toml`, and the security workflow has a Python dependency audit leg using `pip-audit==2.10.0` over the resolved package/tooling requirement set. The PyPI release docs now document pending/existing Trusted Publisher setup, TestPyPI rehearsal, pinned release automation, and the tag-driven `pypi-v*` path. Validation is green end-to-end: the PyArrow 24 carrier regression (`2 passed`), workflow YAML parsing, version alignment, sdist hygiene, Python dependency audit requirements (`No known vulnerabilities found`), `cargo check -p pynabled --features arrow`, full `python-quality` (`248 passed, 22 skipped`, Arrow `22 passed`, `90%` Python coverage, plus wheel/sdist/source-feature smoke), and full `just checks` with Rust coverage at `90.63%`.
 254. `D-254`: Python source-build feature UX is now mediated by a thin local PEP 517 backend shim instead of only raw `MATURIN_PEP517_ARGS`: `pyproject.toml` now routes build frontends through `build_backend.pynabled_backend`, default `pynabled` builds include the Rust `arrow` feature, the shim accepts validated `pynabled-provider` / `pynabled-accelerators` / `pynabled-features` config settings plus `PYNABLED_*` env aliases, translates them into `maturin` feature arguments, rejects conflicting raw feature selectors, and `BUILD.md` / Python-facing docs now include `pip` and `uv` source-build flows built around that contract.
+255. `D-255`: `K-008` residual audit pass (2026-05-23): scanned `nabled-linalg/src/**/*.rs` for ad hoc `CpuBackend` / `*_with_backend::<CpuBackend, _>` dispatch outside `accelerator::dispatch`; only remaining production stragglers were three complex tensor GPU-fallback helpers in `tensor.rs`, now routed through `tensor_contract_axes_cpu`, `tensor_batched_matmul_last_two_cpu`, and `tensor_sum_last_axis_cpu`. Matrix/vector/sparse/triangular domains already use shared `*_cpu` helpers; `accelerator.rs` test-only backend comparisons are unchanged.
+256. `D-256`: Physical AI post-Real next phase (2026-05-23): tree FK/Jacobian (`PAI-14`), bench smoke + advisory CI (`PAI-15`), four composition examples (`PAI-16`), `pynabled` Physical AI bindings (`PAI-17`), Python S1–S21 parity tests + `docs/PYNABLED_PHYSICAL_AI_PARITY.md` (`PAI-18`); Rust integration S22 (23 tests with `--features signal`).
+257. `D-257`: `N-PY-PAI-006` (2026-05-23): tree FK/Jacobian Python bindings, `IkWorkspace` + `inverse_kinematics_dls_into`, hot-path `out=` on dynamics/Kalman/signal/geometry, Python S22 parity, `pyproject.toml` 0.0.9, `PYNABLED_PARITY_MATRIX` + `CAPABILITY_MATRIX` Physical AI rows → Implemented.
+
+### N-PY-PAI Epic (post-0.0.8)
+
+| ID | Item | Status | Notes |
+|---|---|---|---|
+| N-PY-PAI-001 | `pynabled.geometry` bindings | Done | quat/SO3/SE3/Transform3 |
+| N-PY-PAI-002 | `pynabled.kinematics` + `pynabled.model` | Done | FK/Jacobian/IK, URDF, fixtures |
+| N-PY-PAI-003 | `pynabled.dynamics` + `pynabled.control` | Done | RNEA/FD, LQR/DARE/pole/observer |
+| N-PY-PAI-004 | `pynabled.sensor` + `pynabled.signal` | Done | Kalman/EKF/camera/IMU; signal feature |
+| N-PY-PAI-005 | Python integration S1–S21 | Done | `python/tests/test_physical_ai_integration.py` in `python-quality` |
+| N-PY-PAI-006 | Parity matrix + 0.0.9 prep | Done | tree FK/Jacobian bindings, `IkWorkspace`, S22 Python parity, `pyproject.toml` 0.0.9, parity matrices → Implemented |
 
 ## Next
 
-1. Release-day execution for `pynabled`: run the final local quality gates, configure PyPI/TestPyPI Trusted Publishers if needed, and push the `pypi-v0.0.8` tag when maintainers are ready to publish.
+1. Release-day execution for `pynabled`: follow `docs/PYPI_008_RELEASE_CHECKLIST.md` (final gates, Trusted Publishing, `pypi-v0.0.8` tag, install smoke).
 2. `K-005`: keep decomposition stability in monitor mode and only re-open optimization for regressions that remain persistent across repeated same-host runs.
 3. Arrow checkpoint 2 is complete; use downstream `ndatafusion` adoption to validate the stabilized carriers rather than reopening `nabled::arrow` ad hoc.
 4. Tensor-depth post-v1 rubric (`D-179..D-182`) is complete; keep tensor expansion in monitor mode and require explicit new tracker IDs for additional scope.

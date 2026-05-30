@@ -1,13 +1,43 @@
 # Status Snapshot
 
-Last updated: 2026-04-25
+Last updated: 2026-05-25
 
 ## Summary
 
-Workspace migration for library domains is complete.
+Workspace migration for library domains is complete. Modularization wave 1
+(`N-MOD-1..N-MOD-5`) is in: the facade is feature-gated, URDF / DH
+ingestion is locked down, branch-routed tree dynamics shipped (`rnea_tree`
+/ `mass_matrix_tree` / `forward_dynamics_tree` + Python parity), and the
+Python `physical_ai` layer is fully view-first on every entry point that
+has a Rust `_view` variant. See `docs/FEATURE_MATRIX.md`, `D-MOD-1..4` in
+`docs/DECISIONS.md`, and the `N-MOD-*` entries in
+`docs/EXECUTION_TRACKER.md`.
 
-1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`.
-2. `crates/nabled` is the facade package re-exporting workspace crates.
+**Physical AI coverage (2026-05-25):** `just coverage-check` passes at
+**90.93%** line with merged profile (workspace lib+tests, OpenBLAS
+provider leg, `physical_ai_integration` + `signal` + `physical-ai`, and
+`nabled-linalg --features signal`). `nabled-dynamics/src/tree.rs`
+(modularization wave 1, branch-routed tree dynamics) lands at **96.80%**
+line. Per-crate PAI lib+tests line coverage stays at or above the previous
+baselines.
+
+**Python PAI parity coverage (2026-05-25):** `python_quality_gate.sh`
+PAI-subset coverage is now at **93%** line (`control` / `dynamics` /
+`sensor` / `signal` at ≥96%; `kinematics` at 90%; `geometry` at 79% — the
+remaining gap is in `quat_*` view-only helpers without `out=` siblings).
+Total Python coverage across the package is **91%**.
+
+1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`, plus Physical AI domain crates
+   `nabled-kinematics`, `nabled-model`, `nabled-dynamics`, `nabled-control`, and `nabled-sensor`
+   (Phase 0–3 scaffolding landed on branch `build/multiple-crates-extending-nabled`; see
+   `docs/PHYSICAL_AI_TRACKER.md`).
+2. Physical AI horizontal depth is **Real** (REFERENCE_RUBRIC Implemented): URDF v2 model, true DLS IK,
+   RealFft signal pipeline, control pole/observer/gramians, serial RNEA/CRBA/FD, EKF/camera/IMU; integration
+   scenarios S1–S25 pass (26 tests, 0 ignored with `--features signal`); `nabled-sim` orchestrator
+   composes domain crates (see `docs/PHYSICAL_AI_ORCHESTRATOR.md`).
+3. `crates/nabled` is the facade package re-exporting workspace crates, including Physical AI modules
+   (`kinematics`, `model`, `dynamics`, `control`, `sensor`) and horizontal layers `linalg::geometry` /
+   `linalg::signal`.
 3. `crates/nabled/src/` contains facade/library entrypoint, binary tooling, and optional facade-only interop modules.
 4. Facade crate `nabled` exposes an optional Arrow/ndarray interop layer behind feature `arrow`, backed by `ndarrow`; domain entrypoints exist broadly across dense, sparse, decomposition, tensor, batched, and ML/stat workflows, and checkpoint 2 is now complete under the concept-first standalone / `rows-of-X` contract.
 Branch note:

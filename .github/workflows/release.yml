@@ -26,6 +26,11 @@ on:
         default: false
         required: false
         type: boolean
+      skip_physical_ai:
+        description: 'Skip publishing Physical AI domain crates'
+        default: false
+        required: false
+        type: boolean
       skip_facade:
         description: 'Skip publishing nabled facade crate'
         default: false
@@ -121,6 +126,16 @@ jobs:
         run: |
           cargo publish -p nabled-ml --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
           sleep 30
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish Physical AI domain crates to crates.io
+        if: ${{ inputs.skip_publish != true && inputs.skip_physical_ai != true }}
+        run: |
+          for pkg in nabled-kinematics nabled-model nabled-dynamics nabled-control nabled-sensor nabled-sim; do
+            cargo publish -p "${pkg}" --no-verify --token "${CARGO_REGISTRY_TOKEN}"
+            sleep 30
+          done
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 

@@ -1,4 +1,4 @@
-#![cfg(feature = "arrow")]
+#![cfg(all(feature = "arrow", feature = "ml"))]
 
 use approx::assert_abs_diff_eq;
 use arrow_array::types::{Float32Type, Float64Type, UInt32Type};

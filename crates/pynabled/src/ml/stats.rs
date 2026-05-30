@@ -307,3 +307,47 @@ pub fn correlation_matrix_complex_into(
         _ => Err(utils::matching_complex_dtype_error(&["matrix", "output"])),
     }
 }
+
+/// Rolling covariance matrix over a sliding row window.
+#[pyfunction]
+pub fn rolling_covariance<'py>(
+    py: Python<'py>,
+    matrix: &Bound<'py, PyAny>,
+    window: usize,
+) -> PyResult<Py<PyAny>> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => Ok(utils::pyarray2_from_owned(
+            py,
+            nabled_ml::stats::rolling::rolling_covariance_view(&arr.as_array(), window),
+        )),
+        utils::RealReadonlyArray2::F64(arr) => Ok(utils::pyarray2_from_owned(
+            py,
+            nabled_ml::stats::rolling::rolling_covariance_view(&arr.as_array(), window),
+        )),
+    }
+}
+
+/// Rolling covariance into caller-provided output.
+#[pyfunction]
+pub fn rolling_covariance_into(
+    matrix: &Bound<'_, PyAny>,
+    window: usize,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match utils::real_array2(matrix, "matrix")? {
+        utils::RealReadonlyArray2::F32(arr) => {
+            let mut output_arr = utils::output_array2::<f32>(output, "output", "float32")?;
+            let result =
+                nabled_ml::stats::rolling::rolling_covariance_view(&arr.as_array(), window);
+            output_arr.as_array_mut().assign(&result);
+            Ok(())
+        }
+        utils::RealReadonlyArray2::F64(arr) => {
+            let mut output_arr = utils::output_array2::<f64>(output, "output", "float64")?;
+            let result =
+                nabled_ml::stats::rolling::rolling_covariance_view(&arr.as_array(), window);
+            output_arr.as_array_mut().assign(&result);
+            Ok(())
+        }
+    }
+}

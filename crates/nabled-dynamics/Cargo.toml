@@ -1,0 +1,43 @@
+[package]
+name = "nabled-dynamics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/nabled-dynamics"
+publish.workspace = true
+description = "Rigid-body dynamics algorithms for the nabled Physical AI stack"
+readme = "README.md"
+keywords = ["robotics", "dynamics", "rnea", "ndarray", "kinematics"]
+categories = ["mathematics", "science", "algorithms"]
+
+[features]
+default = []
+blas = ["nabled-linalg/blas", "nabled-kinematics/blas"]
+lapack-provider = ["nabled-linalg/lapack-provider", "nabled-kinematics/lapack-provider"]
+openblas-system = ["blas", "lapack-provider", "nabled-linalg/openblas-system", "nabled-kinematics/openblas-system"]
+openblas-static = ["blas", "lapack-provider", "nabled-linalg/openblas-static", "nabled-kinematics/openblas-static"]
+netlib-system = ["blas", "lapack-provider", "nabled-linalg/netlib-system", "nabled-kinematics/netlib-system"]
+netlib-static = ["blas", "lapack-provider", "nabled-linalg/netlib-static", "nabled-kinematics/netlib-static"]
+magma-system = ["lapack-provider", "nabled-linalg/magma-system", "nabled-kinematics/magma-system"]
+
+[dependencies]
+nabled-core.workspace = true
+nabled-kinematics.workspace = true
+nabled-linalg.workspace = true
+nabled-model.workspace = true
+ndarray.workspace = true
+
+[dev-dependencies]
+approx.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "dynamics"
+harness = false
+
+[lints]
+workspace = true

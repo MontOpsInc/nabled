@@ -15,16 +15,134 @@ keywords = ["linear-algebra", "ndarray", "decomposition", "machine-learning", "n
 categories = ["mathematics", "science", "algorithms"]
 
 [features]
-default = []
+default = ["linalg"]
 test-utils = []
-arrow = ["dep:arrow-array", "dep:arrow-buffer", "dep:arrow-schema", "dep:ndarrow"]
-blas = ["nabled-linalg/blas", "nabled-ml/blas"]
-lapack-provider = ["nabled-linalg/lapack-provider", "nabled-ml/lapack-provider"]
-openblas-system = ["blas", "nabled-linalg/openblas-system", "nabled-ml/openblas-system"]
-openblas-static = ["blas", "nabled-linalg/openblas-static", "nabled-ml/openblas-static"]
-netlib-system = ["blas", "nabled-linalg/netlib-system", "nabled-ml/netlib-system"]
-netlib-static = ["blas", "nabled-linalg/netlib-static", "nabled-ml/netlib-static"]
-magma-system = ["lapack-provider", "nabled-linalg/magma-system", "nabled-ml/magma-system"]
+
+# Per-domain opt-in features. The facade re-exports each domain only when the
+# matching feature is enabled. `nabled-linalg` (and therefore `nabled::linalg`)
+# is the always-on baseline once `linalg` is on; `default = ["linalg"]` keeps
+# downstream `cargo build` ergonomic without dragging in Physical AI crates.
+linalg = []
+geometry = ["linalg"]
+signal = [
+    "linalg",
+    "nabled-linalg/signal",
+    "nabled-sim?/signal",
+]
+ml = ["dep:nabled-ml"]
+model = ["dep:nabled-model"]
+kinematics = ["dep:nabled-kinematics", "model"]
+dynamics = ["dep:nabled-dynamics", "kinematics", "model"]
+control = ["dep:nabled-control"]
+sensor = ["dep:nabled-sensor"]
+sim = [
+    "dep:nabled-sim",
+    "kinematics",
+    "dynamics",
+    "control",
+    "sensor",
+    "ml",
+    "model",
+    "geometry",
+]
+# Umbrella feature re-enabling the full Physical AI stack.
+physical-ai = [
+    "linalg",
+    "geometry",
+    "signal",
+    "ml",
+    "model",
+    "kinematics",
+    "dynamics",
+    "control",
+    "sensor",
+    "sim",
+]
+
+arrow = [
+    "linalg",
+    "ml",
+    "dep:arrow-array",
+    "dep:arrow-buffer",
+    "dep:arrow-schema",
+    "dep:ndarrow",
+]
+
+blas = [
+    "nabled-linalg/blas",
+    "nabled-ml?/blas",
+    "nabled-kinematics?/blas",
+    "nabled-model?/blas",
+    "nabled-dynamics?/blas",
+    "nabled-control?/blas",
+    "nabled-sensor?/blas",
+    "nabled-sim?/blas",
+]
+lapack-provider = [
+    "nabled-linalg/lapack-provider",
+    "nabled-ml?/lapack-provider",
+    "nabled-kinematics?/lapack-provider",
+    "nabled-model?/lapack-provider",
+    "nabled-dynamics?/lapack-provider",
+    "nabled-control?/lapack-provider",
+    "nabled-sensor?/lapack-provider",
+    "nabled-sim?/lapack-provider",
+]
+openblas-system = [
+    "blas",
+    "nabled-linalg/openblas-system",
+    "nabled-ml?/openblas-system",
+    "nabled-kinematics?/openblas-system",
+    "nabled-model?/openblas-system",
+    "nabled-dynamics?/openblas-system",
+    "nabled-control?/openblas-system",
+    "nabled-sensor?/openblas-system",
+    "nabled-sim?/openblas-system",
+]
+openblas-static = [
+    "blas",
+    "nabled-linalg/openblas-static",
+    "nabled-ml?/openblas-static",
+    "nabled-kinematics?/openblas-static",
+    "nabled-model?/openblas-static",
+    "nabled-dynamics?/openblas-static",
+    "nabled-control?/openblas-static",
+    "nabled-sensor?/openblas-static",
+    "nabled-sim?/openblas-static",
+]
+netlib-system = [
+    "blas",
+    "nabled-linalg/netlib-system",
+    "nabled-ml?/netlib-system",
+    "nabled-kinematics?/netlib-system",
+    "nabled-model?/netlib-system",
+    "nabled-dynamics?/netlib-system",
+    "nabled-control?/netlib-system",
+    "nabled-sensor?/netlib-system",
+    "nabled-sim?/netlib-system",
+]
+netlib-static = [
+    "blas",
+    "nabled-linalg/netlib-static",
+    "nabled-ml?/netlib-static",
+    "nabled-kinematics?/netlib-static",
+    "nabled-model?/netlib-static",
+    "nabled-dynamics?/netlib-static",
+    "nabled-control?/netlib-static",
+    "nabled-sensor?/netlib-static",
+    "nabled-sim?/netlib-static",
+]
+magma-system = [
+    "lapack-provider",
+    "nabled-linalg/magma-system",
+    "nabled-ml?/magma-system",
+    "nabled-kinematics?/magma-system",
+    "nabled-model?/magma-system",
+    "nabled-dynamics?/magma-system",
+    "nabled-control?/magma-system",
+    "nabled-sensor?/magma-system",
+    "nabled-sim?/magma-system",
+]
 accelerator-rayon = ["nabled-linalg/accelerator-rayon"]
 accelerator-wgpu = ["nabled-linalg/accelerator-wgpu"]
 
@@ -36,7 +154,13 @@ ndarray.workspace = true
 ndarrow = { workspace = true, optional = true }
 nabled-core.workspace = true
 nabled-linalg.workspace = true
-nabled-ml.workspace = true
+nabled-control = { workspace = true, optional = true }
+nabled-dynamics = { workspace = true, optional = true }
+nabled-kinematics = { workspace = true, optional = true }
+nabled-ml = { workspace = true, optional = true }
+nabled-model = { workspace = true, optional = true }
+nabled-sensor = { workspace = true, optional = true }
+nabled-sim = { workspace = true, optional = true }
 num-complex.workspace = true
 num-traits.workspace = true
 serde.workspace = true
@@ -58,6 +182,51 @@ workspace = true
 name = "arrow_extension_types"
 path = "examples/arrow_extension_types.rs"
 required-features = ["arrow"]
+
+[[example]]
+name = "physical_ai_planar2r_sim"
+path = "examples/physical_ai_planar2r_sim.rs"
+required-features = ["physical-ai"]
+
+[[example]]
+name = "physical_ai_lqr_observer"
+path = "examples/physical_ai_lqr_observer.rs"
+required-features = ["physical-ai"]
+
+[[example]]
+name = "physical_ai_ekf_fusion"
+path = "examples/physical_ai_ekf_fusion.rs"
+required-features = ["physical-ai"]
+
+[[example]]
+name = "physical_ai_trajectory_ik"
+path = "examples/physical_ai_trajectory_ik.rs"
+required-features = ["physical-ai"]
+
+[[example]]
+name = "embedding_rerank_example"
+path = "examples/embedding_rerank_example.rs"
+required-features = ["ml"]
+
+[[example]]
+name = "pca_example"
+path = "examples/pca_example.rs"
+required-features = ["ml"]
+
+[[example]]
+name = "regression_example"
+path = "examples/regression_example.rs"
+required-features = ["ml"]
+
+[[example]]
+name = "jacobian_example"
+path = "examples/jacobian_example.rs"
+required-features = ["ml"]
+
+[[example]]
+name = "complex_jacobian_example"
+path = "examples/complex_jacobian_example.rs"
+required-features = ["ml"]
 
 [[bench]]
 name = "svd_benchmarks"
@@ -106,6 +275,7 @@ harness = false
 [[bench]]
 name = "accelerator_benchmarks"
 harness = false
+required-features = ["linalg"]
 
 [[bench]]
 name = "schur_benchmarks"
@@ -118,6 +288,7 @@ harness = false
 [[bench]]
 name = "optimization_benchmarks"
 harness = false
+required-features = ["ml"]
 
 [[bench]]
 name = "polar_benchmarks"

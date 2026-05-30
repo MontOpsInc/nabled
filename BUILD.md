@@ -110,6 +110,44 @@ config-settings-package = { pynabled = { pynabled-provider = "openblas-system,ma
 With that in place, `uv sync` or `uv add pynabled` can drive the source build without repeating
 the flags on every command.
 
+## Local quality gates (`just checks`)
+
+Full maintainer validation (`just checks`) runs fmt, clippy across feature permutations
+(including `signal` for Physical AI S12–S14), unit/integration tests, provider tests,
+coverage (90% line threshold), and Python quality.
+
+### OpenBLAS / LAPACK provider environment
+
+Provider-gated legs (`test-provider`, `coverage-check`, provider clippy) require a linkable
+LAPACK/BLAS library. On macOS, `.justfile` sets this automatically via `provider_env_prefix`:
+
+```bash
+PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig:${PKG_CONFIG_PATH}
+OPENBLAS_DIR=/opt/homebrew/opt/openblas
+```
+
+Install OpenBLAS first (`brew install openblas`). On Linux CI, `libopenblas-dev` and
+`liblapack-dev` are installed by the workflow.
+
+Override the provider feature set without editing `.justfile`:
+
+```bash
+NABLED_PROVIDER_FEATURES=netlib-system just checks   # no OpenBLAS pkg-config required
+NABLED_PROVIDER_BENCH_FEATURES=openblas-system just bench-smoke-provider
+```
+
+### Physical AI integration
+
+Signal scenarios (S12–S14) are not in default features. Run explicitly:
+
+```bash
+cargo test -p nabled --test physical_ai_integration --features signal
+# or
+just test-physical-ai-integration
+```
+
+`just test-integration-all` and `just test` include the signal-gated Physical AI suite.
+
 ## Optional dependencies
 
 - `dev`: pytest, pytest-cov, and pyarrow for local testing/development

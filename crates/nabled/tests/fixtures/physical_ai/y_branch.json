@@ -1,0 +1,17 @@
+{
+  "description": "Y-shaped 3-DOF branched tree (common trunk + left/right branches)",
+  "cases": [
+    {
+      "name": "home",
+      "q": [0.0, 0.0, 0.0],
+      "left_ee_translation": [2.0, 0.0, 0.0],
+      "right_ee_translation": [1.0, 1.0, 0.0]
+    },
+    {
+      "name": "spread",
+      "q": [0.0, 1.5707963267948966, -1.5707963267948966],
+      "left_ee_translation": [2.0, 0.0, 0.0],
+      "right_ee_translation": [1.0, 1.0, 0.0]
+    }
+  ]
+}

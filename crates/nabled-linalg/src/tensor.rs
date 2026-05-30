@@ -10,12 +10,15 @@ use ndarray::{
 };
 use num_complex::Complex64;
 
+use crate::accelerator::backends::AcceleratorError;
 #[cfg(feature = "accelerator-wgpu")]
 use crate::accelerator::backends::GpuBackend;
-use crate::accelerator::backends::{AcceleratorError, CpuBackend};
 use crate::accelerator::dispatch::{
-    tensor_batched_matmul_last_two_cpu, tensor_batched_matmul_last_two_with_backend,
-    tensor_contract_axes_cpu, tensor_contract_axes_with_backend, tensor_sum_last_axis_cpu,
+    tensor_batched_matmul_last_two_cpu, tensor_contract_axes_cpu, tensor_sum_last_axis_cpu,
+};
+#[cfg(feature = "accelerator-wgpu")]
+use crate::accelerator::dispatch::{
+    tensor_batched_matmul_last_two_with_backend, tensor_contract_axes_with_backend,
     tensor_sum_last_axis_with_backend,
 };
 use crate::svd;
@@ -55,19 +58,13 @@ fn tensor_contract_axes_complex_dispatch(
         tensor_contract_axes_with_backend::<GpuBackend, Complex64>(
             left, right, left_axis, right_axis,
         )
-        .or_else(|_| {
-            tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
-                left, right, left_axis, right_axis,
-            )
-        })
+        .or_else(|_| tensor_contract_axes_cpu(left, right, left_axis, right_axis))
         .map_err(map_accelerator_error_to_tensor)
     }
     #[cfg(not(feature = "accelerator-wgpu"))]
     {
-        tensor_contract_axes_with_backend::<CpuBackend, Complex64>(
-            left, right, left_axis, right_axis,
-        )
-        .map_err(map_accelerator_error_to_tensor)
+        tensor_contract_axes_cpu(left, right, left_axis, right_axis)
+            .map_err(map_accelerator_error_to_tensor)
     }
 }
 
@@ -78,15 +75,12 @@ fn tensor_batched_matmul_last_two_complex_dispatch(
     #[cfg(feature = "accelerator-wgpu")]
     {
         tensor_batched_matmul_last_two_with_backend::<GpuBackend, Complex64>(left, right)
-            .or_else(|_| {
-                tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(left, right)
-            })
+            .or_else(|_| tensor_batched_matmul_last_two_cpu(left, right))
             .map_err(map_accelerator_error_to_tensor)
     }
     #[cfg(not(feature = "accelerator-wgpu"))]
     {
-        tensor_batched_matmul_last_two_with_backend::<CpuBackend, Complex64>(left, right)
-            .map_err(map_accelerator_error_to_tensor)
+        tensor_batched_matmul_last_two_cpu(left, right).map_err(map_accelerator_error_to_tensor)
     }
 }
 
@@ -96,13 +90,12 @@ fn tensor_sum_last_axis_complex_dispatch(
     #[cfg(feature = "accelerator-wgpu")]
     {
         tensor_sum_last_axis_with_backend::<GpuBackend, Complex64>(input)
-            .or_else(|_| tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(input))
+            .or_else(|_| tensor_sum_last_axis_cpu(input))
             .map_err(map_accelerator_error_to_tensor)
     }
     #[cfg(not(feature = "accelerator-wgpu"))]
     {
-        tensor_sum_last_axis_with_backend::<CpuBackend, Complex64>(input)
-            .map_err(map_accelerator_error_to_tensor)
+        tensor_sum_last_axis_cpu(input).map_err(map_accelerator_error_to_tensor)
     }
 }
 

@@ -154,6 +154,10 @@ Python boundary behavior must fall into one of four explicit classes:
 4. Hidden `np.ascontiguousarray(...)`-style normalization inside hot wrappers is not acceptable.
 5. Where Rust already has `*_into` or reusable workspace semantics, Python must eventually expose
    equivalent allocation-control behavior if the path is performance-relevant.
+6. `D-MOD-4` Physical AI ingress is view-first as a non-negotiable. Every `pynabled.physical_ai`
+   entry point that has a Rust `_view` variant is wired to call it directly with
+   `PyReadonlyArrayN::as_array()` — no `.to_owned()` and no `np.ascontiguousarray` on the FFI
+   boundary. Every Rust `_into` variant is exposed as an `out=` numpy buffer kwarg.
 
 ### Sparse Contract
 

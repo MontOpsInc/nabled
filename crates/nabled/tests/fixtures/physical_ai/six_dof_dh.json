@@ -1,0 +1,20 @@
+{
+  "description": "Minimal 6-DOF serial arm DH table for integration reference (standard DH)",
+  "dh_convention": "standard",
+  "dh_params": [
+    [0.0, 1.5707963267948966, 0.089159, 0.0],
+    [0.0, -1.5707963267948966, 0.0, 0.0],
+    [0.425, 0.0, 0.0, 0.0],
+    [0.39225, 0.0, 0.10915, 0.0],
+    [0.0, 1.5707963267948966, 0.09465, 0.0],
+    [0.0, -1.5707963267948966, 0.0823, 0.0]
+  ],
+  "cases": [
+    {
+      "name": "zero_configuration",
+      "q": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      "ee_translation": [0.81725, 0.19145, -0.005491],
+      "tolerance": 1e-4
+    }
+  ]
+}

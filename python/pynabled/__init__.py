@@ -6,6 +6,13 @@ import numpy as np
 
 import pynabled._pynabled as _raw
 
+from . import control, dynamics, geometry, kinematics, model, sensor
+
+try:
+    from . import signal
+except ImportError:
+    signal = None  # type: ignore[assignment]
+
 from .config import (
     AdamConfig,
     BFGSConfig,
@@ -1130,6 +1137,13 @@ def correlation_matrix_complex(matrix, out=None):
     return out
 
 
+def rolling_covariance(matrix, window, out=None):
+    if out is None:
+        return _raw.rolling_covariance(matrix, window)
+    _raw.rolling_covariance_into(matrix, window, out)
+    return out
+
+
 def covariance_matrix(matrix, out=None):
     if out is None:
         return _raw.covariance_matrix(matrix)
@@ -2118,6 +2132,14 @@ __all__ = [
     "covariance_matrix_complex",
     "correlation_matrix",
     "correlation_matrix_complex",
+    "rolling_covariance",
+    "control",
+    "dynamics",
+    "geometry",
+    "kinematics",
+    "model",
+    "sensor",
+    "signal",
     "conjugate_gradient",
     "conjugate_gradient_complex",
     "gmres",

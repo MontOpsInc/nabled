@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<robot name="y_branch">
+  <link name="base"/>
+  <link name="trunk"/>
+  <link name="left_ee"/>
+  <link name="right_ee"/>
+  <joint name="j_trunk" type="revolute">
+    <origin xyz="1 0 0" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="trunk"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1"/>
+  </joint>
+  <joint name="j_left" type="revolute">
+    <origin xyz="1 0 0" rpy="0 0 0"/>
+    <parent link="trunk"/>
+    <child link="left_ee"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1"/>
+  </joint>
+  <joint name="j_right" type="revolute">
+    <origin xyz="0 1 0" rpy="0 0 0"/>
+    <parent link="trunk"/>
+    <child link="right_ee"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1"/>
+  </joint>
+</robot>

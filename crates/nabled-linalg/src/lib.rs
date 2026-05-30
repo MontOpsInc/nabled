@@ -41,6 +41,7 @@ use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
 use crate::accelerator::backends::AcceleratorError;
 use crate::cholesky::CholeskyError;
 use crate::eigen::EigenError;
+use crate::geometry::GeometryError;
 use crate::lu::LUError;
 use crate::matrix::MatrixError;
 use crate::matrix_functions::MatrixFunctionError;
@@ -48,6 +49,7 @@ use crate::orthogonalization::OrthogonalizationError;
 use crate::polar::PolarError;
 use crate::qr::QRError;
 use crate::schur::SchurError;
+use crate::signal::SignalError;
 use crate::sparse::SparseError;
 use crate::svd::SVDError;
 use crate::sylvester::SylvesterError;
@@ -64,6 +66,7 @@ mod provider;
 
 pub mod cholesky;
 pub mod eigen;
+pub mod geometry;
 pub mod lu;
 pub mod matrix;
 pub mod matrix_functions;
@@ -71,6 +74,7 @@ pub mod orthogonalization;
 pub mod polar;
 pub mod qr;
 pub mod schur;
+pub mod signal;
 pub mod sparse;
 pub mod svd;
 pub mod sylvester;
@@ -278,6 +282,29 @@ impl IntoNabledError for VectorError {
     }
 }
 
+impl IntoNabledError for GeometryError {
+    fn into_nabled_error(self) -> NabledError {
+        match self {
+            GeometryError::DimensionMismatch => NabledError::Shape(ShapeError::DimensionMismatch),
+            GeometryError::InvalidInput(message) => NabledError::InvalidInput(message),
+            GeometryError::ZeroNorm => {
+                NabledError::InvalidInput("zero norm quaternion or vector".to_string())
+            }
+            GeometryError::NumericalInstability => NabledError::NumericalInstability,
+        }
+    }
+}
+
+impl IntoNabledError for SignalError {
+    fn into_nabled_error(self) -> NabledError {
+        match self {
+            SignalError::EmptyInput => NabledError::Shape(ShapeError::EmptyInput),
+            SignalError::InvalidInput(message) => NabledError::InvalidInput(message),
+            SignalError::NumericalInstability => NabledError::NumericalInstability,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use nabled_core::errors::{IntoNabledError, NabledError, ShapeError};
@@ -413,6 +440,36 @@ mod tests {
         assert!(matches!(
             AcceleratorError::FeatureNotEnabled.into_nabled_error(),
             NabledError::Other(_)
+        ));
+
+        assert!(matches!(
+            GeometryError::DimensionMismatch.into_nabled_error(),
+            NabledError::Shape(ShapeError::DimensionMismatch)
+        ));
+        assert!(matches!(
+            GeometryError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            GeometryError::ZeroNorm.into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            GeometryError::NumericalInstability.into_nabled_error(),
+            NabledError::NumericalInstability
+        ));
+
+        assert!(matches!(
+            SignalError::EmptyInput.into_nabled_error(),
+            NabledError::Shape(ShapeError::EmptyInput)
+        ));
+        assert!(matches!(
+            SignalError::InvalidInput("x".to_string()).into_nabled_error(),
+            NabledError::InvalidInput(_)
+        ));
+        assert!(matches!(
+            SignalError::NumericalInstability.into_nabled_error(),
+            NabledError::NumericalInstability
         ));
     }
 

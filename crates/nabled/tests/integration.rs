@@ -1,5 +1,7 @@
 //! Integration tests for ndarray-first APIs.
 
+#![cfg(all(feature = "linalg", feature = "ml"))]
+
 use approx::assert_relative_eq;
 use nabled::core::errors::{IntoNabledError, NabledError};
 use nabled::linalg::accelerator::backends::{CpuBackend, GpuBackend};
