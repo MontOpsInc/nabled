@@ -30,6 +30,7 @@ signal = [
     "nabled-sim?/signal",
 ]
 ml = ["dep:nabled-ml"]
+embeddings = ["dep:nabled-embeddings", "linalg", "ml"]
 model = ["dep:nabled-model"]
 kinematics = ["dep:nabled-kinematics", "model"]
 dynamics = ["dep:nabled-dynamics", "kinematics", "model"]
@@ -71,6 +72,7 @@ arrow = [
 blas = [
     "nabled-linalg/blas",
     "nabled-ml?/blas",
+    "nabled-embeddings?/blas",
     "nabled-kinematics?/blas",
     "nabled-model?/blas",
     "nabled-dynamics?/blas",
@@ -81,6 +83,7 @@ blas = [
 lapack-provider = [
     "nabled-linalg/lapack-provider",
     "nabled-ml?/lapack-provider",
+    "nabled-embeddings?/lapack-provider",
     "nabled-kinematics?/lapack-provider",
     "nabled-model?/lapack-provider",
     "nabled-dynamics?/lapack-provider",
@@ -92,6 +95,7 @@ openblas-system = [
     "blas",
     "nabled-linalg/openblas-system",
     "nabled-ml?/openblas-system",
+    "nabled-embeddings?/openblas-system",
     "nabled-kinematics?/openblas-system",
     "nabled-model?/openblas-system",
     "nabled-dynamics?/openblas-system",
@@ -103,6 +107,7 @@ openblas-static = [
     "blas",
     "nabled-linalg/openblas-static",
     "nabled-ml?/openblas-static",
+    "nabled-embeddings?/openblas-static",
     "nabled-kinematics?/openblas-static",
     "nabled-model?/openblas-static",
     "nabled-dynamics?/openblas-static",
@@ -114,6 +119,7 @@ netlib-system = [
     "blas",
     "nabled-linalg/netlib-system",
     "nabled-ml?/netlib-system",
+    "nabled-embeddings?/netlib-system",
     "nabled-kinematics?/netlib-system",
     "nabled-model?/netlib-system",
     "nabled-dynamics?/netlib-system",
@@ -125,6 +131,7 @@ netlib-static = [
     "blas",
     "nabled-linalg/netlib-static",
     "nabled-ml?/netlib-static",
+    "nabled-embeddings?/netlib-static",
     "nabled-kinematics?/netlib-static",
     "nabled-model?/netlib-static",
     "nabled-dynamics?/netlib-static",
@@ -136,6 +143,7 @@ magma-system = [
     "lapack-provider",
     "nabled-linalg/magma-system",
     "nabled-ml?/magma-system",
+    "nabled-embeddings?/magma-system",
     "nabled-kinematics?/magma-system",
     "nabled-model?/magma-system",
     "nabled-dynamics?/magma-system",
@@ -158,6 +166,7 @@ nabled-control = { workspace = true, optional = true }
 nabled-dynamics = { workspace = true, optional = true }
 nabled-kinematics = { workspace = true, optional = true }
 nabled-ml = { workspace = true, optional = true }
+nabled-embeddings = { workspace = true, optional = true }
 nabled-model = { workspace = true, optional = true }
 nabled-sensor = { workspace = true, optional = true }
 nabled-sim = { workspace = true, optional = true }
@@ -206,7 +215,7 @@ required-features = ["physical-ai"]
 [[example]]
 name = "embedding_rerank_example"
 path = "examples/embedding_rerank_example.rs"
-required-features = ["ml"]
+required-features = ["embeddings"]
 
 [[example]]
 name = "pca_example"

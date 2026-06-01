@@ -12,6 +12,14 @@ Last updated: 2026-05-25
 | `N-MOD-4` | Done | Tree dynamics (lite): `nabled::dynamics::tree::{rnea_tree, mass_matrix_tree, forward_dynamics_tree}` (+ `_into`). Branch-routed via `extract_chain_spec_for_dynamics` and serial RNEA/CRBA/FD; results scattered back into full-model actuated ordering. Integration tests S26 / S27 added in Rust and Python; Python bindings expose `out=` kwargs. |
 | `N-MOD-5` | Done | Python `physical_ai` ingress is view-first: every entry point with a Rust `_view` variant is wired to `PyReadonlyArrayN::as_array()` (no `.to_owned()`) and every entry point with a Rust `_into` variant exposes an `out=` kwarg. New `_view` siblings added where missing: `jacobian_translation_view`, `jacobian_rotation_view`, `end_effector_pose_tree_view`, `dare_residual_norm_view`, `strapdown_predict_view`, `strapdown_predict_view_into`. |
 
+## Embeddings crate (`N-EMB-*`)
+
+| ID | Status | Description |
+| --- | --- | --- |
+| `N-EMB-001` | Done | New `crates/nabled-embeddings` (publish, `=0.0.10`) composing `nabled-linalg::vector` + `nabled-ml::pca`: `normalize_rows`/`_view`/`_into`, `query_corpus_scores`/`_view`/`_into` over `Metric { Cosine, Dot, L2 }` (each with `higher_is_better` polarity), direction-aware `top_k` + `Neighbor`, `rerank`, `brute_force_knn`, and PCA `fit_pca`/`compress`/`_view`/`_into`. `f32`/`f64` parity + edge-case unit tests and `embeddings_benchmarks.rs`. Wired into workspace + release pipeline (`release.yml`, `PUBLISH_CHECKLIST.md`) after `nabled-ml`, before the `nabled` facade. Bring-your-own-vectors, Arrow-free, no ANN/storage/inference (see `D-EMB-1`/`D-EMB-2`). |
+| `N-EMB-002` | Done | Facade + Python verticals: `nabled` `embeddings` feature (`= ["dep:nabled-embeddings", "linalg", "ml"]`, provider features forwarded, default stays `["linalg"]`) re-exporting `nabled::embeddings::*`; `embedding_rerank_example` refactored onto the crate. `pynabled` `embeddings` feature (in default wheels) with PyO3 wrappers (`embeddings_normalize_rows`/`query_corpus_scores`/`rerank`/`brute_force_knn`/`compress_pca`), `pynabled.embeddings` Python module, `build_features()` entry, and `python/tests/test_embeddings.py` parity vs NumPy. |
+| `N-EMB-003` | Done | Docs + example: `crates/nabled-embeddings/README.md`, `docs/EMBEDDINGS.md`, root + python READMEs, `FEATURE_MATRIX`/`CAPABILITY_MATRIX`/`DECISIONS`/`STATUS` updates with locked honest positioning (lightweight + Arrow-zero-copy rerank layer; explicit non-goals: no ANN/storage/inference; no "faster than FAISS" claims). `python/examples/embeddings/lance_rerank.py` shows the LanceDB ANN -> exact-rerank plug-in stance over a pure Arrow interchange; `lance`/`sentence-transformers` stay example-only (never in the crate graph, `pyproject.toml`, or CI gate). |
+
 ## Purpose
 
 This is the operational companion to `docs/CAPABILITY_MATRIX.md`.

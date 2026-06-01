@@ -18,7 +18,8 @@ name = "_pynabled"
 crate-type = ["cdylib"]
 
 [features]
-default = ["arrow", "physical-ai"]
+default = ["arrow", "physical-ai", "embeddings"]
+embeddings = ["nabled/embeddings"]
 openblas-system = ["nabled/openblas-system"]
 openblas-static = ["nabled/openblas-static"]
 netlib-system = ["nabled/netlib-system"]

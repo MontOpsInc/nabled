@@ -48,6 +48,11 @@ Objective production-readiness and domain done criteria live in `docs/REFERENCE_
 | PCA | PCA + transform/inverse-transform | `nabled-ml::pca` | Implemented | No | |
 | Regression | linear regression | `nabled-ml::regression` | Implemented | No | |
 | Stats | means/centering/covariance/correlation | `nabled-ml::stats` | Implemented | No | |
+| Embeddings: normalize | row-wise L2 normalization (`normalize_rows`/`_view`/`_into`) | `nabled-embeddings::normalize` | Implemented | No | Delegates to `vector::batched_normalize*`; `f32`/`f64` parity tests. |
+| Embeddings: similarity | `query_corpus_scores`/`_view`/`_into` over `Metric { Cosine, Dot, L2 }` | `nabled-embeddings::similarity` | Implemented | Yes | Cosine→`pairwise_cosine_similarity`, L2→`pairwise_l2_distance`, Dot→`matmat(queries, corpusᵀ)`; each `Metric` records `higher_is_better`. Bench `embeddings_benchmarks`. |
+| Embeddings: top-k / rerank | direction-aware `top_k` (partial selection) + `Neighbor` + `rerank` | `nabled-embeddings::topk`/`rerank` | Implemented | Yes | Partial-selection (`select_nth_unstable_by`) with deterministic tie-break; rerank composes scores + top_k. Bench `embeddings_benchmarks`. |
+| Embeddings: kNN | exact `brute_force_knn` | `nabled-embeddings::knn` | Implemented | No | Small-corpus/eval/golden-test exact kNN; use ANN store + rerank for large-corpus recall. |
+| Embeddings: compress | PCA `fit_pca` + `compress`/`_view`/`_into` | `nabled-embeddings::compress` | Implemented | No | Wraps `nabled-ml::pca` compute/transform; `fit_pca` gated on `lapack-provider` like the underlying PCA. |
 | Geometry (Physical AI) | quat/SO(3)/SE(3)/twist primitives | `nabled-linalg::geometry` | Implemented | No | Round 1 (M1) landed: quat/SO3/SE3/twist with view/into paths. |
 | Signal (Physical AI) | windows, correlation, FFT (feature `signal`) | `nabled-linalg::signal` | Implemented | No | RealFft round-trip, `RfftSpectrum`, `windowed_rfft`, `autocorrelation_full`; S12–S14 pass with `signal` feature. |
 | Stats streaming (Physical AI) | online/ewma/rolling/lag column ops | `nabled-ml::stats` | Implemented | No | online/ewma/rolling/lag landed Round 1 (M2); lag_view/shift only. |
@@ -59,6 +64,7 @@ Objective production-readiness and domain done criteria live in `docs/REFERENCE_
 | Sensor fusion | Kalman/EKF/camera/IMU | `nabled-sensor` | Implemented | No | EKF predict/update, `PinholeIntrinsics`, strapdown IMU + `strapdown_predict_view`/`_into`; S7/S11/S17–S19 pass. |
 | Facade gating | per-domain Cargo features | `nabled` | Implemented | No | `default = ["linalg"]`. Per-domain features + `physical-ai` umbrella. See `docs/FEATURE_MATRIX.md` (D-MOD-1). |
 | pynabled Physical AI | geometry/kinematics/model/dynamics/control/sensor/signal | `pynabled.physical_ai` | Implemented | No | View-first ingress on every Rust `_view` path; `out=` kwargs on every `_into` path. Tree FK/Jacobian + `IkWorkspace` + S22–S27 Python parity (D-MOD-4). |
+| pynabled embeddings | normalize/query_corpus_scores/rerank/brute_force_knn/compress_pca | `pynabled.embeddings` | Implemented | No | `f32`/`f64` NumPy parity vs reference; `out=` where a Rust `_into` exists; in default wheels. LanceDB rerank example is example-only (`lance`/`sentence-transformers` outside the crate graph and CI gate). |
 
 ## Execution Axes Model
 

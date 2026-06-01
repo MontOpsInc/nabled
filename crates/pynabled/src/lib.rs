@@ -11,6 +11,8 @@
 #![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
 
 mod error;
+#[cfg(feature = "embeddings")]
+mod embeddings;
 mod linalg;
 mod ml;
 #[cfg(feature = "physical-ai")]
@@ -29,6 +31,7 @@ fn build_features() -> Vec<String> {
         ("accelerator-rayon", cfg!(feature = "accelerator-rayon")),
         ("accelerator-wgpu", cfg!(feature = "accelerator-wgpu")),
         ("arrow", cfg!(feature = "arrow")),
+        ("embeddings", cfg!(feature = "embeddings")),
         ("magma-system", cfg!(feature = "magma-system")),
         ("netlib-static", cfg!(feature = "netlib-static")),
         ("netlib-system", cfg!(feature = "netlib-system")),
@@ -374,6 +377,16 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Rolling stats
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::rolling_covariance, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::rolling_covariance_into, m)?)?;
+
+    // Embeddings retrieval compute
+    #[cfg(feature = "embeddings")]
+    {
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_normalize_rows, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_query_corpus_scores, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_rerank, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_brute_force_knn, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_compress_pca, m)?)?;
+    }
 
     // Iterative (dense CG, GMRES)
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient, m)?)?;

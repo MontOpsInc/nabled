@@ -11,13 +11,14 @@ Publish order is fixed:
 1. `nabled-core`
 2. `nabled-linalg`
 3. `nabled-ml`
-4. `nabled-kinematics`
-5. `nabled-model`
-6. `nabled-dynamics`
-7. `nabled-control`
-8. `nabled-sensor`
-9. `nabled-sim`
-10. `nabled` (facade)
+4. `nabled-embeddings`
+5. `nabled-kinematics`
+6. `nabled-model`
+7. `nabled-dynamics`
+8. `nabled-control`
+9. `nabled-sensor`
+10. `nabled-sim`
+11. `nabled` (facade)
 
 **Python package (pynabled on PyPI):** independent of the crates.io order above. See [PYPI_PUBLISH.md](PYPI_PUBLISH.md) for tags (`pypi-v*`), Trusted Publishing setup, wheel smoke tests, and `just tag-pypi-release`.
 

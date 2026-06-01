@@ -46,7 +46,14 @@ This list is ever-changing, consult the Rust Docs for the source of truth.
 5. Numerical Jacobian/gradient/Hessian
 6. Statistics utilities
 7. Vector primitives (dot/norm/cosine/pairwise/batched)
-8. Physical AI (`physical-ai` feature): URDF model, kinematic tree FK /
+8. Embeddings (`embeddings` feature): a lightweight, ndarray-native,
+   Arrow-zero-copy compute and rerank layer for embedding vectors — bring
+   vectors from any model, compute exactly, deploy anywhere. Row
+   normalization, `query_corpus_scores` over a `Metric { Cosine, Dot, L2 }`
+   enum, direction-aware `top_k`/`rerank`, exact `brute_force_knn`, and PCA
+   compression. It is the exact rerank step next to a vector store, not a
+   vector database: no ANN index, no storage, no model inference.
+9. Physical AI (`physical-ai` feature): URDF model, kinematic tree FK /
    Jacobian / DLS IK, serial + branch-routed tree dynamics (RNEA / CRBA /
    FD), control (LQR / DARE / pole placement / observer / gramians),
    sensor fusion (Kalman / EKF / camera / IMU), and a `nabled-sim`

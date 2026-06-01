@@ -22,6 +22,7 @@ Physical AI or ML modules are compiled.
 | `geometry`    | (alias for `linalg`; geometry lives under linalg)  | `nabled-linalg`              |
 | `signal`      | `nabled::signal::*`                                | `nabled-linalg` (signal)     |
 | `ml`          | `nabled::ml::*`, `nabled::optimization::*`         | `nabled-ml`                  |
+| `embeddings`  | `nabled::embeddings::*` (rerank/normalize/compress/kNN) | `nabled-embeddings`, `linalg`, `ml` |
 | `model`       | `nabled::model::*`                                 | `nabled-model`               |
 | `kinematics`  | `nabled::kinematics::*`                            | `nabled-kinematics`, `model` |
 | `dynamics`    | `nabled::dynamics::*` (incl. `dynamics::tree::*`)  | `nabled-dynamics`, `kinematics`, `model` |

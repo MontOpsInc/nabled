@@ -26,6 +26,11 @@ on:
         default: false
         required: false
         type: boolean
+      skip_embeddings:
+        description: 'Skip publishing nabled-embeddings'
+        default: false
+        required: false
+        type: boolean
       skip_physical_ai:
         description: 'Skip publishing Physical AI domain crates'
         default: false
@@ -142,6 +147,7 @@ jobs:
           SKIP_CORE: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_core == true }}
           SKIP_LINALG: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_linalg == true }}
           SKIP_ML: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_ml == true }}
+          SKIP_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_embeddings == true }}
           SKIP_PHYSICAL_AI: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_physical_ai == true }}
           SKIP_KINEMATICS: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_kinematics == true }}
           SKIP_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_model == true }}
@@ -160,6 +166,7 @@ jobs:
               core) [ "${SKIP_CORE}" = "true" ] ;;
               linalg) [ "${SKIP_LINALG}" = "true" ] ;;
               ml) [ "${SKIP_ML}" = "true" ] ;;
+              embeddings) [ "${SKIP_EMBEDDINGS}" = "true" ] ;;
               physical_ai) [ "${SKIP_PHYSICAL_AI}" = "true" ] ;;
               kinematics) [ "${SKIP_PHYSICAL_AI}" = "true" ] || [ "${SKIP_KINEMATICS}" = "true" ] ;;
               model) [ "${SKIP_PHYSICAL_AI}" = "true" ] || [ "${SKIP_MODEL}" = "true" ] ;;
@@ -270,6 +277,7 @@ jobs:
           publish_if_enabled core nabled-core
           publish_if_enabled linalg nabled-linalg
           publish_if_enabled ml nabled-ml
+          publish_if_enabled embeddings nabled-embeddings
           publish_if_enabled kinematics nabled-kinematics
           publish_if_enabled model nabled-model
           publish_if_enabled dynamics nabled-dynamics

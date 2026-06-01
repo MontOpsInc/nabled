@@ -23,10 +23,14 @@ End-to-end examples using pynabled.
 - **arrow/** – PyArrow bridge (requires a default build and `pyarrow`)
   - `arrow_svd.py` – SVD on PyArrow FixedSizeListArray matrix, round-trip verification
 
+- **embeddings/** – Embedding retrieval (requires a default build)
+  - `lance_rerank.py` – LanceDB ANN → nabled exact rerank over a pure Arrow interchange. Uses the **example-only** packages `lance` (required) and `sentence-transformers` (optional). These are NOT part of the crate graph, `pyproject.toml`, or the CI/python-quality gate.
+
 ## Requirements
 
 - numpy, pynabled, scikit-learn, scipy, matplotlib
 - For arrow examples: pyarrow and a default pynabled build
+- For `embeddings/lance_rerank.py` only: `pip install lance sentence-transformers` (example-only, never required by the package or its tests)
 
 ## Run
 
@@ -45,4 +49,11 @@ Arrow examples (install `pyarrow` first):
 
 ```bash
 python python/examples/arrow/arrow_svd.py
+```
+
+Embeddings example (install the example-only deps first):
+
+```bash
+pip install lance sentence-transformers
+python python/examples/embeddings/lance_rerank.py
 ```
