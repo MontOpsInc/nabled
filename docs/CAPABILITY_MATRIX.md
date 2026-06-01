@@ -1,6 +1,6 @@
 # Capability Matrix
 
-Last updated: 2026-05-23
+Last updated: 2026-06-01
 
 ## Purpose
 
@@ -51,8 +51,14 @@ Objective production-readiness and domain done criteria live in `docs/REFERENCE_
 | Embeddings: normalize | row-wise L2 normalization (`normalize_rows`/`_view`/`_into`) | `nabled-embeddings::normalize` | Implemented | No | Delegates to `vector::batched_normalize*`; `f32`/`f64` parity tests. |
 | Embeddings: similarity | `query_corpus_scores`/`_view`/`_into` over `Metric { Cosine, Dot, L2 }` | `nabled-embeddings::similarity` | Implemented | Yes | Cosine→`pairwise_cosine_similarity`, L2→`pairwise_l2_distance`, Dot→`matmat(queries, corpusᵀ)`; each `Metric` records `higher_is_better`. Bench `embeddings_benchmarks`. |
 | Embeddings: top-k / rerank | direction-aware `top_k` (partial selection) + `Neighbor` + `rerank` | `nabled-embeddings::topk`/`rerank` | Implemented | Yes | Partial-selection (`select_nth_unstable_by`) with deterministic tie-break; rerank composes scores + top_k. Bench `embeddings_benchmarks`. |
+| Embeddings: rerank with ids | `NeighborWithId` + `attach_ids` + `rerank_with_ids` / `batch_rerank_with_ids` | `nabled-embeddings::topk`/`rerank` | Implemented | No | Threads recall-stage ids through exact rerank; batch composes `brute_force_knn` (no bare `batch_rerank`). `f32`/`f64` + length-mismatch tests. |
+| Embeddings: corpus workspace | `CorpusWorkspace` build-once / query-many (cached cosine norms) | `nabled-embeddings::cache` | Implemented | Yes | `build`/`query_corpus_scores`/`_into`/`rerank_with`/`knn_with` + metadata; owns prepared corpus, reproduces stateless cosine bit-for-bit. Reuse bench `embeddings_corpus_workspace_reuse`. |
+| Embeddings: eval metrics | `recall_at_k`, `reciprocal_rank`, `mean_reciprocal_rank`, `ndcg_at_k` | `nabled-embeddings::metrics` | Implemented | No | Pure ranking math over retrieved-id lists vs ground-truth sets; generic id, binary relevance, hand-computed tests. |
+| Embeddings: MMR | greedy `mmr` (lambda in `[0,1]`, metric-agnostic) | `nabled-embeddings::mmr` | Implemented | No | `lambda=1` reproduces plain rerank; lower diversifies. `f32`/`f64` + clustered-fixture tests. |
+| Embeddings: int8 quantization | `QuantizedMatrix`, `quantize_rows`, `dequantize`, `from_parts`, `query_corpus_scores_quantized` | `nabled-embeddings::quantize` | Implemented | Yes | Per-row symmetric int8 (`scale=amax/127`); dequantize-then-existing-kernel scoring (`D-EMB-3`). Round-trip/tolerance tests; bench `embeddings_quantize_rows`. |
 | Embeddings: kNN | exact `brute_force_knn` | `nabled-embeddings::knn` | Implemented | No | Small-corpus/eval/golden-test exact kNN; use ANN store + rerank for large-corpus recall. |
 | Embeddings: compress | PCA `fit_pca` + `compress`/`_view`/`_into` | `nabled-embeddings::compress` | Implemented | No | Wraps `nabled-ml::pca` compute/transform; `fit_pca` gated on `lapack-provider` like the underlying PCA. |
+| Embeddings: Arrow rerank facade | `arrow_query_corpus_scores`/`arrow_rerank`/`arrow_normalize_rows`/`arrow_brute_force_knn` | `nabled::arrow::embeddings` (features `embeddings`+`arrow`) | Implemented | No | Zero-copy from `FixedSizeListArray`; returns `FixedSizeListArray` scores / `StructArray{index:i64,score}` / `ListArray` of per-query neighbors (`D-EMB-4`). Parity tests in `nabled`. |
 | Geometry (Physical AI) | quat/SO(3)/SE(3)/twist primitives | `nabled-linalg::geometry` | Implemented | No | Round 1 (M1) landed: quat/SO3/SE3/twist with view/into paths. |
 | Signal (Physical AI) | windows, correlation, FFT (feature `signal`) | `nabled-linalg::signal` | Implemented | No | RealFft round-trip, `RfftSpectrum`, `windowed_rfft`, `autocorrelation_full`; S12–S14 pass with `signal` feature. |
 | Stats streaming (Physical AI) | online/ewma/rolling/lag column ops | `nabled-ml::stats` | Implemented | No | online/ewma/rolling/lag landed Round 1 (M2); lag_view/shift only. |
@@ -64,7 +70,7 @@ Objective production-readiness and domain done criteria live in `docs/REFERENCE_
 | Sensor fusion | Kalman/EKF/camera/IMU | `nabled-sensor` | Implemented | No | EKF predict/update, `PinholeIntrinsics`, strapdown IMU + `strapdown_predict_view`/`_into`; S7/S11/S17–S19 pass. |
 | Facade gating | per-domain Cargo features | `nabled` | Implemented | No | `default = ["linalg"]`. Per-domain features + `physical-ai` umbrella. See `docs/FEATURE_MATRIX.md` (D-MOD-1). |
 | pynabled Physical AI | geometry/kinematics/model/dynamics/control/sensor/signal | `pynabled.physical_ai` | Implemented | No | View-first ingress on every Rust `_view` path; `out=` kwargs on every `_into` path. Tree FK/Jacobian + `IkWorkspace` + S22–S27 Python parity (D-MOD-4). |
-| pynabled embeddings | normalize/query_corpus_scores/rerank/brute_force_knn/compress_pca | `pynabled.embeddings` | Implemented | No | `f32`/`f64` NumPy parity vs reference; `out=` where a Rust `_into` exists; in default wheels. LanceDB rerank example is example-only (`lance`/`sentence-transformers` outside the crate graph and CI gate). |
+| pynabled embeddings | normalize/query_corpus_scores/rerank/brute_force_knn/compress_pca + rerank_with_ids/batch_rerank_with_ids/mmr/recall_at_k/reciprocal_rank/mean_reciprocal_rank/ndcg_at_k/quantize_rows/dequantize/query_corpus_scores_quantized + `IdNeighbors`/`QuantizedMatrix`/`CorpusWorkspace` | `pynabled.embeddings` | Implemented | No | `f32`/`f64` NumPy parity vs reference; `out=` where a Rust `_into` exists; in default wheels. Arrow-native rerank wrappers ship under `pynabled.arrow`. LanceDB rerank example is example-only (`lance`/`sentence-transformers` outside the crate graph and CI gate). |
 
 ## Execution Axes Model
 

@@ -46,20 +46,28 @@
 //! # Ok::<(), nabled_embeddings::EmbeddingError>(())
 //! ```
 
+pub mod cache;
 pub mod compress;
 pub mod error;
 pub mod knn;
+pub mod metrics;
+pub mod mmr;
 pub mod normalize;
+pub mod quantize;
 pub mod rerank;
 pub mod similarity;
 pub mod topk;
 
+pub use cache::CorpusWorkspace;
 pub use compress::{PcaModel, compress, compress_into, compress_view, fit_pca};
 pub use error::EmbeddingError;
 pub use knn::brute_force_knn;
+pub use metrics::{mean_reciprocal_rank, ndcg_at_k, recall_at_k, reciprocal_rank};
+pub use mmr::mmr;
 pub use normalize::{normalize_rows, normalize_rows_into, normalize_rows_view};
-pub use rerank::rerank;
+pub use quantize::{QuantizedMatrix, dequantize, quantize_rows};
+pub use rerank::{batch_rerank_with_ids, rerank, rerank_with_ids};
 pub use similarity::{
     Metric, query_corpus_scores, query_corpus_scores_into, query_corpus_scores_view,
 };
-pub use topk::{Neighbor, top_k};
+pub use topk::{Neighbor, NeighborWithId, attach_ids, top_k};

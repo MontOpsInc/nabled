@@ -50,9 +50,12 @@ This list is ever-changing, consult the Rust Docs for the source of truth.
    Arrow-zero-copy compute and rerank layer for embedding vectors — bring
    vectors from any model, compute exactly, deploy anywhere. Row
    normalization, `query_corpus_scores` over a `Metric { Cosine, Dot, L2 }`
-   enum, direction-aware `top_k`/`rerank`, exact `brute_force_knn`, and PCA
-   compression. It is the exact rerank step next to a vector store, not a
-   vector database: no ANN index, no storage, no model inference.
+   enum, direction-aware `top_k`/`rerank` (incl. id-carrying single/batch
+   rerank), exact `brute_force_knn`, a build-once/query-many `CorpusWorkspace`,
+   offline eval metrics (recall@k / MRR / nDCG), MMR diversity rerank, int8
+   row quantization, PCA compression, and Arrow-native rerank wrappers at the
+   facade. It is the exact rerank step next to a vector store, not a vector
+   database: no ANN index, no storage, no model inference.
 9. Physical AI (`physical-ai` feature): URDF model, kinematic tree FK /
    Jacobian / DLS IK, serial + branch-routed tree dynamics (RNEA / CRBA /
    FD), control (LQR / DARE / pole placement / observer / gramians),

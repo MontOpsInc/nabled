@@ -386,6 +386,20 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_rerank, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_brute_force_knn, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_compress_pca, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_rerank_with_ids, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_batch_rerank_with_ids, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_mmr, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_recall_at_k, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_reciprocal_rank, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_mrr, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_ndcg_at_k, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_quantize_rows, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_dequantize, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            embeddings::embeddings_query_corpus_scores_quantized,
+            m
+        )?)?;
+        m.add_class::<embeddings::PyCorpusWorkspace>()?;
     }
 
     // Iterative (dense CG, GMRES)
@@ -837,6 +851,16 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::bfgs_arrow, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::bfgs_complex_arrow, m)?)?;
+        #[cfg(feature = "embeddings")]
+        {
+            m.add_function(pyo3::wrap_pyfunction!(
+                arrow::embeddings_query_corpus_scores,
+                m
+            )?)?;
+            m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_rerank, m)?)?;
+            m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_normalize_rows, m)?)?;
+            m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_brute_force_knn, m)?)?;
+        }
     }
 
     Ok(())

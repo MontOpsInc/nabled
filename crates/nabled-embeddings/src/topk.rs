@@ -11,6 +11,8 @@ use std::cmp::Ordering;
 use nabled_core::scalar::NabledReal;
 use ndarray::ArrayView1;
 
+use crate::error::EmbeddingError;
+
 /// A scored corpus position returned by selection and retrieval routines.
 ///
 /// `score` carries the metric value that produced the ranking (a similarity for cosine/dot, a
@@ -26,6 +28,49 @@ pub struct Neighbor<T> {
 impl<T> Neighbor<T> {
     /// Construct a neighbor from an index and score.
     pub const fn new(index: usize, score: T) -> Self { Self { index, score } }
+}
+
+/// A scored neighbor that additionally carries a caller-supplied stable identifier.
+///
+/// This is the id-carrying analogue of [`Neighbor`]: `index` is still the local row position the
+/// score was computed against, while `id` is the application's stable identifier for that row (for
+/// example a global corpus row id returned by an upstream ANN stage). It is produced by attaching an
+/// `&[Id]` to a `Vec<Neighbor<T>>` via [`attach_ids`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NeighborWithId<T, Id> {
+    /// Local row index into the candidate set the score was computed against.
+    pub index: usize,
+    /// Metric value for this candidate row.
+    pub score: T,
+    /// Caller-supplied stable identifier for this candidate row.
+    pub id: Id,
+}
+
+impl<T, Id> NeighborWithId<T, Id> {
+    /// Construct an id-carrying neighbor from an index, score, and id.
+    pub const fn new(index: usize, score: T, id: Id) -> Self { Self { index, score, id } }
+}
+
+/// Attach stable identifiers to ranked [`Neighbor`]s by indexing `ids` with each neighbor index.
+///
+/// `ids` must hold exactly one identifier per candidate row that was ranked (its length must equal
+/// `n_candidates`). Each neighbor's `index` is used to look up its id, so the mapping is correct
+/// regardless of the ranked order.
+///
+/// # Errors
+/// Returns [`EmbeddingError::DimensionMismatch`] when `ids.len() != n_candidates`.
+pub fn attach_ids<T, Id: Copy>(
+    neighbors: Vec<Neighbor<T>>,
+    ids: &[Id],
+    n_candidates: usize,
+) -> Result<Vec<NeighborWithId<T, Id>>, EmbeddingError> {
+    if ids.len() != n_candidates {
+        return Err(EmbeddingError::DimensionMismatch);
+    }
+    Ok(neighbors
+        .into_iter()
+        .map(|n| NeighborWithId { index: n.index, score: n.score, id: ids[n.index] })
+        .collect())
 }
 
 /// Select the best `k` entries of `scores`, returning them in best-first order.
@@ -140,5 +185,53 @@ mod tests {
         let neighbor = Neighbor::new(3, 0.5_f64);
         assert_eq!(neighbor.index, 3);
         assert!((neighbor.score - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn neighbor_with_id_new_sets_fields() {
+        let neighbor = NeighborWithId::new(2, 0.25_f64, 99_i64);
+        assert_eq!(neighbor.index, 2);
+        assert!((neighbor.score - 0.25).abs() < 1e-12);
+        assert_eq!(neighbor.id, 99);
+    }
+
+    #[test]
+    fn attach_ids_maps_index_to_id() {
+        let scores = arr1(&[0.1_f64, 0.9, 0.4]);
+        let ranked = top_k(scores.view(), 3, true);
+        let ids = [10_i64, 20, 30];
+        let with_ids = attach_ids(ranked, &ids, 3).unwrap();
+        // Best is index 1 (score 0.9) -> id 20.
+        assert_eq!(with_ids[0].index, 1);
+        assert_eq!(with_ids[0].id, 20);
+        assert_eq!(with_ids[1].index, 2);
+        assert_eq!(with_ids[1].id, 30);
+        assert_eq!(with_ids[2].index, 0);
+        assert_eq!(with_ids[2].id, 10);
+    }
+
+    #[test]
+    fn attach_ids_f32_preserves_scores() {
+        let scores = arr1(&[3.0_f32, 1.0, 2.0]);
+        let ranked = top_k(scores.view(), 2, true);
+        let ids = ['a', 'b', 'c'];
+        let with_ids = attach_ids(ranked, &ids, 3).unwrap();
+        assert_eq!(with_ids[0].id, 'a');
+        assert!((with_ids[0].score - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn attach_ids_rejects_length_mismatch() {
+        let scores = arr1(&[0.1_f64, 0.9, 0.4]);
+        let ranked = top_k(scores.view(), 3, true);
+        let ids = [10_i64, 20];
+        assert_eq!(attach_ids(ranked, &ids, 3), Err(EmbeddingError::DimensionMismatch));
+    }
+
+    #[test]
+    fn attach_ids_empty_is_ok() {
+        let ranked: Vec<Neighbor<f64>> = Vec::new();
+        let ids: [i64; 0] = [];
+        assert!(attach_ids(ranked, &ids, 0).unwrap().is_empty());
     }
 }

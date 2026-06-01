@@ -102,7 +102,13 @@ print(top.indices, top.scores)
 `lance` and `sentence-transformers` are **example-only** dependencies; they are not required by the
 package or its tests. A runnable end-to-end script lives at
 `python/examples/embeddings/lance_rerank.py`. The full embeddings surface is `normalize_rows`,
-`query_corpus_scores`, `rerank`, `brute_force_knn`, and `compress_pca`.
+`query_corpus_scores`, `rerank`, `brute_force_knn`, and `compress_pca`, plus id-carrying
+`rerank_with_ids` / `batch_rerank_with_ids` (returning `IdNeighbors`), a build-once/query-many
+`CorpusWorkspace`, offline eval metrics (`recall_at_k`, `reciprocal_rank`, `mean_reciprocal_rank`,
+`ndcg_at_k`), MMR diversity rerank (`mmr`), and int8 quantization (`quantize_rows`, `dequantize`,
+`query_corpus_scores_quantized`, `QuantizedMatrix`). Arrow-native rerank wrappers ship under
+`pynabled.arrow`. See `docs/EMBEDDINGS.md` for the full guide and `docs/BENCHMARKS.md` for
+benchmarking methodology.
 
 ## API and behavior
 

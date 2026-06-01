@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use nabled_embeddings::{Metric, query_corpus_scores, rerank};
+use nabled_embeddings::{CorpusWorkspace, Metric, query_corpus_scores, quantize_rows, rerank};
 use ndarray::{Array1, Array2};
 
 /// Deterministic pseudo-random matrix so benches are reproducible without a RNG dependency.
@@ -65,9 +65,63 @@ fn bench_rerank(c: &mut Criterion) {
     group.finish();
 }
 
+/// Many single queries against one static corpus: stateless recompute vs `CorpusWorkspace` reuse.
+fn bench_corpus_workspace_reuse(c: &mut Criterion) {
+    let mut group = c.benchmark_group("embeddings_corpus_workspace_reuse");
+    let dim = 256_usize;
+    let n_corpus = 4096_usize;
+    let n_queries = 32_usize;
+    let corpus = synthetic_matrix(n_corpus, dim, 10);
+    let queries = synthetic_matrix(n_queries, dim, 11);
+
+    // Stateless: each query re-derives the corpus norms inside the cosine kernel.
+    _ = group.bench_function("stateless", |bench| {
+        bench.iter(|| {
+            let mut last = None;
+            for q in queries.outer_iter() {
+                let query = q.insert_axis(ndarray::Axis(0)).to_owned();
+                last = Some(query_corpus_scores(&query, black_box(&corpus), Metric::Cosine));
+            }
+            last
+        });
+    });
+
+    // Workspace: corpus norms are computed once at build time and reused per query.
+    _ = group.bench_function("workspace", |bench| {
+        let workspace = CorpusWorkspace::build(&corpus.view(), Metric::Cosine).expect("build");
+        bench.iter(|| {
+            let mut last = None;
+            for q in queries.outer_iter() {
+                last = Some(workspace.rerank_with(black_box(&q), 10));
+            }
+            last
+        });
+    });
+
+    group.finish();
+}
+
+/// Round-trip int8 quantization throughput across corpus sizes.
+// Synthetic bench data is bounded in `[-1, 1]`, so the f64 -> f32 narrowing is harmless here.
+#[allow(clippy::cast_possible_truncation)]
+fn bench_quantize_rows(c: &mut Criterion) {
+    let mut group = c.benchmark_group("embeddings_quantize_rows");
+    let dim = 256_usize;
+    for n_rows in [1024_usize, 4096] {
+        // Quantization operates on f32; cast the synthetic f64 data once outside the timed loop.
+        let rows: Array2<f32> = synthetic_matrix(n_rows, dim, 12).mapv(|v| v as f32);
+        _ = group.bench_with_input(BenchmarkId::new("quantize", n_rows), &n_rows, |bench, _| {
+            bench.iter(|| quantize_rows(black_box(&rows.view())));
+        });
+    }
+    group.finish();
+}
+
 fn benchmark_embeddings(c: &mut Criterion) {
     bench_query_corpus_scores(c);
     bench_rerank(c);
+    bench_corpus_workspace_reuse(c);
+    bench_quantize_rows(c);
 }
 
 criterion_group!(benches, benchmark_embeddings);

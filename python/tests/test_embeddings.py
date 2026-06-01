@@ -190,3 +190,198 @@ def test_lancedb_style_rerank_pipeline():
     expected_local = np.argsort(-row)[:3]
     np.testing.assert_array_equal(reranked.indices, expected_local)
     np.testing.assert_array_equal(global_ids, ann_candidate_ids[expected_local])
+
+
+# --------------------------------------------------------------------------------------------------
+# Item 2: rerank with ids + batch
+# --------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_rerank_with_ids_maps_ids(dtype):
+    corpus = _rng(20).standard_normal((10, 5)).astype(dtype)
+    query = _rng(21).standard_normal(5).astype(dtype)
+    ids = np.array([100, 101, 102, 103, 104, 105, 106, 107, 108, 109], dtype=np.int64)
+    result = embeddings.rerank_with_ids(query, corpus, ids, 4, "cosine")
+    assert result.indices.shape == (4,)
+    assert result.ids.shape == (4,)
+    assert result.scores.shape == (4,)
+    # ids must equal ids[indices].
+    np.testing.assert_array_equal(result.ids, ids[result.indices])
+    # Order matches plain rerank.
+    plain = embeddings.rerank(query, corpus, 4, "cosine")
+    np.testing.assert_array_equal(result.indices, plain.indices)
+
+
+def test_rerank_with_ids_rejects_length_mismatch():
+    corpus = _rng(22).standard_normal((4, 3))
+    query = _rng(23).standard_normal(3)
+    ids = np.array([1, 2], dtype=np.int64)
+    with pytest.raises(ValueError):
+        embeddings.rerank_with_ids(query, corpus, ids, 2, "cosine")
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_batch_rerank_with_ids_matches_brute_force(dtype):
+    queries = _rng(24).standard_normal((3, 4)).astype(dtype)
+    corpus = _rng(25).standard_normal((8, 4)).astype(dtype)
+    ids = (np.arange(8) + 50).astype(np.int64)
+    result = embeddings.batch_rerank_with_ids(queries, corpus, ids, 3, "l2")
+    knn = embeddings.brute_force_knn(queries, corpus, 3, "l2")
+    np.testing.assert_array_equal(result.indices, knn.indices)
+    np.testing.assert_array_equal(result.ids, ids[knn.indices])
+
+
+# --------------------------------------------------------------------------------------------------
+# Item 3: corpus workspace reuse
+# --------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("metric", ["cosine", "dot", "l2"])
+def test_corpus_workspace_scores_match_stateless(dtype, metric):
+    corpus = _rng(26).standard_normal((9, 6)).astype(dtype)
+    queries = _rng(27).standard_normal((4, 6)).astype(dtype)
+    ws = embeddings.CorpusWorkspace(corpus, metric)
+    assert ws.metric == metric
+    assert len(ws) == 9
+    assert ws.dim == 6
+    cached = ws.query_corpus_scores(queries)
+    stateless = embeddings.query_corpus_scores(queries, corpus, metric)
+    np.testing.assert_allclose(cached, stateless, atol=_atol(dtype))
+
+
+def test_corpus_workspace_reuse_matches_rerank():
+    corpus = _rng(28).standard_normal((12, 5)).astype(np.float64)
+    ws = embeddings.CorpusWorkspace(corpus, "cosine")
+    for seed in (29, 30, 31):
+        query = _rng(seed).standard_normal(5)
+        cached = ws.rerank_with(query, 3)
+        plain = embeddings.rerank(query, corpus, 3, "cosine")
+        np.testing.assert_array_equal(cached.indices, plain.indices)
+        np.testing.assert_allclose(cached.scores, plain.scores, atol=1e-10)
+
+
+def test_corpus_workspace_knn_matches_brute_force():
+    corpus = _rng(32).standard_normal((10, 4)).astype(np.float32)
+    queries = _rng(33).standard_normal((3, 4)).astype(np.float32)
+    ws = embeddings.CorpusWorkspace(corpus, "l2")
+    cached = ws.knn_with(queries, 4)
+    knn = embeddings.brute_force_knn(queries, corpus, 4, "l2")
+    np.testing.assert_array_equal(cached.indices, knn.indices)
+    np.testing.assert_allclose(cached.scores, knn.scores, atol=_atol(np.float32))
+
+
+# --------------------------------------------------------------------------------------------------
+# Item 4: eval metrics
+# --------------------------------------------------------------------------------------------------
+
+
+def test_recall_at_k_hand_computed():
+    retrieved = [1, 2, 3, 4]
+    relevant = [2, 4, 9]
+    assert embeddings.recall_at_k(retrieved, relevant, 4) == pytest.approx(2.0 / 3.0)
+    assert embeddings.recall_at_k(retrieved, relevant, 1) == pytest.approx(0.0)
+
+
+def test_reciprocal_rank_hand_computed():
+    assert embeddings.reciprocal_rank([9, 8, 2, 4], [2, 4]) == pytest.approx(1.0 / 3.0)
+    assert embeddings.reciprocal_rank([9, 8], [1]) == pytest.approx(0.0)
+
+
+def test_mean_reciprocal_rank_averages():
+    retrieved = [[2, 1], [5, 6, 3]]
+    relevant = [[2], [3]]
+    assert embeddings.mean_reciprocal_rank(retrieved, relevant) == pytest.approx(2.0 / 3.0)
+
+
+def test_mean_reciprocal_rank_rejects_length_mismatch():
+    with pytest.raises(ValueError):
+        embeddings.mean_reciprocal_rank([[1]], [[1], [2]])
+
+
+def test_ndcg_at_k_hand_computed():
+    # Perfect ranking.
+    assert embeddings.ndcg_at_k([1, 2, 3], [1, 2], 3) == pytest.approx(1.0)
+    # Single relevant at position 1 (0-based): DCG = 1/log2(3), IDCG = 1.
+    expected = 1.0 / np.log2(3)
+    assert embeddings.ndcg_at_k([9, 2, 7], [2], 3) == pytest.approx(expected)
+    # Empty relevant set.
+    assert embeddings.ndcg_at_k([1, 2], [], 2) == pytest.approx(0.0)
+
+
+def test_metrics_accept_numpy_int_arrays():
+    retrieved = np.array([1, 2, 3], dtype=np.int64)
+    relevant = np.array([3], dtype=np.int32)
+    assert embeddings.recall_at_k(retrieved, relevant, 3) == pytest.approx(1.0)
+
+
+# --------------------------------------------------------------------------------------------------
+# Item 5: MMR
+# --------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_mmr_lambda_one_matches_rerank(dtype):
+    corpus = _rng(34).standard_normal((10, 5)).astype(dtype)
+    query = _rng(35).standard_normal(5).astype(dtype)
+    mmr_result = embeddings.mmr(query, corpus, 5, 1.0, "cosine")
+    plain = embeddings.rerank(query, corpus, 5, "cosine")
+    np.testing.assert_array_equal(mmr_result.indices, plain.indices)
+
+
+def test_mmr_low_lambda_diversifies():
+    # Two tight clusters; query aligned with the first.
+    corpus = np.array(
+        [[1.0, 0.0], [0.99, 0.01], [0.98, 0.02], [0.0, 1.0], [0.01, 0.99]],
+        dtype=np.float64,
+    )
+    query = np.array([1.0, 0.0], dtype=np.float64)
+    plain = embeddings.rerank(query, corpus, 2, "cosine")
+    assert plain.indices[0] < 3 and plain.indices[1] < 3
+    diversified = embeddings.mmr(query, corpus, 2, 0.2, "cosine")
+    assert diversified.indices[0] == 0
+    assert diversified.indices[1] >= 3
+
+
+def test_mmr_rejects_lambda_out_of_range():
+    corpus = _rng(36).standard_normal((4, 3))
+    query = _rng(37).standard_normal(3)
+    with pytest.raises(ValueError):
+        embeddings.mmr(query, corpus, 2, 1.5, "cosine")
+
+
+# --------------------------------------------------------------------------------------------------
+# Item 6: int8 quantization
+# --------------------------------------------------------------------------------------------------
+
+
+def test_quantize_dequantize_round_trip():
+    rows = _rng(38).standard_normal((6, 8)).astype(np.float32)
+    quantized = embeddings.quantize_rows(rows)
+    assert quantized.codes.dtype == np.int8
+    assert quantized.scales.dtype == np.float32
+    assert quantized.codes.shape == (6, 8)
+    assert quantized.scales.shape == (6,)
+    restored = embeddings.dequantize(quantized)
+    # Per-row error is bounded by half a quantization step.
+    half_step = quantized.scales[:, None] / 2.0 + 1e-6
+    assert np.all(np.abs(restored - rows) <= half_step)
+
+
+def test_quantize_requires_float32():
+    rows = _rng(39).standard_normal((3, 4)).astype(np.float64)
+    with pytest.raises(TypeError):
+        embeddings.quantize_rows(rows)
+
+
+@pytest.mark.parametrize("metric", ["cosine", "dot", "l2"])
+def test_quantized_scoring_close_to_f32(metric):
+    queries = np.abs(_rng(40).standard_normal((3, 6))).astype(np.float32) + 0.1
+    corpus = np.abs(_rng(41).standard_normal((7, 6))).astype(np.float32) + 0.1
+    qq = embeddings.quantize_rows(queries)
+    qc = embeddings.quantize_rows(corpus)
+    approx = embeddings.query_corpus_scores_quantized(qq, qc, metric)
+    exact = embeddings.query_corpus_scores(queries, corpus, metric)
+    assert approx.shape == exact.shape
+    np.testing.assert_allclose(approx, exact, atol=5e-2, rtol=5e-2)

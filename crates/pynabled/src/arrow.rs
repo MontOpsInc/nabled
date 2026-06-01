@@ -6645,6 +6645,150 @@ pub fn tensor_tt_hadamard_round(
     }
 }
 
+/// Convert an owned [`ListArray`] into a PyArrow array data carrier.
+#[cfg(feature = "embeddings")]
+fn list_array_into_pyarrow(array: ListArray) -> PyArrowType<ArrayData> {
+    PyArrowType(array.into_data())
+}
+
+/// Parse a metric selector string into a [`nabled::embeddings::Metric`].
+#[cfg(feature = "embeddings")]
+fn parse_embeddings_metric(metric: &str) -> PyResult<nabled::embeddings::Metric> {
+    match metric.to_ascii_lowercase().as_str() {
+        "cosine" => Ok(nabled::embeddings::Metric::Cosine),
+        "dot" => Ok(nabled::embeddings::Metric::Dot),
+        "l2" | "euclidean" => Ok(nabled::embeddings::Metric::L2),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown metric '{other}'; expected 'cosine', 'dot', or 'l2'"
+        ))),
+    }
+}
+
+/// Score every query row against every corpus row under `metric` for Arrow dense matrices.
+///
+/// `queries` and `corpus` are `rows-of-vectors` FixedSizeList arrays; the result is the
+/// `(n_queries, n_corpus)` score matrix as a FixedSizeList array (one inner list per query).
+#[cfg(feature = "embeddings")]
+#[pyfunction(name = "arrow_embeddings_query_corpus_scores")]
+#[pyo3(signature = (queries, corpus, metric="cosine"))]
+pub fn embeddings_query_corpus_scores(
+    queries: PyArrowType<ArrayData>,
+    corpus: PyArrowType<ArrayData>,
+    metric: &str,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let metric = parse_embeddings_metric(metric)?;
+    match (
+        array_data_to_real_fixed_size_list(queries.0)?,
+        array_data_to_real_fixed_size_list(corpus.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(q), RealFixedSizeListArray::F32(c)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::embeddings::arrow_query_corpus_scores::<Float32Type>(&q, &c, metric)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(q), RealFixedSizeListArray::F64(c)) => {
+            Ok(fixed_size_list_into_pyarrow(
+                nabled::arrow::embeddings::arrow_query_corpus_scores::<Float64Type>(&q, &c, metric)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["queries", "corpus"])),
+    }
+}
+
+/// Rerank `candidates` against a single `query`, returning the best `k` neighbors.
+///
+/// `query` is a single-vector PrimitiveArray; `candidates` is a `rows-of-vectors` FixedSizeList
+/// array. The result is a StructArray with an `int64` `index` field and a metric-typed `score`
+/// field, in best-first order.
+#[cfg(feature = "embeddings")]
+#[pyfunction(name = "arrow_embeddings_rerank")]
+#[pyo3(signature = (query, candidates, k, metric="cosine"))]
+pub fn embeddings_rerank(
+    query: PyArrowType<ArrayData>,
+    candidates: PyArrowType<ArrayData>,
+    k: usize,
+    metric: &str,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let metric = parse_embeddings_metric(metric)?;
+    match (
+        array_data_to_real_primitive(query.0)?,
+        array_data_to_real_fixed_size_list(candidates.0)?,
+    ) {
+        (RealPrimitiveArray::F32(q), RealFixedSizeListArray::F32(c)) => {
+            Ok(struct_array_into_pyarrow(
+                nabled::arrow::embeddings::arrow_rerank::<Float32Type>(&q, &c, k, metric)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealPrimitiveArray::F64(q), RealFixedSizeListArray::F64(c)) => {
+            Ok(struct_array_into_pyarrow(
+                nabled::arrow::embeddings::arrow_rerank::<Float64Type>(&q, &c, k, metric)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["query", "candidates"])),
+    }
+}
+
+/// Normalize each row of an Arrow dense matrix to unit L2 length.
+///
+/// `rows` is a `rows-of-vectors` FixedSizeList array; the result is the normalized matrix as a
+/// FixedSizeList array with the same shape.
+#[cfg(feature = "embeddings")]
+#[pyfunction(name = "arrow_embeddings_normalize_rows")]
+#[pyo3(signature = (rows,))]
+pub fn embeddings_normalize_rows(
+    rows: PyArrowType<ArrayData>,
+) -> PyResult<PyArrowType<ArrayData>> {
+    match array_data_to_real_fixed_size_list(rows.0)? {
+        RealFixedSizeListArray::F32(arr) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::embeddings::arrow_normalize_rows::<Float32Type>(&arr)
+                .map_err(to_py_err)?,
+        )),
+        RealFixedSizeListArray::F64(arr) => Ok(fixed_size_list_into_pyarrow(
+            nabled::arrow::embeddings::arrow_normalize_rows::<Float64Type>(&arr)
+                .map_err(to_py_err)?,
+        )),
+    }
+}
+
+/// Compute the best `k` corpus neighbors for every query row under `metric` for Arrow matrices.
+///
+/// `queries` and `corpus` are `rows-of-vectors` FixedSizeList arrays. The result is a ListArray
+/// with one element per query row; each element is a StructArray (`int64` `index`, metric-typed
+/// `score`) listing that query's best-first neighbors.
+#[cfg(feature = "embeddings")]
+#[pyfunction(name = "arrow_embeddings_brute_force_knn")]
+#[pyo3(signature = (queries, corpus, k, metric="cosine"))]
+pub fn embeddings_brute_force_knn(
+    queries: PyArrowType<ArrayData>,
+    corpus: PyArrowType<ArrayData>,
+    k: usize,
+    metric: &str,
+) -> PyResult<PyArrowType<ArrayData>> {
+    let metric = parse_embeddings_metric(metric)?;
+    match (
+        array_data_to_real_fixed_size_list(queries.0)?,
+        array_data_to_real_fixed_size_list(corpus.0)?,
+    ) {
+        (RealFixedSizeListArray::F32(q), RealFixedSizeListArray::F32(c)) => {
+            Ok(list_array_into_pyarrow(
+                nabled::arrow::embeddings::arrow_brute_force_knn::<Float32Type>(&q, &c, k, metric)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        (RealFixedSizeListArray::F64(q), RealFixedSizeListArray::F64(c)) => {
+            Ok(list_array_into_pyarrow(
+                nabled::arrow::embeddings::arrow_brute_force_knn::<Float64Type>(&q, &c, k, metric)
+                    .map_err(to_py_err)?,
+            ))
+        }
+        _ => Err(utils::matching_real_dtype_error(&["queries", "corpus"])),
+    }
+}
+
 /// Reconstruct a real Tensor-Train result into an Arrow tensor.
 #[pyfunction(name = "arrow_tensor_tt_svd_reconstruct")]
 pub fn tensor_tt_svd_reconstruct(
