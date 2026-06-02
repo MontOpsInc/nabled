@@ -6,7 +6,7 @@ import numpy as np
 
 import pynabled._pynabled as _raw
 
-from . import control, dynamics, geometry, kinematics, model, sensor
+from . import control, dynamics, embeddings, geometry, kinematics, model, sensor
 
 try:
     from . import signal
@@ -2135,6 +2135,7 @@ __all__ = [
     "rolling_covariance",
     "control",
     "dynamics",
+    "embeddings",
     "geometry",
     "kinematics",
     "model",

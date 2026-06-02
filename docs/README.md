@@ -34,6 +34,8 @@ This folder contains the current, authoritative direction for `nabled`.
 20. `docs/NARROW_INTEROP.md`: task workload for narrow (Arrow-ndarray bridge) interop improvements.
 21. `docs/NDARROW_INTEGRATION.md`: facade-level Arrow interop contract and current adapter surface.
 22. `docs/ARROW_SUPPORT_MATRIX.md`: direct Arrow-ingress coverage against the current public API.
+23. `docs/EMBEDDINGS.md`: embedding retrieval compute (`nabled-embeddings`), LanceDB plug-in stance, Rust/Python/Arrow surface, and non-goals.
+24. `docs/BENCHMARKS.md`: embeddings benchmark methodology and honest exact-vs-exact framing.
 
 ## Context Resume Protocol
 
@@ -59,8 +61,10 @@ When starting from a compacted/partial context, read documents in this order:
 18. `docs/PYNABLED_PARITY_MATRIX.md` (when closing `N-PY-*` implementation gaps)
 19. `docs/PYNABLED_ARCHITECTURE.md` (when changing Python carriers, copy contracts, or result objects)
 20. `docs/STATUS.md`
-21. `docs/NDARROW_INTEGRATION.md`
-22. `docs/ARROW_SUPPORT_MATRIX.md`
+21. `docs/EMBEDDINGS.md` (when working on retrieval compute / `nabled-embeddings` / `pynabled.embeddings`)
+22. `docs/BENCHMARKS.md` (when benchmarking embeddings workloads)
+23. `docs/NDARROW_INTEGRATION.md`
+24. `docs/ARROW_SUPPORT_MATRIX.md`
 
 Use `docs/EXECUTION_TRACKER.md` to resume from `Next` items first; avoid full code re-assessment unless tracker state is stale or contradictory.
 

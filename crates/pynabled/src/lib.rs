@@ -10,6 +10,8 @@
 )]
 #![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
 
+#[cfg(feature = "embeddings")]
+mod embeddings;
 mod error;
 mod linalg;
 mod ml;
@@ -29,6 +31,7 @@ fn build_features() -> Vec<String> {
         ("accelerator-rayon", cfg!(feature = "accelerator-rayon")),
         ("accelerator-wgpu", cfg!(feature = "accelerator-wgpu")),
         ("arrow", cfg!(feature = "arrow")),
+        ("embeddings", cfg!(feature = "embeddings")),
         ("magma-system", cfg!(feature = "magma-system")),
         ("netlib-static", cfg!(feature = "netlib-static")),
         ("netlib-system", cfg!(feature = "netlib-system")),
@@ -374,6 +377,30 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Rolling stats
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::rolling_covariance, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(ml::stats::rolling_covariance_into, m)?)?;
+
+    // Embeddings retrieval compute
+    #[cfg(feature = "embeddings")]
+    {
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_normalize_rows, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_query_corpus_scores, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_rerank, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_brute_force_knn, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_compress_pca, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_rerank_with_ids, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_batch_rerank_with_ids, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_mmr, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_recall_at_k, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_reciprocal_rank, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_mrr, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_ndcg_at_k, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_quantize_rows, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(embeddings::embeddings_dequantize, m)?)?;
+        m.add_function(pyo3::wrap_pyfunction!(
+            embeddings::embeddings_query_corpus_scores_quantized,
+            m
+        )?)?;
+        m.add_class::<embeddings::PyCorpusWorkspace>()?;
+    }
 
     // Iterative (dense CG, GMRES)
     m.add_function(pyo3::wrap_pyfunction!(ml::iterative::conjugate_gradient, m)?)?;
@@ -824,6 +851,13 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::bfgs_arrow, m)?)?;
         m.add_function(pyo3::wrap_pyfunction!(arrow::bfgs_complex_arrow, m)?)?;
+        #[cfg(feature = "embeddings")]
+        {
+            m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_query_corpus_scores, m)?)?;
+            m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_rerank, m)?)?;
+            m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_normalize_rows, m)?)?;
+            m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_brute_force_knn, m)?)?;
+        }
     }
 
     Ok(())

@@ -8,13 +8,14 @@
 //! 1. [`core`] for shared error taxonomy, validation, and ndarray prelude exports.
 //! 2. [`linalg`] for linear algebra and decomposition domains (including `geometry` and `signal`).
 //! 3. [`ml`] for ML-oriented numerical routines.
-//! 4. [`kinematics`] for chain specification, FK, Jacobian, and IK.
-//! 5. [`model`] for robot model representation and URDF ingestion.
-//! 6. [`dynamics`] for rigid-body dynamics algorithms.
-//! 7. [`control`] for LTI control synthesis (DARE/LQR and related tools).
-//! 8. [`sensor`] for sensor fusion (Kalman/EKF and related models).
-//! 9. [`sim`] for cross-crate Physical AI orchestration (simulation, IK trajectories, control
-//!    loops, estimation pipelines).
+//! 4. [`embeddings`] for embedding retrieval compute (normalize, score, rerank, kNN, compress).
+//! 5. [`kinematics`] for chain specification, FK, Jacobian, and IK.
+//! 6. [`model`] for robot model representation and URDF ingestion.
+//! 7. [`dynamics`] for rigid-body dynamics algorithms.
+//! 8. [`control`] for LTI control synthesis (DARE/LQR and related tools).
+//! 9. [`sensor`] for sensor fusion (Kalman/EKF and related models).
+//! 10. [`sim`] for cross-crate Physical AI orchestration (simulation, IK trajectories, control
+//!     loops, estimation pipelines).
 //!
 //! ## Feature Flags
 //!
@@ -29,14 +30,16 @@
 //! 3. `signal`: enables `nabled-linalg::signal` FFT-backed routines and propagates to `nabled-sim`
 //!    when enabled.
 //! 4. `ml`: re-exports [`crate::ml`] (`nabled-ml`).
-//! 5. `model`: re-exports [`crate::model`] (`nabled-model`).
-//! 6. `kinematics`: re-exports [`crate::kinematics`] (implies `model`).
-//! 7. `dynamics`: re-exports [`crate::dynamics`] (implies `kinematics` + `model`).
-//! 8. `control`: re-exports [`crate::control`] (`nabled-control`).
-//! 9. `sensor`: re-exports [`crate::sensor`] (`nabled-sensor`).
-//! 10. `sim`: re-exports [`crate::sim`] orchestration (implies `kinematics + dynamics + control +
+//! 5. `embeddings`: re-exports [`crate::embeddings`] (`nabled-embeddings`); implies `linalg` +
+//!    `ml`.
+//! 6. `model`: re-exports [`crate::model`] (`nabled-model`).
+//! 7. `kinematics`: re-exports [`crate::kinematics`] (implies `model`).
+//! 8. `dynamics`: re-exports [`crate::dynamics`] (implies `kinematics` + `model`).
+//! 9. `control`: re-exports [`crate::control`] (`nabled-control`).
+//! 10. `sensor`: re-exports [`crate::sensor`] (`nabled-sensor`).
+//! 11. `sim`: re-exports [`crate::sim`] orchestration (implies `kinematics + dynamics + control +
 //!     sensor + ml + model + geometry`).
-//! 11. `physical-ai`: umbrella enabling every Physical AI domain feature.
+//! 12. `physical-ai`: umbrella enabling every Physical AI domain feature.
 //!
 //! BLAS/LAPACK provider features:
 //!
@@ -93,6 +96,12 @@ pub mod linalg {
 #[cfg(feature = "ml")]
 pub mod ml {
     pub use nabled_ml::*;
+}
+
+/// Embedding retrieval compute: normalize, score, rerank, exact kNN, and PCA compression.
+#[cfg(feature = "embeddings")]
+pub mod embeddings {
+    pub use nabled_embeddings::*;
 }
 
 /// Kinematics algorithms for Physical AI workloads.

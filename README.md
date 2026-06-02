@@ -24,6 +24,9 @@ Important! Nabled is under active development right now, so the only way to be s
 # Default (slim): just linear algebra.
 nabled = "0.0.10"
 
+# Or opt into embeddings retrieval compute (normalize, score, rerank, kNN, PCA compress):
+# nabled = { version = "0.0.10", features = ["embeddings"] }
+
 # Or opt into the full Physical AI vertical (kinematics / dynamics /
 # control / sensor / sim / model / ml / signal / geometry):
 # nabled = { version = "0.0.10", features = ["physical-ai"] }
@@ -46,7 +49,17 @@ This list is ever-changing, consult the Rust Docs for the source of truth.
 5. Numerical Jacobian/gradient/Hessian
 6. Statistics utilities
 7. Vector primitives (dot/norm/cosine/pairwise/batched)
-8. Physical AI (`physical-ai` feature): URDF model, kinematic tree FK /
+8. Embeddings (`embeddings` feature): a lightweight, ndarray-native,
+   Arrow-zero-copy compute and rerank layer for embedding vectors — bring
+   vectors from any model, compute exactly, deploy anywhere. Row
+   normalization, `query_corpus_scores` over a `Metric { Cosine, Dot, L2 }`
+   enum, direction-aware `top_k`/`rerank` (incl. id-carrying single/batch
+   rerank), exact `brute_force_knn`, a build-once/query-many `CorpusWorkspace`,
+   offline eval metrics (recall@k / MRR / nDCG), MMR diversity rerank, int8
+   row quantization, PCA compression, and Arrow-native rerank wrappers at the
+   facade. It is the exact rerank step next to a vector store, not a vector
+   database: no ANN index, no storage, no model inference.
+9. Physical AI (`physical-ai` feature): URDF model, kinematic tree FK /
    Jacobian / DLS IK, serial + branch-routed tree dynamics (RNEA / CRBA /
    FD), control (LQR / DARE / pole placement / observer / gramians),
    sensor fusion (Kalman / EKF / camera / IMU), and a `nabled-sim`
@@ -68,6 +81,25 @@ fn main() -> Result<(), nabled::linalg::svd::SVDError> {
 
 Review more examples in `crates/nabled/examples`.
 
+### Embeddings rerank
+
+```rust
+use nabled::embeddings::{Metric, rerank};
+use ndarray::arr2;
+
+fn main() -> Result<(), nabled::embeddings::EmbeddingError> {
+    let corpus = arr2(&[[1.0_f64, 0.0], [0.0, 1.0], [0.9, 0.1]]);
+    let query = arr2(&[[1.0_f64, 0.0]]);
+    let top = rerank(&query.row(0), &corpus.view(), 2, Metric::Cosine)?;
+    println!("best doc {} (score {:.4})", top[0].index, top[0].score);
+    Ok(())
+}
+```
+
+Run with `cargo run -p nabled --features embeddings --example embedding_rerank_example`.
+See `docs/EMBEDDINGS.md` for id-aware rerank, `CorpusWorkspace`, MMR, quantization, and Arrow
+wrappers.
+
 ## Python
 
 Python bindings are available via the `pynabled` package. Install with [maturin](https://github.com/PyO3/maturin):
@@ -86,7 +118,16 @@ import pynabled
 a = np.array([[1., 2.], [3., 4.]], dtype=np.float64)
 result = pynabled.svd_decompose(a)
 print("singular values:", result.singular_values)
+
+# Embeddings rerank (default wheels include pynabled.embeddings):
+query = np.array([1.0, 0.0], dtype=np.float32)
+corpus = np.array([[1.0, 0.0], [0.0, 1.0], [0.9, 0.1]], dtype=np.float32)
+top = pynabled.embeddings.rerank(query, corpus, k=2, metric="cosine")
+print("top indices:", top.indices)
 ```
+
+See `python/README.md` and `docs/EMBEDDINGS.md` for the full embeddings surface (workspace reuse,
+eval metrics, MMR, quantization, Arrow rerank).
 
 The package exposes SVD, QR, LU, Cholesky, eigen, Schur, polar, Sylvester/Lyapunov, triangular solve, matrix functions, orthogonalization, dense vector/matrix primitives (including batched vector helpers and broadcasted batched matmat), batched decompositions, tensor ops, regression, PCA, statistics, and a widened sparse surface with first-class CSR/CSC/COO carriers, direct sparse iterative solvers, reusable sparse factorization/preconditioner workflows, and direct ILU(0)/ILUT/ILUK/ILDL0 GMRES / `BiCGSTAB` convenience rows. The NumPy-facing hot paths now keep explicit allocation-control semantics across direct vector/matrix/tensor/triangular kernels via `out=`, and owned tensor results preserve their existing ndarray strides on NumPy egress instead of being normalized through an extra standard-layout clone. The Arrow-facing `pynabled.arrow` module now also covers the admitted real dense/decomposition slice plus canonical complex dense/vector/matrix/statistics/orthogonalization/triangular/decomposition/matrix-function/PCA/regression rows, typed batched QR/SVD/LU/Cholesky/symmetric-eigen results over PyArrow fixed-shape tensors, callback-driven iterative/Jacobian/optimization rows, canonical sparse CSR object/batch carriers with direct sparse solve/product/reuse workflows, and canonical fixed-shape / variable-shape tensor workflows across last-axis ops, permutation/contraction, batched matmul, cube kernels, einsum, CP-ALS, HOSVD/HOOI/Tucker, and TT helpers over PyArrow/`ndarrow`. Arrow-native outputs stay Arrow-native where the Rust Arrow facade already defines them, while ndarray-native decomposition/PCA/regression/tensor results are exposed through the same typed Python result objects used by the NumPy-facing API, and the Arrow-side PCA/tensor helper reuse paths now borrow factor/core views directly instead of rebuilding temporary Rust result structs at the Python boundary. See `python/pynabled/__init__.py` and `python/pynabled/arrow.py` for the full API surface.
 
@@ -180,6 +221,8 @@ To publish **pynabled** wheels to PyPI (tags, CI, TestPyPI), see [docs/PYPI_PUBL
 1. `nabled::core`: shared errors, validation, and prelude exports.
 2. `nabled::linalg`: linear algebra and decomposition modules.
 3. `nabled::ml`: ML-oriented numerical routines.
+4. `nabled::embeddings`: embedding retrieval compute (feature `embeddings`; normalize, score,
+   rerank, kNN, PCA compress, workspace reuse, eval metrics, MMR, quantization).
 
 ## Features
 
@@ -191,11 +234,17 @@ To publish **pynabled** wheels to PyPI (tags, CI, TestPyPI), see [docs/PYPI_PUBL
 6. `magma-system`: enables NVIDIA MAGMA provider-backed decomposition paths.
 7. `accelerator-rayon`: enables selected parallel CPU kernels.
 8. `accelerator-wgpu`: enables WGPU-backed dense/vector/tensor kernel paths (`f32` native, `f64` native when `SHADER_F64` is available).
-9. `arrow`: enables facade-only Arrow/ndarray interop adapters backed by `ndarrow`.
+9. `embeddings`: enables `nabled::embeddings` (`nabled-embeddings`; implies `linalg` + `ml`).
+10. `arrow`: enables facade-only Arrow/ndarray interop adapters backed by `ndarrow`.
 
 ```toml
 [dependencies]
 nabled = { version = "0.0.10", features = ["openblas-system"] }
+```
+
+```toml
+[dependencies]
+nabled = { version = "0.0.10", features = ["embeddings"] }
 ```
 
 ```toml
@@ -237,12 +286,15 @@ Current Arrow-ingress coverage includes:
 4. LU, Cholesky, QR, SVD, Eigen, Schur, Polar, matrix-functions, triangular solves
 5. Batched decomposition helpers
 6. Iterative solvers, Jacobian tools, optimization, PCA, regression, and stats
-7. Real and complex workflows where the Arrow boundary contract is explicit and natural
+7. Embeddings rerank (`embeddings` + `arrow`): query/corpus scoring, rerank, normalize, brute-force kNN over `FixedSizeListArray`
+8. Real and complex workflows where the Arrow boundary contract is explicit and natural
 
 For exact module-by-module coverage and intentional remaining gaps, see:
 
-1. `docs/NDARROW_INTEGRATION.md`
-2. `docs/ARROW_SUPPORT_MATRIX.md`
+1. `docs/EMBEDDINGS.md` (retrieval compute, LanceDB plug-in stance, Python/Rust/Arrow surface)
+2. `docs/BENCHMARKS.md` (embeddings benchmark methodology)
+3. `docs/NDARROW_INTEGRATION.md`
+4. `docs/ARROW_SUPPORT_MATRIX.md`
 
 ## Quality Gates
 

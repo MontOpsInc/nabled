@@ -1,15 +1,9 @@
-use std::cmp::Ordering;
+//! Exact rerank over a tiny corpus, before and after PCA compression.
+//!
+//! Run with: `cargo run -p nabled --features embeddings --example embedding_rerank_example`.
 
-use nabled::linalg::vector;
-use nabled::ml::pca;
+use nabled::embeddings::{Metric, compress, fit_pca, rerank};
 use ndarray::Array2;
-
-fn top_k_indices(scores: &[f64], k: usize) -> Vec<(usize, f64)> {
-    let mut indexed = scores.iter().copied().enumerate().collect::<Vec<_>>();
-    indexed.sort_by(|(_, left), (_, right)| right.partial_cmp(left).unwrap_or(Ordering::Equal));
-    indexed.truncate(k.min(indexed.len()));
-    indexed
-}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let embeddings = Array2::from_shape_vec((6, 5), vec![
@@ -22,19 +16,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ])?;
     let query = Array2::from_shape_vec((1, 5), vec![0.75, 0.2, 0.1, 0.35, 0.15])?;
 
-    let full_scores = vector::pairwise_cosine_similarity(&query, &embeddings)?;
-    let top_full = top_k_indices(full_scores.row(0).as_slice().ok_or("non-contiguous row")?, 3);
-    println!("Top-3 docs in original space: {top_full:?}");
+    let top_full = rerank(&query.row(0), &embeddings.view(), 3, Metric::Cosine)?;
+    println!("Top-3 docs in original space:");
+    for neighbor in &top_full {
+        println!("  doc {} (cosine {:.4})", neighbor.index, neighbor.score);
+    }
 
-    let pca_model = pca::compute_pca(&embeddings, Some(3))?;
-    let compressed_embeddings = pca::transform(&embeddings, &pca_model);
-    let compressed_query = pca::transform(&query, &pca_model);
+    let pca_model = fit_pca(&embeddings, 3)?;
+    let compressed_embeddings = compress(&embeddings, &pca_model);
+    let compressed_query = compress(&query, &pca_model);
 
-    let compressed_scores =
-        vector::pairwise_cosine_similarity(&compressed_query, &compressed_embeddings)?;
     let top_compressed =
-        top_k_indices(compressed_scores.row(0).as_slice().ok_or("non-contiguous row")?, 3);
-    println!("Top-3 docs after PCA compression: {top_compressed:?}");
+        rerank(&compressed_query.row(0), &compressed_embeddings.view(), 3, Metric::Cosine)?;
+    println!("Top-3 docs after PCA compression:");
+    for neighbor in &top_compressed {
+        println!("  doc {} (cosine {:.4})", neighbor.index, neighbor.score);
+    }
 
     Ok(())
 }

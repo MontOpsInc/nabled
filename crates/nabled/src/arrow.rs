@@ -28,6 +28,8 @@ use thiserror::Error;
 pub mod batched;
 pub mod cholesky;
 pub mod eigen;
+#[cfg(feature = "embeddings")]
+pub mod embeddings;
 pub mod iterative;
 pub mod jacobian;
 pub mod lu;
@@ -113,6 +115,10 @@ pub enum ArrowInteropError {
     /// Error from statistics workflows.
     #[error(transparent)]
     Stats(#[from] crate::ml::stats::StatsError),
+    /// Error from embedding retrieval primitives.
+    #[cfg(feature = "embeddings")]
+    #[error(transparent)]
+    Embeddings(#[from] crate::embeddings::EmbeddingError),
     /// Error when an Arrow-backed tensor cannot be interpreted with the expected rank/shape.
     #[error("invalid Arrow tensor shape: {0}")]
     InvalidShape(String),

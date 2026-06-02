@@ -4,6 +4,7 @@ members = [
     "crates/nabled-core",
     "crates/nabled-linalg",
     "crates/nabled-ml",
+    "crates/nabled-embeddings",
     "crates/nabled-kinematics",
     "crates/nabled-model",
     "crates/nabled-dynamics",
@@ -17,6 +18,7 @@ default-members = [
     "crates/nabled-core",
     "crates/nabled-linalg",
     "crates/nabled-ml",
+    "crates/nabled-embeddings",
     "crates/nabled-kinematics",
     "crates/nabled-model",
     "crates/nabled-dynamics",
@@ -42,6 +44,7 @@ nabled = { path = "crates/nabled", version = "=0.0.10" }
 nabled-core = { path = "crates/nabled-core", version = "=0.0.10" }
 nabled-linalg = { path = "crates/nabled-linalg", version = "=0.0.10" }
 nabled-ml = { path = "crates/nabled-ml", version = "=0.0.10" }
+nabled-embeddings = { path = "crates/nabled-embeddings", version = "=0.0.10" }
 nabled-kinematics = { path = "crates/nabled-kinematics", version = "=0.0.10" }
 nabled-model = { path = "crates/nabled-model", version = "=0.0.10" }
 nabled-dynamics = { path = "crates/nabled-dynamics", version = "=0.0.10" }

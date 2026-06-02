@@ -27,7 +27,8 @@ PAI-subset coverage is now at **93%** line (`control` / `dynamics` /
 remaining gap is in `quat_*` view-only helpers without `out=` siblings).
 Total Python coverage across the package is **91%**.
 
-1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`, plus Physical AI domain crates
+1. Workspace members exist: `nabled-core`, `nabled-linalg`, `nabled-ml`, the retrieval-compute crate
+   `nabled-embeddings`, plus Physical AI domain crates
    `nabled-kinematics`, `nabled-model`, `nabled-dynamics`, `nabled-control`, and `nabled-sensor`
    (Phase 0–3 scaffolding landed on branch `build/multiple-crates-extending-nabled`; see
    `docs/PHYSICAL_AI_TRACKER.md`).
@@ -711,6 +712,18 @@ Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for
 157. K-005 lock-confirmation reruns on current `main` are now complete and green: monitor run (`stability-20260309T135201Z.json`, `REPEATS=5`) and LTO proof-pack run (`stability-20260309T140157Z.json`, `proof-pack-20260309T140157Z.md`) both report `persistent_regression_count = 0`, so K-005 remains monitor-only with no new optimization patch opened in this pass.
 158. Another `N-PY-007` tensor copy-elision pass is now landed: Tucker/HOSVD projection and expansion helpers no longer start from blanket whole-tensor clones or allocate a final temporary before writing into caller-provided outputs. `nabled-linalg::tensor` now composes the final mode product for `tucker_project_from_factors_view_into(...)` and `tucker_expand_from_factors_view_into(...)` directly into the provided output buffer, `mode_n_product_nd(...)` no longer forces a trailing owned clone after axis restoration, and the internal HOSVD/Tucker projection helpers now start from the first real projection instead of `tensor.to_owned()`. Validation is green end-to-end: `cargo +nightly fmt --all -- --config-path ./rustfmt.toml`, targeted Rust tensor coverage (`cargo test -p nabled-linalg tensor --lib -- --nocapture --show-output`: `62 passed`), targeted Arrow interop coverage (`cargo test -p nabled --test arrow_interop --features arrow arrow_tensor_advanced_decomposition_and_network_workflows_work -- --exact --nocapture --show-output`: `1 passed`), `cargo check -p pynabled`, full `python-quality` (`91%` Python coverage), and full `just checks`.
 159. Another `N-PY-007` Arrow carrier copy-elision pass is now landed: canonical Arrow carrier packing/unpacking for `ndarrow.complex64`, `ndarrow.csr_matrix`, `ndarrow.csr_matrix_batch`, and variable-shape tensor rows no longer materializes Python nested lists at the PyO3 boundary. `python/pynabled/arrow.py` now builds and reads those carriers through flat NumPy buffers plus Arrow offsets with explicit sparse int32/uint32 bounds checks, keeping the canonical carrier contract while removing avoidable Python-side rebuilds. Validation is green on the Arrow/package/repo gates: targeted Python Arrow pytest (`22 passed`), `python-quality` (`248 passed, 22 skipped`, `90%` Python coverage), and full `just checks` (Rust coverage gate `90.25%` line coverage).
+160. `N-EMB-001..N-EMB-003` are now landed: a new ndarray-native `nabled-embeddings` crate composes
+`nabled-linalg::vector` + `nabled-ml::pca` into bring-your-own-vectors retrieval compute
+(`normalize_rows`, `query_corpus_scores` over a `Metric { Cosine, Dot, L2 }` enum, direction-aware
+`top_k`/`rerank`, `brute_force_knn`, and PCA `compress`), all with `*_view`/`*_into`
+allocation-control variants and `f32`/`f64` parity tests. The crate is publishable
+(`publish = true`, `=0.0.10`) and wired into the release pipeline after `nabled-ml` and before the
+`nabled` facade. The facade exposes it behind a lean opt-in `embeddings` feature
+(`nabled::embeddings::*`, default stays `["linalg"]`), `pynabled` ships Python bindings
+(`pynabled.embeddings`, in default wheels), and a `python/examples/embeddings/lance_rerank.py`
+example demonstrates the LanceDB ANN -> exact-rerank plug-in stance over a pure Arrow interchange
+(`lance`/`sentence-transformers` stay example-only, never in the crate graph or CI gate). The crate
+stays Arrow-free and ANN/storage/inference-free by design.
 
 ## Current Code Ownership
 
@@ -724,7 +737,10 @@ Treat `docs/EXECUTION_TRACKER.md` `N-PY-*` items as the ordered closure plan for
 3. `crates/nabled-ml`
    - ML/statistics-oriented domains:
      `iterative`, `jacobian`, `pca`, `regression`, `stats`.
-4. `crates/nabled/src/` (facade crate)
+4. `crates/nabled-embeddings`
+   - ndarray-native retrieval-compute domains composing `nabled-linalg`/`nabled-ml`:
+     `normalize`, `similarity` (`Metric`), `topk`/`rerank`, `knn`, `compress`.
+5. `crates/nabled/src/` (facade crate)
    - facade `lib.rs`, optional facade-only interop modules (for example feature `arrow`), and
      binary/reporting tools only.
 

@@ -1960,6 +1960,44 @@ def arrow_pairwise_cosine_distance(left, right):
     return _raw.arrow_pairwise_cosine_distance(left, right)
 
 
+_HAS_ARROW_EMBEDDINGS = hasattr(_raw, "arrow_embeddings_query_corpus_scores")
+
+
+def _require_arrow_embeddings(name):
+    if not _HAS_ARROW_EMBEDDINGS:
+        raise ImportError(
+            f"{name} requires a pynabled build compiled with the 'embeddings' feature"
+        )
+
+
+def arrow_embeddings_query_corpus_scores(queries, corpus, metric="cosine"):
+    """Score every query row against every corpus row, returning a FixedSizeList matrix."""
+    _require_arrow_embeddings("arrow_embeddings_query_corpus_scores")
+    _require_real("arrow_embeddings_query_corpus_scores", queries=queries, corpus=corpus)
+    return _raw.arrow_embeddings_query_corpus_scores(queries, corpus, metric)
+
+
+def arrow_embeddings_rerank(query, candidates, k, metric="cosine"):
+    """Rerank ``candidates`` against a single ``query``; returns a Struct{index, score} array."""
+    _require_arrow_embeddings("arrow_embeddings_rerank")
+    _require_real("arrow_embeddings_rerank", query=query, candidates=candidates)
+    return _raw.arrow_embeddings_rerank(query, candidates, k, metric)
+
+
+def arrow_embeddings_normalize_rows(rows):
+    """Normalize each row to unit L2 length, returning a FixedSizeList matrix."""
+    _require_arrow_embeddings("arrow_embeddings_normalize_rows")
+    _require_real("arrow_embeddings_normalize_rows", rows=rows)
+    return _raw.arrow_embeddings_normalize_rows(rows)
+
+
+def arrow_embeddings_brute_force_knn(queries, corpus, k, metric="cosine"):
+    """Best ``k`` corpus neighbors per query row; returns a List of Struct{index, score} arrays."""
+    _require_arrow_embeddings("arrow_embeddings_brute_force_knn")
+    _require_real("arrow_embeddings_brute_force_knn", queries=queries, corpus=corpus)
+    return _raw.arrow_embeddings_brute_force_knn(queries, corpus, k, metric)
+
+
 def arrow_batched_dot(left, right):
     if _complex_mode("arrow_batched_dot", left=left, right=right):
         return arrow_batched_dot_hermitian(left, right)
@@ -3165,6 +3203,10 @@ __all__ = [
     "arrow_eigen_nonsymmetric_bi",
     "arrow_eigen_nonsymmetric_complex",
     "arrow_eigen_symmetric",
+    "arrow_embeddings_brute_force_knn",
+    "arrow_embeddings_normalize_rows",
+    "arrow_embeddings_query_corpus_scores",
+    "arrow_embeddings_rerank",
     "arrow_fixed_shape_tensor_array",
     "arrow_fixed_shape_tensor_numpy",
     "arrow_gram_schmidt",

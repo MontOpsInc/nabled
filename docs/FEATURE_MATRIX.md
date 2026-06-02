@@ -22,6 +22,7 @@ Physical AI or ML modules are compiled.
 | `geometry`    | (alias for `linalg`; geometry lives under linalg)  | `nabled-linalg`              |
 | `signal`      | `nabled::signal::*`                                | `nabled-linalg` (signal)     |
 | `ml`          | `nabled::ml::*`, `nabled::optimization::*`         | `nabled-ml`                  |
+| `embeddings`  | `nabled::embeddings::*` (rerank + id/batch rerank, normalize, compress, kNN, `CorpusWorkspace`, eval metrics, MMR, int8 quantization) | `nabled-embeddings`, `linalg`, `ml` |
 | `model`       | `nabled::model::*`                                 | `nabled-model`               |
 | `kinematics`  | `nabled::kinematics::*`                            | `nabled-kinematics`, `model` |
 | `dynamics`    | `nabled::dynamics::*` (incl. `dynamics::tree::*`)  | `nabled-dynamics`, `kinematics`, `model` |
@@ -52,7 +53,7 @@ of the per-domain features above.
 
 | Cargo feature | Enables                                                          |
 | ------------- | ---------------------------------------------------------------- |
-| `arrow`       | Arrow extension types over ndarray (`nabled::arrow_interop`)     |
+| `arrow`       | Arrow extension types over ndarray (`nabled::arrow_interop`); with `embeddings`, also the Arrow-native rerank adapters in `nabled::arrow` (`arrow_query_corpus_scores`/`arrow_rerank`/`arrow_normalize_rows`/`arrow_brute_force_knn`) |
 | `test-utils`  | Reusable fixture loaders behind `cfg(feature = "test-utils")`    |
 
 ## Migration from `nabled = "0.0.x"` defaults

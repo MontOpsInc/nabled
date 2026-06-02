@@ -1621,6 +1621,7 @@ dependencies = [
  "nabled-control",
  "nabled-core",
  "nabled-dynamics",
+ "nabled-embeddings",
  "nabled-kinematics",
  "nabled-linalg",
  "nabled-ml",
@@ -1671,6 +1672,21 @@ dependencies = [
  "nabled-linalg",
  "nabled-model",
  "ndarray",
+]
+
+[[package]]
+name = "nabled-embeddings"
+version = "0.0.10"
+dependencies = [
+ "approx",
+ "criterion",
+ "nabled-core",
+ "nabled-linalg",
+ "nabled-ml",
+ "ndarray",
+ "ndarray-linalg",
+ "num-traits",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

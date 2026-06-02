@@ -7,6 +7,7 @@ KNOWN_BUILD_FEATURES = {
     "accelerator-rayon",
     "accelerator-wgpu",
     "arrow",
+    "embeddings",
     "magma-system",
     "netlib-static",
     "netlib-system",

@@ -441,7 +441,7 @@ init-dev:
     @echo ""
     @echo "Next steps:"
     @echo "1. Ensure CARGO_REGISTRY_TOKEN is set at MontOpsInc org (or repo) Actions secrets"
-    @echo "2. After first Physical AI publish, run Actions → crates.io add owner (workflow_dispatch)"
+    @echo "2. Release workflow auto-adds co-owners after publish; use Actions → crates.io add owner to repair if needed"
     @echo "3. Use 'just prepare-release <X.Y.Z>' to prepare release PRs (see docs/PUBLISH_CHECKLIST.md)"
     @echo ""
     @echo "Useful commands:"
