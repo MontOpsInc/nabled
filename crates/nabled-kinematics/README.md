@@ -11,7 +11,7 @@ from `nabled-linalg::geometry`.
 
 ```toml
 [dependencies]
-nabled-kinematics = "0.0.10"
+nabled-kinematics = "0.0.11"
 ```
 
 ## Key modules
@@ -35,7 +35,7 @@ nabled-kinematics = "0.0.10"
 
 ```toml
 [dependencies]
-nabled-kinematics = { version = "0.0.10", features = ["openblas-system"] }
+nabled-kinematics = { version = "0.0.11", features = ["openblas-system"] }
 ```
 
 ## Example

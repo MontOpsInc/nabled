@@ -1610,7 +1610,7 @@ dependencies = [
 
 [[package]]
 name = "nabled"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "arrow-array",
@@ -1640,7 +1640,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-control"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "nabled-core",
@@ -1652,7 +1652,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-core"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "ndarray",
  "num-complex",
@@ -1663,7 +1663,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-dynamics"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "criterion",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-embeddings"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "criterion",
@@ -1691,7 +1691,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-kinematics"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "criterion",
@@ -1703,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-linalg"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "bytemuck",
@@ -1724,7 +1724,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-ml"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "nabled-core",
  "nabled-linalg",
@@ -1737,7 +1737,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-model"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "nabled-core",
@@ -1751,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-sensor"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "nabled-core",
@@ -1761,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "nabled-sim"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "approx",
  "nabled-control",
@@ -2334,7 +2334,7 @@ checksum = "40e24eee682d89fb193496edf918a7f407d30175b2e785fe057e4392dfd182e0"
 
 [[package]]
 name = "pynabled"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "arrow-array",
  "arrow-data",

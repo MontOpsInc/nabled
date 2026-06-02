@@ -11,7 +11,7 @@ robot context, simulation steps, batch IK, closed-loop control, and estimation p
 
 ```toml
 [dependencies]
-nabled-sim = "0.0.10"
+nabled-sim = "0.0.11"
 ```
 
 ## Key modules
@@ -36,7 +36,7 @@ nabled-sim = "0.0.10"
 
 ```toml
 [dependencies]
-nabled-sim = { version = "0.0.10", features = ["openblas-system", "signal"] }
+nabled-sim = { version = "0.0.11", features = ["openblas-system", "signal"] }
 ```
 
 ## Example

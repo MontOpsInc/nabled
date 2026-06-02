@@ -10,7 +10,7 @@ branch specs for `nabled-dynamics` tree algorithms.
 
 ```toml
 [dependencies]
-nabled-model = "0.0.10"
+nabled-model = "0.0.11"
 ```
 
 ## Key modules
@@ -33,7 +33,7 @@ nabled-model = "0.0.10"
 
 ```toml
 [dependencies]
-nabled-model = { version = "0.0.10", features = ["openblas-system"] }
+nabled-model = { version = "0.0.11", features = ["openblas-system"] }
 ```
 
 ## Example

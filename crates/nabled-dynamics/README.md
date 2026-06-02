@@ -10,7 +10,7 @@ through `nabled-model` branch specs. Spatial algebra utilities live in `spatial`
 
 ```toml
 [dependencies]
-nabled-dynamics = "0.0.10"
+nabled-dynamics = "0.0.11"
 ```
 
 ## Key modules
@@ -32,7 +32,7 @@ nabled-dynamics = "0.0.10"
 
 ```toml
 [dependencies]
-nabled-dynamics = { version = "0.0.10", features = ["openblas-system"] }
+nabled-dynamics = { version = "0.0.11", features = ["openblas-system"] }
 ```
 
 ## Example
