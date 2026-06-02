@@ -43,14 +43,17 @@ On exceed: HTTP **429 Too Many Requests** with a “try again after … GMT” t
 
 Both maintainers must appear on each crate's **Owners** list on crates.io.
 
-When a maintainer needs access to crates registered by the other:
+**Automatic (default):** after a successful ordered publish, `.github/workflows/release.yml`
+runs `scripts/crates_io_ensure_coowners.sh` to add `NiklausParcell` on every workspace crate
+that exists on crates.io (idempotent; skips crates not yet published). Requires
+`CARGO_REGISTRY_TOKEN` with **change-owners** scope.
 
-1. Merge `.github/workflows/crates-io-add-owner.yml` to `main`.
-2. Run the **crates.io add owner** workflow (`workflow_dispatch`) with the target username.
-3. Uses existing org/repo `CARGO_REGISTRY_TOKEN` — **no secret rotation required**.
-4. Verify Owners on crates.io (George + NiklausParcell).
+**Manual repair:** when co-owner add fails or a crate was published outside CI:
 
-Alternative: an existing owner runs `cargo owner --add <username> -p <crate>` locally.
+1. Run the **crates.io add owner** workflow (`workflow_dispatch`) with the target username, or
+2. `bash scripts/crates_io_ensure_coowners.sh <username>` locally with `CARGO_REGISTRY_TOKEN` set.
+
+Verify Owners on crates.io (George + NiklausParcell).
 
 ## Feature Contract (Release-Relevant)
 
@@ -106,13 +109,11 @@ Then:
 2. Verify CI is green.
 3. Merge PR.
 
-## First-time co-owner add (before tag, when needed)
+## Co-owner verification (optional before tag)
 
-After workflow and doc changes merge to `main`:
-
-1. Actions → **crates.io add owner** → Run workflow (default: `NiklausParcell`).
-2. Confirm both maintainers on Owners for all workspace crates.
-3. Proceed to tag (below).
+Release publish now ensures co-owners automatically. Before the first release after adding a
+new crate name, optionally run Actions → **crates.io add owner** on `main` to repair any crate
+that predates the automation.
 
 ## Tag and Publish
 
@@ -140,11 +141,12 @@ Then for PyPI:
 `release.yml` must continue to guarantee:
 
 1. Version consistency check against `[workspace.package]`.
-2. Ordered publish (core → linalg → ml → Physical AI → facade).
+2. Ordered publish (core → linalg → ml → embeddings → Physical AI → facade).
 3. Rate-limit pacing (65s version bumps; 600s after fifth new crate name).
 4. Resume on “version already exists” and 429 retry.
-5. Optional dry-run verification via workflow input.
-6. GitHub Release creation in a separate job (only when all publishes succeed).
+5. Post-publish co-owner ensure via `scripts/crates_io_ensure_coowners.sh`.
+6. Optional dry-run verification via workflow input.
+7. GitHub Release creation in a separate job (only when all publishes succeed).
 
 ## Common Failure Modes
 
@@ -161,4 +163,4 @@ Then for PyPI:
 5. **Dirty working tree before `prepare-release`:**
    - commit/stash first.
 6. **Missing co-owner on a crate:**
-   - run `crates-io-add-owner` workflow or `cargo owner --add`.
+   - re-run Release co-owner step via `crates-io-add-owner` workflow or `scripts/crates_io_ensure_coowners.sh`.

@@ -9,6 +9,6 @@
 
 ## Maintainer actions after merge
 
-1. Run **crates.io add owner** workflow on `main` (verify George + NiklausParcell on Owners).
-2. `just tag-release 0.0.10`
-3. After Release workflow completes, `just tag-pypi-release`
+1. `just tag-release 0.0.10` (Release workflow publishes crates and ensures co-owners automatically).
+2. After Release workflow completes, `just tag-pypi-release`.
+3. Verify Owners on crates.io (George + NiklausParcell) if the co-owner step logged any failures.
