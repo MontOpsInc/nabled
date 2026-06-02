@@ -5,6 +5,8 @@ set -euo pipefail
 
 USER="${1:-${CRATES_IO_COOWNER:-NiklausParcell}}"
 TOKEN="${CARGO_REGISTRY_TOKEN:?CARGO_REGISTRY_TOKEN must be set}"
+# CI sets CARGO_TERM_COLOR=always; disable colors so grep can match cargo search output.
+export CARGO_TERM_COLOR=never
 
 # Keep in sync with docs/PUBLISH_CHECKLIST.md publish order.
 WORKSPACE_CRATES=(
