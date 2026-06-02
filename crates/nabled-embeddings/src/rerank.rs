@@ -70,8 +70,8 @@ pub fn rerank_with_ids<T: NabledReal, Id: Copy>(
 /// `batch_rerank`: that would duplicate [`brute_force_knn`]; the new capability here is id mapping.
 ///
 /// # Errors
-/// Returns [`EmbeddingError::DimensionMismatch`] when `ids.len()` differs from the corpus row count,
-/// plus every error condition of [`brute_force_knn`].
+/// Returns [`EmbeddingError::DimensionMismatch`] when `ids.len()` differs from the corpus row
+/// count, plus every error condition of [`brute_force_knn`].
 pub fn batch_rerank_with_ids<T: NabledReal, Id: Copy>(
     queries: &ArrayView2<'_, T>,
     corpus: &ArrayView2<'_, T>,

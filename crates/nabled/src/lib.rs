@@ -30,7 +30,8 @@
 //! 3. `signal`: enables `nabled-linalg::signal` FFT-backed routines and propagates to `nabled-sim`
 //!    when enabled.
 //! 4. `ml`: re-exports [`crate::ml`] (`nabled-ml`).
-//! 5. `embeddings`: re-exports [`crate::embeddings`] (`nabled-embeddings`); implies `linalg` + `ml`.
+//! 5. `embeddings`: re-exports [`crate::embeddings`] (`nabled-embeddings`); implies `linalg` +
+//!    `ml`.
 //! 6. `model`: re-exports [`crate::model`] (`nabled-model`).
 //! 7. `kinematics`: re-exports [`crate::kinematics`] (implies `model`).
 //! 8. `dynamics`: re-exports [`crate::dynamics`] (implies `kinematics` + `model`).

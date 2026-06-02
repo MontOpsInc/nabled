@@ -4,7 +4,9 @@
 //! brute-force kNN, and PCA compression. Inputs are borrowed NumPy `float32`/`float64` arrays;
 //! metrics are selected with the strings `"cosine"`, `"dot"`, or `"l2"`.
 
-use nabled::embeddings::{self, CorpusWorkspace, Metric, Neighbor, NeighborWithId, QuantizedMatrix};
+use nabled::embeddings::{
+    self, CorpusWorkspace, Metric, Neighbor, NeighborWithId, QuantizedMatrix,
+};
 use ndarray::{Array1, Array2};
 use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -47,10 +49,8 @@ fn neighbors_with_id_to_arrays<T: numpy::Element + Copy>(
     py: Python<'_>,
     neighbors: &[NeighborWithId<T, i64>],
 ) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
-    let indices = utils::usize_array1_to_i64(
-        neighbors.iter().map(|n| n.index).collect(),
-        "neighbor index",
-    )?;
+    let indices =
+        utils::usize_array1_to_i64(neighbors.iter().map(|n| n.index).collect(), "neighbor index")?;
     let ids: Array1<i64> = neighbors.iter().map(|n| n.id).collect();
     let scores: Array1<T> = neighbors.iter().map(|n| n.score).collect();
     Ok((
@@ -89,10 +89,8 @@ fn neighbors_to_index_score<T: numpy::Element + Copy>(
     py: Python<'_>,
     neighbors: &[Neighbor<T>],
 ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-    let indices = utils::usize_array1_to_i64(
-        neighbors.iter().map(|n| n.index).collect(),
-        "neighbor index",
-    )?;
+    let indices =
+        utils::usize_array1_to_i64(neighbors.iter().map(|n| n.index).collect(), "neighbor index")?;
     let scores: Array1<T> = neighbors.iter().map(|n| n.score).collect();
     Ok((utils::pyarray1_from_owned(py, indices), utils::pyarray1_from_owned(py, scores)))
 }
@@ -132,8 +130,7 @@ pub fn embeddings_normalize_rows<'py>(
                     .map_err(to_py_err)?;
                 Ok(out.clone().unbind())
             } else {
-                let result =
-                    embeddings::normalize_rows_view(&arr.as_array()).map_err(to_py_err)?;
+                let result = embeddings::normalize_rows_view(&arr.as_array()).map_err(to_py_err)?;
                 Ok(utils::pyarray2_from_owned(py, result))
             }
         }
@@ -144,8 +141,7 @@ pub fn embeddings_normalize_rows<'py>(
                     .map_err(to_py_err)?;
                 Ok(out.clone().unbind())
             } else {
-                let result =
-                    embeddings::normalize_rows_view(&arr.as_array()).map_err(to_py_err)?;
+                let result = embeddings::normalize_rows_view(&arr.as_array()).map_err(to_py_err)?;
                 Ok(utils::pyarray2_from_owned(py, result))
             }
         }
@@ -217,20 +213,21 @@ pub fn embeddings_rerank<'py>(
     let metric = parse_metric(metric)?;
     match (utils::real_array1(query, "query")?, utils::real_array2(candidates, "candidates")?) {
         (utils::RealReadonlyArray1::F32(q), utils::RealReadonlyArray2::F32(c)) => {
-            let neighbors = embeddings::rerank(&q.as_array(), &c.as_array(), k, metric)
-                .map_err(to_py_err)?;
+            let neighbors =
+                embeddings::rerank(&q.as_array(), &c.as_array(), k, metric).map_err(to_py_err)?;
             neighbors_to_index_score(py, &neighbors)
         }
         (utils::RealReadonlyArray1::F64(q), utils::RealReadonlyArray2::F64(c)) => {
-            let neighbors = embeddings::rerank(&q.as_array(), &c.as_array(), k, metric)
-                .map_err(to_py_err)?;
+            let neighbors =
+                embeddings::rerank(&q.as_array(), &c.as_array(), k, metric).map_err(to_py_err)?;
             neighbors_to_index_score(py, &neighbors)
         }
         _ => Err(utils::matching_real_dtype_error(&["query", "candidates"])),
     }
 }
 
-/// Exact brute-force kNN for every query row. Returns `(indices, scores)` of shape `(n_queries, k)`.
+/// Exact brute-force kNN for every query row. Returns `(indices, scores)` of shape `(n_queries,
+/// k)`.
 #[pyfunction]
 #[pyo3(signature = (queries, corpus, k, metric="cosine"))]
 pub fn embeddings_brute_force_knn<'py>(
@@ -445,9 +442,11 @@ pub fn embeddings_dequantize<'py>(
     codes: &Bound<'py, PyAny>,
     scales: &Bound<'py, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let matrix =
-        QuantizedMatrix::from_parts(read_i8_matrix(codes, "codes")?, read_f32_vector(scales, "scales")?)
-            .map_err(to_py_err)?;
+    let matrix = QuantizedMatrix::from_parts(
+        read_i8_matrix(codes, "codes")?,
+        read_f32_vector(scales, "scales")?,
+    )
+    .map_err(to_py_err)?;
     Ok(utils::pyarray2_from_owned(py, matrix.dequantize()))
 }
 
@@ -572,7 +571,8 @@ impl PyCorpusWorkspace {
         }
     }
 
-    /// Exact brute-force kNN over the cached corpus. Returns `(indices, scores)` of `(n_queries, k)`.
+    /// Exact brute-force kNN over the cached corpus. Returns `(indices, scores)` of `(n_queries,
+    /// k)`.
     fn knn_with<'py>(
         &self,
         py: Python<'py>,

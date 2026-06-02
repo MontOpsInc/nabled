@@ -23,14 +23,14 @@ use arrow_schema::{DataType, Field, Fields};
 use nabled_core::scalar::NabledReal;
 use ndarrow::NdarrowElement;
 
-use super::{ArrowInteropError, fixed_size_list_from_owned, fixed_size_list_view, primitive_array_view};
+use super::{
+    ArrowInteropError, fixed_size_list_from_owned, fixed_size_list_view, primitive_array_view,
+};
 use crate::embeddings::{Metric, Neighbor};
 
 fn neighbor_index_to_i64(index: usize) -> Result<i64, ArrowInteropError> {
     i64::try_from(index).map_err(|_| {
-        ArrowInteropError::InvalidShape(format!(
-            "neighbor index {index} exceeds Arrow int64 range"
-        ))
+        ArrowInteropError::InvalidShape(format!("neighbor index {index} exceeds Arrow int64 range"))
     })
 }
 

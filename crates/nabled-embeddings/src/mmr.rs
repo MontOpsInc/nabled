@@ -12,9 +12,9 @@
 //! order; `lambda == 0` selects purely for novelty relative to already-picked items.
 //!
 //! Both the query-candidate relevance and the candidate-candidate similarity are computed with the
-//! same [`Metric`] via [`query_corpus_scores_view`]. Because L2 is a distance (lower is better), all
-//! scores are internally converted to a "higher is better" space (negated for L2) before the greedy
-//! selection, so the formula above is applied consistently for every metric. Returned
+//! same [`Metric`] via [`query_corpus_scores_view`]. Because L2 is a distance (lower is better),
+//! all scores are internally converted to a "higher is better" space (negated for L2) before the
+//! greedy selection, so the formula above is applied consistently for every metric. Returned
 //! [`Neighbor::score`] values are the original metric scores (a similarity for cosine/dot, a
 //! distance for L2), so they match what [`rerank`](crate::rerank::rerank) would report.
 
@@ -27,7 +27,8 @@ use crate::error::EmbeddingError;
 use crate::similarity::{Metric, query_corpus_scores_view};
 use crate::topk::Neighbor;
 
-/// Greedily select the best `k` diversified candidates for `query` under Maximal Marginal Relevance.
+/// Greedily select the best `k` diversified candidates for `query` under Maximal Marginal
+/// Relevance.
 ///
 /// `lambda` balances relevance (`1.0`) against diversity (`0.0`) and must lie in `[0, 1]`. `k` is
 /// clamped to the number of candidates. The result is in MMR selection order (best-first).
@@ -45,9 +46,7 @@ pub fn mmr<T: NabledReal>(
     metric: Metric,
 ) -> Result<Vec<Neighbor<T>>, EmbeddingError> {
     if lambda < T::zero() || lambda > T::one() {
-        return Err(EmbeddingError::InvalidInput(
-            "lambda must be in the range [0, 1]".to_string(),
-        ));
+        return Err(EmbeddingError::InvalidInput("lambda must be in the range [0, 1]".to_string()));
     }
 
     let query_rows = query.view().insert_axis(Axis(0));
@@ -124,13 +123,7 @@ mod tests {
 
     /// Two tight clusters plus the query aligned with the first cluster.
     fn clustered_corpus() -> ndarray::Array2<f64> {
-        arr2(&[
-            [1.0, 0.0],
-            [0.99, 0.01],
-            [0.98, 0.02],
-            [0.0, 1.0],
-            [0.01, 0.99],
-        ])
+        arr2(&[[1.0, 0.0], [0.99, 0.01], [0.98, 0.02], [0.0, 1.0], [0.01, 0.99]])
     }
 
     #[test]

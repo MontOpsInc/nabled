@@ -116,9 +116,7 @@ mod tests {
     use super::*;
     use crate::normalize::normalize_rows;
 
-    fn corpus_f64() -> Array2<f64> {
-        arr2(&[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])
-    }
+    fn corpus_f64() -> Array2<f64> { arr2(&[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]]) }
 
     #[test]
     fn metric_default_is_cosine() {

@@ -34,8 +34,8 @@ impl<T> Neighbor<T> {
 ///
 /// This is the id-carrying analogue of [`Neighbor`]: `index` is still the local row position the
 /// score was computed against, while `id` is the application's stable identifier for that row (for
-/// example a global corpus row id returned by an upstream ANN stage). It is produced by attaching an
-/// `&[Id]` to a `Vec<Neighbor<T>>` via [`attach_ids`].
+/// example a global corpus row id returned by an upstream ANN stage). It is produced by attaching
+/// an `&[Id]` to a `Vec<Neighbor<T>>` via [`attach_ids`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NeighborWithId<T, Id> {
     /// Local row index into the candidate set the score was computed against.
@@ -43,7 +43,7 @@ pub struct NeighborWithId<T, Id> {
     /// Metric value for this candidate row.
     pub score: T,
     /// Caller-supplied stable identifier for this candidate row.
-    pub id: Id,
+    pub id:    Id,
 }
 
 impl<T, Id> NeighborWithId<T, Id> {

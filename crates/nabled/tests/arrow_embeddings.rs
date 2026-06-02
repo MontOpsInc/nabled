@@ -2,9 +2,7 @@
 
 use approx::assert_abs_diff_eq;
 use arrow_array::types::{Float32Type, Float64Type};
-use arrow_array::{
-    Array, FixedSizeListArray, Float32Array, Float64Array, Int64Array, StructArray,
-};
+use arrow_array::{Array, FixedSizeListArray, Float32Array, Float64Array, Int64Array, StructArray};
 use nabled::arrow::embeddings;
 use nabled::embeddings::{Metric, brute_force_knn, normalize_rows, query_corpus_scores, rerank};
 use nabled::ndarrow::{IntoArrow, fixed_size_list_as_array2};
@@ -140,7 +138,8 @@ fn arrow_brute_force_knn_matches_ndarray_path() {
     let queries = queries_nd.clone().into_arrow().unwrap();
     let corpus = corpus_nd.clone().into_arrow().unwrap();
 
-    let expected = brute_force_knn(&queries_nd.view(), &corpus_nd.view(), 2, Metric::Cosine).unwrap();
+    let expected =
+        brute_force_knn(&queries_nd.view(), &corpus_nd.view(), 2, Metric::Cosine).unwrap();
     let arrow_lists =
         embeddings::arrow_brute_force_knn::<Float64Type>(&queries, &corpus, 2, Metric::Cosine)
             .unwrap();

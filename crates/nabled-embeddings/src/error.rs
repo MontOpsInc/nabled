@@ -140,7 +140,10 @@ mod tests {
             EmbeddingError::ZeroNorm.to_string(),
             "operation is undefined for zero-norm vectors"
         );
-        assert_eq!(EmbeddingError::InvalidInput("oops".to_string()).to_string(), "invalid input: oops");
+        assert_eq!(
+            EmbeddingError::InvalidInput("oops".to_string()).to_string(),
+            "invalid input: oops"
+        );
         assert_eq!(EmbeddingError::DecompositionFailed.to_string(), "decomposition failed");
     }
 }

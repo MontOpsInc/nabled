@@ -42,8 +42,8 @@ enum Prepared<T> {
 /// of the workspace.
 #[derive(Debug, Clone)]
 pub struct CorpusWorkspace<T> {
-    metric: Metric,
-    corpus: Array2<T>,
+    metric:   Metric,
+    corpus:   Array2<T>,
     prepared: Prepared<T>,
 }
 
@@ -199,9 +199,7 @@ mod tests {
         arr2(&[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.2, 0.3, 0.9]])
     }
 
-    fn queries_f64() -> Array2<f64> {
-        arr2(&[[1.0, 0.0, 0.0], [0.1, 0.2, 0.9]])
-    }
+    fn queries_f64() -> Array2<f64> { arr2(&[[1.0, 0.0, 0.0], [0.1, 0.2, 0.9]]) }
 
     #[test]
     fn workspace_scores_match_stateless_for_all_metrics() {
@@ -310,10 +308,7 @@ mod tests {
         let corpus = corpus_f64();
         let ws = CorpusWorkspace::build(&corpus.view(), Metric::Cosine).unwrap();
         let queries = arr2(&[[0.0_f64, 0.0, 0.0]]);
-        assert_eq!(
-            ws.query_corpus_scores(&queries.view()).err(),
-            Some(EmbeddingError::ZeroNorm)
-        );
+        assert_eq!(ws.query_corpus_scores(&queries.view()).err(), Some(EmbeddingError::ZeroNorm));
     }
 
     #[test]

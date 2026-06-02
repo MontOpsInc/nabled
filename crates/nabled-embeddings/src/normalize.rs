@@ -94,10 +94,7 @@ mod tests {
     fn normalize_rows_into_rejects_shape_mismatch() {
         let rows = arr2(&[[3.0_f64, 4.0]]);
         let mut output = Array2::<f64>::zeros((2, 2));
-        assert_eq!(
-            normalize_rows_into(&rows, &mut output),
-            Err(EmbeddingError::DimensionMismatch)
-        );
+        assert_eq!(normalize_rows_into(&rows, &mut output), Err(EmbeddingError::DimensionMismatch));
     }
 
     #[test]

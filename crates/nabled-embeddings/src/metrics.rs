@@ -73,11 +73,7 @@ pub fn mean_reciprocal_rank<Id: Eq + Hash + Copy>(
     if retrieved.is_empty() {
         return Ok(0.0);
     }
-    let sum: f64 = retrieved
-        .iter()
-        .zip(relevant.iter())
-        .map(|(r, g)| reciprocal_rank(r, g))
-        .sum();
+    let sum: f64 = retrieved.iter().zip(relevant.iter()).map(|(r, g)| reciprocal_rank(r, g)).sum();
     Ok(sum / retrieved.len() as f64)
 }
 

@@ -25,7 +25,7 @@ const MAX_CODE: f32 = 127.0;
 /// A row-quantized `f32` matrix: one `i8` code per element plus one `f32` scale per row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct QuantizedMatrix {
-    data: Array2<i8>,
+    data:   Array2<i8>,
     scales: Array1<f32>,
 }
 
@@ -223,10 +223,7 @@ mod tests {
             let exact = query_corpus_scores(&queries, &corpus, metric).unwrap();
             let approx = qq.query_corpus_scores_quantized(&qc, metric).unwrap();
             for (lhs, rhs) in exact.iter().zip(approx.iter()) {
-                assert!(
-                    (lhs - rhs).abs() < 5e-2,
-                    "{metric:?}: exact {lhs} vs quantized {rhs}"
-                );
+                assert!((lhs - rhs).abs() < 5e-2, "{metric:?}: exact {lhs} vs quantized {rhs}");
             }
         }
     }

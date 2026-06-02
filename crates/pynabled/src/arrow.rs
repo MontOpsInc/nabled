@@ -6739,9 +6739,7 @@ pub fn embeddings_rerank(
 #[cfg(feature = "embeddings")]
 #[pyfunction(name = "arrow_embeddings_normalize_rows")]
 #[pyo3(signature = (rows,))]
-pub fn embeddings_normalize_rows(
-    rows: PyArrowType<ArrayData>,
-) -> PyResult<PyArrowType<ArrayData>> {
+pub fn embeddings_normalize_rows(rows: PyArrowType<ArrayData>) -> PyResult<PyArrowType<ArrayData>> {
     match array_data_to_real_fixed_size_list(rows.0)? {
         RealFixedSizeListArray::F32(arr) => Ok(fixed_size_list_into_pyarrow(
             nabled::arrow::embeddings::arrow_normalize_rows::<Float32Type>(&arr)

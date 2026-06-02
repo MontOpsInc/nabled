@@ -10,9 +10,9 @@
 )]
 #![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
 
-mod error;
 #[cfg(feature = "embeddings")]
 mod embeddings;
+mod error;
 mod linalg;
 mod ml;
 #[cfg(feature = "physical-ai")]
@@ -853,10 +853,7 @@ fn pynabled(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(pyo3::wrap_pyfunction!(arrow::bfgs_complex_arrow, m)?)?;
         #[cfg(feature = "embeddings")]
         {
-            m.add_function(pyo3::wrap_pyfunction!(
-                arrow::embeddings_query_corpus_scores,
-                m
-            )?)?;
+            m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_query_corpus_scores, m)?)?;
             m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_rerank, m)?)?;
             m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_normalize_rows, m)?)?;
             m.add_function(pyo3::wrap_pyfunction!(arrow::embeddings_brute_force_knn, m)?)?;
