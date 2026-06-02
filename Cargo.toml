@@ -29,7 +29,7 @@ default-members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.0.10"
+version = "0.0.11"
 edition = "2024"
 rust-version = "1.92"
 authors = ["Niklaus Parcell <nik.parcell@gmail.com>", "George Lee Patterson <patterson.george@gmail.com>"]
@@ -40,17 +40,17 @@ documentation = "https://docs.rs/nabled"
 publish = true
 
 [workspace.dependencies]
-nabled = { path = "crates/nabled", version = "=0.0.10" }
-nabled-core = { path = "crates/nabled-core", version = "=0.0.10" }
-nabled-linalg = { path = "crates/nabled-linalg", version = "=0.0.10" }
-nabled-ml = { path = "crates/nabled-ml", version = "=0.0.10" }
-nabled-embeddings = { path = "crates/nabled-embeddings", version = "=0.0.10" }
-nabled-kinematics = { path = "crates/nabled-kinematics", version = "=0.0.10" }
-nabled-model = { path = "crates/nabled-model", version = "=0.0.10" }
-nabled-dynamics = { path = "crates/nabled-dynamics", version = "=0.0.10" }
-nabled-control = { path = "crates/nabled-control", version = "=0.0.10" }
-nabled-sensor = { path = "crates/nabled-sensor", version = "=0.0.10" }
-nabled-sim = { path = "crates/nabled-sim", version = "=0.0.10" }
+nabled = { path = "crates/nabled", version = "=0.0.11" }
+nabled-core = { path = "crates/nabled-core", version = "=0.0.11" }
+nabled-linalg = { path = "crates/nabled-linalg", version = "=0.0.11" }
+nabled-ml = { path = "crates/nabled-ml", version = "=0.0.11" }
+nabled-embeddings = { path = "crates/nabled-embeddings", version = "=0.0.11" }
+nabled-kinematics = { path = "crates/nabled-kinematics", version = "=0.0.11" }
+nabled-model = { path = "crates/nabled-model", version = "=0.0.11" }
+nabled-dynamics = { path = "crates/nabled-dynamics", version = "=0.0.11" }
+nabled-control = { path = "crates/nabled-control", version = "=0.0.11" }
+nabled-sensor = { path = "crates/nabled-sensor", version = "=0.0.11" }
+nabled-sim = { path = "crates/nabled-sim", version = "=0.0.11" }
 
 approx = "0.5"
 arrow-array = "58"

@@ -1,10 +1,9 @@
-# Release v0.0.10
+# Release v0.0.11
 
 ## Embeddings (`nabled-embeddings`)
 
-New publishable crate and opt-in facade feature for embedding retrieval compute — the exact
-rerank step next to a vector store, not a vector database (no ANN index, storage, or model
-inference).
+First crates.io release of the embedding retrieval compute crate and facade/Python wiring (landed
+on `main` after the `v0.0.10` tag; `0.0.10` on crates.io did not include this crate).
 
 **Rust (`nabled-embeddings` / `nabled` feature `embeddings`):**
 
@@ -27,27 +26,17 @@ inference).
 See `docs/EMBEDDINGS.md`, `docs/BENCHMARKS.md`, and `crates/nabled-embeddings/README.md`.
 
 ```toml
-nabled = { version = "0.0.10", features = ["embeddings"] }
-# or standalone:
-nabled-embeddings = "0.0.10"
+nabled = { version = "0.0.11", features = ["embeddings"] }
+nabled-embeddings = "0.0.11"
 ```
 
 ## Release automation
 
 - Post-publish co-owner ensure via `scripts/crates_io_ensure_coowners.sh` in `release.yml`
-  (adds `NiklausParcell` on all workspace crates idempotently)
-- Manual repair workflow reuses the same script (`crates-io-add-owner`)
-
-## Physical AI crates.io publish fix
-
-- Expanded README and `description` metadata for all six Physical AI domain crates
-- Hardened `.github/workflows/release.yml` with rate-limit pacing, publish resume, 429 retry, and
-  split GitHub Release job
-- Updated `docs/PUBLISH_CHECKLIST.md` with publish order, rate limits, and co-ownership policy
+- `prepare-release` now bumps `nabled-embeddings` workspace dependency pins
 
 ## Maintainer actions
 
-1. `just tag-release 0.0.10` (publishes crates including `nabled-embeddings`; co-owners ensured
-   automatically)
-2. After Release workflow completes, `just tag-pypi-release`
-3. Verify Owners on crates.io (George + NiklausParcell) if the co-owner step logged any failures
+1. `just tag-release 0.0.11` after this PR merges
+2. `just tag-pypi-release`
+3. Verify Owners on crates.io if the co-owner step logs any failures

@@ -11,7 +11,7 @@ post-embedding numerics a retrieval pipeline needs.
 
 ```toml
 [dependencies]
-nabled-embeddings = "0.0.10"
+nabled-embeddings = "0.0.11"
 ```
 
 ## Key modules

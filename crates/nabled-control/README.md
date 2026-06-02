@@ -10,7 +10,7 @@ design—without reimplementing core linear algebra.
 
 ```toml
 [dependencies]
-nabled-control = "0.0.10"
+nabled-control = "0.0.11"
 ```
 
 ## Key modules
@@ -34,7 +34,7 @@ nabled-control = "0.0.10"
 
 ```toml
 [dependencies]
-nabled-control = { version = "0.0.10", features = ["openblas-system"] }
+nabled-control = { version = "0.0.11", features = ["openblas-system"] }
 ```
 
 ## Example

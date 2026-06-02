@@ -10,7 +10,7 @@ routines compose `nabled-linalg` linear algebra and stay independent of `nabled-
 
 ```toml
 [dependencies]
-nabled-sensor = "0.0.10"
+nabled-sensor = "0.0.11"
 ```
 
 ## Key modules
@@ -32,7 +32,7 @@ nabled-sensor = "0.0.10"
 
 ```toml
 [dependencies]
-nabled-sensor = { version = "0.0.10", features = ["openblas-system"] }
+nabled-sensor = { version = "0.0.11", features = ["openblas-system"] }
 ```
 
 ## Example
