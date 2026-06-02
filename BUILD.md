@@ -7,7 +7,7 @@ maturin develop
 ```
 
 Builds and installs pynabled in editable mode with default features. Default builds include the
-Rust `arrow` feature; Python Arrow workflows still require `pyarrow` at runtime.
+Rust `arrow` and `embeddings` features; Python Arrow workflows still require `pyarrow` at runtime.
 
 ## Building with features
 

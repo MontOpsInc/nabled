@@ -127,5 +127,6 @@ array-in/array-out kernels.
 
 - Repository: <https://github.com/MontOpsInc/nabled>
 - Python package docs: <https://github.com/MontOpsInc/nabled/blob/main/python/README.md>
+- Embeddings guide: <https://github.com/MontOpsInc/nabled/blob/main/docs/EMBEDDINGS.md>
 - Build guide: <https://github.com/MontOpsInc/nabled/blob/main/BUILD.md>
 - Changelog: <https://github.com/MontOpsInc/nabled/blob/main/CHANGELOG.md>
