@@ -493,6 +493,15 @@ prepare-release version:
     sed -i '' "s/^nabled-sensor = { path = \"crates\\/nabled-sensor\", version = \"=[^\"]*\" }/nabled-sensor = { path = \"crates\\/nabled-sensor\", version = \"={{ version }}\" }/" Cargo.toml
     sed -i '' "s/^nabled-sim = { path = \"crates\\/nabled-sim\", version = \"=[^\"]*\" }/nabled-sim = { path = \"crates\\/nabled-sim\", version = \"={{ version }}\" }/" Cargo.toml
 
+    # Keep pynabled PyPI metadata aligned with the workspace version (CI gate).
+    awk -v ver="{{ version }}" '
+      /^\[project\]$/ { in_proj=1; print; next }
+      /^\[/ && !/^\[project\]/ { in_proj=0 }
+      in_proj && /^version = / { print "version = \"" ver "\""; next }
+      { print }
+    ' pyproject.toml > pyproject.toml.tmp && mv pyproject.toml.tmp pyproject.toml
+    bash scripts/check_pyproject_version_matches_cargo.sh
+
     # Update nabled crate version references in README files (if they exist).
     # Look for patterns like: nabled = "0.1.1" or nabled = { version = "0.1.1" }.
     physical_ai_deps="nabled-kinematics nabled-model nabled-dynamics nabled-control nabled-sensor nabled-sim"
@@ -528,7 +537,7 @@ prepare-release version:
 
     # Stage all changes.
     # Cargo.lock is ignored in this repository, so stage it only if it is tracked.
-    git add Cargo.toml CHANGELOG.md RELEASE_NOTES.md
+    git add Cargo.toml CHANGELOG.md RELEASE_NOTES.md pyproject.toml
     if git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
         git add Cargo.lock
     fi
