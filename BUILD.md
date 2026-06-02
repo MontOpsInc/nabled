@@ -72,8 +72,8 @@ python -m pip install --no-binary pynabled \
 ```
 
 Published PyPI wheels use the default `pynabled` Cargo feature set unless the release workflow is
-changed. Arrow Rust support is compiled into the default wheel. Provider/backend feature builds
-remain source-build workflows.
+changed. Arrow and embeddings Rust support are compiled into the default wheel. Provider/backend
+feature builds remain source-build workflows.
 
 `PYNABLED_PROVIDER` / `pynabled-provider` accepts:
 
