@@ -30,7 +30,8 @@ strip_ansi() {
 crate_exists() {
   local pkg="$1"
   local line
-  line="$(cargo search "${pkg}" --limit 1 --token "${TOKEN}" 2>/dev/null | strip_ansi | head -1 || true)"
+  # `cargo search` is public-index only; it does not accept `--token` (unlike `cargo owner`).
+  line="$(cargo search "${pkg}" --limit 1 2>/dev/null | strip_ansi | head -1 || true)"
   [[ "${line}" == "${pkg} = "* ]]
 }
 
@@ -56,11 +57,19 @@ add_owner() {
 }
 
 FAILED=0
+PUBLISHED=0
 for pkg in "${WORKSPACE_CRATES[@]}"; do
+  if crate_exists "${pkg}"; then
+    PUBLISHED=$((PUBLISHED + 1))
+  fi
   add_owner "${pkg}" || FAILED=1
 done
 
 echo ""
+if [ "${PUBLISHED}" -eq 0 ]; then
+  echo "Error: no workspace crates found on crates.io; check cargo search / index sync." >&2
+  exit 1
+fi
 if [ "${FAILED}" -eq 1 ]; then
   echo "One or more crates failed owner-add for ${USER}." >&2
   echo "Verify CARGO_REGISTRY_TOKEN has change-owners scope, or run the crates-io-add-owner workflow." >&2
