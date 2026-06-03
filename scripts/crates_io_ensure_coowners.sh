@@ -5,8 +5,8 @@ set -euo pipefail
 
 USER="${1:-${CRATES_IO_COOWNER:-NiklausParcell}}"
 TOKEN="${CARGO_REGISTRY_TOKEN:?CARGO_REGISTRY_TOKEN must be set}"
-# CI sets CARGO_TERM_COLOR=always; disable colors so grep can match cargo search output.
 export CARGO_TERM_COLOR=never
+export NO_COLOR=1
 
 # Keep in sync with docs/PUBLISH_CHECKLIST.md publish order.
 WORKSPACE_CRATES=(
@@ -23,12 +23,15 @@ WORKSPACE_CRATES=(
   nabled
 )
 
+strip_ansi() {
+  sed $'s/\x1b\\[[0-9;]*m//g'
+}
+
 crate_exists() {
   local pkg="$1"
-  if cargo search "${pkg}" --limit 1 --token "${TOKEN}" 2>/dev/null | grep -q "^${pkg} = "; then
-    return 0
-  fi
-  return 1
+  local line
+  line="$(cargo search "${pkg}" --limit 1 --token "${TOKEN}" 2>/dev/null | strip_ansi | head -1 || true)"
+  [[ "${line}" == "${pkg} = "* ]]
 }
 
 add_owner() {
@@ -44,7 +47,7 @@ add_owner() {
     echo "OK: ${pkg}"
     return 0
   fi
-  if cargo owner --list "${pkg}" --token "${TOKEN}" | grep -Fq "${USER}"; then
+  if cargo owner --list "${pkg}" --token "${TOKEN}" 2>/dev/null | strip_ansi | grep -Fq "${USER}"; then
     echo "Skip: ${USER} is already an owner of ${pkg}"
     return 0
   fi
