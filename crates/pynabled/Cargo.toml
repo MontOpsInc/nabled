@@ -50,7 +50,7 @@ pyo3 = { version = "0.28", features = ["extension-module"] }
 arrow-pyarrow = { version = "58", optional = true }
 arrow-array = { version = "58", optional = true }
 arrow-data = { version = "58", optional = true }
-arrow-schema = { version = "58", optional = true }
+arrow-schema = { version = "59", optional = true }
 
 [lints]
 workspace = true
