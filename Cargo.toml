@@ -65,7 +65,7 @@ num-complex = "0.4"
 num-traits = "0.2"
 rand = "0.10"
 rayon = "1.11"
-quick-xml = "0.37"
+quick-xml = "0.41"
 realfft = "3.5"
 rustfft = "6.4"
 serde = { version = "1", features = ["derive"] }
