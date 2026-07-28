@@ -47,9 +47,16 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit
       - name: Run audit check
-        # Ignored until https://github.com/apache/datafusion/issues/15571
-        # ignored py03 warning until arrow 55 upgrade
-        run: cargo audit --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2025-0020
+        # PyO3 0.29 requires arrow-pyarrow 59, while ndarrow 0.0.4 still
+        # requires Arrow 58. pynabled does not use the affected PyList/PyTuple
+        # iterator or PyCFunction::new_closure APIs. Remove these ignores with
+        # the coordinated Arrow 59 / ndarrow upgrade.
+        run: >-
+          cargo audit
+          --ignore RUSTSEC-2024-0370
+          --ignore RUSTSEC-2025-0020
+          --ignore RUSTSEC-2026-0176
+          --ignore RUSTSEC-2026-0177
 
   python-audit:
     name: Audit Python Dependencies
