@@ -274,7 +274,7 @@ jobs:
         cargo llvm-cov report --lcov --output-path lcov.info --ignore-filename-regex "crates/nabled-linalg/src/accelerator/gpu.rs"
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v6
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: lcov.info
